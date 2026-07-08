@@ -169,6 +169,17 @@ def test_greedy_rebonds_phase_mismatched_columns():
     assert not graph.floating_ids()
 
 
+def test_greedy_sweeps_layers_bottom_up():
+    codes = np.full((2, 1, 6), EMPTY, dtype=np.int16)
+    codes[0, 0, 5] = 4
+    codes[1, 0, 0] = 4
+    grid = VoxelGrid(codes=codes)
+
+    layout = GreedyStrategy(refine=False).place(grid, rng=np.random.default_rng(3))
+
+    assert [brick.layer for brick in layout] == [0, 5]
+
+
 def test_compact_vertical_reforms_bricks():
     from legolization.placement.merge import compact_vertical
 
