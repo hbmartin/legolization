@@ -165,9 +165,9 @@ def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
             method=method,
             options=options,
         )
-        if result.x is not None:
+        if result.success and result.x is not None:
             break
-    if result is None or result.x is None:
+    if result is None or not result.success or result.x is None:
         message = result.message if result is not None else "no result"
         msg = f"stability LP failed: {message}"
         raise RuntimeError(msg)
@@ -216,14 +216,19 @@ def _solve_milp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
 def _solve_with_fallback(problem: cp.Problem, config: SolverConfig) -> str:
     solvers = (config.solver,) if config.solver else _MILP_SOLVERS
     last_error: Exception | None = None
+    last_status: str | None = None
     for solver in solvers:
         try:
             problem.solve(solver=solver)
         except (cp.SolverError, ValueError) as error:
             last_error = error
         else:
-            return str(problem.status)
-    msg = f"no solver in {solvers} could solve the stability program"
+            last_status = str(problem.status)
+            if problem.status in (cp.OPTIMAL, cp.OPTIMAL_INACCURATE):
+                return last_status
+    msg = f"no solver in {solvers} found an optimal stability solution"
+    if last_status is not None:
+        msg = f"{msg}; last status: {last_status}"
     raise RuntimeError(msg) from last_error
 
 

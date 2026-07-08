@@ -1,7 +1,11 @@
 """Analytic RBE validation: cases with known physical outcomes."""
 
-import pytest
+from typing import Any
 
+import pytest
+from scipy.optimize import OptimizeResult
+
+import legolization.stability.solver as solver_module
 from legolization.catalog import default_catalog
 from legolization.layout import Layout
 from legolization.stability import (
@@ -9,6 +13,7 @@ from legolization.stability import (
     SolverConfig,
     analyze,
     build_model,
+    solve_model,
 )
 
 
@@ -110,6 +115,54 @@ def test_model_shape(layout):
     # each with normal+drag, plus 4 knob-press vars per knob.
     knobs = 16
     assert model.var_count == knobs * 3 * 2 + knobs * 4
+
+
+def test_lp_fallback_requires_successful_linprog(layout, monkeypatch):
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    model = build_model(layout)
+    original_linprog = solver_module.linprog
+    calls = 0
+
+    def fake_linprog(**kwargs) -> OptimizeResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return OptimizeResult(
+                success=False,
+                status=2,
+                message="failed with iterate",
+                x=[0.0] * len(kwargs["c"]),
+                fun=0.0,
+            )
+        return original_linprog(**kwargs)
+
+    monkeypatch.setattr(solver_module, "linprog", fake_linprog)
+
+    result = solve_model(model, SolverConfig(mode="lp"))
+
+    assert result.status == "optimal"
+    assert calls == 2
+
+
+def test_milp_fallback_skips_non_optimal_statuses():
+    solve_with_fallback = solver_module._solve_with_fallback  # noqa: SLF001
+
+    class FakeProblem:
+        """Fake cvxpy problem that succeeds only on the second solver."""
+
+        def __init__(self) -> None:
+            self.status = "not-started"
+            self.solvers: list[str] = []
+
+        def solve(self, *, solver: str) -> None:
+            """Record solver attempts and expose a cvxpy-like status."""
+            self.solvers.append(solver)
+            self.status = "optimal" if len(self.solvers) == 2 else "infeasible"
+
+    problem: Any = FakeProblem()
+
+    assert solve_with_fallback(problem, SolverConfig(mode="milp")) == "optimal"
+    assert problem.solvers == ["HIGHS", "SCIP"]
 
 
 def test_empty_layout_is_stable(layout):

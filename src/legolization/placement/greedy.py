@@ -11,7 +11,6 @@ objective improves.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -74,7 +73,7 @@ class GreedyStrategy:
     ) -> None:
         """Greedily cover ``uncovered`` (mutated) with largest-fitting parts."""
         parts = self.catalog.by_category(Category.BRICK, Category.PLATE)
-        for seed in sorted(uncovered):
+        for seed in sorted(uncovered, key=lambda cell: (cell[2], cell[0], cell[1])):
             if seed not in uncovered:
                 continue
             best: tuple[float, float, _Candidate] | None = None
@@ -121,11 +120,7 @@ class GreedyStrategy:
                 ):
                     aligned += 1  # seam below continues our border: d = 0
         bond_penalty = (
-            self.weights.bond_alpha1
-            * math.exp(-self.weights.bond_alpha2 * 0.0)
-            * (aligned / borders)
-            if borders
-            else 0.0
+            self.weights.bond_alpha1 * (aligned / borders) if borders else 0.0
         )
         return len(below) - bond_penalty
 

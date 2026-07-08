@@ -51,17 +51,24 @@ class Palette:
 
     def rgb_of(self, code: int) -> tuple[int, int, int]:
         """Return the palette RGB of an LDraw colour code."""
-        index = int(np.nonzero(self.codes == code)[0][0])
+        index = self._index_of(code)
         r, g, b = (int(v) for v in self.rgbs[index])
         return (r, g, b)
 
     def name_of(self, code: int) -> str:
         """Return the LDraw name of a colour code."""
-        return self.names[int(np.nonzero(self.codes == code)[0][0])]
+        return self.names[self._index_of(code)]
 
     def nearest(self, rgb: tuple[int, int, int]) -> int:
         """Return the LDraw code whose colour is redmean-closest to ``rgb``."""
         return int(self.quantize(np.asarray([rgb], dtype=np.float64))[0])
+
+    def _index_of(self, code: int) -> int:
+        index = int(np.searchsorted(self.codes, code))
+        if index >= len(self.codes) or self.codes[index] != code:
+            msg = f"Colour code {code} not in palette"
+            raise ValueError(msg)
+        return index
 
     def quantize(self, rgbs: np.ndarray) -> np.ndarray:
         """Map an ``(n, 3)`` array of RGB values to LDraw colour codes."""

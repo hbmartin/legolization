@@ -1,6 +1,7 @@
 """LDraw colour palette extraction and quantization."""
 
 import numpy as np
+import pytest
 
 from legolization.color import default_palette
 
@@ -35,3 +36,11 @@ def test_rgb_roundtrip():
     for code in (0, 1, 4, 14, 15):
         rgb = palette.rgb_of(code)
         assert palette.nearest(rgb) == code
+
+
+def test_missing_palette_code_has_clear_error():
+    palette = default_palette()
+    with pytest.raises(ValueError, match="Colour code 9999 not in palette"):
+        palette.rgb_of(9999)
+    with pytest.raises(ValueError, match="Colour code 9999 not in palette"):
+        palette.name_of(9999)
