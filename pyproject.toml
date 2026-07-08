@@ -1,0 +1,67 @@
+[project]
+name = "legolization"
+version = "0.1.0"
+description = "Python CLI for converting a 3D model to LDraw."
+keywords = ["ldraw", "lego", "cad", "3d", "modeling", "parts", "bricks"]
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    { name = "Harold Martin", email = "harold.martin@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Artistic Software",
+  "Topic :: Multimedia :: Graphics :: 3D Modeling",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pyldraw3>=1.0.0",
+    "pyperclip>=1.11.0",
+    "textual>=8.2.8",
+]
+
+[project.scripts]
+legolization = "legolization.main:main"
+
+[project.urls]
+Homepage = "https://github.com/hbmartin/legolization"
+Repository = "https://github.com/hbmartin/legolization"
+Documentation = "https://github.com/hbmartin/legolization/blob/main/GUIDE.md"
+Changelog = "https://github.com/hbmartin/legolization/releases"
+
+[dependency-groups]
+dev = [
+    "lizard>=1.23.0",
+    "pyrefly>=1.1.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.20",
+    "ty>=0.0.57",
+]
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "setup.py", "site-packages", "venv"]
+
+line-length = 88
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812", "D105", "D107", "D203", "D212", "D213", "EM101", "PLR2004", "T201"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN001", "ANN002", "ANN003", "ANN201", "ARG001", "ARG005", "D103", "D104", "DTZ003", "ERA001", "F403", "F405", "FBT002", "G004", "N802", "PLC0415", "PLR2004", "PLW1510", "PT011", "PT013", "PTH110", "PTH118", "PTH119", "PTH122", "PTH123", "PTH207", "S101", "S102", "S311", "S603", "S607", "SIM115"]
+
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12.0"]
+build-backend = "uv_build"

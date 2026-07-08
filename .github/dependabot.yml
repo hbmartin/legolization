@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "hbmartin"
+    assignees:
+      - "hbmartin"
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "hbmartin"
+    assignees:
+      - "hbmartin"
