@@ -2,6 +2,8 @@
 
 Always run ruff and pytest and ty and pyrefly (with uv) after making any changes
 
+You may refer to the papers in @references/ for implementation guidance
+
 ## Development Notes
 
 - The project supports Python 3.12+
