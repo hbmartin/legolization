@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# render-ldraw skill output (model snapshots + archived renders)
+*.front.png
+*.iso.png
+*.top.png
+previous/
