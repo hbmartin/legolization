@@ -1,9 +1,12 @@
 """Pipeline orchestration and CLI smoke tests."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
-from legolization.grid import EMPTY, VoxelGrid
+import legolization.pipeline as pipeline_module
+from legolization.grid import EMPTY, IGNORE, VoxelGrid
 from legolization.main import main
 from legolization.pipeline import PipelineConfig, run, run_file
 
@@ -23,8 +26,8 @@ def test_run_solid_box_is_buildable():
 
 
 def test_run_hollow_reduces_mass():
-    codes = np.full((5, 5, 5), 4, dtype=np.int16)
-    grid = VoxelGrid.from_array(codes, plates_per_voxel=1)
+    codes = np.full((6, 6, 4), 4, dtype=np.int16)
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
     solid = run(grid, PipelineConfig(hollow=False, seed=0))
     hollow = run(grid, PipelineConfig(hollow=True, seed=0))
     assert hollow.mass_g < solid.mass_g
@@ -66,6 +69,93 @@ def test_cli_reports_missing_file(tmp_path, capsys):
     code = main([str(tmp_path / "nope.npy"), "-o", str(tmp_path / "o.ldr")])
     assert code == 1
     assert "error" in capsys.readouterr().err
+
+
+def test_hollow_restore_loop_fires_on_instability(monkeypatch):
+    # The restore loop's whole reason to exist — hollowing breaks physics,
+    # restoring interior fill repairs it — never triggers on shapes that
+    # are stable when hollowed, so fake one unstable verdict: the loop must
+    # restore IGNORE fill and re-place.
+    real_analyze = pipeline_module.analyze
+    calls = {"count": 0}
+
+    def fake_analyze(layout, config=None, graph=None) -> object:
+        result = real_analyze(layout, config, graph)
+        calls["count"] += 1
+        if calls["count"] == 1:
+            victim = next(iter(layout.bricks))
+            scores = dict(result.scores)
+            scores[victim] = replace(scores[victim], score=1.0)
+            return replace(result, stable=False, scores=scores)
+        return result
+
+    monkeypatch.setattr(pipeline_module, "analyze", fake_analyze)
+    codes = np.full((6, 6, 4), 4, dtype=np.int16)
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+    # repair=False isolates the restore loop (repair would consume the
+    # faked unstable verdict by rearranging instead of adding material).
+    result = run(grid, PipelineConfig(seed=0, repair=False))
+
+    assert calls["count"] > 1  # the loop re-placed after restoring
+    assert result.stability.stable
+    assert (result.grid.codes == IGNORE).any()  # restored fill is IGNORE
+    baseline = run(grid, PipelineConfig(seed=0, hollow_rounds=0, repair=False))
+    assert result.grid.filled_count > baseline.grid.filled_count
+
+
+def test_luo_no_refine_skips_refinement(monkeypatch):
+    import legolization.placement.luo as luo_module
+
+    def boom(*args, **kwargs) -> None:
+        msg = "refinement must not run with refine=False"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(luo_module, "improve_connectivity", boom)
+    monkeypatch.setattr(luo_module.LuoStrategy, "_stabilize", boom)
+    codes = np.full((3, 3, 2), 4, dtype=np.int16)
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+    result = run(grid, PipelineConfig(strategy="luo", refine=False, seed=0))
+    assert result.brick_count > 0
+
+
+def test_no_ignore_colours_reach_output():
+    # Interior cells become the IGNORE label during placement; export-time
+    # resolution must leave only real LDraw colour codes.
+    codes = np.full((5, 5, 3), 4, dtype=np.int16)
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+    result = run(grid, PipelineConfig(hollow=False, seed=0))
+    assert all(brick.colour_code >= 0 for brick in result.layout)
+    assert result.buildable
+
+
+def test_pipeline_is_deterministic_for_seed():
+    codes = np.full((5, 5, 3), EMPTY, dtype=np.int16)
+    for z in range(3):
+        codes[z : 5 - z, z : 5 - z, z] = 4
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+    config = PipelineConfig(seed=3)
+
+    def snapshot() -> list[tuple[str, int, int, int, int, int]]:
+        result = run(grid, config)
+        return sorted(
+            (b.part_key, b.x, b.y, b.layer, b.yaw, b.colour_code) for b in result.layout
+        )
+
+    assert snapshot() == snapshot()
+
+
+def test_disjoint_islands_are_not_buildable(tmp_path, capsys):
+    # Two voxel islands with an air gap: each stands, but no single model
+    # connects them — brick-graph semantics report 2 components, exit 2.
+    codes = np.full((3, 1, 1), EMPTY, dtype=np.int16)
+    codes[0, 0, 0] = 4
+    codes[2, 0, 0] = 4
+    npy = tmp_path / "islands.npy"
+    np.save(npy, codes)
+    code = main([str(npy), "-o", str(tmp_path / "islands.ldr"), "--solid"])
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "2 components" in captured.err
 
 
 def test_tiles_and_slopes_flags(tmp_path):

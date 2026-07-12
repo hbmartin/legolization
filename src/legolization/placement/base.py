@@ -2,8 +2,9 @@
 
 The objective is a weighted sum (all terms normalized to ~[0, 1], lower is
 better): part cost, physical instability (from the RBE), aesthetics (seam
-bonding), and colour fidelity. Strategies use it to accept or reject
-refinement steps; the CLI reports it.
+bonding), colour fidelity, perpendicularity (alternating brick directions
+between layers), and per-layer mirror symmetry. Strategies use it to accept
+or reject refinement steps; the CLI reports it.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from legolization.graph import ConnectionGraph
+from legolization.placement.aesthetics import perpendicularity_error, symmetry_error
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -23,13 +25,17 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class ObjectiveWeights:
-    """Relative importance of the four objective terms."""
+    """Relative importance of the objective terms."""
 
     cost: float = 1.0
     stability: float = 4.0
     aesthetics: float = 0.5
     colour: float = 1.0
-    # Kollsker stretcher-bond constants for the aesthetics term.
+    perpendicularity: float = 0.25
+    symmetry: float = 0.25
+    # Kollsker stretcher-bond constants used by greedy candidate scoring:
+    # a border whose seam below sits d studs away is penalized
+    # ``bond_alpha1 * exp(-bond_alpha2 * d)`` (d = 0 is a stacked seam).
     bond_alpha1: float = 4.0
     bond_alpha2: float = 0.8
 
@@ -42,6 +48,8 @@ class ObjectiveReport:
     instability: float
     aesthetics: float
     colour_error: float
+    perpendicularity: float
+    symmetry: float
     total: float
     stability: StabilityResult
 
@@ -60,17 +68,23 @@ def evaluate(
     instability = stability.max_score
     aesthetics = _seam_alignment(layout)
     colour_error = _colour_mismatch(layout, grid.codes)
+    perpendicularity = perpendicularity_error(layout)
+    symmetry = symmetry_error(layout)
     total = (
         weights.cost * cost
         + weights.stability * instability
         + weights.aesthetics * aesthetics
         + weights.colour * colour_error
+        + weights.perpendicularity * perpendicularity
+        + weights.symmetry * symmetry
     )
     return ObjectiveReport(
         cost=cost,
         instability=instability,
         aesthetics=aesthetics,
         colour_error=colour_error,
+        perpendicularity=perpendicularity,
+        symmetry=symmetry,
         total=total,
         stability=stability,
     )
@@ -99,23 +113,34 @@ def connection_density(layout: Layout) -> float:
 
 
 def _seam_alignment(layout: Layout) -> float:
-    """Fraction of intra-layer seams repeated directly one layer up.
+    """Fraction of brick-pair interfaces repeated directly one plate up.
 
     Stacked (aligned) seams are structurally and visually weak — the classic
-    stack-bond smell the stretcher-bond term penalizes locally.
+    stack-bond smell. A seam is counted once per touching brick pair per
+    vertical run (at the run's top plate), not once per plate cell, so a
+    brick-to-brick joint doesn't triple-count: the metric genuinely spans
+    [0, 1] — a stretcher-bond wall scores 0.0, an n-course stack-bond wall
+    (n - 1) / n.
     """
-    seams: set[tuple[int, int, int, int]] = set()
+    seams: dict[tuple[int, int, int, int], tuple[int, int]] = {}
     for brick in layout:
         own = brick.brick_id
         for x, y, z in layout.cells_of(brick):
             for axis, (dx, dy) in enumerate(((1, 0), (0, 1))):
                 neighbour = layout.brick_at((x + dx, y + dy, z))
                 if neighbour is not None and neighbour.brick_id != own:
-                    seams.add((x, y, z, axis))
-    if not seams:
-        return 0.0
-    repeated = sum(1 for (x, y, z, axis) in seams if (x, y, z + 1, axis) in seams)
-    return repeated / len(seams)
+                    pair = (min(own, neighbour.brick_id), max(own, neighbour.brick_id))
+                    seams[(x, y, z, axis)] = pair
+    tops = 0
+    repeated = 0
+    for (x, y, z, axis), pair in seams.items():
+        above = (x, y, z + 1, axis)
+        if seams.get(above) == pair:
+            continue  # interior plate of the same pair's seam run
+        tops += 1
+        if above in seams:
+            repeated += 1
+    return repeated / tops if tops else 0.0
 
 
 def _colour_mismatch(layout: Layout, codes: np.ndarray) -> float:

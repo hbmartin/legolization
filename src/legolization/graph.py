@@ -45,6 +45,9 @@ class SideContact:
     ``direction`` is +1 if b lies at greater coordinate than a along the
     axis. ``centroid`` is the mean shared-face center as
     ``(x, y, layer)`` floats in grid units (layer in plates).
+    ``z_lo``/``z_hi`` are the lowest and highest plate layers of the shared
+    faces — the stability model presses at both vertical extremes so side
+    forces can carry torque about the horizontal axes.
     """
 
     a_id: int
@@ -53,6 +56,8 @@ class SideContact:
     direction: int
     face_count: int
     centroid: tuple[float, float, float]
+    z_lo: int
+    z_hi: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,13 +119,32 @@ class ConnectionGraph:
         return sorted({(k.below_id, k.above_id) for k in self.knob_contacts})
 
     def component_count(self) -> int:
-        """Count connected components (ground counts as one node)."""
-        n_components, _ = self._components()
+        """Count brick-graph components (stud connections between bricks only).
+
+        Ground contacts do NOT join components: two grounded but
+        stud-disconnected towers are two components (Luo's
+        single-connectedness), even though neither is floating. An empty
+        layout has zero components.
+        """
+        if not self.brick_ids:
+            return 0
+        n_components, _ = self._components(include_ground=False)
         return n_components
 
+    def brick_components(self) -> dict[int, int]:
+        """Map each brick id to its brick-graph component label."""
+        if not self.brick_ids:
+            return {}
+        _, labels = self._components(include_ground=False)
+        return {bid: int(labels[i]) for i, bid in enumerate(self.brick_ids)}
+
     def floating_ids(self) -> frozenset[int]:
-        """Bricks not reachable from the ground through stud connections."""
-        _, labels = self._components()
+        """Bricks not reachable from the ground through stud connections.
+
+        This is the ground-merged reachability question — deliberately
+        different from :meth:`component_count`'s brick-graph semantics.
+        """
+        _, labels = self._components(include_ground=True)
         index = {brick_id: i for i, brick_id in enumerate(self.brick_ids)}
         ground_label = labels[len(self.brick_ids)]
         return frozenset(
@@ -133,16 +157,20 @@ class ConnectionGraph:
         """Return True when every brick is ground-reachable via studs."""
         return not self.floating_ids()
 
-    def _components(self) -> tuple[int, np.ndarray]:
+    def _components(self, *, include_ground: bool) -> tuple[int, np.ndarray]:
         index = {brick_id: i for i, brick_id in enumerate(self.brick_ids)}
-        ground = len(self.brick_ids)
+        n = len(self.brick_ids) + (1 if include_ground else 0)
         rows: list[int] = []
         cols: list[int] = []
         for contact in self.knob_contacts:
-            below = ground if contact.below_id == GROUND_ID else index[contact.below_id]
+            if contact.below_id == GROUND_ID:
+                if not include_ground:
+                    continue
+                below = len(self.brick_ids)
+            else:
+                below = index[contact.below_id]
             rows.append(below)
             cols.append(index[contact.above_id])
-        n = ground + 1
         matrix = coo_matrix(
             (np.ones(len(rows)), (rows, cols)),
             shape=(n, n),
@@ -166,6 +194,7 @@ def _side_contacts(layout: Layout) -> list[SideContact]:
     for (a_id, b_id, axis, direction), centers in sorted(faces.items()):
         arr = np.asarray(centers)
         cx, cy, cz = arr.mean(axis=0)
+        layers = arr[:, 2] - 0.5  # face centers sit at cell z + 0.5
         contacts.append(
             SideContact(
                 a_id=a_id,
@@ -174,6 +203,8 @@ def _side_contacts(layout: Layout) -> list[SideContact]:
                 direction=direction,
                 face_count=len(centers),
                 centroid=(float(cx), float(cy), float(cz)),
+                z_lo=int(layers.min()),
+                z_hi=int(layers.max()),
             )
         )
     return contacts

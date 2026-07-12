@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from legolization.instructions.sequencer import InstructionPlan
     from legolization.layout import Layout, PlacedBrick
 
 STUD_LDU = 20.0
@@ -61,13 +62,24 @@ def model_lines(
     *,
     name: str = "model.ldr",
     steps: bool = True,
+    plan: InstructionPlan | None = None,
 ) -> Iterator[str]:
-    """LDraw file lines for a layout, bottom-up with per-layer steps."""
+    """LDraw file lines for a layout.
+
+    Without a ``plan`` this is the legacy per-layer emission (one ``0
+    STEP`` per plate layer, bottom-up). With a plan the steps follow its
+    sequencing, with ``0 ROTSTEP`` view hints where the planner asked for
+    them (``0 STEP`` boundaries are always emitted, so viewers that treat
+    ROTSTEP as a comment still step correctly).
+    """
     yield f"0 {name.removesuffix('.ldr').removesuffix('.mpd')}"
     yield f"0 Name: {name}"
     yield "0 Author: legolization"
     yield "0 !LDRAW_ORG Unofficial_Model"
     yield _HEADER_LICENSE
+    if plan is not None:
+        yield from _plan_lines(layout, plan)
+        return
     ordered = sorted(layout, key=lambda b: (b.layer, b.y, b.x, b.brick_id))
     previous_layer: int | None = None
     for brick in ordered:
@@ -79,15 +91,29 @@ def model_lines(
         yield "0 STEP"
 
 
+def _plan_lines(layout: Layout, plan: InstructionPlan) -> Iterator[str]:
+    rotated = False
+    for step in plan.steps:
+        if step.rotstep is not None:
+            rotated = True
+            yield f"0 ROTSTEP 0 {step.rotstep.yaw} 0 {step.rotstep.mode}"
+        for brick_id in step.brick_ids:
+            yield piece_for(layout, layout.bricks[brick_id]).to_ldraw()
+        yield "0 STEP"
+    if rotated:
+        yield "0 ROTSTEP END"
+
+
 def write_model(
     layout: Layout,
     path: Path,
     *,
     steps: bool = True,
+    plan: InstructionPlan | None = None,
 ) -> None:
     """Write a layout to ``.ldr`` (or ``.mpd`` with a FILE wrapper)."""
     name = path.name
-    lines = list(model_lines(layout, name=name, steps=steps))
+    lines = list(model_lines(layout, name=name, steps=steps, plan=plan))
     if path.suffix.lower() == ".mpd":
         lines = [f"0 FILE {name}", *lines, "0 NOFILE"]
     path.write_text("\n".join(lines) + "\n")

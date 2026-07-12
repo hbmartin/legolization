@@ -81,3 +81,28 @@ def test_rect_key_lookup(catalog):
 def test_masses_positive(catalog):
     for part in catalog.parts.values():
         assert part.mass_g > 0
+
+
+def test_plate_masses_are_realistic(catalog):
+    # Real plates weigh ~0.45-0.55x the same-footprint brick, never the
+    # exact one-third the naive height ratio suggests (audit finding F8).
+    for plate in catalog.by_category(Category.PLATE):
+        width, length = _footprint_size(plate)
+        brick_key = catalog.rect_key(width, length, 3, category=Category.BRICK)
+        assert brick_key is not None
+        brick = catalog[brick_key]
+        assert brick.mass_g / 3 < plate.mass_g < 0.6 * brick.mass_g
+
+
+def test_tile_masses_below_same_footprint_plate(catalog):
+    for tile in catalog.by_category(Category.TILE):
+        width, length = _footprint_size(tile)
+        plate_key = catalog.rect_key(width, length, 1, category=Category.PLATE)
+        assert plate_key is not None
+        assert tile.mass_g < catalog[plate_key].mass_g
+
+
+def _footprint_size(part) -> tuple[int, int]:
+    xs = [dx for dx, _ in part.footprint]
+    ys = [dy for _, dy in part.footprint]
+    return max(xs) - min(xs) + 1, max(ys) - min(ys) + 1

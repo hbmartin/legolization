@@ -19,38 +19,17 @@ jobs:
       run: uv venv
     - name: Install dependencies
       run: uv sync --all-groups
-    - name: Compute pre-commit cache key
-      id: pre-commit-cache
-      shell: python
-      run: |
-        import hashlib
-        import sys
-
-        python = "py{}.{}".format(*sys.version_info[:2])
-        payload = sys.version.encode() + sys.executable.encode()
-        digest = hashlib.sha256(payload).hexdigest()
-        result = "${{ runner.os }}-{}-{}-pre-commit".format(python, digest[:8])
-
-        print(f"result={result}")
-    - name: Restore pre-commit cache
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-          path: ~/.cache/pre-commit
-          key: ${{ steps.pre-commit-cache.outputs.result }}-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            ${{ steps.pre-commit-cache.outputs.result }}-
+    - run: uv run ruff format --check .
     - run: uv run ruff check .
     - name: Run type checks
       run: |
-        uv run ty check ldraw
-        uv run pyrefly check ldraw
+        uv run ty check src tests
+        uv run pyrefly check src tests
     - name: Run complexity checks
-      run: uv run lizard --languages python ldraw tests
-    - name: Run package metadata checks
-      run: uv run pyroma --min 10 .
+      run: uv run lizard --languages python src tests
     - run: uv run deptry .
     - name: Run tests with coverage
-      run: uv run pytest --cov=ldraw --cov-report=lcov --cov-report=html
+      run: uv run pytest --cov=legolization --cov-report=lcov --cov-report=html
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       with:

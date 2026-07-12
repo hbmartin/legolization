@@ -65,6 +65,7 @@ def test_side_contacts(layout):
     assert {contact.a_id, contact.b_id} == {a.brick_id, b.brick_id}
     assert contact.axis == 1
     assert contact.face_count == 2 * 3  # two columns, three plate layers
+    assert (contact.z_lo, contact.z_hi) == (0, 2)
 
 
 def test_floating_component(layout):
@@ -73,3 +74,21 @@ def test_floating_component(layout):
     graph = ConnectionGraph.from_layout(layout)
     assert graph.component_count() == 2
     assert len(graph.floating_ids()) == 1
+
+
+def test_disconnected_grounded_towers_are_two_components(layout):
+    # The audit's F4 repro: both towers stand on the ground, but nothing
+    # ties them together — the ground node must not merge them.
+    for level in range(2):
+        layout.add("brick_2x2", 0, 0, 3 * level, 0, 4)
+        layout.add("brick_2x2", 10, 10, 3 * level, 0, 4)
+    graph = ConnectionGraph.from_layout(layout)
+    assert graph.component_count() == 2
+    assert not graph.floating_ids()
+    assert len(set(graph.brick_components().values())) == 2
+
+
+def test_empty_layout_has_zero_components(layout):
+    graph = ConnectionGraph.from_layout(layout)
+    assert graph.component_count() == 0
+    assert graph.brick_components() == {}

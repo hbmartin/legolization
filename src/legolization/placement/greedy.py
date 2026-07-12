@@ -1,20 +1,27 @@
 """Greedy bottom-up placement with delete-and-rebuild reinforcement.
 
 Placement sweeps layers bottom-up, covering each uncovered filled voxel with
-the largest colour-uniform part that fits, preferring placements that bridge
-many distinct bricks below and whose seams stagger against the layer below
-(Kollsker's stretcher-bond term). Reinforcement then repeatedly deletes a
-k-ring around the physically weakest bricks (per the RBE scores) and refills
-it with a different random order, keeping changes only when the weighted
-objective improves.
+the candidate that (in order) minimizes the estimated parts left for its row
+(Kollsker's ``h(r)`` remainder lookahead), maximizes bonding — many distinct
+supports below, seams staggered against the layer below with the full
+``alpha1 * exp(-alpha2 * d)`` distance term — and then covers the most cells.
+``h(r)`` rarely lowers the part count by itself (every remainder decomposes
+near-optimally with lengths 1/2/3/4/6/8); its value is turning 6+1-versus-4+3
+into ties that the bond term breaks toward staggered seams. Reinforcement
+then repeatedly deletes a k-ring around the physically weakest bricks (per
+the RBE scores) and refills it in a shuffled-within-layers random order,
+keeping changes only when the weighted objective improves.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+from functools import cache
 from typing import TYPE_CHECKING
 
 from legolization.catalog import Category, default_catalog, rotate_offset
+from legolization.grid import EMPTY, colour_matches, merge_colour
 from legolization.layout import Layout
 from legolization.placement.base import ObjectiveWeights, evaluate
 from legolization.placement.merge import (
@@ -31,6 +38,31 @@ if TYPE_CHECKING:
     from legolization.grid import VoxelGrid
 
 _RING_GROWTH = 10  # failures per extra ring (Luo's N)
+_STUD_LENGTHS = (1, 2, 3, 4, 6, 8)  # catalog part lengths
+_LENGTH_MAX = 8
+_H_EXACT_LIMIT = 25  # Kollsker's rho: exact knapsack below, peel above
+_SEAM_WINDOW = 3  # studs scanned for the nearest seam below a border
+
+
+@cache
+def _h_exact(remainder: int) -> int:
+    """Minimum parts that exactly cover ``remainder`` studs (equality DP)."""
+    if remainder == 0:
+        return 0
+    return 1 + min(
+        _h_exact(remainder - length) for length in _STUD_LENGTHS if length <= remainder
+    )
+
+
+def _h_lookahead(remainder: int) -> int:
+    """Kollsker's h3(r): peel 8-stud chunks, exact knapsack on the tail."""
+    if remainder <= 0:
+        return 0
+    peeled = 0
+    while remainder >= _H_EXACT_LIMIT:
+        peeled += 1
+        remainder -= _LENGTH_MAX
+    return peeled + _h_exact(remainder)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +71,7 @@ class _Candidate:
     anchor: tuple[int, int, int]
     yaw: int
     cells: tuple[Cell, ...]
+    colour: int
 
 
 @dataclass(slots=True)
@@ -70,37 +103,88 @@ class GreedyStrategy:
         grid: VoxelGrid,
         uncovered: set[Cell],
         rng: np.random.Generator,
+        *,
+        shuffle_within_layers: bool = False,
     ) -> None:
-        """Greedily cover ``uncovered`` (mutated) with largest-fitting parts."""
+        """Greedily cover ``uncovered`` (mutated), best candidate per seed.
+
+        The initial fill visits seeds in a deterministic bottom-up ``(z, x,
+        y)`` sweep; rebuild attempts pass ``shuffle_within_layers`` so each
+        retry explores a genuinely different fill order (still bottom-up —
+        the bond score reads the layer below).
+        """
         parts = self.catalog.by_category(Category.BRICK, Category.PLATE)
-        for seed in sorted(uncovered, key=lambda cell: (cell[2], cell[0], cell[1])):
+        order_key = (
+            (lambda cell: (cell[2], rng.random()))
+            if shuffle_within_layers
+            else (lambda cell: (cell[2], cell[0], cell[1]))
+        )
+        for seed in sorted(uncovered, key=order_key):
             if seed not in uncovered:
                 continue
-            best: tuple[float, float, _Candidate] | None = None
-            colour = grid.code_at(*seed)
+            best: tuple[tuple[float, float, int, float], _Candidate] | None = None
             for part in parts:
                 for candidate in _placements(part, seed, grid, uncovered, layout):
+                    estimate = self._parts_estimate(grid, uncovered, candidate, seed)
                     bond = self._bond_score(layout, candidate)
                     jitter = float(rng.random()) * 1e-3
-                    key = (len(candidate.cells), bond + jitter)
-                    if best is None or key > (best[0], best[1]):
-                        best = (key[0], key[1], candidate)
+                    key = (-estimate, bond, len(candidate.cells), jitter)
+                    if best is None or key > best[0]:
+                        best = (key, candidate)
             if best is None:  # always false: plate_1x1 fits any lone cell
                 uncovered.discard(seed)
                 continue
-            candidate = best[2]
+            candidate = best[1]
             layout.add(
                 candidate.part.key,
                 *candidate.anchor,
                 candidate.yaw,
-                colour,
+                candidate.colour,
             )
             uncovered.difference_update(candidate.cells)
 
+    def _parts_estimate(
+        self,
+        grid: VoxelGrid,
+        uncovered: set[Cell],
+        candidate: _Candidate,
+        seed: Cell,
+    ) -> float:
+        """Estimated parts for this candidate's row: 1 + h(left) + h(right).
+
+        The remainder runs are the contiguous same-colour uncovered cells
+        beyond the candidate's two ends along its long axis, measured at the
+        seed's row and plate layer (Kollsker's 1D cost adapted per-row).
+        """
+        xs = [x for x, _, _ in candidate.cells]
+        ys = [y for _, y, _ in candidate.cells]
+        if max(xs) - min(xs) >= max(ys) - min(ys):
+            step = (1, 0)
+            lo, hi = min(xs), max(xs)
+            starts = ((lo - 1, seed[1]), (hi + 1, seed[1]))
+        else:
+            step = (0, 1)
+            lo, hi = min(ys), max(ys)
+            starts = ((seed[0], lo - 1), (seed[0], hi + 1))
+        colour = grid.code_at(*seed)
+        runs = (
+            _run_length(
+                grid, uncovered, colour, (*starts[0], seed[2]), (-step[0], -step[1])
+            ),
+            _run_length(grid, uncovered, colour, (*starts[1], seed[2]), step),
+        )
+        return 1 + _h_lookahead(runs[0]) + _h_lookahead(runs[1])
+
     def _bond_score(self, layout: Layout, candidate: _Candidate) -> float:
-        """Bonding quality: many distinct supports, staggered seams below."""
+        """Bonding quality: many distinct supports, staggered seams below.
+
+        Each border segment is penalized ``alpha1 * exp(-alpha2 * d)`` where
+        ``d`` is the stud distance to the nearest seam in the layer below
+        along the border's normal (d = 0 continues a seam — the stack-bond
+        smell), averaged over the candidate's border segments.
+        """
         below: set[int] = set()
-        aligned = 0
+        penalty = 0.0
         borders = 0
         columns = {(x, y) for x, y, _ in candidate.cells}
         base = candidate.anchor[2]
@@ -111,17 +195,10 @@ class GreedyStrategy:
                 if (x + dx, y + dy) in columns:
                     continue
                 borders += 1
-                under_a = layout.brick_at((x, y, base - 1))
-                under_b = layout.brick_at((x + dx, y + dy, base - 1))
-                if (
-                    under_a is not None
-                    and under_b is not None
-                    and (under_a.brick_id != under_b.brick_id)
-                ):
-                    aligned += 1  # seam below continues our border: d = 0
-        bond_penalty = (
-            self.weights.bond_alpha1 * (aligned / borders) if borders else 0.0
-        )
+                distance = _seam_distance(layout, x, y, dx, dy, base)
+                if distance is not None:
+                    penalty += math.exp(-self.weights.bond_alpha2 * distance)
+        bond_penalty = self.weights.bond_alpha1 * penalty / borders if borders else 0.0
         return len(below) - bond_penalty
 
     def _reinforce(
@@ -133,8 +210,8 @@ class GreedyStrategy:
         """Repair connectivity, then delete-and-rebuild until stable."""
         # Straight seams can strand towers no greedy refill bridges (the
         # largest-first fill would just recreate them); random remerging
-        # across the seam does.
-        if _floating(layout):
+        # across the seam does. Grounded-but-disconnected towers count too.
+        if _floating(layout) or _component_count(layout) > 1:
             improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
         report = evaluate(layout, grid, self.weights, self.solver_config)
         failures = 0
@@ -156,7 +233,7 @@ class GreedyStrategy:
                 freed |= set(candidate_layout.filled_cells_of(brick))
                 candidate_layout.remove(brick_id)
             freed = {c for c in freed if _is_filled(grid, c)}
-            self._fill(candidate_layout, grid, freed, rng)
+            self._fill(candidate_layout, grid, freed, rng, shuffle_within_layers=True)
             candidate_report = evaluate(
                 candidate_layout, grid, self.weights, self.solver_config
             )
@@ -175,8 +252,12 @@ def _placements(
     uncovered: set[Cell],
     layout: Layout,
 ) -> list[_Candidate]:
-    """All valid placements of ``part`` covering ``seed``."""
-    colour = grid.code_at(*seed)
+    """All valid placements of ``part`` covering ``seed``.
+
+    A placement is colour-valid when its cells carry at most one specific
+    colour (IGNORE interior cells are wildcards); the brick takes that
+    colour, or stays IGNORE when the whole footprint is interior.
+    """
     results: list[_Candidate] = []
     seen_anchors: set[tuple[int, int, int, int]] = set()
     for yaw in part.orientations:
@@ -190,18 +271,68 @@ def _placements(
                 (anchor[0] + cx, anchor[1] + cy, anchor[2] + cz)
                 for cx, cy, cz in rotated
             ]
-            if all(
-                cell in uncovered and grid.code_at(*cell) == colour for cell in cells
-            ) and layout.can_place(part, *anchor, yaw):
+            if not all(cell in uncovered for cell in cells):
+                continue
+            colour = merge_colour(*(grid.code_at(*cell) for cell in cells))
+            if colour is not None and layout.can_place(part, *anchor, yaw):
                 results.append(
                     _Candidate(
                         part=part,
                         anchor=anchor,
                         yaw=yaw,
                         cells=tuple(cells),
+                        colour=colour,
                     )
                 )
     return results
+
+
+def _run_length(
+    grid: VoxelGrid,
+    uncovered: set[Cell],
+    colour: int,
+    start: Cell,
+    step: tuple[int, int],
+) -> int:
+    """Length of the colour-compatible uncovered run from ``start``."""
+    x, y, z = start
+    length = 0
+    while (x, y, z) in uncovered and colour_matches(grid.code_at(x, y, z), colour):
+        length += 1
+        x += step[0]
+        y += step[1]
+    return length
+
+
+def _seam_distance(  # noqa: PLR0913 - a border probe is naturally six scalars
+    layout: Layout,
+    x: int,
+    y: int,
+    dx: int,
+    dy: int,
+    base: int,
+) -> int | None:
+    """Stud distance to the nearest seam below a border, or None if none.
+
+    The border sits between column ``(x, y)`` (inside the candidate) and
+    ``(x + dx, y + dy)`` (outside); seams in the layer below are scanned up
+    to ``_SEAM_WINDOW`` studs inward and outward along the border normal.
+    """
+
+    def below(px: int, py: int) -> int | None:
+        brick = layout.brick_at((px, py, base - 1))
+        return None if brick is None else brick.brick_id
+
+    def is_seam(m: int) -> bool:
+        """Seam between normal offsets ``m`` and ``m + 1`` below."""
+        a = below(x + m * dx, y + m * dy)
+        b = below(x + (m + 1) * dx, y + (m + 1) * dy)
+        return a is not None and b is not None and a != b
+
+    for distance in range(_SEAM_WINDOW + 1):
+        if is_seam(distance) or (distance > 0 and is_seam(-distance)):
+            return distance
+    return None
 
 
 def _floating(layout: Layout) -> set[int]:
@@ -210,7 +341,13 @@ def _floating(layout: Layout) -> set[int]:
     return set(ConnectionGraph.from_layout(layout).floating_ids())
 
 
+def _component_count(layout: Layout) -> int:
+    from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
+
+    return ConnectionGraph.from_layout(layout).component_count()
+
+
 def _is_filled(grid: VoxelGrid, cell: Cell) -> bool:
     x, y, z = cell
     nx, ny, nz = grid.shape
-    return 0 <= x < nx and 0 <= y < ny and 0 <= z < nz and grid.codes[x, y, z] >= 0
+    return 0 <= x < nx and 0 <= y < ny and 0 <= z < nz and grid.codes[x, y, z] != EMPTY

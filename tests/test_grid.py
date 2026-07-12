@@ -33,6 +33,20 @@ def test_bad_shape_rejected():
         VoxelGrid.from_array(np.zeros((2, 2), dtype=np.int64))
 
 
+def test_dither_mixes_gradient_colours():
+    # A red-to-blue gradient bar: plain quantization gives solid bands,
+    # dithering must interleave codes while covering the same cells.
+    n = 16
+    values = np.zeros((n, 2, 1, 4), dtype=np.uint8)
+    for x in range(n):
+        blend = x / (n - 1)
+        values[x, :, 0] = (int(200 * (1 - blend)), 0, int(200 * blend), 255)
+    plain = VoxelGrid.from_array(values, plates_per_voxel=1)
+    dithered = VoxelGrid.from_array(values, plates_per_voxel=1, dither=True)
+    assert (plain.filled_mask == dithered.filled_mask).all()
+    assert not np.array_equal(plain.codes, dithered.codes)
+
+
 def test_interior_and_surface_masks():
     codes = np.full((4, 4, 4), 7, dtype=np.int16)
     grid = VoxelGrid(codes=codes)
@@ -82,3 +96,39 @@ def test_vox_rejects_garbage(tmp_path):
     path.write_bytes(b"NOTAVOXFILE")
     with pytest.raises(ValueError, match="magic"):
         VoxelGrid.from_vox(path)
+
+
+def test_vox_rejects_truncated_chunk(tmp_path):
+    path = tmp_path / "truncated.vox"
+    path.write_bytes(_vox_bytes()[:-40])  # cut into the palette chunk
+    with pytest.raises(ValueError, match=r"malformed|palette"):
+        VoxelGrid.from_vox(path)
+
+
+def test_vox_rejects_out_of_bounds_voxel(tmp_path):
+    data = bytearray(_vox_bytes())
+    # The single voxel sits at x=1 inside SIZE (2,1,1); move it to y=5.
+    xyzi_at = data.find(b"XYZI") + 12 + 4
+    data[xyzi_at + 1] = 5
+    path = tmp_path / "oob.vox"
+    path.write_bytes(bytes(data))
+    with pytest.raises(ValueError, match="outside SIZE"):
+        VoxelGrid.from_vox(path)
+
+
+def test_npy_rejects_unknown_colour_codes():
+    codes = np.full((2, 1, 1), EMPTY, dtype=np.int64)
+    codes[0, 0, 0] = 9999  # not an LDraw code
+    with pytest.raises(ValueError, match="9999"):
+        VoxelGrid.from_array(codes)
+
+
+def test_aspect_correct_resampling():
+    # 4 cubic voxels -> round(4 * 2.5) = 10 plate layers, column preserved.
+    codes = np.full((1, 1, 4), EMPTY, dtype=np.int64)
+    codes[0, 0, :2] = 4
+    codes[0, 0, 2:] = 14
+    grid = VoxelGrid.from_array(codes, aspect_correct=True)
+    assert grid.shape == (1, 1, 10)
+    column = [grid.code_at(0, 0, z) for z in range(10)]
+    assert column == [4, 4, 4, 4, 4, 14, 14, 14, 14, 14]

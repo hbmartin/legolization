@@ -139,6 +139,18 @@ class Layout:
             _next_id=self._next_id,
         )
 
+    def subset(self, brick_ids: Iterable[int]) -> Layout:
+        """Return a layout holding only the given bricks (prefix analysis)."""
+        wanted = set(brick_ids)
+        return Layout(
+            catalog=self.catalog,
+            bricks={bid: b for bid, b in self.bricks.items() if bid in wanted},
+            occupancy={
+                cell: bid for cell, bid in self.occupancy.items() if bid in wanted
+            },
+            _next_id=self._next_id,
+        )
+
     def replace_with(self, other: Layout) -> None:
         """Adopt another layout's contents (accept a refinement candidate)."""
         self.bricks = other.bricks

@@ -6,25 +6,42 @@ stopped. For the algorithms and formulas each item builds on, see the papers in
 
 ## Where things stand
 
-Milestones **M1–M5** are implemented and tested (72 tests; ruff, pytest, ty,
-and pyrefly all green): voxel input (`.vox`/`.npy`) → LDraw-quantized colour →
-hollow → placement (greedy or Luo split/remerge) → full RBE stability analysis
-→ refinement → `.ldr`/`.mpd` export with bottom-up `0 STEP` instructions.
+Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and
+pyrefly all green): voxel input (`.vox`/`.npy`) → LDraw-quantized colour
+(optionally dithered) → hollow (anisotropic ~1-brick shell, colour-free
+interiors) → placement (six registered strategies: greedy, luo, bond, fast,
+smga, beauty) → full RBE stability analysis (cross-validated against all nine
+StableLego release fixtures) → ALNS destroy-and-repair → stability-aware fill
+restore → global re-merge → smart step sequencing (prefix-stable, mirror-
+aware, ROTSTEP hints) → `.ldr`/`.mpd` export with a JSON/text bill of
+materials.
+
+The 2026-07 audit remediation closed every finding F1–F16: torque-capable
+side presses (two per pair at the shared face's vertical extremes), real
+plate/tile masses, brick-graph component semantics, a per-interface seam
+metric, Kollsker h(r) + distance-decayed bond scoring, the IGNORE interior
+colour label, phase-aware brick re-forming (`compact_columns` +
+`final_remerge` — the hollow sphere dropped from ~374 to well under 200
+parts), Luo's maximin C_M acceptance with importance-sampled seeds and
+failMAX = 100, soft colour constraints, `.vox`/`.npy` robustness, and
+`--aspect-correct` resampling.
 
 Deliberately **not** done yet, and covered below:
 
 - **M6** — mesh front-end (`.obj`/`.stl` voxelization)
 - **SNOT** — sideways building (the data model is ready; nothing is built)
-- **Rendered instruction booklets** — output is STEP metas only, no images/PDF
+- **Rendered instruction booklets** — smart steps, ROTSTEP, and the BOM
+  exist; images/PDF do not
 - Slope/tile surface finishing is minimal and **opt-in** (`--slopes`,
   `--tiles`) because the slope pass adds material outside the voxel shape
 - Assorted physics-fidelity, placement-quality, performance, and tooling items
 
-> **Repo state note:** nothing from the initial implementation has been
-> committed — the entire pipeline lives in the working tree pending review.
-> The first commit should probably land `src/`, `tests/`, `data/`,
-> `pyproject.toml`/`uv.lock`, and the docs as a unit, since the tests and
-> catalog data are load-bearing for everything else.
+**Documented deviations from the papers** (deliberate, benchmark-arbitrated):
+Min's A* is a capped-OPEN beam search with canonical-cell expansion; Min's
+multi-height g_v term is reinterpreted at plate resolution (no 2-brick-tall
+parts in the catalog); Kollsker's 1D remainder/stagger terms are measured
+along a per-layer scan axis; the ALNS repair MILP runs on scipy/HiGHS with a
+merge-engine filler for large regions instead of CPLEX.
 
 ---
 
@@ -111,22 +128,15 @@ zero colour/volume error; tile coverage on a flat-roofed test model exceeds
 
 ## Build instructions v2 — rendered booklets
 
-Today the output is one model file with a `0 STEP` after each layer, which
-Studio/LDView step through correctly. Missing: images, page layout, parts
-lists, and smarter step granularity.
+Items 1–3 are **done** (the `instructions/` package): smart step chunking
+with mirror-pair co-stepping and ROTSTEP view hints, greedy prefix-stable
+sequencing over the vertical block graph (warn or strict policy), and a
+hand-rolled JSON/text BOM with per-step callouts (`--bom`; pyldraw3's
+`ldraw.bom` turned out to need Colour objects and a parts catalog we never
+load). Remaining: images and page layout.
 
 **Work items, in dependency order**
 
-1. **Step semantics.** Split big layers into digestible steps (~5–10 bricks),
-   keep symmetric halves together, and emit `0 ROTSTEP` metas when the build
-   direction should rotate for visibility.
-2. **Per-step stability check.** Every step prefix is itself a structure —
-   run the existing RBE on each prefix and reorder bricks within a layer so
-   the model is never unstable mid-build. (The assembly-sequence paper in
-   `references/` goes further; a greedy prefix-stable ordering is enough
-   here.) This is cheap now that the LP solves in milliseconds.
-3. **Bill of materials.** pyldraw3 ships `ldraw.bom`; emit a total BOM and
-   per-step part callouts (part id, colour, count) as text/JSON first.
 4. **Rendering.** Options, in order of preference:
    - **LDView command line** (`-SaveSnapshot`): free and already installed,
      but it must be configured with an LDraw directory first — on this
@@ -201,10 +211,10 @@ tests confirm a side-stud connection transmits the expected friction load.
 - **External loads.** Dead load only today. Add an API for point loads
   (StableLego's `external_weight` test cases model a 200 g block as a heavy
   brick — we can do the same or add per-brick `extra_mass_g`).
-- **Cross-validation.** Run the solver against `StableLego-main/test_lego/*.json`
-  and compare per-structure verdicts with their published results; encode a
-  handful as pytest golden cases. This was the optional M2 deliverable and is
-  the best available ground truth.
+- ~~**Cross-validation.**~~ **Done:** all nine StableLego release fixtures are
+  vendored under `tests/data/stablelego/` and every verdict reproduces
+  (`tests/test_stablelego_cross.py`), alongside closed-form golden pins for
+  the single-stud cantilever and the maximin capacity.
 - **Targeted MILP.** `--milp` currently solves the whole model. Reserve the
   complementarity MILP for the k-ring around the weakest contacts and stitch
   it to the LP solution elsewhere — exactness where it matters, LP speed
@@ -212,25 +222,29 @@ tests confirm a side-stud connection transmits the expected friction load.
 
 ## Placement quality backlog
 
-- **Additive greedy scoring.** Candidate ranking is lexicographic (coverage,
-  then bonding), which is why a 2x6 always beats a seam-breaking 2x4. Move to
-  `cells + w·bond` with the Kollsker distance term evaluated at d ∈ {0,1,2}
-  rather than only d=0, and tune on a corpus of shapes.
-- **Cheaper repairs.** Connectivity repair splits to 1x1 plates and only
-  `compact_vertical` re-forms bricks (exact-footprint trios). Add a local
-  re-merge pass over repaired regions and track brick count as a regression
-  metric — the hollow sphere currently lands at ~374 bricks where ~200 should
-  be possible.
+- ~~**Additive greedy scoring.**~~ **Done differently:** greedy now ranks by
+  (h(r) parts estimate, distance-decayed bond, coverage) — the Kollsker
+  d-term is live over a 3-stud window and a 7-wide wall staggers with no
+  repair pass. Weight tuning on a larger corpus remains open.
+- ~~**Cheaper repairs.**~~ **Done:** `compact_columns` re-forms bricks on a
+  region-voted phase inside every repair, `final_remerge` re-phases plate
+  rafts globally, and `tests/test_examples_regression.py` pins brick counts.
 - **Cost term options.** Brick count is the proxy today; add mass and real
   price (BrickLink price guide) as alternatives, and an
   **inventory-limited catalog** (per-part availability counts) for building
   from an actual collection.
-- **More strategies.** The `PlacementStrategy` protocol makes these drop-in:
-  Kollsker's exact MILP for small models, and the SM-GA genetic algorithm
-  from the references for quality-over-time searches.
-- **Aesthetics.** Add Min-style symmetry/balance terms to the objective, and
-  optional colour dithering for gradient regions instead of hard
-  nearest-colour banding.
+- ~~**More strategies.**~~ **Done and exceeded:** four new registered
+  strategies (bond, fast, smga, beauty) over a shared per-layer engine, plus
+  the strategy-agnostic ALNS destroy-and-repair. Kollsker's *exact global*
+  MILP for small models remains open (only the repair-region MILP exists).
+- ~~**Aesthetics.**~~ **Done:** Min-style symmetry/balance and SM-GA/Bao
+  perpendicularity are objective terms (`placement/aesthetics.py`), the
+  beauty strategy optimizes them directly, and `--dither` provides
+  Floyd-Steinberg gradients. Validating the beauty scalar against human
+  judgement (the permutation-drift methodology) remains open.
+- **Seed variance.** Layout quality varies noticeably across seeds on shell
+  shapes (the r=4 hollow sphere spans ~135–205 parts over seeds); parallel
+  restarts (below) would harvest the good tail.
 
 ## Performance backlog
 
@@ -261,26 +275,26 @@ tests confirm a side-stud connection transmits the expected friction load.
   matching StableLego's visualization) for debugging weak structures.
 - **`.vox` robustness.** Embed the documented default MagicaVoxel palette so
   paletteless files load; support multi-model scenes (currently first model
-  only).
+  only). Malformed chunks and out-of-bounds voxels already fail cleanly.
 - **Richer CLI output.** `--report report.json` dumping `PipelineResult`
-  (counts, mass, scores, BOM) for scripting.
-- **TUI.** `textual` is already a dependency; a small terminal UI showing
-  layer-by-layer placement, the stability heatmap, and refinement progress
-  would make tuning weights far less blind. (The decisions log rules out a
-  full GUI for v1; a TUI is the pragmatic middle ground.)
+  (counts, mass, scores) for scripting — `--bom` already covers the parts
+  list; `scripts/benchmark.py` covers cross-strategy comparison.
+- **TUI.** A small terminal UI showing layer-by-layer placement, the
+  stability heatmap, and refinement progress would make tuning weights far
+  less blind (re-add `textual` when this starts — it was dropped as an
+  unused dependency). The decisions log rules out a full GUI for v1.
 
 ---
 
 ## Suggested order
 
-1. **Commit the current tree**, then M6 mesh front-end (unlocks real inputs;
-   small, self-contained).
+1. M6 mesh front-end (unlocks real inputs; small, self-contained — the
+   `--aspect-correct` resampling and `--target-studs` design are ready).
 2. Shape-preserving slopes + tile splitting (small; makes finishing
    default-on).
-3. StableLego cross-validation + heatmap export (medium; hardens the
-   physics core everything else trusts).
-4. Instructions v2 through BOM + per-step stability (medium; no new deps
-   until the PDF stage).
-5. Performance items as models grow (incremental re-analysis first).
-6. SNOT stages 1–3 (large; start after the orientation model design is
+3. Instruction rendering (LDView snapshots → PDF booklet; the sequencing,
+   ROTSTEP, and BOM layers it builds on are done).
+4. Performance items as models grow (incremental re-analysis first — the
+   per-step prefix LPs and ALNS rounds would benefit most).
+5. SNOT stages 1–3 (large; start after the orientation model design is
    reviewed).
