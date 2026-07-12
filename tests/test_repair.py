@@ -1,34 +1,22 @@
 """ALNS stability repair: QP localization, destroy/refill, convergence."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
+from scipy.sparse import issparse
 
 from legolization.catalog import default_catalog
-from legolization.grid import EMPTY, VoxelGrid
+from legolization.grid import VoxelGrid
 from legolization.layout import Layout
 from legolization.placement.repair import (
     RepairConfig,
+    _localize,
     _milp_fill,
     repair_stability,
 )
 from legolization.stability import analyze
-from legolization.stability.links import localize_instability
-
-
-def _bad_bridge() -> tuple[Layout, VoxelGrid]:
-    """Build the collapsing butt-jointed bridge (see test_placement)."""
-    layout = Layout(catalog=default_catalog())
-    layout.add("brick_1x1", 0, 0, 0, 0, 4)
-    layout.add("brick_1x1", 10, 0, 0, 0, 4)
-    for level in (3, 6, 9):
-        layout.add("brick_1x6", 0, 0, level, 0, 4)
-        layout.add("brick_1x4", 6, 0, level, 0, 4)
-        layout.add("brick_1x1", 10, 0, level, 0, 4)
-    codes = np.full((11, 1, 12), EMPTY, dtype=np.int16)
-    codes[0, 0, :3] = 4
-    codes[10, 0, :3] = 4
-    codes[:, 0, 3:] = 4
-    return layout, VoxelGrid(codes=codes)
+from legolization.stability.links import LinkForce, LinkReport, localize_instability
 
 
 def test_localize_stable_structure_has_zero_q():
@@ -40,8 +28,8 @@ def test_localize_stable_structure_has_zero_q():
     assert report.q == pytest.approx(0.0, abs=1e-9)
 
 
-def test_localize_pinpoints_overloaded_seams():
-    layout, _ = _bad_bridge()
+def test_localize_pinpoints_overloaded_seams(bad_bridge):
+    layout, _ = bad_bridge
     report = localize_instability(layout)
     assert not report.stable
     assert report.q > 0
@@ -60,8 +48,27 @@ def test_localize_infeasible_for_unpatchable_collapse():
     assert report.q == float("inf")
 
 
-def test_repair_stabilizes_bridge():
-    layout, grid = _bad_bridge()
+def test_repair_falls_back_to_rbe_when_qp_is_infeasible(monkeypatch):
+    layout = Layout(catalog=default_catalog())
+    fallback = LinkReport(
+        q=1.0,
+        links=(LinkForce(a_id=0, b_id=0, magnitude=1.0),),
+        status="optimal",
+    )
+    monkeypatch.setattr(
+        "legolization.placement.repair.localize_instability",
+        lambda _layout: LinkReport(q=float("inf"), links=(), status="infeasible"),
+    )
+    monkeypatch.setattr(
+        "legolization.placement.repair._rbe_report",
+        lambda _layout, _config: fallback,
+    )
+
+    assert _localize(layout, None, RepairConfig()) is fallback
+
+
+def test_repair_stabilizes_bridge(bad_bridge):
+    layout, grid = bad_bridge
     assert not analyze(layout).stable
 
     report = repair_stability(
@@ -80,8 +87,8 @@ def test_repair_stabilizes_bridge():
     assert accepted[-1] < accepted[0]
 
 
-def test_repair_rbe_localizer_also_converges():
-    layout, grid = _bad_bridge()
+def test_repair_rbe_localizer_also_converges(bad_bridge):
+    layout, grid = bad_bridge
     report = repair_stability(
         layout,
         grid,
@@ -121,8 +128,23 @@ def test_milp_fill_exact_covers_region():
     assert colour == 4
 
 
-def test_milp_filler_through_repair():
-    layout, grid = _bad_bridge()
+def test_milp_fill_uses_sparse_constraint_matrix(monkeypatch):
+    grid = VoxelGrid(codes=np.full((2, 1, 3), 4, dtype=np.int16))
+    layout = Layout(catalog=default_catalog())
+    freed = {(x, 0, z) for x in range(2) for z in range(3)}
+
+    def fake_milp(*, c, constraints, integrality, bounds) -> SimpleNamespace:
+        del c, integrality, bounds
+        assert issparse(constraints.A)
+        return SimpleNamespace(success=False, x=None)
+
+    monkeypatch.setattr("legolization.placement.repair.milp", fake_milp)
+
+    assert _milp_fill(layout, freed, grid, default_catalog()) is None
+
+
+def test_milp_filler_through_repair(bad_bridge):
+    layout, grid = bad_bridge
     report = repair_stability(
         layout,
         grid,

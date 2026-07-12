@@ -1,6 +1,7 @@
 """Instruction sequencing, chunking, blocking, BOM, and LDraw emission."""
 
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -31,17 +32,6 @@ def _pyramid_layout() -> Layout:
     grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
     result = run(grid, PipelineConfig(hollow=False, seed=0))
     return result.layout
-
-
-def _bad_bridge() -> Layout:
-    layout = Layout(catalog=default_catalog())
-    layout.add("brick_1x1", 0, 0, 0, 0, 4)
-    layout.add("brick_1x1", 10, 0, 0, 0, 4)
-    for level in (3, 6, 9):
-        layout.add("brick_1x6", 0, 0, level, 0, 4)
-        layout.add("brick_1x4", 6, 0, level, 0, 4)
-        layout.add("brick_1x1", 10, 0, level, 0, 4)
-    return layout
 
 
 def test_vertical_blockers_detects_overhangs():
@@ -85,6 +75,28 @@ def test_mirror_pairs_detected_and_co_stepped():
             assert right.brick_id in chunk
 
 
+def test_mirror_partner_never_overflows_max_step_size():
+    layout = Layout(catalog=default_catalog())
+    bricks = [layout.add("brick_1x1", x, 0, 0, 0, 4) for x in range(11)]
+    pairs = {
+        bricks[-2].brick_id: bricks[-1].brick_id,
+        bricks[-1].brick_id: bricks[-2].brick_id,
+    }
+
+    chunks = chunk_bands(
+        layout,
+        config=InstructionsConfig(
+            target_step_size=10,
+            max_step_size=10,
+            min_step_size=1,
+        ),
+        pairs=pairs,
+    )
+
+    assert all(len(chunk) <= 10 for _, chunk in chunks)
+    assert any(set(pairs) <= set(chunk) for _, chunk in chunks)
+
+
 def test_plan_covers_pyramid_with_stable_prefixes():
     layout = _pyramid_layout()
     plan = plan_instructions(layout)
@@ -112,18 +124,33 @@ def test_empty_layout_has_empty_instruction_plan():
     assert verify_plan(layout, plan) == []
 
 
-def test_unbuildable_model_warns_not_crashes():
-    layout = _bad_bridge()  # collapses even fully built
+def test_unbuildable_model_warns_not_crashes(bad_bridge):
+    layout, _ = bad_bridge  # collapses even fully built
     plan = plan_instructions(layout)
     assert plan.warnings
     assert any(not step.prefix_stable for step in plan.steps)
     assert sorted(plan.order) == sorted(layout.bricks)
 
 
-def test_strict_policy_raises_on_unstable_prefix():
-    layout = _bad_bridge()
+def test_strict_policy_raises_on_unstable_prefix(bad_bridge):
+    layout, _ = bad_bridge
     with pytest.raises(InstructionsError, match="no stable ordering"):
         plan_instructions(layout, config=InstructionsConfig(stability_policy="strict"))
+
+
+def test_verify_plan_checks_prefix_verdicts_even_with_warnings(bad_bridge):
+    layout, _ = bad_bridge
+    plan = plan_instructions(layout)
+    assert plan.warnings
+    first = plan.steps[0]
+    incorrect = replace(
+        plan,
+        steps=(replace(first, prefix_stable=not first.prefix_stable), *plan.steps[1:]),
+    )
+
+    violations = verify_plan(layout, incorrect)
+
+    assert any("prefix stability mismatch" in violation for violation in violations)
 
 
 def test_verify_plan_flags_blocked_insertion():

@@ -123,6 +123,7 @@ def _seam_alignment(layout: Layout) -> float:
     (n - 1) / n.
     """
     seams: dict[tuple[int, int, int, int], tuple[int, int]] = {}
+    interfaces: dict[tuple[tuple[int, int], int], set[tuple[int, int, int]]] = {}
     for brick in layout:
         own = brick.brick_id
         for x, y, z in layout.cells_of(brick):
@@ -131,14 +132,12 @@ def _seam_alignment(layout: Layout) -> float:
                 if neighbour is not None and neighbour.brick_id != own:
                     pair = (min(own, neighbour.brick_id), max(own, neighbour.brick_id))
                     seams[(x, y, z, axis)] = pair
-    tops = 0
+                    interfaces.setdefault((pair, axis), set()).add((x, y, z))
+    tops = len(interfaces)
     repeated = 0
-    for (x, y, z, axis), pair in seams.items():
-        above = (x, y, z + 1, axis)
-        if seams.get(above) == pair:
-            continue  # interior plate of the same pair's seam run
-        tops += 1
-        if above in seams:
+    for (_, axis), cells in interfaces.items():
+        top = max(z for _, _, z in cells)
+        if any((x, y, top + 1, axis) in seams for x, y, z in cells if z == top):
             repeated += 1
     return repeated / tops if tops else 0.0
 

@@ -14,6 +14,7 @@ deliberately absent — the pipeline-level repair engine owns it.
 from __future__ import annotations
 
 import time
+from bisect import bisect_left
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import TYPE_CHECKING
@@ -109,7 +110,7 @@ class LayerContext:
     seams: dict[tuple[Column, int], tuple[int, int]]
     seam_priority: dict[tuple[Column, int], float]
     long_axis_of: dict[int, int | None]
-    stackable_footprints: frozenset[frozenset[Column]]
+    stackable_footprints: dict[frozenset[Column], int]
 
 
 @dataclass(slots=True)
@@ -378,10 +379,10 @@ def random_fill(
 ) -> list[Rect2D]:
     """Feasible random exact cover, larger rects weighted higher (SM-GA)."""
     free: set[Column] = set(problem.columns if holes is None else holes)
+    ordered = sorted(free)  # kept in lockstep with ``free`` for O(1) picks
     rects: list[Rect2D] = []
-    while free:
-        index = int(rng.integers(len(free)))
-        column = sorted(free)[index]
+    while ordered:
+        column = ordered[int(rng.integers(len(ordered)))]
         candidates = rects_covering(problem, column, catalog, uncovered=free)
         if bias_large:
             weights = [float(rect.area) for rect in candidates]
@@ -393,6 +394,8 @@ def random_fill(
             pick = candidates[int(rng.integers(len(candidates)))]
         rects.append(pick)
         free -= pick.columns()
+        for covered in pick.columns():
+            del ordered[bisect_left(ordered, covered)]
     return rects
 
 
@@ -444,7 +447,7 @@ def _brick_long_axis(layout: Layout, brick: PlacedBrick) -> int | None:
 def _stackable_footprints(
     layout: Layout,
     problem: LayerProblem,
-) -> frozenset[frozenset[Column]]:
+) -> dict[frozenset[Column], int]:
     """Footprints that would complete a 3-plate stack under this problem.
 
     Only meaningful for plate problems: a rect matching one of these
@@ -452,8 +455,8 @@ def _stackable_footprints(
     (Min's vertical-merge reward g_v, reinterpreted at plate resolution).
     """
     if problem.height_plates != 1:
-        return frozenset()
-    footprints: set[frozenset[Column]] = set()
+        return {}
+    footprints: dict[frozenset[Column], int] = {}
     seen: set[int] = set()
     for column in problem.columns:
         below = layout.brick_at((*column, problem.layer - 1))
@@ -471,7 +474,8 @@ def _stackable_footprints(
             and deeper.layer == problem.layer - 2
             and layout.part_of(deeper).height_plates == 1
             and frozenset((x, y) for x, y, _ in layout.cells_of(deeper)) == footprint
-            and merge_colour(below.colour_code, deeper.colour_code) is not None
+            and (merged_colour := merge_colour(below.colour_code, deeper.colour_code))
+            is not None
         ):
-            footprints.add(footprint)
-    return frozenset(footprints)
+            footprints[footprint] = merged_colour
+    return footprints

@@ -118,21 +118,33 @@ class BondStrategy(LayeredStrategy):
     ) -> float:
         """h3 of the remaining colour-compatible runs beyond both ends."""
         if axis == 0:
-            starts = ((rect.x0 - 1, rect.y0), (rect.x1 + 1, rect.y0))
-            step = (1, 0)
+            probes = [
+                ((x, y), step)
+                for y in range(rect.y0, rect.y1 + 1)
+                for x, step in (
+                    (rect.x0 - 1, (-1, 0)),
+                    (rect.x1 + 1, (1, 0)),
+                )
+            ]
         else:
-            starts = ((rect.x0, rect.y0 - 1), (rect.x0, rect.y1 + 1))
-            step = (0, 1)
+            probes = [
+                ((x, y), step)
+                for x in range(rect.x0, rect.x1 + 1)
+                for y, step in (
+                    (rect.y0 - 1, (0, -1)),
+                    (rect.y1 + 1, (0, 1)),
+                )
+            ]
         total = 0
-        for start, sign in zip(starts, (-1, 1), strict=True):
+        for start, step in probes:
             run = 0
             x, y = start
             while (x, y) in uncovered and colour_matches(
                 problem.colour_of[(x, y)], rect.colour
             ):
                 run += 1
-                x += sign * step[0]
-                y += sign * step[1]
+                x += step[0]
+                y += step[1]
             total += _h_lookahead(run)
         return float(total)
 

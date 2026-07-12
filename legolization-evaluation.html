@@ -1,0 +1,461 @@
+<title>Legolization — Implementation Evaluation</title>
+<style>
+  :root {
+    --paper: #f7f8f6;
+    --ink: #1d2126;
+    --ink-soft: #4a5158;
+    --ink-faint: #6e7681;
+    --line: #d9dcd7;
+    --card: #ffffff;
+    --card-tint: #eef1ee;
+    --accent: #1e5aa8;
+    --accent-ink: #17477f;
+    --high: #b3261e;
+    --high-bg: #f9e9e8;
+    --med: #9a5b00;
+    --med-bg: #f7eeda;
+    --low: #5b6572;
+    --low-bg: #e9ecef;
+    --doc: #1e5aa8;
+    --doc-bg: #e5edf7;
+    --good: #2e6b34;
+    --good-bg: #e6f0e6;
+    --mono-bg: #edf0ed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #15181c;
+      --ink: #dde1e6;
+      --ink-soft: #a8b0b9;
+      --ink-faint: #7e8791;
+      --line: #2c3138;
+      --card: #1b1f24;
+      --card-tint: #20252b;
+      --accent: #7fb1e8;
+      --accent-ink: #a3c8f0;
+      --high: #f08c84;
+      --high-bg: #3a2220;
+      --med: #e3b25e;
+      --med-bg: #363021;
+      --low: #9aa5b4;
+      --low-bg: #262b32;
+      --doc: #7fb1e8;
+      --doc-bg: #1f2b3a;
+      --good: #85c48a;
+      --good-bg: #1f2e21;
+      --mono-bg: #232830;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #f7f8f6;
+    --ink: #1d2126;
+    --ink-soft: #4a5158;
+    --ink-faint: #6e7681;
+    --line: #d9dcd7;
+    --card: #ffffff;
+    --card-tint: #eef1ee;
+    --accent: #1e5aa8;
+    --accent-ink: #17477f;
+    --high: #b3261e;
+    --high-bg: #f9e9e8;
+    --med: #9a5b00;
+    --med-bg: #f7eeda;
+    --low: #5b6572;
+    --low-bg: #e9ecef;
+    --doc: #1e5aa8;
+    --doc-bg: #e5edf7;
+    --good: #2e6b34;
+    --good-bg: #e6f0e6;
+    --mono-bg: #edf0ed;
+  }
+  :root[data-theme="dark"] {
+    --paper: #15181c;
+    --ink: #dde1e6;
+    --ink-soft: #a8b0b9;
+    --ink-faint: #7e8791;
+    --line: #2c3138;
+    --card: #1b1f24;
+    --card-tint: #20252b;
+    --accent: #7fb1e8;
+    --accent-ink: #a3c8f0;
+    --high: #f08c84;
+    --high-bg: #3a2220;
+    --med: #e3b25e;
+    --med-bg: #363021;
+    --low: #9aa5b4;
+    --low-bg: #262b32;
+    --doc: #7fb1e8;
+    --doc-bg: #1f2b3a;
+    --good: #85c48a;
+    --good-bg: #1f2e21;
+    --mono-bg: #232830;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Charter, "Bitstream Charter", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 3.5rem 1.5rem 5rem; }
+
+  h1, h2, h3, h4, .sans {
+    font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  h1 { font-size: 2rem; font-weight: 650; line-height: 1.2; margin: 0.4rem 0 0.6rem; text-wrap: balance; letter-spacing: -0.01em; }
+  h2 { font-size: 1.35rem; font-weight: 640; margin: 0 0 1rem; text-wrap: balance; letter-spacing: -0.005em; }
+  h3 { font-size: 1.05rem; font-weight: 640; margin: 2rem 0 0.6rem; }
+  h4 { font-size: 0.95rem; font-weight: 640; margin: 1.4rem 0 0.4rem; }
+  p { margin: 0 0 1rem; }
+  section { margin-top: 3.25rem; }
+
+  .eyebrow {
+    font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 640;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+  .meta { color: var(--ink-faint); font-size: 0.9rem; margin-bottom: 0; }
+  .meta code { font-size: 0.82rem; }
+
+  .studs { display: flex; gap: 7px; margin: 1.6rem 0 0; }
+  .studs span {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: var(--accent); opacity: 0.85;
+  }
+  .studs span:nth-child(2) { opacity: 0.6; }
+  .studs span:nth-child(3) { opacity: 0.38; }
+  .studs span:nth-child(4) { opacity: 0.2; }
+
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.84em;
+    background: var(--mono-bg);
+    border-radius: 4px;
+    padding: 0.08em 0.35em;
+  }
+  td code, th code { white-space: nowrap; }
+
+  a { color: var(--accent-ink); text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  .verdict {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.5rem 1.75rem;
+    margin-top: 2.2rem;
+  }
+  .verdict p:last-child { margin-bottom: 0; }
+  .verdict .lede { font-size: 1.08rem; }
+
+  .statrow {
+    display: flex; flex-wrap: wrap; gap: 0.6rem 2.2rem;
+    border-top: 1px solid var(--line);
+    margin-top: 1.2rem; padding-top: 1.1rem;
+  }
+  .stat { min-width: 7.5rem; }
+  .stat .n {
+    font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 1.3rem; font-weight: 650; font-variant-numeric: tabular-nums;
+  }
+  .stat .l { font-size: 0.76rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.09em;
+    font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif; font-weight: 600; }
+
+  .chip {
+    font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    display: inline-block;
+    font-size: 0.68rem; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border-radius: 4px; padding: 0.16em 0.55em;
+    white-space: nowrap;
+  }
+  .chip.high { color: var(--high); background: var(--high-bg); }
+  .chip.med  { color: var(--med);  background: var(--med-bg); }
+  .chip.low  { color: var(--low);  background: var(--low-bg); }
+  .chip.doc  { color: var(--doc);  background: var(--doc-bg); }
+  .chip.good { color: var(--good); background: var(--good-bg); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th {
+    font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.72rem; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint); text-align: left;
+    padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--line);
+    background: var(--card-tint);
+  }
+  td { padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .finding {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    padding: 1.1rem 1.3rem;
+    margin: 0 0 1rem;
+  }
+  .finding .head { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 0.45rem; }
+  .finding .title { font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif; font-weight: 640; font-size: 1rem; }
+  .finding p { margin: 0.35rem 0 0; font-size: 0.95rem; }
+  .finding .refs { font-size: 0.8rem; color: var(--ink-faint); margin-top: 0.55rem; }
+
+  ul, ol { padding-left: 1.4rem; margin: 0 0 1rem; }
+  li { margin-bottom: 0.45rem; }
+  li p { margin-bottom: 0.3rem; }
+
+  .toc {
+    columns: 2; column-gap: 2.5rem;
+    font-family: Seravek, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.92rem; line-height: 1.5;
+    padding-left: 1.2rem; margin-top: 1rem;
+  }
+  .toc li { margin-bottom: 0.35rem; break-inside: avoid; }
+  @media (max-width: 620px) { .toc { columns: 1; } }
+
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--card-tint);
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1.1rem;
+    font-size: 0.95rem;
+    margin: 1.2rem 0;
+  }
+  .note p:last-child { margin-bottom: 0; }
+
+  footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+    color: var(--ink-faint); font-size: 0.85rem; }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Implementation audit &middot; no code changes</p>
+  <h1>Legolization: completeness &amp; correctness evaluation</h1>
+  <p class="meta">
+    Repo <code>~/Downloads/lego/legolization</code> (branch <code>initial-implementation-followup</code>) &middot; evaluated 2026-07-11 against the twelve papers in <code>references/</code> + <code>papers&nbsp;PDFs/</code>, the vendored StableLego reference implementation found at <code>~/Downloads/lego/StableLego-main</code>, and a fresh literature sweep.
+  </p>
+  <div class="studs" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+
+  <div class="verdict">
+    <p class="lede"><strong>Verdict: a genuinely solid, honestly documented implementation of milestones M1–M5.</strong> The stability core is a constant-for-constant, lever-for-lever port of the StableLego release — and in one respect provably <em>better</em> than its own documentation claims. The placement layer is a well-engineered hybrid of Luo 2015 and Kollsker heuristics, correctly labeled as such in ROADMAP.md, which tracks most known gaps accurately. The audit surfaced <strong>no critical correctness bugs</strong>, but did find a handful of impactful issues the ROADMAP does <em>not</em> track — chief among them an inert side-press force model, a nearly constant aesthetics metric, a vacuous single-component check, and a quiet placement-quality regression that left the shipped examples stale.</p>
+    <div class="statrow">
+      <div class="stat"><div class="n">77 / 77</div><div class="l">tests pass</div></div>
+      <div class="stat"><div class="n">4 / 4</div><div class="l">gates green*</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">critical bugs</div></div>
+      <div class="stat"><div class="n">3</div><div class="l">high, untracked</div></div>
+      <div class="stat"><div class="n">7</div><div class="l">medium</div></div>
+      <div class="stat"><div class="n">3 / 3</div><div class="l">examples stable</div></div>
+    </div>
+    <p style="margin-top:0.9rem; font-size:0.85rem; color:var(--ink-faint);">* ruff / pytest / ty / pyrefly, scoped to <code>src tests</code>. Repo-wide <code>ruff check .</code> fails with 176 findings, all in the untracked <code>papers PDFs/pdf-to-markdown/</code> helper script.</p>
+  </div>
+</header>
+
+<section id="toc">
+  <h2>Contents</h2>
+  <ol class="toc">
+    <li><a href="#empirical">Empirical verification</a></li>
+    <li><a href="#master">Master findings list</a></li>
+    <li><a href="#physics">Stability core vs. the papers</a></li>
+    <li><a href="#placement">Placement &amp; layout vs. the papers</a></li>
+    <li><a href="#pipeline">Pipeline, I/O, CLI</a></li>
+    <li><a href="#completeness">Completeness, paper by paper</a></li>
+    <li><a href="#tests">Test-suite assessment</a></li>
+    <li><a href="#docs">Documentation accuracy</a></li>
+    <li><a href="#literature">Additional literature</a></li>
+    <li><a href="#recommendations">Prioritized recommendations</a></li>
+  </ol>
+</section>
+
+<section id="empirical">
+  <h2>1 &middot; Empirical verification</h2>
+  <p>Everything below was run fresh during this audit, not taken from the docs:</p>
+  <ul>
+    <li><strong>Gates:</strong> <code>pytest</code> 77 passed (1.7&nbsp;s); <code>ty</code> and <code>pyrefly</code> clean; <code>ruff format/check</code> clean on <code>src tests</code>. The CLAUDE.md instruction to run <code>ruff ... .</code> repo-wide currently fails only because of the untracked PDF-conversion helper under <code>papers PDFs/</code>.</li>
+    <li><strong>Examples:</strong> all three build and report STABLE — pyramid.npy (17 bricks, 59.3&nbsp;g), arch.npy (30 bricks, 24.9&nbsp;g), heart.vox (40 bricks, 19.8&nbsp;g); <code>--strategy luo</code> on heart gives 18 bricks / 21.4&nbsp;g. Exit code 0 in every case.</li>
+    <li><strong>Determinism:</strong> two same-seed CLI runs produce byte-identical output; changing <code>--seed</code> changes the layout. (An apparent nondeterminism was a false alarm — the output filename is embedded in the .ldr header.)</li>
+    <li><strong>Staleness:</strong> the shipped <code>data/examples/heart.ldr</code> has 31 bricks; current code produces 40. The post-review commit <code>66f4f19</code> (greedy sweep-order change, removal of the redundant bond <code>exp(&middot;0)</code> term) regressed heart's brick count by ~29% and the examples and README output block were never regenerated.</li>
+    <li><strong>Spot-checks reproduced by hand:</strong> the two-disconnected-towers layout reports <code>component_count == 1</code> (finding F4); a stack-bond wall scores 0.833 vs. 0.667 for a stretcher-bond wall on the aesthetics metric (finding F2); the LP and MILP solvers agree on stressed and overloaded cantilever cases (section 3).</li>
+  </ul>
+</section>
+
+<section id="master">
+  <h2>2 &middot; Master findings list</h2>
+  <p>Ranked by (severity, whether the ROADMAP already tracks it). "Tracked" means ROADMAP.md names the gap; the untracked items are the news in this report.</p>
+  <div class="tablewrap">
+  <table>
+    <tr><th>#</th><th>Severity</th><th>Tracked?</th><th>Finding</th><th>Where</th></tr>
+    <tr><td>F1</td><td><span class="chip high">High</span></td><td>No</td><td>Side-press forces carry no torque lever — laterally-touching bricks can't shed load the way both reference implementations allow; verdicts are conservatively wrong on side-supported structures</td><td><code>stability/model.py:198</code></td></tr>
+    <tr><td>F2</td><td><span class="chip high">High</span></td><td>No</td><td>Aesthetics metric <code>_seam_alignment</code> is structurally biased: usable range ≈ [0.67, 0.83] instead of [0, 1] (verified empirically)</td><td><code>placement/base.py:101</code></td></tr>
+    <tr><td>F3</td><td><span class="chip high">High</span></td><td>Partly</td><td>Plate-atom repair rarely re-forms bricks — the mechanism behind the hollow-sphere ~374-vs-~200 brick inflation ROADMAP records as a symptom</td><td><code>placement/merge.py:232</code></td></tr>
+    <tr><td>F4</td><td><span class="chip med">Medium</span></td><td>No</td><td>"Single-component" buildability check is vacuous: the ground node makes it equivalent to the floating check, so two disconnected towers exit 0 (verified empirically)</td><td><code>graph.py:136</code>, <code>pipeline.py:61</code></td></tr>
+    <tr><td>F5</td><td><span class="chip med">Medium</span></td><td>No</td><td>Greedy delete-and-rebuild is near-deterministic (1e-3 tie-break jitter only), contradicting its own docstring's "different random order"; reinforcement search is much weaker than designed</td><td><code>placement/greedy.py:76</code></td></tr>
+    <tr><td>F6</td><td><span class="chip med">Medium</span></td><td>No</td><td>Luo refinement acceptance uses lexicographic (unstable count, −min&nbsp;capacity) on a minimum-friction force distribution — not Luo's maximin capacity C<sub>M</sub>; orderings can disagree</td><td><code>placement/luo.py:90</code>, <code>solver.py:263</code></td></tr>
+    <tr><td>F7</td><td><span class="chip med">Medium</span></td><td>No</td><td>No IGNORE label or soft colour constraints: hollowed-interior voxels keep their colours and block merges on invisible boundaries, inflating brick counts on multicoloured models</td><td><code>merge.py:135</code>, <code>greedy.py:193</code></td></tr>
+    <tr><td>F8</td><td><span class="chip med">Medium</span></td><td>No</td><td>Plate/tile masses hard-coded at exactly brick/3; real plates are ~20–40% heavier, so plate-heavy (repaired) layouts get an optimistically light RBE verdict</td><td><code>data/catalog.json</code></td></tr>
+    <tr><td>F9</td><td><span class="chip med">Medium</span></td><td>No</td><td>Kollsker's remainder-lookahead h(r) absent — the direct cause of 6+1 row splits that the connectivity repair then has to fix; the bond term is evaluated only at d=0 (tracked) and <code>bond_alpha2</code> is dead config (untracked)</td><td><code>greedy.py:85</code>, <code>base.py:34</code></td></tr>
+    <tr><td>F10</td><td><span class="chip med">Medium</span></td><td>Mitigated</td><td>Hollow shell is 1 plate thick (Luo keeps ~3 voxel-widths); compensated by the restore loop, but that loop's unstable branch has zero test coverage</td><td><code>hollow.py:21</code>, <code>pipeline.py:78</code></td></tr>
+    <tr><td>F11</td><td><span class="chip doc">Doc bug</span></td><td>No</td><td>Solver docstring mislabels the LP as a "BrickGPT-style relaxation … slightly optimistic". BrickGPT keeps non-coexistence; and this LP is provably <em>exact</em> (see §3) — a stronger claim than the code makes for itself</td><td><code>solver.py:10</code></td></tr>
+    <tr><td>F12</td><td><span class="chip low">Low</span></td><td>No</td><td>Stale artifacts: shipped <code>heart.ldr</code> (31 bricks) and README sample output (31 / 18.1&nbsp;g) predate the current code (40 / 19.8&nbsp;g); the regression itself went unnoticed for lack of a brick-count metric</td><td><code>data/examples/</code>, README</td></tr>
+    <tr><td>F13</td><td><span class="chip low">Low</span></td><td>No</td><td>Dead code/config/deps: SCIP MILP fallback can't run (no <code>pyscipopt</code>); <code>LuoStrategy.weights</code> never read; <code>pyperclip</code> and <code>textual</code> declared but never imported; pyproject docs URL points to a nonexistent <code>GUIDE.md</code></td><td><code>solver.py:35</code>, <code>pyproject.toml</code></td></tr>
+    <tr><td>F14</td><td><span class="chip low">Low</span></td><td>No</td><td>CLI robustness: <code>--no-refine</code> silently ignored for <code>--strategy luo</code>; malformed <code>.vox</code> can raise uncaught <code>struct.error</code>/<code>IndexError</code> (traceback instead of clean exit 1); integer-code <code>.npy</code> colour codes are never validated</td><td><code>pipeline.py:161</code>, <code>grid.py:149</code></td></tr>
+    <tr><td>F15</td><td><span class="chip low">Low</span></td><td>No</td><td>MILP big-M bounds (drag ≤ 9.8&nbsp;N, normal ≤ 100&nbsp;N) are artificial force ceilings with no paper counterpart — moot given F11, but worth removing or documenting</td><td><code>solver.py:50</code></td></tr>
+    <tr><td>F16</td><td><span class="chip low">Low</span></td><td>M6 only</td><td>Cubic voxels map to 3 plates = 24&nbsp;LDU against a 20&nbsp;LDU stud pitch — a 1.2× vertical stretch. ROADMAP fixes this only for the future mesh path; existing <code>.vox</code>/<code>.npy</code> inputs could get the same resampling</td><td><code>grid.py:113</code></td></tr>
+  </table>
+  </div>
+  <p style="margin-top:0.9rem;">Deviations that are <em>tracked and disclosed</em> in ROADMAP.md's backlogs (τ<sub>z</sub> torque, Q×X knob rule, contact-triangle yaw, ground pull, external loads, StableLego cross-validation, targeted MILP, additive greedy scoring, cheaper repairs, inventory catalog, SM-GA/MILP strategies, aesthetics terms, M6, SNOT, instructions v2, slope/tile v2) were checked and found accurately described — that list is honest.</p>
+</section>
+
+<section id="physics">
+  <h2>3 &middot; Stability core vs. the papers</h2>
+  <p><strong>Bottom line: a high-fidelity port, verified against the reference.</strong> The audit compared <code>stability/</code> line-by-line with the StableLego paper <em>and</em> its released implementation (<code>StableLego-main/py_scripts/stabiliy_analysis.py</code> + <code>config.json</code>, discovered locally):</p>
+  <ul>
+    <li><strong>Constants are exact:</strong> T = 0.98&nbsp;N, α = 10<sup>−3</sup>, β = 10<sup>−6</sup>, g = 9.8, lever unit 0.0078&nbsp;m, plate height 0.0032&nbsp;m — every value matches the release's <code>config.json</code>, and the brick masses in <code>catalog.json</code> match StableLego Table I exactly for every part it lists.</li>
+    <li><strong>Contact geometry is exact:</strong> the 4-point diamond (±0.25 pitch) and the 3-point triangle ((0.125,−0.125), (−0.25,0), (0.125,0.125)), and the min-footprint-dimension rule for choosing between them, replicate the released code (which itself simplifies the paper's Q×X interior-knob rule — a divergence ROADMAP already tracks).</li>
+    <li><strong>The objective is term-for-term Eq. (7):</strong> L1 equilibrium residuals + α·Σ per-brick max bottom drag + β·Σ all drags; the capacity T is deliberately <em>not</em> a solve-time constraint (the paper says so explicitly) and is applied at scoring per Eq. (8). The score semantics (1 = collapsing, else drag/T) match.</li>
+    <li><strong>Newton's third law by shared variables</strong> is an exact reformulation of the release's equality constraints, and the ground model (unpaired reactions that can pull down, StableLego baseplate-style) matches.</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>Positive finding — the LP relaxation is provably tight, not "slightly optimistic".</strong> Because each contact point's normal and drag columns are exact negatives of each other, any solution with both positive can subtract the minimum from both, leaving every equilibrium residual unchanged while strictly reducing the β term. So every LP optimum already satisfies the bilinear non-coexistence constraint that the docstring claims was "dropped" — the convex relaxation is exact, and the <code>--milp</code> mode is redundant except as a cross-check. This was also confirmed empirically: LP and MILP produce identical scores and identical unstable sets on stressed and overloaded cantilever cases. The docstring's attribution is also wrong: BrickGPT §4.2 keeps non-coexistence and solves the nonlinear program with Gurobi (F11).</p>
+  </div>
+
+  <div class="finding">
+    <div class="head"><span class="chip high">High</span><span class="title">F1 — Side-press forces are torque-inert</span></div>
+    <p>The repo models one shared compression variable per brick pair per axis, applied at the mean shared-face centroid. For same-height neighbours that point sits at both bricks' centroid height, so the lever r<sub>z</sub> is zero — and with the τ<sub>z</sub> row dropped (as in the release), horizontal side forces end up with no torque coefficient at all under gravity loading. The StableLego release gives every horizontal press force a fixed h/2 vertical lever; Luo goes further and puts side-contact normals at the face <em>corner points</em>, which is exactly the mechanism behind his Fig.&nbsp;7(b) bridge staying stable at 11 segments instead of 5. Structures that transfer weight through side faces will be judged strictly more conservatively here than in either reference. The physics-fidelity backlog does not mention it, and the test suite contains zero side-contact cases, so nothing would catch it.</p>
+    <p class="refs"><code>stability/model.py:198–204</code> &middot; <code>graph.py:153–178</code> &middot; StableLego release <code>stabiliy_analysis.py:174–186</code> &middot; Luo §6</p>
+  </div>
+
+  <p>Minor, disclosed deviations (all match the StableLego <em>release</em> where they diverge from the paper text): two torque axes instead of three; per-brick score reads only bottom-interface drags (localization shifts one brick down vs. the paper's Eq. 6/8, verdict unaffected); the 3-point triangle stays axis-aligned under yaw. The hollow shell being 1 plate thick vs. Luo's ~3 voxel-widths (F10) is compensated by the stability-aware restore loop — a mechanism neither paper has, which is sound (monotone material addition, bounded rounds, honest failure reporting) but heuristic: trouble columns derive from the unstable bricks' own cells and may miss a root cause elsewhere in the support path.</p>
+</section>
+
+<section id="placement">
+  <h2>4 &middot; Placement &amp; layout vs. the papers</h2>
+  <p><strong>Bottom line: a structured, honest hybrid — not a faithful Luo, and mostly says so.</strong> The two-phase split-and-remerge skeleton, the strict acceptance discipline, and the k = ⌊f/10⌋+1 ring growth are genuinely Luo's (Algorithms 4, 5, 7; Eq. 1). The maximal random merge is a faithful Algorithm 4 (random pair pop, liveness checks, union-in-catalog rule). What differs: the atoms (1×1 <em>plates</em>, not bricks — a deliberate generalization to plate resolution), the stability metric (StableLego RBE instead of Luo's maximin QP — arguably an upgrade, but a different ordering, F6), the critical-portion selection (all border/unstable bricks instead of one importance-sampled brick — larger, more disruptive regions), the colour model (hard uniformity only, F7), and failMAX (20/30 vs. Luo's 100 — disclosed in the docstring).</p>
+
+  <div class="finding">
+    <div class="head"><span class="chip high">High</span><span class="title">F3 — Why repairs inflate brick counts ~3×</span></div>
+    <p>Repair splits regions to 1×1 plates so columns can re-phase — but <code>merged_rect</code> requires equal heights, so 2D remerge can only ever make bigger <em>plates</em> (there is no 2-plate-tall part to pass through), and the only path back to bricks is <code>compact_vertical</code>, which demands three stacked plates with identical footprints and colour. After a random remerge, adjacent plate layers almost never align, so repaired regions permanently carry ~3× the part count. ROADMAP tracks the symptom (hollow sphere ~374 vs. ~200 bricks); this is the mechanism. Compounding: <code>component_border</code> seeds whole seam planes at once, and greedy never runs a global re-merge pass after placement.</p>
+    <p class="refs"><code>placement/merge.py:122–148, 232–303</code> &middot; <code>greedy.py:62–64</code> &middot; ROADMAP "Cheaper repairs"</p>
+  </div>
+
+  <div class="finding">
+    <div class="head"><span class="chip high">High</span><span class="title">F2 — The aesthetics metric barely discriminates</span></div>
+    <p><code>_seam_alignment</code> counts seams per <em>plate-layer cell</em>, so the three stacked seam cells inside every brick-to-brick vertical interface make ⅔ of all seams "repeated" no matter the bond pattern. Measured: a perfect stretcher-bond wall scores 0.667, a worst-case stack-bond wall 0.833 — a usable range of ~0.17 where the objective weight assumes [0,&nbsp;1]. The fix is counting per brick-pair interface (top seam plate vs. the seam plate above), not per cell.</p>
+    <p class="refs"><code>placement/base.py:101–118</code> &middot; verified empirically in this audit</p>
+  </div>
+
+  <div class="finding">
+    <div class="head"><span class="chip med">Medium</span><span class="title">F5 — Reinforcement's "random rebuild" isn't random</span></div>
+    <p>The greedy docstring promises delete-and-rebuild "with a different random order", but <code>_fill</code> iterates seeds in sorted (z,&nbsp;x,&nbsp;y) order; the only randomness is a 10<sup>−3</sup> jitter that breaks exact score ties. Rebuild attempts therefore tend to regenerate the same local layout while the failure counter climbs — each failed attempt costing a full LP evaluation — and the loop's effective search is far weaker than both the docstring and Luo's design intend. The code half-admits this: connectivity failures are delegated to <code>improve_connectivity</code> precisely because "the largest-first fill would just recreate them".</p>
+    <p class="refs"><code>placement/greedy.py:7–8, 76, 84, 127–168</code></p>
+  </div>
+
+  <p>Also verified on the positive side: slope geometry and rotation bookkeeping were hand-checked for all four yaws against the real LDraw part files (<code>3040b.dat</code>, <code>3039.dat</code>, <code>4286.dat</code>) — origins, descent direction, and the <code>origin_offset</code> math all reproduce exactly; slope and tile swaps are collision- and connectivity-safe by construction; the yaw-90 anchoring convention (<code>place_rect</code>) is correct; catalog LDraw part numbers are all genuine. Kollsker-side gaps beyond F9: no perpendicularity reward (Bao/SM-GA's crossing-direction term appears nowhere in scoring), no random layer build directions, no per-layer incomplete-construction repair, and lexicographic (size, bond) candidate ranking rather than an additive cost — the latter tracked in ROADMAP.</p>
+</section>
+
+<section id="pipeline">
+  <h2>5 &middot; Pipeline, I/O, CLI</h2>
+  <p><strong>Bottom line: ordering is sound; the transforms are right; the edges are soft.</strong></p>
+  <ul>
+    <li><strong>Pipeline order</strong> (hollow → place+refine → stability-aware restore ×5 → opt-in slopes/tiles → re-verify → export) matches Luo's staging; the restore loop is an extension beyond the papers, not an ordering bug. The ROADMAP claim that stability is re-verified after finishing is true — though it is verification only, with no repair loop if a slope/tile pass destabilizes the model.</li>
+    <li><strong>The <code>.vox</code> parser is correct</strong> where it counts: MAIN-chunk descent, XYZI layout, the 1-based palette shift (<code>vox_palette[1:] = raw</code>), z-up direct mapping. The composite voxel→LDraw map has determinant +1 — no mirroring, the classic pitfall avoided. Robustness gaps are F14.</li>
+    <li><strong>The LDU transform is verified:</strong> X = 20x, Z = 20y, Y = −8·(layer + height) against real part files; one <code>0 STEP</code> per plate layer sorted by bottom layer means every emitted prefix is physically assemblable stud-up; <code>.mpd</code> gets a correct FILE/NOFILE wrapper.</li>
+    <li><strong>CLI:</strong> flags match the README; exit codes 0/1/2 as documented; the buildability triple (stable ∧ single-component ∧ grounded) is enforced — but see F4: the component check is redundant with the floating check because the ground node merges all grounded islands, so "single-component" is weaker than Luo's brick-graph single-connectedness and weaker than the README's plain-language claim. Two disconnected towers on the ground exit 0.</li>
+    <li><strong>Colour:</strong> redmean quantization is correctly implemented and a reasonable middle ground (better than raw RGB distance, short of CIELAB — and notably, no reference paper actually specifies better; the lambrecht paper has no colour treatment at all). Name-token filtering of non-solid finishes is the right workaround for pyldraw3's unreliable colour metadata.</li>
+  </ul>
+</section>
+
+<section id="completeness">
+  <h2>6 &middot; Completeness, paper by paper</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Paper</th><th>Status in this repo</th><th>Notable absences</th></tr>
+    <tr><td><strong>Luo et al. 2015</strong>, Legolization (TOG 34:6)</td><td>Core skeleton implemented (Alg. 4/5/7 structure, k-ring growth), hybridized with RBE physics</td><td>Maximin C<sub>M</sub> metric (F6); IGNORE label + soft colour (F7); single-brick importance-sampled critical portion; corner-point side normals (F1); 3-voxel shell (F10); failMAX 100</td></tr>
+    <tr><td><strong>StableLego</strong> (Liu et al., RA-L 2024)</td><td>Reference-exact port of the released solver (verified against vendored code)</td><td>τ<sub>z</sub>, per-knob Q×X rule, rotated triangle (all tracked); external weights (tracked); dataset cross-validation (tracked, fixtures available locally)</td></tr>
+    <tr><td><strong>BrickGPT</strong> (Pun et al., arXiv 2505.05469)</td><td>Its stability check <em>is</em> StableLego's → covered; generation/rollback N/A by design</td><td>Score orientation differs (1 = collapsing here vs. 0 there) — fine, don't compare raw numbers; docstring misattribution is F11</td></tr>
+    <tr><td><strong>Kollsker &amp; Malaguti</strong>, 2D constructions</td><td>Stretcher-bond α₁ term at d=0 in greedy scoring</td><td>Additive cost (tracked); h(r) knapsack lookahead (F9); exact MILP + fix-and-optimise + ALNS (tracked as future strategies); build-direction randomization</td></tr>
+    <tr><td><strong>Bao et al.</strong>, Streamlining</td><td>Connectivity checking exists (reactive, via repair)</td><td>Perpendicularity reward; proactive per-layer regenerate-on-disconnect</td></tr>
+    <tr><td><strong>Lee et al.</strong>, SM-GA</td><td>Split-and-merge mutation exists in spirit in the repair engine</td><td>The GA itself (tracked as a future <code>PlacementStrategy</code>); fitness-weight discipline c₁ &gt; 2(c₂+c₃)</td></tr>
+    <tr><td><strong>Min et al.</strong>, Silhouette legorization</td><td>—</td><td>Mesh/silhouette front-end (M6, tracked); A*-style tiling; symmetry/balance terms (tracked)</td></tr>
+    <tr><td><strong>Lambrecht</strong>, LegoVoxels</td><td>—</td><td>Studs-out orientation = SNOT (tracked, staged design in ROADMAP); no colour treatment exists in this paper to port</td></tr>
+    <tr><td><strong>Zhou et al.</strong>, Vivid sculptures</td><td>Minimal opt-in slope pass (accurately described in ROADMAP)</td><td>Normal-driven slope selection (tracked, needs M6); block decomposition; plate "supporting layer" reinforcement — the repo reinforces by rebuild, never by adding material</td></tr>
+    <tr><td><strong>Thompson et al.</strong>, Deep generative graph models</td><td>Non-goal, correctly</td><td>—</td></tr>
+    <tr><td><strong>Ma et al.</strong>, Assembly sequence w/ graph transformer</td><td>Bottom-up layer STEPs only</td><td>Step granularity, per-step prefix stability, ROTSTEP (all tracked as Instructions v2; learned ordering reasonably scoped out)</td></tr>
+    <tr><td><strong>Hsiao et al.</strong>, Reinforcing w/ force metrics</td><td>Loop structure adopted</td><td>Its recursive force heuristic rightly ignored in favour of the RBE (strictly better)</td></tr>
+  </table>
+  </div>
+</section>
+
+<section id="tests">
+  <h2>7 &middot; Test-suite assessment</h2>
+  <p><strong>Strengths.</strong> The suite (72 functions / 77 cases) is unusually substantive for a project this age: the stability tests are analytic rather than smoke (floating-brick collapse, tile-top collapse, cantilever stress monotonicity, overload past T, weakest-pair identity), the placement tests pin the exact-cover/no-overlap/colour invariants for both strategies plus random grids, and the LDraw tests pin positions including the slope origin. The transform and geometry layers are well covered.</p>
+  <p><strong>Gaps, in rough priority order:</strong></p>
+  <ol>
+    <li><strong>No quantitative physics pins.</strong> The single-stud cantilever has a closed-form optimum (drag_max = 1.25·W ≈ 0.019233&nbsp;N; score 0.019625) that would pin contact geometry, lever units, and objective in one assertion; currently only <code>&gt; 1e-4</code> is asserted, so a large uniform constant error could pass every test.</li>
+    <li><strong>The StableLego release's <code>test_lego/*.json</code> fixtures sit unused on this machine</strong> — the exact cross-validation ROADMAP calls "the best available ground truth".</li>
+    <li><strong>Zero side-contact tests</strong>, which is why F1 is invisible to the suite. No 3-pt vs 4-pt verdict test, no ground-uplift test, no torque-sign/symmetry test.</li>
+    <li><strong>The hollow-restore loop's reason for existing — hollowing breaks stability, restore fixes it — is never exercised</strong>; test_hollow.py is purely geometric and the pipeline test uses a shape already stable when hollowed.</li>
+    <li><strong>LuoStrategy's refinement loops are likely never entered</strong> (its only fixture, a 6×6×3 pyramid, merges into a stable connected layout), so the acceptance logic and <code>_better</code> have effectively no coverage. <code>improve_connectivity</code> has no direct test.</li>
+    <li><strong>No determinism test and no brick-count regression metric</strong> — either would have caught the heart 31→40 regression (F12) at commit time.</li>
+    <li>LP-vs-MILP agreement is tested only on a trivially stable 2-brick stack; the interesting (stressed/unstable) cases were verified manually in this audit but should be pinned.</li>
+  </ol>
+</section>
+
+<section id="docs">
+  <h2>8 &middot; Documentation accuracy</h2>
+  <ul>
+    <li><strong>ROADMAP.md is the standout:</strong> nearly every deliberate simplification found in this audit that the authors knew about is disclosed there, accurately — including the exact hollow-sphere brick numbers and the honest "slopes add material, hence opt-in" framing. The "72 tests" claim is exact at the function level.</li>
+    <li><strong>README oversells in three places:</strong> "covers every voxel with real parts — bricks, plates, tiles, and 45°/33° slopes" (placement uses bricks+plates only; tiles/slopes are opt-in post-passes; the 33° slope is never placed by any code path); the sample output block shows the stale 31-brick heart; "single-component" means the weaker ground-merged sense (F4).</li>
+    <li><strong>solver.py's self-description is wrong in the repo's favour</strong> (F11): the LP is exact, not "slightly optimistic", and it is not what BrickGPT does.</li>
+    <li><strong>pyproject.toml drift:</strong> unused runtime deps (<code>pyperclip</code>, <code>textual</code>), a dead SCIP fallback (no <code>pyscipopt</code>), a docs URL to a nonexistent GUIDE.md.</li>
+  </ul>
+</section>
+
+<section id="literature">
+  <h2>9 &middot; Additional literature (paper-search-mcp sweep)</h2>
+  <p>Beyond confirming the reference set's canonical citations (Luo: ACM TOG 34(6):222, doi 10.1145/2816795.2818091; StableLego: arXiv:2402.10711 + released code/dataset; BrickGPT: arXiv:2505.05469 with the StableText2Brick dataset), the sweep surfaced work the repo's reference set predates or omits:</p>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Work</th><th>Relevance</th></tr>
+    <tr><td><strong>Physics-Aware Combinatorial Assembly Sequence Planning</strong> — Liu et al. 2024, arXiv:2408.10162</td><td>Same lab as StableLego; guarantees each assembly <em>step</em> is physically valid. Directly relevant to the Instructions-v2 per-step-stability item, as a stronger alternative to greedy prefix ordering.</td></tr>
+    <tr><td><strong>BrickAnything</strong> — arXiv:2605.26182 (2026)</td><td>Geometry-conditioned autoregressive brick generation with structure-aware tree tokenization; the current state of the art on the generative side of this problem.</td></tr>
+    <tr><td><strong>Rollback-Free Stable Brick Structure Generation</strong> — arXiv:2605.06947 (2026)</td><td>RL that internalizes stability at training time, eliminating BrickGPT-style inference rollbacks; useful framing for where post-hoc analysis vs. built-in stability is heading.</td></tr>
+    <tr><td><strong>Computational LEGO Technic Design</strong> — Xu et al., SIGGRAPH Asia 2019</td><td>The Technic-domain sibling: sketch-cover formulation with integrated balance/stress/assemblability analysis.</td></tr>
+    <tr><td><strong>Automated FEM for LEGO sets</strong> — Pletz &amp; Drvoderic 2023, engrXiv 10.31224/2898</td><td>A finite-element alternative if RBE fidelity ever becomes the bottleneck (clutch-power modeling beyond the single friction-capacity constant).</td></tr>
+    <tr><td><strong>Budget-Aware Sequential Brick Assembly</strong> — Ahn et al., arXiv:2210.01021</td><td>Sparse-3D-CNN scoring of next-brick placements under part budgets — relevant to the inventory-limited-catalog backlog item.</td></tr>
+    <tr><td><strong>Break and Make / LTRON</strong> — Walsman et al., ECCV 2022</td><td>Large-scale LEGO interaction simulator + fan-model dataset; a candidate source of realistic evaluation models.</td></tr>
+    <tr><td><strong>From CAD models to toy brick sculptures</strong> — Maeda et al., IROS 2016</td><td>Early full pipeline including physical printing; historical context for the voxelize→layout lineage.</td></tr>
+  </table>
+  </div>
+  <p style="margin-top:0.9rem;">Also confirmed: Testuz, Schwartzburg &amp; Pauly 2013 (the merge-based legolization the ROADMAP's lineage builds on) remains the canonical pre-Luo baseline; searches did not surface any paper contradicting the repo's chosen formulations.</p>
+</section>
+
+<section id="recommendations">
+  <h2>10 &middot; Prioritized recommendations</h2>
+  <p>Ordered by leverage per unit effort; none applied yet, per the audit's no-code-changes scope.</p>
+  <ol>
+    <li><strong>Give side presses the reference lever</strong> (h/2 like the StableLego release, or corner points like Luo) and add the missing side-contact tests. Small, isolated change in <code>build_model</code>; unlocks Luo-style side-supported structures. (F1)</li>
+    <li><strong>Cross-validate the solver against the local <code>StableLego-main/test_lego/*.json</code> fixtures</strong> and pin the analytic cantilever number 0.019233&nbsp;N as a golden test. This is the cheapest possible hardening of the core everything else trusts, and the fixtures are already on disk. (§7)</li>
+    <li><strong>Fix <code>_seam_alignment</code> to count per brick-pair interface</strong>; add the two-wall baseline test that would have caught it. (F2)</li>
+    <li><strong>Make reinforcement rebuilds actually random</strong> (shuffle seed order per attempt, or honestly re-document), and regenerate the stale examples + README block; add a brick-count regression assertion so the next quality regression is visible in CI. (F5, F12)</li>
+    <li><strong>Decide the component semantics:</strong> either check brick-graph single-connectedness excluding ground (Luo's definition, README's implication) or document the baseplate-merged meaning and drop the redundant check. (F4)</li>
+    <li><strong>Correct the solver docstring</strong> (exact, not optimistic; not BrickGPT's method) and consider demoting <code>--milp</code> to a debug cross-check. (F11, F15)</li>
+    <li><strong>Weigh plates realistically</strong> (BrickLink masses) — one JSON edit that removes a systematic optimistic bias exactly where repaired layouts are plate-heavy. (F8)</li>
+    <li><strong>Colour-blind interiors:</strong> implement Luo's IGNORE label for hollow-restored fill so invisible cells stop fragmenting merges. Pairs naturally with the tracked "cheaper repairs" work. (F7, F3)</li>
+    <li><strong>Dependency and robustness sweep:</strong> drop <code>pyperclip</code>, gate <code>textual</code>, add <code>pyscipopt</code> or remove SCIP, wrap <code>.vox</code> struct errors, validate integer <code>.npy</code> codes, wire <code>--no-refine</code> through to luo or reject the combination. (F13, F14)</li>
+  </ol>
+</section>
+
+<footer>
+  Prepared by Claude Code &middot; 2026-07-11 &middot; Sources: 12 reference papers (markdown conversions in <code>references/</code>), the StableLego released implementation (vendored locally), the repo at branch <code>initial-implementation-followup</code>, fresh gate runs and empirical spot-checks, and a paper-search-mcp literature sweep (arXiv, OpenAlex, Crossref, DBLP, Semantic Scholar).
+</footer>
+
+</div>

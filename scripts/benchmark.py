@@ -50,28 +50,35 @@ def benchmark(seed: int) -> list[dict]:
     rows: list[dict] = []
     for model_name, grid in _example_grids().items():
         for strategy in strategy_names():
-            config = PipelineConfig(strategy=strategy, seed=seed)
-            started = time.perf_counter()
-            result = run(grid, config)
-            elapsed = time.perf_counter() - started
-            report = evaluate(result.layout, result.grid, config.weights)
-            rows.append(
-                {
-                    "model": model_name,
-                    "strategy": strategy,
-                    "bricks": result.brick_count,
-                    "mass_g": round(result.mass_g, 1),
-                    "steps": result.step_count,
-                    "buildable": result.buildable,
-                    "max_score": round(result.stability.max_score, 4),
-                    "min_capacity_n": round(result.stability.min_capacity, 4),
-                    "seam_alignment": round(report.aesthetics, 3),
-                    "perpendicularity": round(report.perpendicularity, 3),
-                    "symmetry": round(report.symmetry, 3),
-                    "colour_error": round(report.colour_error, 3),
-                    "seconds": round(elapsed, 2),
-                }
-            )
+            try:
+                config = PipelineConfig(strategy=strategy, seed=seed)
+                started = time.perf_counter()
+                result = run(grid, config)
+                elapsed = time.perf_counter() - started
+                report = evaluate(result.layout, result.grid, config.weights)
+                rows.append(
+                    {
+                        "model": model_name,
+                        "strategy": strategy,
+                        "bricks": result.brick_count,
+                        "mass_g": round(result.mass_g, 1),
+                        "steps": result.step_count,
+                        "buildable": result.buildable,
+                        "max_score": round(result.stability.max_score, 4),
+                        "min_capacity_n": round(result.stability.min_capacity, 4),
+                        "seam_alignment": round(report.aesthetics, 3),
+                        "perpendicularity": round(report.perpendicularity, 3),
+                        "symmetry": round(report.symmetry, 3),
+                        "colour_error": round(report.colour_error, 3),
+                        "seconds": round(elapsed, 2),
+                    }
+                )
+            except Exception as error:  # noqa: BLE001 - isolate benchmark cases
+                print(
+                    f"{model_name:>8} | {strategy:>7} | ERROR: {error}",
+                    file=sys.stderr,
+                )
+                continue
             print(
                 f"{model_name:>8} | {strategy:>7} | "
                 f"{rows[-1]['bricks']:>4} bricks | "
@@ -84,6 +91,8 @@ def benchmark(seed: int) -> list[dict]:
 
 def to_markdown(rows: list[dict]) -> str:
     """Render the benchmark rows as a markdown table."""
+    if not rows:
+        return ""
     columns = list(rows[0].keys())
     lines = [
         "| " + " | ".join(columns) + " |",

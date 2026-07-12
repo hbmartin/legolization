@@ -123,6 +123,24 @@ def test_npy_rejects_unknown_colour_codes():
         VoxelGrid.from_array(codes)
 
 
+def test_integer_codes_are_validated_before_int16_narrowing():
+    codes = np.array([[[65_540]]], dtype=np.uint64)  # would wrap to palette code 4
+    with pytest.raises(ValueError, match="65540"):
+        VoxelGrid.from_array(codes)
+
+
+@pytest.mark.parametrize("axis_size", [0, 257])
+def test_vox_rejects_unsupported_size_before_allocation(tmp_path, axis_size):
+    data = bytearray(_vox_bytes())
+    size_at = data.find(b"SIZE") + 12
+    struct.pack_into("<i", data, size_at, axis_size)
+    path = tmp_path / "bad-size.vox"
+    path.write_bytes(data)
+
+    with pytest.raises(ValueError, match="SIZE axes"):
+        VoxelGrid.from_vox(path)
+
+
 def test_aspect_correct_resampling():
     # 4 cubic voxels -> round(4 * 2.5) = 10 plate layers, column preserved.
     codes = np.full((1, 1, 4), EMPTY, dtype=np.int64)

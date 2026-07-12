@@ -316,9 +316,11 @@ def verify_plan(
                 violations.append(f"step {step.index}: support after dependent")
             if blockers[brick_id] & placed:
                 violations.append(f"step {step.index}: vertically blocked insert")
-        if not plan.warnings:
-            result = analyze(layout.subset(placed | step_set), config.solver)
-            if not result.stable:
-                violations.append(f"step {step.index}: prefix unstable")
+        result = analyze(layout.subset(placed | step_set), config.solver)
+        if result.stable != step.prefix_stable:
+            violations.append(
+                f"step {step.index}: prefix stability mismatch "
+                f"(expected {step.prefix_stable}, analyzed {result.stable})"
+            )
         placed |= step_set
     return violations

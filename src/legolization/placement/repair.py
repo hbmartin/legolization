@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
+from scipy.sparse import coo_matrix
 
 from legolization.catalog import Category, rotate_offset
 from legolization.grid import EMPTY, merge_colour
@@ -109,7 +110,7 @@ def _localize(
 ) -> LinkReport:
     if config.localizer == "qp":
         report = localize_instability(layout)
-        if report.status in ("optimal", "infeasible"):
+        if report.status == "optimal" and (report.stable or report.links):
             return report
     return _rbe_report(layout, solver_config)
 
@@ -234,8 +235,10 @@ def _milp_fill(
         for cell in covered:
             rows.append(cell_index[cell])
             cols.append(col)
-    matrix = np.zeros((len(cells), len(candidates)))
-    matrix[rows, cols] = 1.0
+    matrix = coo_matrix(
+        (np.ones(len(rows)), (rows, cols)),
+        shape=(len(cells), len(candidates)),
+    ).tocsc()
     result = milp(
         c=np.ones(len(candidates)),
         constraints=LinearConstraint(matrix, lb=1.0, ub=1.0),

@@ -28,6 +28,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Self
 
+from legolization.grid import merge_colour
 from legolization.placement.layered.engine import (
     Column,
     LayerContext,
@@ -51,6 +52,7 @@ _PRESETS: dict[str, tuple[float, float, float, float]] = {
 }
 
 PresetName = Literal["balanced", "stability", "aesthetics", "efficiency"]
+type _Node = tuple[float, int, frozenset[Column], tuple[Rect2D, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,44 +93,34 @@ class BeautyStrategy(LayeredStrategy):
         mirror_x = min(x for x, _ in order) + max(x for x, _ in order)
         mirror_y = min(y for _, y in order) + max(y for _, y in order)
         counter = 0
-        # Node: (priority, tie, covered, rects tuple, cost_x, cost_y)
-        # cost_x / cost_y track balance about each candidate axis; the
-        # finished tiling takes the better one.
-        open_list: list[
-            tuple[float, int, frozenset[Column], tuple[Rect2D, ...], float, float]
-        ] = [(0.0, counter, frozenset(), (), 0.0, 0.0)]
+        open_list: list[_Node] = [(0.0, counter, frozenset(), ())]
         best: tuple[float, tuple[Rect2D, ...]] | None = None
         while open_list:
             if deadline is not None and time.monotonic() > deadline:
                 break
-            priority, _, covered, rects, cost_x, cost_y = heapq.heappop(open_list)
+            priority, _, covered, rects = heapq.heappop(open_list)
             if best is not None and priority >= best[0]:
                 continue
             if covered == problem.columns:
-                total = min(cost_x, cost_y) + self._seam_cost(below, rects)
-                if best is None or total < best[0]:
-                    best = (total, rects)
+                best = self._completed_node(
+                    below,
+                    rects,
+                    priority=priority,
+                    mirror_x=mirror_x,
+                    mirror_y=mirror_y,
+                    best=best,
+                )
                 continue
-            seed = next(col for col in order if col not in covered)
-            for rect in rects_covering(
-                problem, seed, self.catalog, uncovered=problem.columns - covered
-            ):
-                counter += 1
-                step_x = self._rect_cost(
-                    below, rects, rect, mirror_sum=mirror_x, axis=0
-                )
-                step_y = self._rect_cost(
-                    below, rects, rect, mirror_sum=mirror_y, axis=1
-                )
-                child = (
-                    min(cost_x + step_x, cost_y + step_y),
-                    counter,
-                    covered | rect.columns(),
-                    (*rects, rect),
-                    cost_x + step_x,
-                    cost_y + step_y,
-                )
-                heapq.heappush(open_list, child)
+            counter = self._expand_node(
+                problem,
+                below,
+                order,
+                open_list,
+                priority=priority,
+                covered=covered,
+                rects=rects,
+                counter=counter,
+            )
             if len(open_list) > self.beam_width:
                 open_list = heapq.nsmallest(self.beam_width, open_list)
                 heapq.heapify(open_list)
@@ -136,24 +128,84 @@ class BeautyStrategy(LayeredStrategy):
             return list(best[1])
         return random_fill(problem, rng, self.catalog)
 
-    def _rect_cost(
+    def _expand_node(  # noqa: PLR0913 - explicit search state
+        self,
+        problem: LayerProblem,
+        below: LayerContext,
+        order: list[Column],
+        open_list: list[_Node],
+        *,
+        priority: float,
+        covered: frozenset[Column],
+        rects: tuple[Rect2D, ...],
+        counter: int,
+    ) -> int:
+        seed = next(column for column in order if column not in covered)
+        for rect in rects_covering(
+            problem,
+            seed,
+            self.catalog,
+            uncovered=problem.columns - covered,
+        ):
+            counter += 1
+            heapq.heappush(
+                open_list,
+                (
+                    priority + self._rect_cost(below, rect),
+                    counter,
+                    covered | rect.columns(),
+                    (*rects, rect),
+                ),
+            )
+        return counter
+
+    def _completed_node(  # noqa: PLR0913 - explicit completion state
         self,
         below: LayerContext,
-        placed: tuple[Rect2D, ...],
-        rect: Rect2D,
+        rects: tuple[Rect2D, ...],
+        *,
+        priority: float,
+        mirror_x: int,
+        mirror_y: int,
+        best: tuple[float, tuple[Rect2D, ...]] | None,
+    ) -> tuple[float, tuple[Rect2D, ...]] | None:
+        balance = min(
+            self._axis_balance_cost(rects, mirror_sum=mirror_x, axis=0),
+            self._axis_balance_cost(rects, mirror_sum=mirror_y, axis=1),
+        )
+        total = priority + balance + self._seam_cost(below, rects)
+        return (total, rects) if best is None or total < best[0] else best
+
+    def _rect_cost(self, below: LayerContext, rect: Rect2D) -> float:
+        weights = self.beauty
+        cost = weights.w_h * (_A_MAX - rect.area) / (_A_MAX - 1)
+        columns = rect.columns()
+        exact_stack = below.stackable_footprints.get(columns)
+        incompatible_exact_stack = (
+            exact_stack is not None and merge_colour(rect.colour, exact_stack) is None
+        )
+        incomplete_stack = incompatible_exact_stack or any(
+            columns & footprint
+            and columns != footprint
+            and merge_colour(rect.colour, expected_colour) is not None
+            for footprint, expected_colour in below.stackable_footprints.items()
+        )
+        if incomplete_stack:
+            cost += weights.w_v
+        return cost
+
+    def _axis_balance_cost(
+        self,
+        rects: tuple[Rect2D, ...],
         *,
         mirror_sum: int,
         axis: int,
     ) -> float:
-        weights = self.beauty
-        cost = weights.w_h * (_A_MAX - rect.area) / (_A_MAX - 1)
-        if not self._balanced(placed, rect, mirror_sum=mirror_sum, axis=axis):
-            cost += weights.w_a
-        if below.stackable_footprints and (
-            rect.columns() not in below.stackable_footprints
-        ):
-            cost += weights.w_v
-        return cost
+        unbalanced = sum(
+            not self._balanced(rects, rect, mirror_sum=mirror_sum, axis=axis)
+            for rect in rects
+        )
+        return self.beauty.w_a * unbalanced
 
     def _balanced(
         self,
