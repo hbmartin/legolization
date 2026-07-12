@@ -57,15 +57,52 @@ def _assert_exact_cover(layout: Layout, grid: VoxelGrid) -> None:
         assert colour == grid.code_at(*cell), f"colour mismatch at {cell}"
 
 
-@pytest.mark.parametrize("strategy_cls", [GreedyStrategy, LuoStrategy])
-def test_strategies_cover_exactly(strategy_cls):
+def _all_strategy_names() -> tuple[str, ...]:
+    from legolization.placement.registry import strategy_names
+
+    return strategy_names()
+
+
+@pytest.mark.parametrize("name", _all_strategy_names())
+def test_strategies_cover_exactly(name):
+    from legolization.pipeline import PipelineConfig
+    from legolization.placement.registry import make_strategy
+
     grid = _pyramid_grid()
-    strategy = strategy_cls()
+    strategy = make_strategy(
+        name, catalog=default_catalog(), config=PipelineConfig(strategy=name)
+    )
     layout = strategy.place(grid, rng=np.random.default_rng(7))
     _assert_exact_cover(layout, grid)
     graph = ConnectionGraph.from_layout(layout)
     assert graph.component_count() == 1
     assert not graph.floating_ids()
+
+
+@pytest.mark.parametrize("name", _all_strategy_names())
+def test_strategies_are_seed_deterministic(name):
+    from legolization.pipeline import PipelineConfig
+    from legolization.placement.registry import make_strategy
+
+    grid = _pyramid_grid()
+    config = PipelineConfig(strategy=name, ga_generations=10)
+
+    def snapshot() -> list[tuple[str, int, int, int, int, int]]:
+        strategy = make_strategy(name, catalog=default_catalog(), config=config)
+        layout = strategy.place(grid, rng=np.random.default_rng(3))
+        return sorted(
+            (b.part_key, b.x, b.y, b.layer, b.yaw, b.colour_code) for b in layout
+        )
+
+    assert snapshot() == snapshot()
+
+
+def test_make_strategy_rejects_unknown_name():
+    from legolization.pipeline import PipelineConfig
+    from legolization.placement.registry import make_strategy
+
+    with pytest.raises(ValueError, match="unknown strategy"):
+        make_strategy("nope", catalog=default_catalog(), config=PipelineConfig())
 
 
 @pytest.mark.parametrize("seed", [1, 2])
@@ -411,7 +448,6 @@ def _bad_bridge() -> tuple[Layout, VoxelGrid]:
 
 @pytest.mark.parametrize("acceptance", ["maximin", "rbe"])
 def test_luo_stabilize_repairs_collapsing_bridge(acceptance):
-    from legolization.placement.luo import LuoStrategy
     from legolization.stability import analyze
 
     layout, grid = _bad_bridge()

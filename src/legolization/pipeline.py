@@ -13,13 +13,12 @@ from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
 from legolization.ldraw_out import write_model
 from legolization.placement.base import ObjectiveWeights
-from legolization.placement.greedy import GreedyStrategy
-from legolization.placement.luo import LuoStrategy
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.slopes import apply_slopes, apply_tiles
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from legolization.catalog import Catalog
@@ -31,7 +30,7 @@ if TYPE_CHECKING:
 class PipelineConfig:
     """Everything tunable about a pipeline run."""
 
-    strategy: Literal["greedy", "luo"] = "greedy"
+    strategy: str = "greedy"
     hollow: bool = True
     hollow_rounds: int = 5
     hollow_restore_radius: int = 2
@@ -47,6 +46,12 @@ class PipelineConfig:
     colour_mode: Literal["hard", "soft"] = "hard"
     colour_weight: float = 1.0
     dither: bool = False
+    time_budget_s: float | None = None
+    ga_generations: int = 200
+    beauty_preset: Literal["balanced", "stability", "aesthetics", "efficiency"] = (
+        "balanced"
+    )
+    progress: Callable[[str], None] | None = None
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
 
@@ -198,22 +203,9 @@ def _place(
 
 
 def _strategy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
-    match config.strategy:
-        case "greedy":
-            return GreedyStrategy(
-                catalog=catalog,
-                weights=config.weights,
-                solver_config=config.solver,
-                refine=config.refine,
-            )
-        case "luo":
-            return LuoStrategy(
-                catalog=catalog,
-                solver_config=config.solver,
-                colour_mode=config.colour_mode,
-                colour_weight=config.colour_weight,
-                refine=config.refine,
-            )
+    from legolization.placement.registry import make_strategy  # noqa: PLC0415 - cycle
+
+    return make_strategy(config.strategy, catalog=catalog, config=config)
 
 
 __all__ = ["PipelineConfig", "PipelineResult", "run", "run_file"]

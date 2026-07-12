@@ -2,8 +2,9 @@
 
 The objective is a weighted sum (all terms normalized to ~[0, 1], lower is
 better): part cost, physical instability (from the RBE), aesthetics (seam
-bonding), and colour fidelity. Strategies use it to accept or reject
-refinement steps; the CLI reports it.
+bonding), colour fidelity, perpendicularity (alternating brick directions
+between layers), and per-layer mirror symmetry. Strategies use it to accept
+or reject refinement steps; the CLI reports it.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from legolization.graph import ConnectionGraph
+from legolization.placement.aesthetics import perpendicularity_error, symmetry_error
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -23,12 +25,14 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class ObjectiveWeights:
-    """Relative importance of the four objective terms."""
+    """Relative importance of the objective terms."""
 
     cost: float = 1.0
     stability: float = 4.0
     aesthetics: float = 0.5
     colour: float = 1.0
+    perpendicularity: float = 0.25
+    symmetry: float = 0.25
     # Kollsker stretcher-bond constants used by greedy candidate scoring:
     # a border whose seam below sits d studs away is penalized
     # ``bond_alpha1 * exp(-bond_alpha2 * d)`` (d = 0 is a stacked seam).
@@ -44,6 +48,8 @@ class ObjectiveReport:
     instability: float
     aesthetics: float
     colour_error: float
+    perpendicularity: float
+    symmetry: float
     total: float
     stability: StabilityResult
 
@@ -62,17 +68,23 @@ def evaluate(
     instability = stability.max_score
     aesthetics = _seam_alignment(layout)
     colour_error = _colour_mismatch(layout, grid.codes)
+    perpendicularity = perpendicularity_error(layout)
+    symmetry = symmetry_error(layout)
     total = (
         weights.cost * cost
         + weights.stability * instability
         + weights.aesthetics * aesthetics
         + weights.colour * colour_error
+        + weights.perpendicularity * perpendicularity
+        + weights.symmetry * symmetry
     )
     return ObjectiveReport(
         cost=cost,
         instability=instability,
         aesthetics=aesthetics,
         colour_error=colour_error,
+        perpendicularity=perpendicularity,
+        symmetry=symmetry,
         total=total,
         stability=stability,
     )

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from legolization.pipeline import PipelineConfig, run_file
 from legolization.placement.base import ObjectiveWeights
+from legolization.placement.registry import strategy_names
 from legolization.stability.solver import SolverConfig
 
 
@@ -29,9 +30,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--strategy",
-        choices=("greedy", "luo"),
+        choices=strategy_names(),
         default="greedy",
         help="placement strategy (default: greedy)",
+    )
+    parser.add_argument(
+        "--time-budget",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="soft time budget for slow strategies (smga, beauty)",
+    )
+    parser.add_argument(
+        "--ga-generations",
+        type=int,
+        default=200,
+        help="smga generation cap (the paper used 1000; default 200)",
+    )
+    parser.add_argument(
+        "--beauty-preset",
+        choices=("balanced", "stability", "aesthetics", "efficiency"),
+        default="balanced",
+        help="beauty strategy weight profile (default: balanced)",
     )
     parser.add_argument(
         "--solid",
@@ -114,6 +134,11 @@ def main(argv: list[str] | None = None) -> int:
     """Run the CLI; returns a process exit code."""
     args = _build_parser().parse_args(argv)
     output: Path = args.output or args.input.with_suffix(".ldr")
+    progress = (
+        (lambda message: print(f"  {message}", file=sys.stderr, flush=True))
+        if sys.stderr.isatty()
+        else None
+    )
     config = PipelineConfig(
         strategy=args.strategy,
         hollow=not args.solid,
@@ -127,6 +152,10 @@ def main(argv: list[str] | None = None) -> int:
         colour_mode=args.colour,
         colour_weight=args.colour_weight,
         dither=args.dither,
+        time_budget_s=args.time_budget,
+        ga_generations=args.ga_generations,
+        beauty_preset=args.beauty_preset,
+        progress=progress,
         weights=ObjectiveWeights(stability=args.stability_weight),
         solver=SolverConfig(mode="milp" if args.milp else "lp"),
     )
