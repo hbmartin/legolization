@@ -12,6 +12,7 @@ from legolization.placement.greedy import GreedyStrategy
 from legolization.placement.luo import LuoStrategy
 from legolization.placement.merge import (
     atomize,
+    improve_connectivity,
     maximal_random_merge,
     merged_rect,
     place_rect,
@@ -167,6 +168,24 @@ def test_greedy_rebonds_phase_mismatched_columns():
     graph = ConnectionGraph.from_layout(layout)
     assert graph.component_count() == 1
     assert not graph.floating_ids()
+
+
+def test_improve_connectivity_bridges_grounded_towers():
+    # Two grounded 1x1 columns touch side-by-side but share no studs: two
+    # brick-graph components that only a cross-column remerge can join.
+    codes = np.full((2, 1, 6), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    for x in (0, 1):
+        for level in (0, 1):
+            layout.add("brick_1x1", x, 0, 3 * level, 0, 4)
+    assert ConnectionGraph.from_layout(layout).component_count() == 2
+
+    final = improve_connectivity(layout, grid, np.random.default_rng(0))
+
+    assert final == 1
+    assert not ConnectionGraph.from_layout(layout).floating_ids()
+    _assert_exact_cover(layout, grid)
 
 
 def test_greedy_sweeps_layers_bottom_up():

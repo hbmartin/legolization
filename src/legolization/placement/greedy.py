@@ -133,8 +133,8 @@ class GreedyStrategy:
         """Repair connectivity, then delete-and-rebuild until stable."""
         # Straight seams can strand towers no greedy refill bridges (the
         # largest-first fill would just recreate them); random remerging
-        # across the seam does.
-        if _floating(layout):
+        # across the seam does. Grounded-but-disconnected towers count too.
+        if _floating(layout) or _component_count(layout) > 1:
             improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
         report = evaluate(layout, grid, self.weights, self.solver_config)
         failures = 0
@@ -208,6 +208,12 @@ def _floating(layout: Layout) -> set[int]:
     from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
 
     return set(ConnectionGraph.from_layout(layout).floating_ids())
+
+
+def _component_count(layout: Layout) -> int:
+    from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
+
+    return ConnectionGraph.from_layout(layout).component_count()
 
 
 def _is_filled(grid: VoxelGrid, cell: Cell) -> bool:

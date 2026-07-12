@@ -59,10 +59,14 @@ class PipelineResult:
 
     @property
     def buildable(self) -> bool:
-        """Stable, single-component, and nothing floating."""
+        """Stable, single brick-graph component, and nothing floating.
+
+        Components count stud connectivity between bricks only: two
+        grounded but disconnected towers are NOT buildable as one model.
+        """
         return (
             self.stability.stable
-            and self.component_count == 1
+            and self.component_count <= 1
             and self.floating_count == 0
         )
 

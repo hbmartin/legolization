@@ -68,6 +68,20 @@ def test_cli_reports_missing_file(tmp_path, capsys):
     assert "error" in capsys.readouterr().err
 
 
+def test_disjoint_islands_are_not_buildable(tmp_path, capsys):
+    # Two voxel islands with an air gap: each stands, but no single model
+    # connects them — brick-graph semantics report 2 components, exit 2.
+    codes = np.full((3, 1, 1), EMPTY, dtype=np.int16)
+    codes[0, 0, 0] = 4
+    codes[2, 0, 0] = 4
+    npy = tmp_path / "islands.npy"
+    np.save(npy, codes)
+    code = main([str(npy), "-o", str(tmp_path / "islands.ldr"), "--solid"])
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "2 components" in captured.err
+
+
 def test_tiles_and_slopes_flags(tmp_path):
     codes = np.full((3, 3, 2), EMPTY, dtype=np.int16)
     codes[:, :, 0] = 4

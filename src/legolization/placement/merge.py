@@ -216,17 +216,20 @@ def improve_connectivity(
 
 
 def component_border(layout: Layout) -> set[int]:
-    """Bricks with a face-neighbour on the other side of the ground divide."""
-    graph = ConnectionGraph.from_layout(layout)
-    floating = graph.floating_ids()
+    """Bricks with a face-neighbour in a different brick-graph component.
+
+    Empty when the components never touch (disjoint voxel islands) — such
+    layouts are genuinely un-bridgeable and the repair loop should stop.
+    """
+    labels = ConnectionGraph.from_layout(layout).brick_components()
     border: set[int] = set()
     for brick in layout:
-        in_floating = brick.brick_id in floating
+        label = labels[brick.brick_id]
         for other in neighbour_ids(layout, brick.brick_id):
-            if (other in floating) != in_floating:
+            if labels[other] != label:
                 border.add(brick.brick_id)
                 break
-    return border or set(floating)
+    return border
 
 
 def split_to_atoms(layout: Layout, brick_ids: set[int], grid: VoxelGrid) -> set[int]:
