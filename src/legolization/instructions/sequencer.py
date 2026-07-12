@@ -238,6 +238,8 @@ def _assign_rotsteps(
     steps: list[BuildStep],
 ) -> list[BuildStep]:
     """Rotate the view when a step's bricks face away from it (hysteresis)."""
+    if not steps:
+        return []
     columns = [(x, y) for brick in layout for x, y, _ in layout.cells_of(brick)]
     model_x = sum(x for x, _ in columns) / len(columns)
     model_y = sum(y for _, y in columns) / len(columns)

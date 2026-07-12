@@ -73,7 +73,10 @@ class SmGaStrategy(LayeredStrategy):
             for _ in range(cfg.population)
         ]
         fitnesses = [self._fitness(below, chromosome) for chromosome in population]
-        best = max(zip(fitnesses, range(len(population)), strict=True))
+        best_fitness, best_index = max(
+            zip(fitnesses, range(len(population)), strict=True)
+        )
+        best_chromosome = population[best_index]
         stale = 0
         for generation in range(cfg.max_generations):
             if deadline is not None and time.monotonic() > deadline:
@@ -85,14 +88,15 @@ class SmGaStrategy(LayeredStrategy):
                 problem, below, rng, population, fitnesses, p_mut
             )
             generation_best = max(zip(fitnesses, range(len(population)), strict=True))
-            if generation_best[0] > best[0]:
-                best = generation_best
+            if generation_best[0] > best_fitness:
+                best_fitness, best_index = generation_best
+                best_chromosome = population[best_index]
                 stale = 0
             else:
                 stale += 1
                 if stale >= cfg.patience:
                     break
-        return list(population[best[1]])
+        return list(best_chromosome)
 
     def _next_generation(  # noqa: PLR0913 - GA state is naturally wide
         self,

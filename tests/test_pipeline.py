@@ -25,6 +25,13 @@ def test_run_solid_box_is_buildable():
     assert result.stability.stable
 
 
+def test_run_rejects_empty_grid():
+    grid = VoxelGrid(codes=np.full((1, 1, 1), EMPTY, dtype=np.int16))
+
+    with pytest.raises(ValueError, match="no filled voxels"):
+        run(grid)
+
+
 def test_run_hollow_reduces_mass():
     codes = np.full((6, 6, 4), 4, dtype=np.int16)
     grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
