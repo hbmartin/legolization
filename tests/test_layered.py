@@ -155,6 +155,48 @@ def test_smga_fitness_prefers_fewer_and_crossing_bricks():
     assert fit(context, crossing) > fit(context, squares)  # crossing rewarded
 
 
+def test_smga_returns_best_chromosome_across_generations(monkeypatch):
+    problem = _layer_problem({(x, 0): 4 for x in range(3)})
+    context = build_context(Layout(catalog=default_catalog()), problem)
+    elite = (Rect2D(x0=0, y0=0, x1=2, y1=0, colour=4),)
+    inferior = tuple(Rect2D(x0=x, y0=0, x1=x, y1=0, colour=4) for x in range(3))
+    initial = iter((inferior, inferior, elite))
+
+    def fake_random_fill(*args, **kwargs) -> list[Rect2D]:
+        del args, kwargs
+        return list(next(initial))
+
+    def fake_next_generation(  # noqa: PLR0913 - mirrors the production method
+        self, problem, below, rng, population, fitnesses, p_mut
+    ) -> tuple[list[tuple[Rect2D, ...]], list[float]]:
+        del problem, rng, population, fitnesses, p_mut
+        children = [elite, inferior, inferior]
+        return children, [self._fitness(below, child) for child in children]
+
+    monkeypatch.setattr(
+        "legolization.placement.layered.smga.random_fill", fake_random_fill
+    )
+    monkeypatch.setattr(SmGaStrategy, "_next_generation", fake_next_generation)
+    strategy = SmGaStrategy(
+        config=SmGaConfig(
+            population=3,
+            max_generations=1,
+            patience=1,
+            p_mut_hi=0.0,
+            p_mut_lo=0.0,
+        )
+    )
+
+    result = strategy.tile(
+        problem,
+        context,
+        rng=np.random.default_rng(0),
+        deadline=None,
+    )
+
+    assert tuple(result) == elite
+
+
 def test_smga_operators_preserve_exact_cover():
     columns = {(x, y): 4 for x in range(6) for y in range(2)}
     problem = _layer_problem(columns)

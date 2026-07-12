@@ -101,6 +101,17 @@ def test_plan_is_deterministic():
     assert [s.brick_ids for s in first.steps] == [s.brick_ids for s in second.steps]
 
 
+def test_empty_layout_has_empty_instruction_plan():
+    layout = Layout(catalog=default_catalog())
+
+    plan = plan_instructions(layout)
+
+    assert plan.steps == ()
+    assert plan.warnings == ()
+    assert plan.bom.brick_count == 0
+    assert verify_plan(layout, plan) == []
+
+
 def test_unbuildable_model_warns_not_crashes():
     layout = _bad_bridge()  # collapses even fully built
     plan = plan_instructions(layout)

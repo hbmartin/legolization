@@ -95,13 +95,16 @@ class PipelineResult:
         """
         return (
             self.stability.stable
-            and self.component_count <= 1
+            and self.component_count == 1
             and self.floating_count == 0
         )
 
 
 def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult:
     """Run the full pipeline on a voxel grid."""
+    if grid.filled_count == 0:
+        msg = "input grid contains no filled voxels"
+        raise ValueError(msg)
     config = config or PipelineConfig()
     catalog = default_catalog()
     rng = np.random.default_rng(config.seed)
