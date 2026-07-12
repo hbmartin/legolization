@@ -75,6 +75,25 @@ def test_mirror_pairs_detected_and_co_stepped():
             assert right.brick_id in chunk
 
 
+def test_self_paired_brick_counts_as_single_chunk_addition():
+    layout = Layout(catalog=default_catalog())
+    bricks = [layout.add("brick_1x1", 0, y, 0, 0, 4) for y in range(10)]
+    pairs = mirror_pairs(layout)
+    assert pairs == {brick.brick_id: brick.brick_id for brick in bricks}
+
+    chunks = chunk_bands(
+        layout,
+        config=InstructionsConfig(
+            target_step_size=10,
+            max_step_size=10,
+            min_step_size=1,
+        ),
+        pairs=pairs,
+    )
+
+    assert [len(chunk) for _, chunk in chunks] == [10]
+
+
 def test_mirror_partner_never_overflows_max_step_size():
     layout = Layout(catalog=default_catalog())
     bricks = [layout.add("brick_1x1", x, 0, 0, 0, 4) for x in range(11)]

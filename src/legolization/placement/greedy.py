@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING
 
+from scipy import ndimage
+
 from legolization.catalog import Category, default_catalog, rotate_offset
 from legolization.grid import EMPTY, colour_matches, merge_colour
 from legolization.layout import Layout
@@ -36,6 +38,7 @@ if TYPE_CHECKING:
     import numpy as np
 
     from legolization.catalog import Catalog, Cell, Part
+    from legolization.graph import ConnectionGraph
     from legolization.grid import VoxelGrid
 
 _RING_GROWTH = 10  # failures per extra ring (Luo's N)
@@ -209,21 +212,28 @@ class GreedyStrategy:
         rng: np.random.Generator,
     ) -> None:
         """Repair connectivity, then delete-and-rebuild until stable."""
+        from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
+
         # Straight seams can strand towers no greedy refill bridges (the
         # largest-first fill would just recreate them); random remerging
         # across the seam does. Grounded-but-disconnected towers count too.
-        if _floating(layout) or _component_count(layout) > 1:
+        # Disjoint grid islands can never merge, so the reachable floor is
+        # the grid's own island count, not one component.
+        component_target = _grid_component_count(grid)
+        if _floating(layout) or _component_count(layout) > component_target:
             improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
         report = evaluate(layout, grid, self.weights, self.solver_config)
         failures = 0
         while failures < self.fail_max:
             stability = report.stability
-            components = _component_count(layout)
-            if stability.stable and not _floating(layout) and components == 1:
+            graph = ConnectionGraph.from_layout(layout)
+            floating = set(graph.floating_ids())
+            components = graph.component_count()
+            if stability.stable and not floating and components <= component_target:
                 return
-            seeds = set(stability.unstable_ids) | _floating(layout)
-            if components > 1:
-                seeds |= _non_primary_component_ids(layout)
+            seeds = set(stability.unstable_ids) | floating
+            if components > component_target:
+                seeds |= _non_primary_component_ids(graph)
             if stability.weakest_pair is not None:
                 seeds |= {bid for bid in stability.weakest_pair if bid >= 0}
             if not seeds:
@@ -351,16 +361,25 @@ def _component_count(layout: Layout) -> int:
     return ConnectionGraph.from_layout(layout).component_count()
 
 
-def _non_primary_component_ids(layout: Layout) -> set[int]:
+def _non_primary_component_ids(graph: ConnectionGraph) -> set[int]:
     """Return every brick outside the largest stud-connected component."""
-    from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
-
-    labels = ConnectionGraph.from_layout(layout).brick_components()
+    labels = graph.brick_components()
     if not labels:
         return set()
     counts = Counter(labels.values())
     primary = min(counts, key=lambda label: (-counts[label], label))
     return {brick_id for brick_id, label in labels.items() if label != primary}
+
+
+def _grid_component_count(grid: VoxelGrid) -> int:
+    """Face-connected islands of filled voxels.
+
+    Bricks can only bridge face-adjacent filled cells (side by side within
+    a layer, or stud-connected across layers), so this is the fewest
+    brick-graph components any layout of the grid can reach.
+    """
+    _, count = ndimage.label(grid.codes != EMPTY)
+    return int(count)
 
 
 def _is_filled(grid: VoxelGrid, cell: Cell) -> bool:
