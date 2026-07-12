@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import unicodedata
 from collections import Counter
 from pathlib import Path
@@ -19,10 +20,10 @@ from pypdf import PdfReader
 
 
 ROOT = Path.cwd()
+SCRIPT_ROOT = Path(__file__).resolve().parent
 OUT_ROOT = ROOT / "output" / "markdown_conversion"
 TMP_ROOT = ROOT / "tmp" / "pdfs"
-BUNDLED_BIN = Path("/Users/haroldmartin/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin")
-BUNDLED_NODE = Path("/Users/haroldmartin/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin")
+TOOL_PATH_ENV_VARS = ("PDF_TO_MARKDOWN_BIN", "PDF_TO_MARKDOWN_NODE_BIN")
 
 CAPTION_RE = re.compile(
     r"^(?P<label>(?:Fig(?:ure)?\.?\s*\d+[A-Za-z0-9.-]*|Table\s*[A-Za-z0-9IVXLC.-]+|TABLE\s+[A-Za-z0-9IVXLC.-]+|Algorithm\s*\d+[A-Za-z0-9.-]*))\s*[:.)-]?\s*(?P<body>.*)$",
@@ -46,21 +47,31 @@ CODE_HINT_RE = re.compile(r"^\s*(?:Input|Output|Require|Ensure|procedure)\b", re
 
 def env() -> dict[str, str]:
     current = os.environ.copy()
-    prefixes = [str(BUNDLED_BIN), str(BUNDLED_NODE), "/opt/homebrew/bin", "/usr/local/bin"]
+    prefixes = [current[name] for name in TOOL_PATH_ENV_VARS if current.get(name)]
     current["PATH"] = os.pathsep.join(prefixes + [current.get("PATH", "")])
     return current
 
 
 def run(cmd: list[str], cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        env=env(),
-        check=check,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            env=env(),
+            check=check,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError as error:
+        if check:
+            raise
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=127,
+            stdout="",
+            stderr=str(error),
+        )
 
 
 def slugify(name: str) -> str:
@@ -574,7 +585,7 @@ def write_pdfinfo(pdf_path: Path, evidence_dir: Path) -> int:
 
 def run_unpdf(pdf_path: Path, evidence_dir: Path) -> tuple[str, bool]:
     out_path = evidence_dir / "unpdf_items.json"
-    script = ROOT / "scripts" / "extract_unpdf_items.mjs"
+    script = SCRIPT_ROOT / "extract_unpdf_items.mjs"
     if not script.exists():
         out_path.write_text(json.dumps({"error": "missing scripts/extract_unpdf_items.mjs"}, indent=2), encoding="utf-8")
         return "", False
@@ -585,6 +596,8 @@ def run_unpdf(pdf_path: Path, evidence_dir: Path) -> tuple[str, bool]:
     try:
         payload = json.loads(out_path.read_text(encoding="utf-8"))
     except Exception:
+        return "", False
+    if payload.get("error"):
         return "", False
     text_parts = []
     for page in payload.get("pages", []):
@@ -599,7 +612,13 @@ def crop_from_render(
     bbox: tuple[float, float, float, float],
     output_path: Path,
 ) -> bool:
-    if not rendered_path.exists():
+    if (
+        not rendered_path.exists()
+        or not math.isfinite(page_width)
+        or not math.isfinite(page_height)
+        or page_width <= 0
+        or page_height <= 0
+    ):
         return False
     with Image.open(rendered_path) as image:
         sx = image.width / page_width
@@ -1014,7 +1033,10 @@ def main() -> None:
     for pdf in pdfs:
         pdf_path = pdf if pdf.is_absolute() else ROOT / pdf
         slug = unique_slug(slugify(pdf_path.stem), seen)
-        reports.append(convert_pdf(pdf_path, slug))
+        try:
+            reports.append(convert_pdf(pdf_path, slug))
+        except FileNotFoundError as error:
+            print(f"[error] {pdf_path.name}: {error}", file=sys.stderr)
     write_root_summary(reports)
     print(f"[summary] {OUT_ROOT / 'verification_summary.md'}")
 

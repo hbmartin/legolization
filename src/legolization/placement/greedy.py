@@ -16,6 +16,7 @@ keeping changes only when the weighted objective improves.
 from __future__ import annotations
 
 import math
+from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING
@@ -217,9 +218,12 @@ class GreedyStrategy:
         failures = 0
         while failures < self.fail_max:
             stability = report.stability
-            if stability.stable and not _floating(layout):
+            components = _component_count(layout)
+            if stability.stable and not _floating(layout) and components == 1:
                 return
             seeds = set(stability.unstable_ids) | _floating(layout)
+            if components > 1:
+                seeds |= _non_primary_component_ids(layout)
             if stability.weakest_pair is not None:
                 seeds |= {bid for bid in stability.weakest_pair if bid >= 0}
             if not seeds:
@@ -345,6 +349,18 @@ def _component_count(layout: Layout) -> int:
     from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
 
     return ConnectionGraph.from_layout(layout).component_count()
+
+
+def _non_primary_component_ids(layout: Layout) -> set[int]:
+    """Return every brick outside the largest stud-connected component."""
+    from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
+
+    labels = ConnectionGraph.from_layout(layout).brick_components()
+    if not labels:
+        return set()
+    counts = Counter(labels.values())
+    primary = min(counts, key=lambda label: (-counts[label], label))
+    return {brick_id for brick_id, label in labels.items() if label != primary}
 
 
 def _is_filled(grid: VoxelGrid, cell: Cell) -> bool:

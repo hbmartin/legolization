@@ -347,6 +347,18 @@ def test_soft_colour_merge_trades_colour_for_parts():
     assert merged.colour_code in {4, 1}
 
 
+@pytest.mark.parametrize("colour_weight", [-1.0, float("inf"), float("nan")])
+def test_soft_colour_merge_rejects_invalid_weights(colour_weight):
+    layout = Layout(catalog=default_catalog())
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        maximal_random_merge(
+            layout,
+            np.random.default_rng(0),
+            colour_mode="soft",
+            colour_weight=colour_weight,
+        )
+
+
 def test_compact_columns_reforms_bricks_on_voted_phase():
     layout = Layout(catalog=default_catalog())
     ids = {layout.add("plate_1x1", 0, 0, z, 0, 4).brick_id for z in range(7)}
@@ -404,8 +416,10 @@ def test_resolve_ignore_colours_uses_nearest_neighbour():
     layout.add("brick_1x1", 0, 0, 0, 0, 4)
     layout.add("brick_1x1", 1, 0, 0, 0, IGNORE)  # touches red
     layout.add("brick_1x1", 5, 5, 0, 0, IGNORE)  # isolated
+    brick_ids = set(layout.bricks)
     recoloured = resolve_ignore_colours(layout)
     assert recoloured == 2
+    assert set(layout.bricks) == brick_ids
     colours = sorted(b.colour_code for b in layout)
     assert colours == [4, 4, 71]  # neighbour red, isolated falls back to gray
 
@@ -430,27 +444,11 @@ def test_hollow_sphere_brick_count_regression():
     assert result.brick_count <= 160
 
 
-def _bad_bridge() -> tuple[Layout, VoxelGrid]:
-    """Build a bridge whose deck and load courses all butt at mid-span."""
-    layout = Layout(catalog=default_catalog())
-    layout.add("brick_1x1", 0, 0, 0, 0, 4)
-    layout.add("brick_1x1", 10, 0, 0, 0, 4)
-    for level in (3, 6, 9):
-        layout.add("brick_1x6", 0, 0, level, 0, 4)
-        layout.add("brick_1x4", 6, 0, level, 0, 4)
-        layout.add("brick_1x1", 10, 0, level, 0, 4)
-    codes = np.full((11, 1, 12), EMPTY, dtype=np.int16)
-    codes[0, 0, :3] = 4
-    codes[10, 0, :3] = 4
-    codes[:, 0, 3:] = 4
-    return layout, VoxelGrid(codes=codes)
-
-
 @pytest.mark.parametrize("acceptance", ["maximin", "rbe"])
-def test_luo_stabilize_repairs_collapsing_bridge(acceptance):
+def test_luo_stabilize_repairs_collapsing_bridge(acceptance, bad_bridge):
     from legolization.stability import analyze
 
-    layout, grid = _bad_bridge()
+    layout, grid = bad_bridge
     assert not analyze(layout).stable
 
     strategy = LuoStrategy(acceptance=acceptance)

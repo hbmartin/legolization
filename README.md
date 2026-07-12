@@ -80,7 +80,7 @@ uv run legolization model.vox --milp                # cross-check the exact LP
 
 The CLI reports brick count, mass, step count, and the physics verdict:
 
-```
+```text
 wrote heart.ldr
   bricks: 12   mass: 17.7 g   steps: 7   slopes: 0   tiles: 0
   stability: STABLE (worst score 0.001, min capacity 0.979 N)

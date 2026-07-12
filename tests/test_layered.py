@@ -8,6 +8,7 @@ from legolization.grid import EMPTY, IGNORE, VoxelGrid
 from legolization.layout import Layout
 from legolization.placement.aesthetics import perpendicularity_error, symmetry_error
 from legolization.placement.base import ObjectiveWeights, _seam_alignment, evaluate
+from legolization.placement.greedy import _h_lookahead
 from legolization.placement.layered import (
     BeautyStrategy,
     BeautyWeights,
@@ -127,6 +128,26 @@ def test_bond_brick_count_is_competitive():
     assert len(bond) <= len(greedy) * 1.2
 
 
+def test_bond_lookahead_counts_every_transverse_row():
+    rect = Rect2D(x0=4, y0=0, x1=5, y1=1, colour=4)
+    uncovered = (
+        {(x, 0) for x in range(4)}
+        | {(x, 1) for x in range(2, 4)}
+        | {(x, 1) for x in range(6, 8)}
+    )
+    columns = uncovered | set(rect.columns())
+    problem = _layer_problem(dict.fromkeys(columns, 4))
+
+    lookahead = BondStrategy()._lookahead(  # noqa: SLF001
+        problem,
+        uncovered,
+        rect,
+        axis=0,
+    )
+
+    assert lookahead == _h_lookahead(4) + 2 * _h_lookahead(2)
+
+
 def test_smga_fitness_prefers_fewer_and_crossing_bricks():
     # Below: four 1x2 bricks laid along y. Above candidates with equal
     # brick and support counts differ only in direction: 1x4s along x cross
@@ -243,12 +264,67 @@ def test_beauty_aesthetics_preset_is_symmetric():
     assert symmetry_error(layout) == 0.0
 
 
+def test_beauty_scores_balance_from_the_completed_tiling():
+    strategy = BeautyStrategy(beauty=BeautyWeights(w_s=0.0, w_a=1.0, w_h=0.0, w_v=0.0))
+    mirrored = (
+        Rect2D(x0=0, y0=0, x1=1, y1=0, colour=4),
+        Rect2D(x0=4, y0=0, x1=5, y1=0, colour=4),
+    )
+
+    assert (
+        strategy._axis_balance_cost(  # noqa: SLF001
+            mirrored,
+            mirror_sum=5,
+            axis=0,
+        )
+        == 0.0
+    )
+
+
+def test_stackable_footprints_preserve_colour_and_ignore_disjoint_rects():
+    layout = Layout(catalog=default_catalog())
+    layout.add("plate_1x2", 0, 0, 0, 0, 4)
+    layout.add("plate_1x2", 0, 0, 1, 0, 4)
+    problem = LayerProblem(
+        layer=2,
+        height_plates=1,
+        columns=frozenset({(0, 0), (1, 0), (3, 0)}),
+        colour_of={(0, 0): 4, (1, 0): 4, (3, 0): 4},
+    )
+    context = build_context(layout, problem)
+    footprint = frozenset({(0, 0), (1, 0)})
+    assert context.stackable_footprints[footprint] == 4
+    strategy = BeautyStrategy(beauty=BeautyWeights(w_s=0.0, w_a=0.0, w_h=0.0, w_v=1.0))
+    compatible = Rect2D(x0=0, y0=0, x1=1, y1=0, colour=4)
+    incompatible = Rect2D(x0=0, y0=0, x1=1, y1=0, colour=14)
+    disjoint = Rect2D(x0=3, y0=0, x1=3, y1=0, colour=4)
+
+    assert strategy._rect_cost(context, compatible) == 0.0  # noqa: SLF001
+    assert strategy._rect_cost(context, incompatible) == 1.0  # noqa: SLF001
+    assert strategy._rect_cost(context, disjoint) == 0.0  # noqa: SLF001
+
+
 def test_fast_prefers_bigger_bricks():
     codes = np.full((8, 2, 3), 4, dtype=np.int16)
     grid = VoxelGrid(codes=codes)
     layout = FastStrategy().place(grid, rng=np.random.default_rng(0))
     areas = sorted(len({(x, y) for x, y, _ in layout.cells_of(b)}) for b in layout)
     assert areas[-1] == 16  # a 2x8 emerged from the all-1x1 start
+
+
+def test_fast_merge_loop_respects_expired_deadline():
+    problem = _layer_problem({(x, 0): 4 for x in range(4)})
+    context = build_context(Layout(catalog=default_catalog()), problem)
+    rects = [Rect2D(x0=x, y0=0, x1=x, y1=0, colour=4) for x in range(4)]
+
+    result = FastStrategy()._merge_to_fixpoint(  # noqa: SLF001
+        problem,
+        context,
+        rects,
+        deadline=0.0,
+    )
+
+    assert result == rects
 
 
 def test_aesthetics_metrics_on_hand_layouts():

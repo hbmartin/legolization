@@ -50,31 +50,52 @@ def symmetry_error(layout: Layout) -> float:
         layers.setdefault(brick.layer, []).append(brick)
     if not layers:
         return 0.0
-    total = 0.0
-    for bricks in layers.values():
-        footprints = {
-            brick.brick_id: frozenset((x, y) for x, y, _ in layout.cells_of(brick))
-            for brick in bricks
-        }
-        shapes = {
-            (footprints[brick.brick_id], brick.part_key, brick.colour_code)
-            for brick in bricks
-        }
-        xs = [x for columns in footprints.values() for x, _ in columns]
-        ys = [y for columns in footprints.values() for _, y in columns]
-        errors = []
-        for axis, mirror_sum in ((0, min(xs) + max(xs)), (1, min(ys) + max(ys))):
-            unbalanced = 0
-            for brick in bricks:
-                mirrored = frozenset(
-                    (mirror_sum - x, y) if axis == 0 else (x, mirror_sum - y)
-                    for x, y in footprints[brick.brick_id]
-                )
-                if (mirrored, brick.part_key, brick.colour_code) not in shapes:
-                    unbalanced += 1
-            errors.append(unbalanced / len(bricks))
-        total += min(errors)
-    return total / len(layers)
+    return sum(
+        _layer_symmetry_error(layout, bricks) for bricks in layers.values()
+    ) / len(layers)
+
+
+def _layer_symmetry_error(layout: Layout, bricks: list[PlacedBrick]) -> float:
+    footprints = {
+        brick.brick_id: frozenset((x, y) for x, y, _ in layout.cells_of(brick))
+        for brick in bricks
+    }
+    shapes = {
+        (footprints[brick.brick_id], brick.part_key, brick.colour_code)
+        for brick in bricks
+    }
+    xs = [x for columns in footprints.values() for x, _ in columns]
+    ys = [y for columns in footprints.values() for _, y in columns]
+    errors = [
+        _axis_symmetry_error(
+            bricks,
+            footprints,
+            shapes,
+            axis=axis,
+            mirror_sum=mirror_sum,
+        )
+        for axis, mirror_sum in ((0, min(xs) + max(xs)), (1, min(ys) + max(ys)))
+    ]
+    return min(errors)
+
+
+def _axis_symmetry_error(
+    bricks: list[PlacedBrick],
+    footprints: dict[int, frozenset[tuple[int, int]]],
+    shapes: set[tuple[frozenset[tuple[int, int]], str, int]],
+    *,
+    axis: int,
+    mirror_sum: int,
+) -> float:
+    unbalanced = 0
+    for brick in bricks:
+        mirrored = frozenset(
+            (mirror_sum - x, y) if axis == 0 else (x, mirror_sum - y)
+            for x, y in footprints[brick.brick_id]
+        )
+        if (mirrored, brick.part_key, brick.colour_code) not in shapes:
+            unbalanced += 1
+    return unbalanced / len(bricks)
 
 
 def _long_axis(layout: Layout, brick: PlacedBrick) -> int | None:

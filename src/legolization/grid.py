@@ -165,15 +165,15 @@ class VoxelGrid:
         expect nearest-neighbour stair artifacts on sloped surfaces.
         """
         if values.ndim == _RGB_CHANNELS and np.issubdtype(values.dtype, np.integer):
-            codes = values.astype(np.int16)
             palette = palette or default_palette()
             unknown = np.unique(
-                codes[(codes != EMPTY) & ~np.isin(codes, palette.codes)]
+                values[(values != EMPTY) & ~np.isin(values, palette.codes)]
             )
             if unknown.size:
                 listed = ", ".join(str(code) for code in unknown)
                 msg = f"unknown LDraw colour codes in input: {listed}"
                 raise ValueError(msg)
+            codes = values.astype(np.int16)
         elif values.ndim == _RGBA_CHANNELS and values.shape[-1] in (
             _RGB_CHANNELS,
             _RGBA_CHANNELS,
@@ -326,7 +326,7 @@ def _parse_vox(data: bytes) -> tuple[tuple[int, int, int], np.ndarray, np.ndarra
             match chunk_id:
                 case b"SIZE" if size is None:
                     sx, sy, sz = struct.unpack_from("<iii", content)
-                    size = (sx, sy, sz)
+                    size = _validate_vox_size((sx, sy, sz))
                 case b"XYZI" if voxels is None:
                     (count,) = struct.unpack_from("<i", content)
                     voxels = np.frombuffer(
@@ -353,3 +353,10 @@ def _parse_vox(data: bytes) -> tuple[tuple[int, int, int], np.ndarray, np.ndarra
         )
         raise ValueError(msg)
     return size, voxels.astype(np.int64), vox_palette
+
+
+def _validate_vox_size(size: tuple[int, int, int]) -> tuple[int, int, int]:
+    if any(axis <= 0 or axis > 256 for axis in size):
+        msg = "SIZE axes must be between 1 and 256"
+        raise ValueError(msg)
+    return size

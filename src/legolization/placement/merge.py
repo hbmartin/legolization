@@ -13,7 +13,9 @@ the refinement strategies.
 
 from __future__ import annotations
 
+import math
 from collections import deque
+from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
 from legolization.catalog import Category
@@ -220,6 +222,9 @@ def _random_merge_from(
     colour_mode: ColourMode,
     colour_weight: float,
 ) -> None:
+    if not math.isfinite(colour_weight) or colour_weight < 0:
+        msg = "colour_weight must be finite and non-negative"
+        raise ValueError(msg)
     pairs: set[tuple[int, int]] = set()
     for brick_id in sorted(seed_ids):  # id order keeps runs reproducible
         if brick_id not in layout.bricks:
@@ -491,17 +496,20 @@ def final_remerge(
         compact_vertical(rephased)
         candidates.append(rephased)
 
-    candidate = min(candidates, key=len)
-    if len(candidate) >= len(layout):
-        return False
     baseline = evaluate(layout, grid, weights, solver_config)
-    report = evaluate(candidate, grid, weights, solver_config)
     base_components = ConnectionGraph.from_layout(layout).component_count()
-    components = ConnectionGraph.from_layout(candidate).component_count()
-    if report.total <= baseline.total and components <= base_components:
-        layout.replace_with(candidate)
-        return True
-    return False
+    accepted: list[Layout] = []
+    for candidate in candidates:
+        if len(candidate) >= len(layout):
+            continue
+        report = evaluate(candidate, grid, weights, solver_config)
+        components = ConnectionGraph.from_layout(candidate).component_count()
+        if report.total <= baseline.total and components <= base_components:
+            accepted.append(candidate)
+    if not accepted:
+        return False
+    layout.replace_with(min(accepted, key=len))
+    return True
 
 
 def _plate_runs(layout: Layout, brick_ids: set[int]) -> list[list[PlacedBrick]]:
@@ -555,8 +563,7 @@ def resolve_ignore_colours(layout: Layout) -> int:
         if brick.colour_code != IGNORE:
             continue
         colour = resolved.get(brick.brick_id, _FALLBACK_COLOUR)
-        layout.remove(brick.brick_id)
-        layout.add(brick.part_key, brick.x, brick.y, brick.layer, brick.yaw, colour)
+        layout.bricks[brick.brick_id] = replace(brick, colour_code=colour)
         recoloured += 1
     return recoloured
 

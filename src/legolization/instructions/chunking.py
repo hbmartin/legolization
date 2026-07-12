@@ -82,29 +82,23 @@ def _chunk_band(
     chunks: list[list[int]] = []
     while unassigned:
         chunk = [unassigned.pop(0)]
-        _pull_partner(chunk, unassigned, pairs, band_ids)
-        while unassigned and len(chunk) < config.target_step_size:
-            cx = sum(centroids[bid][0] for bid in chunk) / len(chunk)
-            cy = sum(centroids[bid][1] for bid in chunk) / len(chunk)
-            nearest = min(
-                unassigned,
-                key=lambda bid: (
-                    (centroids[bid][0] - cx) ** 2 + (centroids[bid][1] - cy) ** 2,
-                    bid,
-                ),
-            )
-            if len(chunk) >= config.max_step_size:
-                break
-            chunk.append(nearest)
-            unassigned.remove(nearest)
-            _pull_partner(chunk, unassigned, pairs, band_ids)
+        _pull_partner(
+            chunk,
+            unassigned,
+            pairs,
+            band_ids,
+            max_size=config.max_step_size,
+        )
+        _grow_chunk(
+            chunk,
+            unassigned,
+            centroids,
+            pairs,
+            band_ids,
+            config,
+        )
         chunks.append(chunk)
-    if (
-        len(chunks) > 1
-        and len(chunks[-1]) < config.min_step_size
-        and len(chunks[-2]) + len(chunks[-1]) <= config.max_step_size
-    ):
-        chunks[-2].extend(chunks.pop())
+    _merge_undersized_tail(chunks, config)
     ordered = sorted(
         chunks,
         key=lambda chunk: (
@@ -115,16 +109,80 @@ def _chunk_band(
     return [tuple(chunk) for chunk in ordered]
 
 
+def _grow_chunk(  # noqa: PLR0913 - explicit chunk-growth state
+    chunk: list[int],
+    unassigned: list[int],
+    centroids: dict[int, tuple[float, float]],
+    pairs: dict[int, int],
+    band_ids: set[int],
+    config: InstructionsConfig,
+) -> None:
+    """Grow one spatial chunk without splitting a mirror pair or overflowing."""
+    while unassigned and len(chunk) < config.target_step_size:
+        remaining = config.max_step_size - len(chunk)
+        eligible = [
+            brick_id
+            for brick_id in unassigned
+            if _addition_size(brick_id, unassigned, pairs, band_ids) <= remaining
+        ]
+        if not eligible:
+            return
+        cx = sum(centroids[brick_id][0] for brick_id in chunk) / len(chunk)
+        cy = sum(centroids[brick_id][1] for brick_id in chunk) / len(chunk)
+        nearest = min(
+            eligible,
+            key=lambda brick_id: (
+                (centroids[brick_id][0] - cx) ** 2 + (centroids[brick_id][1] - cy) ** 2,
+                brick_id,
+            ),
+        )
+        chunk.append(nearest)
+        unassigned.remove(nearest)
+        _pull_partner(
+            chunk,
+            unassigned,
+            pairs,
+            band_ids,
+            max_size=config.max_step_size,
+        )
+
+
+def _addition_size(
+    brick_id: int,
+    unassigned: list[int],
+    pairs: dict[int, int],
+    band_ids: set[int],
+) -> int:
+    partner = pairs.get(brick_id)
+    return 2 if partner in band_ids and partner in unassigned else 1
+
+
+def _merge_undersized_tail(chunks: list[list[int]], config: InstructionsConfig) -> None:
+    if (
+        len(chunks) > 1
+        and len(chunks[-1]) < config.min_step_size
+        and len(chunks[-2]) + len(chunks[-1]) <= config.max_step_size
+    ):
+        chunks[-2].extend(chunks.pop())
+
+
 def _pull_partner(
     chunk: list[int],
     unassigned: list[int],
     pairs: dict[int, int],
     band_ids: set[int],
+    *,
+    max_size: int,
 ) -> None:
     """Keep mirror partners in the same step when they share the band."""
     for brick_id in list(chunk):
         partner = pairs.get(brick_id)
-        if partner is not None and partner in band_ids and partner in unassigned:
+        if (
+            len(chunk) < max_size
+            and partner is not None
+            and partner in band_ids
+            and partner in unassigned
+        ):
             chunk.append(partner)
             unassigned.remove(partner)
 

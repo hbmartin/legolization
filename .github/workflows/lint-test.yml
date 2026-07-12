@@ -26,7 +26,8 @@ jobs:
         uv run ty check src tests
         uv run pyrefly check src tests
     - name: Run complexity checks
-      run: uv run lizard --languages python src tests
+      # The reviewed baseline peaks at CCN 18; fail on regressions above it.
+      run: uv run lizard --languages python --CCN 18 src tests
     - run: uv run deptry .
     - name: Run tests with coverage
       run: uv run pytest --cov=legolization --cov-report=lcov --cov-report=html
