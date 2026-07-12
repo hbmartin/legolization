@@ -38,6 +38,14 @@ if TYPE_CHECKING:
 
 _MILP_SOLVERS = ("HIGHS",)
 
+# HiGHS presolve occasionally errors on degenerate instances; retry
+# without it, then with the interior-point method.
+_LP_ATTEMPTS: tuple[tuple[str, dict[str, bool] | None], ...] = (
+    ("highs", None),
+    ("highs", {"presolve": False}),
+    ("highs-ipm", None),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SolverConfig:
@@ -159,13 +167,7 @@ def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
     a_ub = sparse.vstack(blocks, format="csr")
     b_ub = np.concatenate(rhs)
     result = None
-    # HiGHS presolve occasionally errors on degenerate instances; retry
-    # without it, then with the interior-point method.
-    for method, options in (
-        ("highs", None),
-        ("highs", {"presolve": False}),
-        ("highs-ipm", None),
-    ):
+    for method, options in _LP_ATTEMPTS:
         result = linprog(
             c=cost,
             A_ub=a_ub,
@@ -187,6 +189,69 @@ def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
         "optimal" if result.status == 0 else str(result.message),
         float(result.fun),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class MaximinResult:
+    """Luo's maximin friction capacity ``C_M`` for one structure."""
+
+    feasible: bool
+    capacity: float = 0.0
+
+
+def solve_maximin(model: StabilityModel) -> MaximinResult:
+    """Maximize the worst contact's friction margin under exact equilibrium.
+
+    Luo's eq. 6-8: maximize ``m`` subject to ``A F + b = 0``, ``F >= 0``,
+    and ``drag_j + m <= T`` for every drag variable. Unlike the RBE score
+    this yields a single strict ordering over layouts: positive capacity
+    means stable with margin, negative means unstable but comparable, and
+    an infeasible equilibrium means collapse. It carries no per-brick
+    localization — pair it with :func:`analyze` for failure seeds.
+    """
+    rows, force_count = model.a_matrix.shape
+    var_count = force_count + 1
+    cost = np.zeros(var_count)
+    cost[-1] = -1.0  # maximize the margin
+    a_eq = sparse.hstack(
+        [model.a_matrix, sparse.csr_matrix((rows, 1))],
+        format="csr",
+    )
+    a_ub = None
+    b_ub = None
+    if model.contact_points:
+        drag_cols = model.drag_cols
+        data = np.ones(2 * drag_cols.size)
+        row_idx = np.repeat(np.arange(drag_cols.size), 2)
+        col_idx = np.stack(
+            [drag_cols, np.full(drag_cols.size, force_count, dtype=np.int64)],
+            axis=1,
+        ).ravel()
+        a_ub = sparse.csr_matrix(
+            (data, (row_idx, col_idx)),
+            shape=(drag_cols.size, var_count),
+        )
+        b_ub = np.full(drag_cols.size, T_CAPACITY_N)
+    bounds = [(0.0, None)] * force_count + [(None, T_CAPACITY_N)]
+    result = None
+    for method, options in _LP_ATTEMPTS:
+        result = linprog(
+            c=cost,
+            A_ub=a_ub,
+            b_ub=b_ub,
+            A_eq=a_eq,
+            b_eq=-model.b_vector,
+            bounds=bounds,
+            method=method,
+            options=options,
+        )
+        if result.success and result.x is not None:
+            return MaximinResult(feasible=True, capacity=float(result.x[-1]))
+        if result.status == 2:  # provably no equilibrium: collapsing
+            return MaximinResult(feasible=False)
+    message = result.message if result is not None else "no result"
+    msg = f"maximin LP failed: {message}"
+    raise RuntimeError(msg)
 
 
 def _solve_milp(model: StabilityModel, config: SolverConfig) -> StabilityResult:

@@ -7,9 +7,10 @@ points, wider cavities at three), each carrying a shared **normal** variable
 (support on the upper brick = press on the lower) and a shared **drag**
 variable (drag on the upper = pull on the lower), so Newton's third law is
 satisfied by construction. Each knob also carries four horizontal
-**knob-press** variables, and each laterally touching brick pair one
-**side-press** variable. The ground plane provides unpaired reactions to
-layer-0 bricks.
+**knob-press** variables, and each laterally touching brick pair two
+**side-press** variables per axis — one at each vertical extreme of the
+shared faces, so lateral load transfer can carry torque. The ground plane
+provides unpaired reactions to layer-0 bricks.
 
 The system is returned as one sparse matrix ``A`` and constant ``b`` such
 that ``A @ F + b`` stacks every brick's residual ``(Cf, Cτ)``; gravity sits
@@ -196,12 +197,20 @@ def build_model(
                 asm.add_force(knob.below_id, col, (-ux, -uy, 0.0), knob_center)
 
     for side in graph.side_contacts:
-        col = asm.new_var()
         unit = (1.0, 0.0, 0.0) if side.axis == 0 else (0.0, 1.0, 0.0)
         away = (-unit[0] * side.direction, -unit[1] * side.direction, 0.0)
         toward = (unit[0] * side.direction, unit[1] * side.direction, 0.0)
-        asm.add_force(side.a_id, col, away, side.centroid)
-        asm.add_force(side.b_id, col, toward, side.centroid)
+        # Two presses at the shared face's vertical extremes: with the yaw
+        # torque row dropped, a horizontal force's torque coefficient is
+        # linear in z, so these two generators span every force/torque
+        # combination achievable by any distribution over the shared faces
+        # (Luo corner-point-equivalent for the modeled axes).
+        cx, cy, _ = side.centroid
+        for z_edge in (float(side.z_lo), float(side.z_hi + 1)):
+            col = asm.new_var()
+            position = (cx, cy, z_edge)
+            asm.add_force(side.a_id, col, away, position)
+            asm.add_force(side.b_id, col, toward, position)
 
     b_vector = np.zeros(ROWS_PER_BRICK * len(asm.brick_ids))
     for brick_id in asm.brick_ids:

@@ -65,6 +65,7 @@ def test_side_contacts(layout):
     assert {contact.a_id, contact.b_id} == {a.brick_id, b.brick_id}
     assert contact.axis == 1
     assert contact.face_count == 2 * 3  # two columns, three plate layers
+    assert (contact.z_lo, contact.z_hi) == (0, 2)
 
 
 def test_floating_component(layout):

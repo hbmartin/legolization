@@ -13,6 +13,7 @@ from legolization.stability import (
     SolverConfig,
     analyze,
     build_model,
+    solve_maximin,
     solve_model,
 )
 
@@ -63,13 +64,48 @@ def test_brick_resting_on_tile_collapses(layout):
 def test_single_stud_cantilever_holds_with_drag(layout):
     # A 1x1 tower with a 1x4 brick attached by its end stud: the knob
     # friction couple must carry the overhang torque — stressed but stable.
+    # Closed form: the beam's weight W acts 1.5 studs from the knob, whose
+    # rear contact pair (two points at -0.25 pitch, torque arm 0.5 studs to
+    # the front pair) must drag 2.5 W split two ways: drag_max = 1.25 W.
     tower = layout.add("brick_1x1", 0, 0, 0, 0, 4)
     beam = layout.add("brick_1x4", 0, 0, 3, 0, 4)
     result = analyze(layout)
+    beam_weight_n = 1.57e-3 * 9.8
     assert result.stable
-    assert result.scores[beam.brick_id].drag_max > 1e-4
+    assert result.scores[beam.brick_id].drag_max == pytest.approx(
+        1.25 * beam_weight_n, rel=1e-4
+    )
+    assert result.scores[beam.brick_id].score == pytest.approx(0.019625, rel=1e-4)
     assert result.weakest_pair == (tower.brick_id, beam.brick_id)
     assert result.min_capacity < T_CAPACITY_N
+
+
+def test_maximin_capacity_on_cantilever(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)
+    result = solve_maximin(build_model(layout))
+    assert result.feasible
+    assert result.capacity == pytest.approx(T_CAPACITY_N - 1.25 * 1.57e-3 * 9.8)
+
+
+def test_maximin_infeasible_for_floating_brick(layout):
+    layout.add("brick_2x4", 0, 0, 9, 0, 4)
+    result = solve_maximin(build_model(layout))
+    assert not result.feasible
+
+
+def test_maximin_orders_layouts_by_stress(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x2", 0, 0, 3, 0, 4)
+    short = solve_maximin(build_model(layout))
+
+    long_layout = Layout(catalog=default_catalog())
+    long_layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    long_layout.add("brick_1x6", 0, 0, 3, 0, 4)
+    long = solve_maximin(build_model(long_layout))
+    assert long.feasible
+    assert short.feasible
+    assert long.capacity < short.capacity < T_CAPACITY_N
 
 
 def test_longer_cantilever_is_more_stressed(layout):
@@ -219,3 +255,68 @@ def test_milp_fallback_does_not_chain_stale_solver_error(monkeypatch):
 
 def test_empty_layout_is_stable(layout):
     assert analyze(layout).stable
+
+
+def _bridge(gap: int) -> Layout:
+    """Two cantilevered 1x4 beams on end towers, ``gap`` studs apart."""
+    layout = Layout(catalog=default_catalog())
+    span = 8 + gap
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x1", span - 1, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)
+    layout.add("brick_1x4", 4 + gap, 0, 3, 0, 4)
+    return layout
+
+
+def test_side_presses_shed_cantilever_load():
+    # Luo §6: beams butted mid-span lean on each other through their shared
+    # vertical face; the side presses at the face's vertical extremes carry
+    # torque, so each half is far less stressed than a free cantilever.
+    butted = analyze(_bridge(gap=0))
+    gapped = analyze(_bridge(gap=1))
+    assert butted.stable
+    assert gapped.stable
+    assert butted.max_score < 0.5 * gapped.max_score
+
+
+def test_mirrored_layout_scores_identically(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)  # extends toward +x
+
+    mirrored = Layout(catalog=default_catalog())
+    mirrored.add("brick_1x1", 10, 0, 0, 0, 4)
+    mirrored.add("brick_1x4", 7, 0, 3, 0, 4)  # extends toward -x
+    assert analyze(mirrored).max_score == pytest.approx(analyze(layout).max_score)
+
+
+def test_side_contacts_add_two_variables_per_pair(layout):
+    layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    layout.add("brick_1x2", 0, 1, 0, 0, 4)
+    model = build_model(layout)
+    # 4 ground knobs x 4 points (1-wide cavities) x (normal + drag) plus
+    # 4 knob presses per knob, plus 2 side presses at the shared face's
+    # vertical extremes (was 1 torque-inert press before F1).
+    knobs = 4
+    assert model.var_count == knobs * 4 * 2 + knobs * 4 + 2
+
+
+def test_cavity_pattern_var_counts(layout):
+    # 2-wide cavities pinch studs at three points, 1-wide at four.
+    layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    model = build_model(layout)
+    knobs = 8  # 4 ground + 4 interface, all under 2x2 bricks
+    assert model.var_count == knobs * 3 * 2 + knobs * 4
+
+
+def test_ground_pull_keeps_tipping_column_stable(layout):
+    # A 1x6 beam off a grounded 1x2 with a column at the beam tip: the
+    # load's line of action falls outside the base footprint, so the far
+    # ground contacts must pull down (StableLego baseplate-style ground).
+    base = layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    layout.add("brick_1x6", 0, 0, 3, 0, 4)
+    for level in range(3):
+        layout.add("brick_1x1", 5, 0, 6 + 3 * level, 0, 4)
+    result = analyze(layout)
+    assert result.stable
+    assert result.scores[base.brick_id].drag_max > 1e-3

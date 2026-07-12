@@ -45,6 +45,9 @@ class SideContact:
     ``direction`` is +1 if b lies at greater coordinate than a along the
     axis. ``centroid`` is the mean shared-face center as
     ``(x, y, layer)`` floats in grid units (layer in plates).
+    ``z_lo``/``z_hi`` are the lowest and highest plate layers of the shared
+    faces — the stability model presses at both vertical extremes so side
+    forces can carry torque about the horizontal axes.
     """
 
     a_id: int
@@ -53,6 +56,8 @@ class SideContact:
     direction: int
     face_count: int
     centroid: tuple[float, float, float]
+    z_lo: int
+    z_hi: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +171,7 @@ def _side_contacts(layout: Layout) -> list[SideContact]:
     for (a_id, b_id, axis, direction), centers in sorted(faces.items()):
         arr = np.asarray(centers)
         cx, cy, cz = arr.mean(axis=0)
+        layers = arr[:, 2] - 0.5  # face centers sit at cell z + 0.5
         contacts.append(
             SideContact(
                 a_id=a_id,
@@ -174,6 +180,8 @@ def _side_contacts(layout: Layout) -> list[SideContact]:
                 direction=direction,
                 face_count=len(centers),
                 centroid=(float(cx), float(cy), float(cz)),
+                z_lo=int(layers.min()),
+                z_hi=int(layers.max()),
             )
         )
     return contacts
