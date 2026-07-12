@@ -68,6 +68,12 @@ ignore = ["COM812", "D105", "D107", "D203", "D212", "D213", "EM101", "PLR2004", 
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ANN001", "ANN002", "ANN003", "ANN201", "ARG001", "ARG005", "D103", "D104", "DTZ003", "ERA001", "F403", "F405", "FBT002", "G004", "N802", "PLC0415", "PLR2004", "PLW1510", "PT011", "PT013", "PTH110", "PTH118", "PTH119", "PTH122", "PTH123", "PTH207", "S101", "S102", "S311", "S603", "S607", "SIM115"]
+"scripts/**/*.py" = ["INP001", "T201"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: full benchmark sweeps; deselect with -m 'not slow'",
+]
 
 [tool.deptry]
 known_first_party = ["legolization"]
