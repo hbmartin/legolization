@@ -7,8 +7,8 @@ from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.layout import Layout
-from legolization.placement.base import evaluate
-from legolization.placement.greedy import GreedyStrategy
+from legolization.placement.base import _seam_alignment, evaluate
+from legolization.placement.greedy import GreedyStrategy, _h_lookahead
 from legolization.placement.luo import LuoStrategy
 from legolization.placement.merge import (
     atomize,
@@ -168,6 +168,109 @@ def test_greedy_rebonds_phase_mismatched_columns():
     graph = ConnectionGraph.from_layout(layout)
     assert graph.component_count() == 1
     assert not graph.floating_ids()
+
+
+def test_h_lookahead_values():
+    # Exact equality-knapsack below rho = 25, 8-stud peeling above.
+    assert [_h_lookahead(r) for r in (0, 1, 2, 5, 7, 8, 12, 16)] == [
+        0,
+        1,
+        1,
+        2,
+        2,
+        1,
+        2,
+        2,
+    ]
+    assert _h_lookahead(25) == 4  # 8 peeled + exact(17) = 1 + 3
+    assert _h_lookahead(64) == 8
+
+
+def test_seam_alignment_distinguishes_bond_patterns():
+    # Stretcher bond: staggered seams never repeat -> 0.0.
+    stretcher = Layout(catalog=default_catalog())
+    for x in (0, 4):
+        stretcher.add("brick_1x4", x, 0, 0, 0, 4)
+    stretcher.add("brick_1x2", 0, 0, 3, 0, 4)
+    stretcher.add("brick_1x4", 2, 0, 3, 0, 4)
+    stretcher.add("brick_1x2", 6, 0, 3, 0, 4)
+    assert _seam_alignment(stretcher) == 0.0
+
+    # Stack bond: every course repeats the seam; only the top one doesn't.
+    stack = Layout(catalog=default_catalog())
+    for course in range(3):
+        for x in (0, 4):
+            stack.add("brick_1x4", x, 0, 3 * course, 0, 4)
+    assert _seam_alignment(stack) == pytest.approx(2 / 3)
+
+
+def test_greedy_staggers_wall_without_repair():
+    # A 7-wide two-course wall: h(r) makes 6+1 and staggered splits tie on
+    # part count, and the distance-aware bond term breaks the tie away from
+    # the stacked seam — no reinforcement pass needed.
+    codes = np.full((7, 1, 6), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    layout = GreedyStrategy(refine=False).place(grid, rng=np.random.default_rng(0))
+    _assert_exact_cover(layout, grid)
+    assert _seam_alignment(layout) == 0.0
+
+
+def test_bond_alpha2_distance_decay_matters():
+    # Two candidates above a seam: one continues it (d = 0), one keeps two
+    # studs of stagger (d = 2). The decay makes the staggered candidate the
+    # better bond; killing the decay (alpha2 = 0) flips the ordering, since
+    # then every border with any seam in the window is penalized alike.
+    from legolization.placement.base import ObjectiveWeights
+    from legolization.placement.greedy import _Candidate
+
+    def bond(strategy: GreedyStrategy, layout: Layout, cells) -> float:
+        key = default_catalog().rect_key(1, len(cells), 3)
+        assert key is not None
+        candidate = _Candidate(
+            part=default_catalog()[key],
+            anchor=cells[0],
+            yaw=0,
+            cells=tuple(cells),
+        )
+        return strategy._bond_score(layout, candidate)  # noqa: SLF001
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x4", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 4, 0, 0, 0, 4)  # seam below at x = 3|4
+    aligned = [(x, 0, 3) for x in range(4)]  # border continues the seam
+    staggered = [(x, 0, 3) for x in range(2)]  # border two studs away
+
+    decayed = GreedyStrategy()
+    assert bond(decayed, layout, staggered) > bond(decayed, layout, aligned)
+
+    flat = GreedyStrategy(weights=ObjectiveWeights(bond_alpha2=0.0))
+    assert bond(flat, layout, staggered) < bond(flat, layout, aligned)
+
+
+def test_reinforce_rebuilds_vary_with_rng():
+    # F5: rebuild fills shuffle seed order within layers, so different rng
+    # states must be able to produce different layouts on a tie-rich region.
+    codes = np.full((7, 2, 3), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    strategy = GreedyStrategy(refine=False)
+
+    def rebuild(seed: int) -> frozenset[tuple[str, int, int, int, int]]:
+        layout = Layout(catalog=default_catalog())
+        uncovered = {
+            (int(x), int(y), int(z))
+            for x, y, z in zip(*grid.filled_mask.nonzero(), strict=True)
+        }
+        strategy._fill(  # noqa: SLF001
+            layout,
+            grid,
+            uncovered,
+            np.random.default_rng(seed),
+            shuffle_within_layers=True,
+        )
+        return frozenset((b.part_key, b.x, b.y, b.layer, b.yaw) for b in layout)
+
+    layouts = {rebuild(seed) for seed in range(4)}
+    assert len(layouts) > 1
 
 
 def test_improve_connectivity_bridges_grounded_towers():

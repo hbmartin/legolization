@@ -68,6 +68,22 @@ def test_cli_reports_missing_file(tmp_path, capsys):
     assert "error" in capsys.readouterr().err
 
 
+def test_pipeline_is_deterministic_for_seed():
+    codes = np.full((5, 5, 3), EMPTY, dtype=np.int16)
+    for z in range(3):
+        codes[z : 5 - z, z : 5 - z, z] = 4
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+    config = PipelineConfig(seed=3)
+
+    def snapshot() -> list[tuple[str, int, int, int, int, int]]:
+        result = run(grid, config)
+        return sorted(
+            (b.part_key, b.x, b.y, b.layer, b.yaw, b.colour_code) for b in result.layout
+        )
+
+    assert snapshot() == snapshot()
+
+
 def test_disjoint_islands_are_not_buildable(tmp_path, capsys):
     # Two voxel islands with an air gap: each stands, but no single model
     # connects them — brick-graph semantics report 2 components, exit 2.
