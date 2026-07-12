@@ -29,10 +29,8 @@ dependencies = [
     "numpy>=2.5.1",
     "osqp>=1.1.3",
     "pyldraw3>=1.0.0",
-    "pyperclip>=1.11.0",
     "scipy>=1.18.0",
     "scs>=3.2.11",
-    "textual>=8.2.8",
     "trimesh>=4.12.2",
 ]
 
@@ -42,11 +40,12 @@ legolization = "legolization.main:main"
 [project.urls]
 Homepage = "https://github.com/hbmartin/legolization"
 Repository = "https://github.com/hbmartin/legolization"
-Documentation = "https://github.com/hbmartin/legolization/blob/main/GUIDE.md"
+Documentation = "https://github.com/hbmartin/legolization/blob/main/README.md"
 Changelog = "https://github.com/hbmartin/legolization/releases"
 
 [dependency-groups]
 dev = [
+    "deptry>=0.23.0",
     "lizard>=1.23.0",
     "pyrefly>=1.1.1",
     "pytest>=9.1.1",
@@ -57,7 +56,7 @@ dev = [
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "setup.py", "site-packages", "venv"]
+exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "venv"]
 
 line-length = 88
 indent-width = 4
@@ -69,6 +68,15 @@ ignore = ["COM812", "D105", "D107", "D203", "D212", "D213", "EM101", "PLR2004", 
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ANN001", "ANN002", "ANN003", "ANN201", "ARG001", "ARG005", "D103", "D104", "DTZ003", "ERA001", "F403", "F405", "FBT002", "G004", "N802", "PLC0415", "PLR2004", "PLW1510", "PT011", "PT013", "PTH110", "PTH118", "PTH119", "PTH122", "PTH123", "PTH207", "S101", "S102", "S311", "S603", "S607", "SIM115"]
+
+[tool.deptry]
+known_first_party = ["legolization"]
+extend_exclude = ["papers PDFs"]
+
+[tool.deptry.per_rule_ignores]
+# clarabel/highspy/osqp/scs are cvxpy/scipy solver backends loaded by name at
+# runtime, never imported; trimesh is reserved for the M6 mesh front-end.
+DEP002 = ["clarabel", "highspy", "osqp", "scs", "trimesh"]
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12.0"]

@@ -56,7 +56,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--milp",
         action="store_true",
-        help="use the exact MILP complementarity physics (slower)",
+        help="debug cross-check of the exact LP with MILP complementarity (slower)",
     )
     parser.add_argument(
         "--plates-per-voxel",

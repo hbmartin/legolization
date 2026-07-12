@@ -7,12 +7,16 @@ the failure.
 
 Two modes:
 
-- ``lp`` (default): the BrickGPT-style convex relaxation. Shared interface
-  variables satisfy Newton's third law by construction and the bilinear
-  non-coexistence constraint (a point cannot both press and pull) is
-  dropped. Fast, open solvers, slightly optimistic.
-- ``milp``: adds big-M complementarity (``normal·drag = 0`` per contact
-  point) with boolean switches — closer to the paper, slower.
+- ``lp`` (default): the convex program with the bilinear non-coexistence
+  constraint (a point cannot both press and pull) dropped. The relaxation
+  is provably **exact**, not optimistic: each contact point's normal and
+  drag columns are exact negatives of each other, so any solution with
+  both positive can subtract the common minimum from both, leaving every
+  equilibrium residual unchanged while strictly reducing the ``BETA``
+  term — every LP optimum therefore already satisfies non-coexistence.
+- ``milp``: enforces non-coexistence explicitly with big-M complementarity
+  (``normal·drag = 0`` per contact point) and boolean switches. Redundant
+  given the exactness above; kept as a debug cross-check of the LP.
 """
 
 from __future__ import annotations
@@ -32,15 +36,20 @@ if TYPE_CHECKING:
     from legolization.graph import ConnectionGraph
     from legolization.layout import Layout
 
-_MILP_SOLVERS = ("HIGHS", "SCIP")
+_MILP_SOLVERS = ("HIGHS",)
 
 
 @dataclass(frozen=True, slots=True)
 class SolverConfig:
     """Tunables for the stability solve.
 
-    ``solver`` names a cvxpy backend for MILP mode; LP mode always uses
-    scipy's HiGHS interface directly.
+    ``solver`` names a cvxpy backend for MILP mode (e.g. ``"SCIP"`` if
+    pyscipopt is installed); LP mode always uses scipy's HiGHS interface
+    directly.
+
+    ``drag_big_m``/``normal_big_m`` are artificial force ceilings for the
+    MILP's big-M complementarity switches only — they have no counterpart
+    in the papers and never constrain the (exact) LP mode.
     """
 
     mode: Literal["lp", "milp"] = "lp"

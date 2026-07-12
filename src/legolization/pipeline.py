@@ -161,7 +161,6 @@ def _strategy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         case "luo":
             return LuoStrategy(
                 catalog=catalog,
-                weights=config.weights,
                 solver_config=config.solver,
             )
 

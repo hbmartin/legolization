@@ -105,6 +105,30 @@ def test_milp_matches_lp_on_stable_stack(layout):
     assert milp.stable
 
 
+def _assert_lp_milp_agree(layout: Layout) -> None:
+    """Assert the MILP reproduces the (exact) LP relaxation everywhere."""
+    lp = analyze(layout, SolverConfig(mode="lp"))
+    milp = analyze(layout, SolverConfig(mode="milp"))
+    assert lp.stable == milp.stable
+    assert lp.unstable_ids == milp.unstable_ids
+    for brick_id, lp_score in lp.scores.items():
+        assert milp.scores[brick_id].score == pytest.approx(lp_score.score, abs=1e-4)
+
+
+def test_milp_matches_lp_on_stressed_cantilever(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)
+    _assert_lp_milp_agree(layout)
+
+
+def test_milp_matches_lp_on_overloaded_cantilever(layout):
+    layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    layout.add("brick_1x6", 1, 0, 3, 0, 4)
+    for level in range(24):
+        layout.add("brick_2x2", 5, 0, 6 + 3 * level, 0, 4)
+    _assert_lp_milp_agree(layout)
+
+
 def test_model_shape(layout):
     layout.add("brick_2x4", 0, 0, 0, 0, 4)
     layout.add("brick_2x4", 0, 0, 3, 0, 4)
@@ -144,8 +168,9 @@ def test_lp_fallback_requires_successful_linprog(layout, monkeypatch):
     assert calls == 2
 
 
-def test_milp_fallback_skips_non_optimal_statuses():
+def test_milp_fallback_skips_non_optimal_statuses(monkeypatch):
     solve_with_fallback = solver_module._solve_with_fallback  # noqa: SLF001
+    monkeypatch.setattr(solver_module, "_MILP_SOLVERS", ("HIGHS", "SCIP"))
 
     class FakeProblem:
         """Fake cvxpy problem that succeeds only on the second solver."""
@@ -165,8 +190,9 @@ def test_milp_fallback_skips_non_optimal_statuses():
     assert problem.solvers == ["HIGHS", "SCIP"]
 
 
-def test_milp_fallback_does_not_chain_stale_solver_error():
+def test_milp_fallback_does_not_chain_stale_solver_error(monkeypatch):
     solve_with_fallback = solver_module._solve_with_fallback  # noqa: SLF001
+    monkeypatch.setattr(solver_module, "_MILP_SOLVERS", ("HIGHS", "SCIP"))
 
     class FakeProblem:
         """Fake cvxpy problem where a later solver returns a final status."""

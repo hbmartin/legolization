@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from legolization.catalog import default_catalog
-from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import (
     atomize,
     compact_vertical,
@@ -46,7 +45,6 @@ class LuoStrategy:
     """Maximal random merge + component/stability split-remerge refinement."""
 
     catalog: Catalog = field(default_factory=default_catalog)
-    weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver_config: SolverConfig = field(default_factory=SolverConfig)
     fail_max: int = 30
 
