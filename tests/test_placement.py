@@ -386,7 +386,9 @@ def test_hollow_sphere_brick_count_regression():
 
     from legolization.pipeline import PipelineConfig, run
 
-    result = run(grid, PipelineConfig(seed=0))
+    # Thin shell to isolate the raft-reclaim mechanism (the audit's setup);
+    # the default 3-plate shell simply carries more material.
+    result = run(grid, PipelineConfig(seed=0, shell_studs=1, shell_plates=1))
     assert result.buildable
     assert result.brick_count <= 160
 

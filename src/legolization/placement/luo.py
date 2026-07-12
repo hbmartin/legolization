@@ -62,6 +62,7 @@ class LuoStrategy:
     acceptance: Literal["rbe", "maximin"] = "maximin"
     colour_mode: ColourMode = "hard"
     colour_weight: float = 1.0
+    refine: bool = True
 
     def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
         """Produce a merged layout, refined for connectivity then stability."""
@@ -72,15 +73,16 @@ class LuoStrategy:
             colour_mode=self.colour_mode,
             colour_weight=self.colour_weight,
         )
-        improve_connectivity(
-            layout,
-            grid,
-            rng,
-            fail_max=self.fail_max,
-            colour_mode=self.colour_mode,
-            colour_weight=self.colour_weight,
-        )
-        self._stabilize(layout, grid, rng)
+        if self.refine:
+            improve_connectivity(
+                layout,
+                grid,
+                rng,
+                fail_max=self.fail_max,
+                colour_mode=self.colour_mode,
+                colour_weight=self.colour_weight,
+            )
+            self._stabilize(layout, grid, rng)
         compact_vertical(layout)
         return layout
 

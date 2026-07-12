@@ -58,11 +58,26 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="debug cross-check of the exact LP with MILP complementarity (slower)",
     )
-    parser.add_argument(
+    scale = parser.add_mutually_exclusive_group()
+    scale.add_argument(
         "--plates-per-voxel",
         type=int,
         default=3,
         help="vertical plates per input voxel (default 3 = brick height)",
+    )
+    scale.add_argument(
+        "--aspect-correct",
+        action="store_true",
+        help=(
+            "resample to 2.5 plates per voxel so cubic voxels keep their "
+            "aspect ratio (bricks are 20 LDU wide but 24 LDU tall)"
+        ),
+    )
+    parser.add_argument(
+        "--shell-plates",
+        type=int,
+        default=3,
+        help="hollow-shell floor/ceiling thickness in plates (default 3)",
     )
     parser.add_argument("--seed", type=int, default=0, help="random seed")
     parser.add_argument(
@@ -107,6 +122,8 @@ def main(argv: list[str] | None = None) -> int:
         refine=not args.no_refine,
         seed=args.seed,
         plates_per_voxel=args.plates_per_voxel,
+        aspect_correct=args.aspect_correct,
+        shell_plates=args.shell_plates,
         colour_mode=args.colour,
         colour_weight=args.colour_weight,
         dither=args.dither,

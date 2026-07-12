@@ -40,6 +40,9 @@ class PipelineConfig:
     refine: bool = True
     seed: int = 0
     plates_per_voxel: int = 3
+    aspect_correct: bool = False
+    shell_studs: int = 1
+    shell_plates: int = 3
     ignore_interior: bool = True
     colour_mode: Literal["hard", "soft"] = "hard"
     colour_weight: float = 1.0
@@ -81,7 +84,15 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     config = config or PipelineConfig()
     catalog = default_catalog()
     rng = np.random.default_rng(config.seed)
-    working = hollow_grid(grid) if config.hollow else grid
+    working = (
+        hollow_grid(
+            grid,
+            shell_studs=config.shell_studs,
+            shell_plates=config.shell_plates,
+        )
+        if config.hollow
+        else grid
+    )
     if config.ignore_interior:
         working = _ignore_interior(working)
 
@@ -148,12 +159,14 @@ def run_file(
                 input_path,
                 plates_per_voxel=config.plates_per_voxel,
                 dither=config.dither,
+                aspect_correct=config.aspect_correct,
             )
         case ".npy":
             grid = VoxelGrid.from_npy(
                 input_path,
                 plates_per_voxel=config.plates_per_voxel,
                 dither=config.dither,
+                aspect_correct=config.aspect_correct,
             )
         case suffix:
             msg = f"unsupported input format {suffix!r} (expected .vox or .npy)"
@@ -199,6 +212,7 @@ def _strategy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
                 solver_config=config.solver,
                 colour_mode=config.colour_mode,
                 colour_weight=config.colour_weight,
+                refine=config.refine,
             )
 
 

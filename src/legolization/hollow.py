@@ -1,9 +1,10 @@
 """Stability-aware auto-hollowing.
 
-Hollowing erodes the filled volume to a 1-cell shell (cheaper, lighter
-models). The pipeline runs placement + the RBE on the hollowed grid and, if
-physics disagrees, calls :func:`restore_columns` to put interior fill back
-underneath the offending bricks and tries again.
+Hollowing erodes the filled volume to a shell (cheaper, lighter models) —
+by default 1 stud of wall and 3 plates (one brick) of floor/ceiling, close
+to Luo's ~3-voxel-width shells. The pipeline runs placement + the RBE on
+the hollowed grid and, if physics disagrees, calls :func:`restore_columns`
+to put interior fill back underneath the offending bricks and tries again.
 """
 
 from __future__ import annotations
@@ -18,10 +19,20 @@ if TYPE_CHECKING:
     from legolization.catalog import Cell
 
 
-def hollow_grid(grid: VoxelGrid) -> VoxelGrid:
-    """Remove interior cells, keeping a 1-cell-thick shell."""
+def hollow_grid(
+    grid: VoxelGrid,
+    *,
+    shell_studs: int = 1,
+    shell_plates: int = 3,
+) -> VoxelGrid:
+    """Remove core cells, keeping the given shell thickness.
+
+    ``shell_studs`` is the lateral wall thickness, ``shell_plates`` the
+    floor/ceiling thickness; the defaults keep about one brick of material
+    in every direction.
+    """
     codes = grid.codes.copy()
-    codes[grid.interior_mask()] = EMPTY
+    codes[grid.core_mask(margin_xy=shell_studs, margin_z=shell_plates)] = EMPTY
     return grid.with_codes(codes)
 
 
