@@ -180,10 +180,52 @@ def maximal_random_merge(
     ``colour_weight / (1/e_a + 1/e_b + colour_weight)`` — large weights
     recover the hard constraint.
     """
+    _random_merge_from(
+        layout,
+        rng,
+        seed_ids=set(layout.bricks),
+        colour_mode=colour_mode,
+        colour_weight=colour_weight,
+    )
+
+
+def regional_random_merge(
+    layout: Layout,
+    seed_ids: set[int],
+    rng: np.random.Generator,
+    *,
+    colour_mode: ColourMode = "hard",
+    colour_weight: float = 1.0,
+) -> None:
+    """Randomly merge outward from ``seed_ids`` until locally maximal.
+
+    Only pairs touching the seed set (or bricks created by its merges) are
+    considered, so a repaired region re-bonds — including across its own
+    boundary — without churning the rest of the layout.
+    """
+    _random_merge_from(
+        layout,
+        rng,
+        seed_ids=seed_ids,
+        colour_mode=colour_mode,
+        colour_weight=colour_weight,
+    )
+
+
+def _random_merge_from(
+    layout: Layout,
+    rng: np.random.Generator,
+    *,
+    seed_ids: set[int],
+    colour_mode: ColourMode,
+    colour_weight: float,
+) -> None:
     pairs: set[tuple[int, int]] = set()
-    for brick in list(layout):
-        for other_id in neighbour_ids(layout, brick.brick_id):
-            pairs.add(_ordered(brick.brick_id, other_id))
+    for brick_id in sorted(seed_ids):  # id order keeps runs reproducible
+        if brick_id not in layout.bricks:
+            continue
+        for other_id in neighbour_ids(layout, brick_id):
+            pairs.add(_ordered(brick_id, other_id))
     pending = list(pairs)
     while pending:
         index = int(rng.integers(len(pending)))

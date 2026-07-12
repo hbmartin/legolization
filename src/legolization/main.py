@@ -74,6 +74,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="skip the stability-driven refinement loop",
     )
     parser.add_argument(
+        "--no-repair",
+        action="store_true",
+        help="skip the ALNS destroy-and-repair pass on unstable layouts",
+    )
+    parser.add_argument(
         "--milp",
         action="store_true",
         help="debug cross-check of the exact LP with MILP complementarity (slower)",
@@ -145,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         slopes=args.slopes,
         tiles=args.tiles,
         refine=not args.no_refine,
+        repair=not args.no_repair,
         seed=args.seed,
         plates_per_voxel=args.plates_per_voxel,
         aspect_correct=args.aspect_correct,

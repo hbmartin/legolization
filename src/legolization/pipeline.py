@@ -14,6 +14,7 @@ from legolization.hollow import hollow_grid, restore_columns
 from legolization.ldraw_out import write_model
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
+from legolization.placement.repair import RepairConfig, repair_stability
 from legolization.placement.slopes import apply_slopes, apply_tiles
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
@@ -52,6 +53,8 @@ class PipelineConfig:
         "balanced"
     )
     progress: Callable[[str], None] | None = None
+    repair: bool = True
+    repair_config: RepairConfig = field(default_factory=RepairConfig)
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
 
@@ -101,7 +104,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     if config.ignore_interior:
         working = _ignore_interior(working)
 
-    layout, stability = _place(working, catalog, config, rng)
+    layout, stability = _place_and_repair(working, catalog, config, rng)
     if config.hollow:
         rounds = 0
         while not stability.stable and rounds < config.hollow_rounds:
@@ -119,7 +122,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
             if restored is working:
                 break
             working = restored
-            layout, stability = _place(working, catalog, config, rng)
+            layout, stability = _place_and_repair(working, catalog, config, rng)
             rounds += 1
 
     if final_remerge(
@@ -191,15 +194,27 @@ def _ignore_interior(grid: VoxelGrid) -> VoxelGrid:
     return grid.with_codes(codes)
 
 
-def _place(
+def _place_and_repair(
     grid: VoxelGrid,
     catalog: Catalog,
     config: PipelineConfig,
     rng: np.random.Generator,
 ) -> tuple[Layout, StabilityResult]:
+    """Place, then rearrange at constant volume before any material is added."""
     strategy = _strategy(catalog, config)
     layout = strategy.place(grid, rng=rng)
-    return layout, analyze(layout, config.solver)
+    stability = analyze(layout, config.solver)
+    if config.repair and not stability.stable:
+        repair_stability(
+            layout,
+            grid,
+            catalog=catalog,
+            solver_config=config.solver,
+            rng=rng,
+            config=config.repair_config,
+        )
+        stability = analyze(layout, config.solver)
+    return layout, stability
 
 
 def _strategy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:

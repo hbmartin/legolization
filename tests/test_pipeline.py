@@ -92,15 +92,15 @@ def test_hollow_restore_loop_fires_on_instability(monkeypatch):
     monkeypatch.setattr(pipeline_module, "analyze", fake_analyze)
     codes = np.full((6, 6, 4), 4, dtype=np.int16)
     grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
-    result = run(grid, PipelineConfig(seed=0))
+    # repair=False isolates the restore loop (repair would consume the
+    # faked unstable verdict by rearranging instead of adding material).
+    result = run(grid, PipelineConfig(seed=0, repair=False))
 
     assert calls["count"] > 1  # the loop re-placed after restoring
     assert result.stability.stable
     assert (result.grid.codes == IGNORE).any()  # restored fill is IGNORE
-    assert (
-        result.grid.filled_count
-        > run(grid, PipelineConfig(seed=0, hollow_rounds=0)).grid.filled_count
-    )
+    baseline = run(grid, PipelineConfig(seed=0, hollow_rounds=0, repair=False))
+    assert result.grid.filled_count > baseline.grid.filled_count
 
 
 def test_luo_no_refine_skips_refinement(monkeypatch):
