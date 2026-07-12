@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -11,6 +11,12 @@ from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
+from legolization.instructions.bom import bill_of_materials
+from legolization.instructions.sequencer import (
+    InstructionPlan,
+    InstructionsConfig,
+    plan_instructions,
+)
 from legolization.ldraw_out import write_model
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
@@ -55,6 +61,7 @@ class PipelineConfig:
     progress: Callable[[str], None] | None = None
     repair: bool = True
     repair_config: RepairConfig = field(default_factory=RepairConfig)
+    instructions: InstructionsConfig = field(default_factory=InstructionsConfig)
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
 
@@ -72,6 +79,12 @@ class PipelineResult:
     floating_count: int
     slopes_added: int = 0
     tiles_added: int = 0
+    plan: InstructionPlan | None = None
+
+    @property
+    def step_count(self) -> int:
+        """Number of instruction steps (0 without a plan)."""
+        return len(self.plan.steps) if self.plan is not None else 0
 
     @property
     def buildable(self) -> bool:
@@ -140,6 +153,15 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     if slopes_added or tiles_added:
         stability = analyze(layout, config.solver)
 
+    plan: InstructionPlan | None = None
+    if config.instructions.mode == "smart":
+        instructions_config = (
+            config.instructions
+            if config.instructions.solver is not None
+            else replace(config.instructions, solver=config.solver)
+        )
+        plan = plan_instructions(layout, config=instructions_config)
+
     graph = ConnectionGraph.from_layout(layout)
     return PipelineResult(
         layout=layout,
@@ -151,6 +173,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         floating_count=len(graph.floating_ids()),
         slopes_added=slopes_added,
         tiles_added=tiles_added,
+        plan=plan,
     )
 
 
@@ -158,8 +181,14 @@ def run_file(
     input_path: Path,
     output_path: Path,
     config: PipelineConfig | None = None,
+    *,
+    bom_path: Path | None = None,
 ) -> PipelineResult:
-    """Load a ``.vox``/``.npy`` grid, run the pipeline, write ``.ldr``/``.mpd``."""
+    """Load a ``.vox``/``.npy`` grid, run the pipeline, write ``.ldr``/``.mpd``.
+
+    ``bom_path`` additionally writes the bill of materials (JSON when the
+    suffix is ``.json``, text otherwise).
+    """
     config = config or PipelineConfig()
     match input_path.suffix.lower():
         case ".vox":
@@ -180,7 +209,17 @@ def run_file(
             msg = f"unsupported input format {suffix!r} (expected .vox or .npy)"
             raise ValueError(msg)
     result = run(grid, config)
-    write_model(result.layout, output_path)
+    write_model(result.layout, output_path, plan=result.plan)
+    if bom_path is not None:
+        bom = (
+            result.plan.bom
+            if result.plan is not None
+            else bill_of_materials(result.layout)
+        )
+        if bom_path.suffix.lower() == ".json":
+            bom_path.write_text(bom.to_json(model_name=output_path.name) + "\n")
+        else:
+            bom_path.write_text(bom.to_text() + "\n")
     return result
 
 
