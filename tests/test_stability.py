@@ -165,5 +165,31 @@ def test_milp_fallback_skips_non_optimal_statuses():
     assert problem.solvers == ["HIGHS", "SCIP"]
 
 
+def test_milp_fallback_does_not_chain_stale_solver_error():
+    solve_with_fallback = solver_module._solve_with_fallback  # noqa: SLF001
+
+    class FakeProblem:
+        """Fake cvxpy problem where a later solver returns a final status."""
+
+        def __init__(self) -> None:
+            self.status = "not-started"
+            self.solvers: list[str] = []
+
+        def solve(self, *, solver: str) -> None:
+            """Raise once, then expose a cvxpy-like non-optimal status."""
+            self.solvers.append(solver)
+            if len(self.solvers) == 1:
+                raise solver_module.cp.SolverError
+            self.status = "infeasible"
+
+    problem: Any = FakeProblem()
+
+    with pytest.raises(RuntimeError, match="last status: infeasible") as exc_info:
+        solve_with_fallback(problem, SolverConfig(mode="milp"))
+
+    assert exc_info.value.__cause__ is None
+    assert problem.solvers == ["HIGHS", "SCIP"]
+
+
 def test_empty_layout_is_stable(layout):
     assert analyze(layout).stable

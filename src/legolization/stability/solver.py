@@ -223,6 +223,7 @@ def _solve_with_fallback(problem: cp.Problem, config: SolverConfig) -> str:
         except (cp.SolverError, ValueError) as error:
             last_error = error
         else:
+            last_error = None
             last_status = str(problem.status)
             if problem.status in (cp.OPTIMAL, cp.OPTIMAL_INACCURATE):
                 return last_status
