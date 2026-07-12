@@ -184,6 +184,10 @@ class BeautyStrategy(LayeredStrategy):
         incompatible_exact_stack = (
             exact_stack is not None and merge_colour(rect.colour, exact_stack) is None
         )
+        # A partial overlap is only charged when this rect's colour could
+        # have completed the stack; a colour-incompatible rect never had
+        # the vertical merge available, so it forfeits nothing by covering
+        # part of the footprint.
         incomplete_stack = incompatible_exact_stack or any(
             columns & footprint
             and columns != footprint

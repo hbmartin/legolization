@@ -2,13 +2,13 @@
 
 import importlib.util
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
 
 from legolization.grid import VoxelGrid
-from legolization.pipeline import PipelineConfig, PipelineResult, run
+from legolization.pipeline import PipelineConfig, run
 from legolization.placement.registry import strategy_names
 
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "benchmark.py"
@@ -47,17 +47,28 @@ def test_empty_markdown_rendering():
 def test_benchmark_isolates_strategy_failures(monkeypatch, capsys):
     module = _load_benchmark()
     grid = VoxelGrid(codes=np.full((1, 1, 3), 4, dtype=np.int16))
-    real_run = module.run
 
-    def selective_run(grid, config) -> PipelineResult:
+    def fake_run(grid: VoxelGrid, config: PipelineConfig) -> SimpleNamespace:
         if config.strategy == "broken":
             msg = "synthetic failure"
             raise RuntimeError(msg)
-        return real_run(grid, config)
+        return SimpleNamespace(
+            layout=None,
+            grid=grid,
+            brick_count=1,
+            mass_g=1.0,
+            step_count=1,
+            buildable=True,
+            stability=SimpleNamespace(max_score=0.0, min_capacity=1.0),
+        )
 
+    fake_report = SimpleNamespace(
+        aesthetics=0.0, perpendicularity=0.0, symmetry=0.0, colour_error=0.0
+    )
     monkeypatch.setattr(module, "_example_grids", lambda: {"tiny": grid})
     monkeypatch.setattr(module, "strategy_names", lambda: ("broken", "greedy"))
-    monkeypatch.setattr(module, "run", selective_run)
+    monkeypatch.setattr(module, "run", fake_run)
+    monkeypatch.setattr(module, "evaluate", lambda *_args, **_kwargs: fake_report)
 
     rows = module.benchmark(seed=0)
 

@@ -19,6 +19,17 @@ jobs:
       run: uv venv
     - name: Install dependencies
       run: uv sync --all-groups
+    - name: Cache LDraw parts library
+      id: ldraw-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/share/pyldraw3
+        key: pyldraw3-${{ runner.os }}
+    - name: Generate ldraw.library part/colour modules
+      if: steps.ldraw-cache.outputs.cache-hit != 'true'
+      run: |
+        uv run ldraw download
+        uv run ldraw generate
     - run: uv run ruff format --check .
     - run: uv run ruff check .
     - name: Run type checks

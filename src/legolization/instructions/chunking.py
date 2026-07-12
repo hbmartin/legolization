@@ -154,7 +154,14 @@ def _addition_size(
     band_ids: set[int],
 ) -> int:
     partner = pairs.get(brick_id)
-    return 2 if partner in band_ids and partner in unassigned else 1
+    return (
+        2
+        if partner is not None
+        and partner != brick_id
+        and partner in band_ids
+        and partner in unassigned
+        else 1
+    )
 
 
 def _merge_undersized_tail(chunks: list[list[int]], config: InstructionsConfig) -> None:
@@ -174,7 +181,12 @@ def _pull_partner(
     *,
     max_size: int,
 ) -> None:
-    """Keep mirror partners in the same step when they share the band."""
+    """Pull in-band mirror partners into the step while room remains.
+
+    Best-effort: a chunk already at ``max_size`` leaves the partner
+    unassigned, so the pair lands in separate steps rather than
+    overflowing this one.
+    """
     for brick_id in list(chunk):
         partner = pairs.get(brick_id)
         if (

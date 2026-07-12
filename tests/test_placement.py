@@ -8,7 +8,11 @@ from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.layout import Layout
 from legolization.placement.base import _seam_alignment, evaluate
-from legolization.placement.greedy import GreedyStrategy, _h_lookahead
+from legolization.placement.greedy import (
+    GreedyStrategy,
+    _grid_component_count,
+    _h_lookahead,
+)
 from legolization.placement.luo import LuoStrategy
 from legolization.placement.merge import (
     atomize,
@@ -422,6 +426,31 @@ def test_resolve_ignore_colours_uses_nearest_neighbour():
     assert set(layout.bricks) == brick_ids
     colours = sorted(b.colour_code for b in layout)
     assert colours == [4, 4, 71]  # neighbour red, isolated falls back to gray
+
+
+def test_reinforce_accepts_disjoint_grid_islands(monkeypatch):
+    # Two islands can never share a component, so reinforcement must treat
+    # the grid's own island count as done — not chase a single component
+    # through futile connectivity repairs and delete-rebuild churn.
+    codes = np.full((5, 1, 3), EMPTY, dtype=np.int16)
+    codes[:2, 0, :] = 4
+    codes[3:, 0, :] = 4
+    grid = VoxelGrid(codes=codes)
+    assert _grid_component_count(grid) == 2
+
+    def fail_connectivity(*_args: object, **_kwargs: object) -> None:
+        msg = "connectivity repair ran on an already island-complete layout"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(
+        "legolization.placement.greedy.improve_connectivity",
+        fail_connectivity,
+    )
+    layout = GreedyStrategy().place(grid, rng=np.random.default_rng(0))
+
+    graph = ConnectionGraph.from_layout(layout)
+    assert graph.component_count() == 2
+    assert not graph.floating_ids()
 
 
 def test_hollow_sphere_brick_count_regression():
