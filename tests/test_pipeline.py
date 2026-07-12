@@ -68,6 +68,16 @@ def test_cli_reports_missing_file(tmp_path, capsys):
     assert "error" in capsys.readouterr().err
 
 
+def test_no_ignore_colours_reach_output():
+    # Interior cells become the IGNORE label during placement; export-time
+    # resolution must leave only real LDraw colour codes.
+    codes = np.full((5, 5, 3), 4, dtype=np.int16)
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+    result = run(grid, PipelineConfig(hollow=False, seed=0))
+    assert all(brick.colour_code >= 0 for brick in result.layout)
+    assert result.buildable
+
+
 def test_pipeline_is_deterministic_for_seed():
     codes = np.full((5, 5, 3), EMPTY, dtype=np.int16)
     for z in range(3):

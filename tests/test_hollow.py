@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from legolization.grid import EMPTY, VoxelGrid
+from legolization.grid import EMPTY, IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
 
 
@@ -23,8 +23,10 @@ def test_restore_columns_refills():
     grid = _solid_cube()
     hollowed = hollow_grid(grid)
     restored = restore_columns(grid, hollowed, {(2, 2, 2)}, radius=0)
-    assert restored.code_at(2, 2, 2) == 4
-    assert restored.code_at(2, 2, 1) == 4  # whole column comes back
+    # Restored cells were interior (invisible), so they come back as the
+    # colour-free IGNORE label that merges with any brick colour.
+    assert restored.code_at(2, 2, 2) == IGNORE
+    assert restored.code_at(2, 2, 1) == IGNORE  # whole column comes back
     assert restored.filled_count == hollowed.filled_count + 3 * 3 * 3 // 9
 
 

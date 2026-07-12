@@ -9,12 +9,13 @@ import numpy as np
 
 from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
-from legolization.grid import VoxelGrid
+from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
 from legolization.ldraw_out import write_model
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.greedy import GreedyStrategy
 from legolization.placement.luo import LuoStrategy
+from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.slopes import apply_slopes, apply_tiles
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
@@ -39,6 +40,10 @@ class PipelineConfig:
     refine: bool = True
     seed: int = 0
     plates_per_voxel: int = 3
+    ignore_interior: bool = True
+    colour_mode: Literal["hard", "soft"] = "hard"
+    colour_weight: float = 1.0
+    dither: bool = False
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
 
@@ -77,6 +82,8 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     catalog = default_catalog()
     rng = np.random.default_rng(config.seed)
     working = hollow_grid(grid) if config.hollow else grid
+    if config.ignore_interior:
+        working = _ignore_interior(working)
 
     layout, stability = _place(working, catalog, config, rng)
     if config.hollow:
@@ -98,6 +105,16 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
             working = restored
             layout, stability = _place(working, catalog, config, rng)
             rounds += 1
+
+    if final_remerge(
+        layout,
+        working,
+        rng,
+        weights=config.weights,
+        solver_config=config.solver,
+    ):
+        stability = analyze(layout, config.solver)
+    resolve_ignore_colours(layout)
 
     slopes_added = apply_slopes(layout, working) if config.slopes else 0
     tiles_added = apply_tiles(layout) if config.tiles else 0
@@ -128,11 +145,15 @@ def run_file(
     match input_path.suffix.lower():
         case ".vox":
             grid = VoxelGrid.from_vox(
-                input_path, plates_per_voxel=config.plates_per_voxel
+                input_path,
+                plates_per_voxel=config.plates_per_voxel,
+                dither=config.dither,
             )
         case ".npy":
             grid = VoxelGrid.from_npy(
-                input_path, plates_per_voxel=config.plates_per_voxel
+                input_path,
+                plates_per_voxel=config.plates_per_voxel,
+                dither=config.dither,
             )
         case suffix:
             msg = f"unsupported input format {suffix!r} (expected .vox or .npy)"
@@ -140,6 +161,16 @@ def run_file(
     result = run(grid, config)
     write_model(result.layout, output_path)
     return result
+
+
+def _ignore_interior(grid: VoxelGrid) -> VoxelGrid:
+    """Mark interior cells colour-free so merges cross invisible boundaries."""
+    interior = grid.interior_mask()
+    if not interior.any():
+        return grid
+    codes = grid.codes.copy()
+    codes[interior] = IGNORE
+    return grid.with_codes(codes)
 
 
 def _place(
@@ -166,6 +197,8 @@ def _strategy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
             return LuoStrategy(
                 catalog=catalog,
                 solver_config=config.solver,
+                colour_mode=config.colour_mode,
+                colour_weight=config.colour_weight,
             )
 
 

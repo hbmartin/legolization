@@ -33,6 +33,20 @@ def test_bad_shape_rejected():
         VoxelGrid.from_array(np.zeros((2, 2), dtype=np.int64))
 
 
+def test_dither_mixes_gradient_colours():
+    # A red-to-blue gradient bar: plain quantization gives solid bands,
+    # dithering must interleave codes while covering the same cells.
+    n = 16
+    values = np.zeros((n, 2, 1, 4), dtype=np.uint8)
+    for x in range(n):
+        blend = x / (n - 1)
+        values[x, :, 0] = (int(200 * (1 - blend)), 0, int(200 * blend), 255)
+    plain = VoxelGrid.from_array(values, plates_per_voxel=1)
+    dithered = VoxelGrid.from_array(values, plates_per_voxel=1, dither=True)
+    assert (plain.filled_mask == dithered.filled_mask).all()
+    assert not np.array_equal(plain.codes, dithered.codes)
+
+
 def test_interior_and_surface_masks():
     codes = np.full((4, 4, 4), 7, dtype=np.int16)
     grid = VoxelGrid(codes=codes)

@@ -1,19 +1,24 @@
-"""Color-bounded merge/split engine (Luo-style, spatially indexed).
+"""Colour-bounded merge/split engine (Luo-style, spatially indexed).
 
 The engine starts from 1x1 atoms (bricks on absolute 3-plate slabs, plates
 elsewhere), then repeatedly merges random mergeable neighbour pairs until no
 merge is possible ("maximal" layout). Two bricks merge iff they share a
-layer, height, and colour, and their union footprint is a solid rectangle
-that exists in the catalog. Splitting a region back to atoms enables the
-k-ring reconfiguration loop of the refinement strategies.
+layer and height, their colours are compatible (equal, or either side is
+the colour-free ``IGNORE`` interior label), and their union footprint is a
+solid rectangle that exists in the catalog; the optional soft-colour mode
+additionally lets mismatched colours merge by Luo's importance sampling.
+Splitting a region back to atoms enables the k-ring reconfiguration loop of
+the refinement strategies.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections import deque
+from typing import TYPE_CHECKING, Literal
 
 from legolization.catalog import Category
 from legolization.graph import ConnectionGraph
+from legolization.grid import EMPTY, IGNORE, merge_colour
 from legolization.layout import Layout
 
 if TYPE_CHECKING:
@@ -22,9 +27,14 @@ if TYPE_CHECKING:
     from legolization.catalog import Catalog, Cell
     from legolization.grid import VoxelGrid
     from legolization.layout import PlacedBrick
+    from legolization.placement.base import ObjectiveWeights
+    from legolization.stability.solver import SolverConfig
+
+ColourMode = Literal["hard", "soft"]
 
 _MERGEABLE = (Category.BRICK, Category.PLATE)
 _RING_GROWTH = 10  # failures per extra reconfiguration ring (Luo's N)
+_FALLBACK_COLOUR = 71  # light bluish gray, for IGNORE bricks with no neighbour
 
 
 def place_rect(  # noqa: PLR0913 - a rect placement is naturally seven scalars
@@ -69,7 +79,7 @@ def atomize(grid: VoxelGrid, catalog: Catalog) -> Layout:
             z = 0
             while z < nz:
                 code = int(codes[x, y, z])
-                if code < 0:
+                if code == EMPTY:
                     z += 1
                     continue
                 slab_aligned = z % 3 == 0
@@ -123,8 +133,14 @@ def merged_rect(
     layout: Layout,
     a: PlacedBrick,
     b: PlacedBrick,
+    *,
+    require_colour: bool = True,
 ) -> tuple[int, int, int, int] | None:
-    """Return the union rect ``(x0, y0, x1, y1)`` if a+b can merge."""
+    """Return the union rect ``(x0, y0, x1, y1)`` if a+b can merge.
+
+    ``require_colour=False`` (soft-colour mode) skips the colour
+    compatibility check; the caller then resolves the merged colour.
+    """
     part_a = layout.part_of(a)
     part_b = layout.part_of(b)
     if (
@@ -132,7 +148,7 @@ def merged_rect(
         or part_b.category not in _MERGEABLE
         or a.layer != b.layer
         or part_a.height_plates != part_b.height_plates
-        or a.colour_code != b.colour_code
+        or (require_colour and merge_colour(a.colour_code, b.colour_code) is None)
     ):
         return None
     columns = {(x, y) for x, y, _ in layout.cells_of(a)}
@@ -151,8 +167,19 @@ def merged_rect(
 def maximal_random_merge(
     layout: Layout,
     rng: np.random.Generator,
+    *,
+    colour_mode: ColourMode = "hard",
+    colour_weight: float = 1.0,
 ) -> None:
-    """Merge random mergeable pairs in place until the layout is maximal."""
+    """Merge random mergeable pairs in place until the layout is maximal.
+
+    ``colour_mode="soft"`` lets mismatched colours merge via Luo's
+    importance sampling: the merged colour is drawn with probability
+    inversely proportional to how many of the other brick's stud columns
+    it would miscolour, and the merge is discarded with probability
+    ``colour_weight / (1/e_a + 1/e_b + colour_weight)`` — large weights
+    recover the hard constraint.
+    """
     pairs: set[tuple[int, int]] = set()
     for brick in list(layout):
         for other_id in neighbour_ids(layout, brick.brick_id):
@@ -166,11 +193,15 @@ def maximal_random_merge(
             continue
         a = layout.bricks[a_id]
         b = layout.bricks[b_id]
-        if (rect := merged_rect(layout, a, b)) is None:
+        require_colour = colour_mode == "hard"
+        if (rect := merged_rect(layout, a, b, require_colour=require_colour)) is None:
             continue
+        if (colour := merge_colour(a.colour_code, b.colour_code)) is None:
+            colour = _soft_colour(layout, a, b, colour_weight, rng)
+            if colour is None:
+                continue  # importance sampling discarded this merge
         layer = a.layer
         height = layout.part_of(a).height_plates
-        colour = a.colour_code
         layout.remove(a_id)
         layout.remove(b_id)
         merged = place_rect(layout, *rect, layer, height, colour)
@@ -180,12 +211,33 @@ def maximal_random_merge(
         )
 
 
-def improve_connectivity(
+def _soft_colour(
+    layout: Layout,
+    a: PlacedBrick,
+    b: PlacedBrick,
+    colour_weight: float,
+    rng: np.random.Generator,
+) -> int | None:
+    """Luo's soft-colour draw: pick a side's colour or discard the merge."""
+    error_a = len({(x, y) for x, y, _ in layout.cells_of(b)})  # cells a miscolours
+    error_b = len({(x, y) for x, y, _ in layout.cells_of(a)})
+    inv_a, inv_b = 1.0 / error_a, 1.0 / error_b
+    draw = float(rng.random()) * (inv_a + inv_b + colour_weight)
+    if draw < inv_a:
+        return a.colour_code
+    if draw < inv_a + inv_b:
+        return b.colour_code
+    return None
+
+
+def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     layout: Layout,
     grid: VoxelGrid,
     rng: np.random.Generator,
     *,
     fail_max: int = 30,
+    colour_mode: ColourMode = "hard",
+    colour_weight: float = 1.0,
 ) -> int:
     """Split-remerge around component borders until single-component.
 
@@ -203,8 +255,16 @@ def improve_connectivity(
             break
         region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
         candidate = layout.copy()
-        split_to_atoms(candidate, region, grid)
-        maximal_random_merge(candidate, rng)
+        atom_ids = split_to_atoms(candidate, region, grid)
+        maximal_random_merge(
+            candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
+        )
+        # Reclaim bricks from whatever 1x1 plates the merge left behind —
+        # after the merge, so the phase pre-commit can't block seam bridging.
+        if compact_columns(candidate, atom_ids):
+            maximal_random_merge(
+                candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
+            )
         candidate_components = ConnectionGraph.from_layout(candidate).component_count()
         if candidate_components < components:
             layout.replace_with(candidate)
@@ -274,7 +334,6 @@ def compact_vertical(layout: Layout) -> int:
             above = layout.brick_at((brick.x, brick.y, brick.layer + dz))
             if (
                 above is None
-                or above.colour_code != brick.colour_code
                 or above.layer != brick.layer + dz
                 or layout.part_of(above).category is not Category.PLATE
                 or frozenset((x, y) for x, y, _ in layout.cells_of(above)) != columns
@@ -282,6 +341,9 @@ def compact_vertical(layout: Layout) -> int:
                 break
             stack.append(above)
         if len(stack) != 3:
+            continue
+        colour = merge_colour(*(plate.colour_code for plate in stack))
+        if colour is None:
             continue
         xs = [x for x, _ in columns]
         ys = [y for _, y in columns]
@@ -300,10 +362,161 @@ def compact_vertical(layout: Layout) -> int:
             max(ys),
             brick.layer,
             3,
-            brick.colour_code,
+            colour,
         )
         merged += 1
     return merged
+
+
+def compact_columns(layout: Layout, brick_ids: set[int]) -> int:
+    """Re-form 1x1 bricks from stacked 1x1 plate runs on a shared phase.
+
+    After :func:`split_to_atoms`, a repaired region is all 1x1 plates. 2D
+    remerging can only grow *plates* (there is no 2-plate-tall part), and
+    :func:`compact_vertical` only merges stacks whose footprints already
+    align — so repaired regions used to stay plate rafts forever (~3x the
+    part count). Voting one start phase (mod 3) for the whole region turns
+    the atoms into 1x1 *bricks* on a shared alignment before the 2D merge,
+    which can then grow them into real bricks. Returns the brick count.
+    """
+    runs = _plate_runs(layout, brick_ids)
+    if not runs:
+        return 0
+
+    def eligible_cells(run: list[PlacedBrick], phase: int) -> int:
+        z0, z1 = run[0].layer, run[-1].layer
+        start = z0 + (phase - z0) % 3
+        return 3 * max(0, (z1 - start + 1) // 3) if start + 2 <= z1 else 0
+
+    votes = {
+        phase: sum(eligible_cells(run, phase) for run in runs) for phase in (0, 1, 2)
+    }
+    phase = min((0, 1, 2), key=lambda p: (-votes[p], p))
+    merged = 0
+    for run in runs:
+        by_layer = {plate.layer: plate for plate in run}
+        z0, z1 = run[0].layer, run[-1].layer
+        start = z0 + (phase - z0) % 3
+        while start + 2 <= z1:
+            triple = [by_layer[start + dz] for dz in (0, 1, 2)]
+            colour = merge_colour(*(plate.colour_code for plate in triple))
+            if colour is not None:
+                x, y = triple[0].x, triple[0].y
+                for plate in triple:
+                    layout.remove(plate.brick_id)
+                layout.add("brick_1x1", x, y, start, 0, colour)
+                merged += 1
+            start += 3
+    return merged
+
+
+def final_remerge(
+    layout: Layout,
+    grid: VoxelGrid,
+    rng: np.random.Generator,
+    *,
+    weights: ObjectiveWeights | None = None,
+    solver_config: SolverConfig | None = None,
+) -> bool:
+    """Global post-placement re-merge; keep only a strictly smaller layout.
+
+    Two candidates are tried: a conservative merge pass, and a plate
+    re-phase — split every plate back to atoms, re-form 1x1 bricks on one
+    voted phase, and remerge. The re-phase is what reclaims the plate rafts
+    connectivity repairs leave behind (2D remerging can only ever grow
+    *plates*; only aligned columns can become bricks again). The objective
+    check guards against merges that hurt physics or aesthetics more than
+    the saved parts are worth, and the component check guards topology.
+    Returns True when the layout was replaced.
+    """
+    from legolization.placement.base import evaluate  # noqa: PLC0415 - cycle guard
+
+    conservative = layout.copy()
+    maximal_random_merge(conservative, rng)
+    compact_vertical(conservative)
+    candidates = [conservative]
+
+    rephased = layout.copy()
+    plate_ids = {
+        brick.brick_id
+        for brick in rephased
+        if rephased.part_of(brick).category is Category.PLATE
+    }
+    if plate_ids:
+        atom_ids = split_to_atoms(rephased, plate_ids, grid)
+        compact_columns(rephased, atom_ids)
+        maximal_random_merge(rephased, rng)
+        compact_vertical(rephased)
+        candidates.append(rephased)
+
+    candidate = min(candidates, key=len)
+    if len(candidate) >= len(layout):
+        return False
+    baseline = evaluate(layout, grid, weights, solver_config)
+    report = evaluate(candidate, grid, weights, solver_config)
+    base_components = ConnectionGraph.from_layout(layout).component_count()
+    components = ConnectionGraph.from_layout(candidate).component_count()
+    if report.total <= baseline.total and components <= base_components:
+        layout.replace_with(candidate)
+        return True
+    return False
+
+
+def _plate_runs(layout: Layout, brick_ids: set[int]) -> list[list[PlacedBrick]]:
+    """Contiguous vertical runs of 1x1 plates among ``brick_ids``."""
+    plates: dict[tuple[int, int], dict[int, PlacedBrick]] = {}
+    for brick_id in brick_ids:
+        brick = layout.bricks.get(brick_id)
+        if brick is not None and brick.part_key == "plate_1x1":
+            plates.setdefault((brick.x, brick.y), {})[brick.layer] = brick
+    runs: list[list[PlacedBrick]] = []
+    for _, by_layer in sorted(plates.items()):
+        run: list[PlacedBrick] = []
+        for z in sorted(by_layer):
+            if run and z != run[-1].layer + 1:
+                runs.append(run)
+                run = []
+            run.append(by_layer[z])
+        if run:
+            runs.append(run)
+    return runs
+
+
+def resolve_ignore_colours(layout: Layout) -> int:
+    """Recolour IGNORE bricks from their nearest coloured neighbour (BFS).
+
+    Interior bricks are invisible, but LDraw files still need a concrete
+    colour code. Multi-source BFS from every coloured brick assigns each
+    IGNORE brick the colour of its nearest coloured neighbour; isolated
+    ones fall back to light bluish gray. Returns the recolour count.
+    """
+    resolved: dict[int, int] = {}
+    queue: deque[int] = deque()
+    pending: set[int] = set()
+    for brick in sorted(layout, key=lambda b: b.brick_id):
+        if brick.colour_code == IGNORE:
+            pending.add(brick.brick_id)
+        else:
+            resolved[brick.brick_id] = brick.colour_code
+            queue.append(brick.brick_id)
+    if not pending:
+        return 0
+    while queue and pending:
+        current = queue.popleft()
+        for other in sorted(neighbour_ids(layout, current)):
+            if other in pending:
+                pending.discard(other)
+                resolved[other] = resolved[current]
+                queue.append(other)
+    recoloured = 0
+    for brick in list(layout):
+        if brick.colour_code != IGNORE:
+            continue
+        colour = resolved.get(brick.brick_id, _FALLBACK_COLOUR)
+        layout.remove(brick.brick_id)
+        layout.add(brick.part_key, brick.x, brick.y, brick.layer, brick.yaw, colour)
+        recoloured += 1
+    return recoloured
 
 
 def _cell_code(grid: VoxelGrid, cell: Cell, fallback: int) -> int:
@@ -311,7 +524,7 @@ def _cell_code(grid: VoxelGrid, cell: Cell, fallback: int) -> int:
     nx, ny, nz = grid.shape
     if 0 <= x < nx and 0 <= y < ny and 0 <= z < nz:
         code = int(grid.codes[x, y, z])
-        if code >= 0:
+        if code != EMPTY:  # IGNORE is a real (colour-free) fill
             return code
     return fallback
 

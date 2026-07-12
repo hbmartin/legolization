@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from legolization.grid import EMPTY, VoxelGrid
+from legolization.grid import EMPTY, IGNORE, VoxelGrid
 
 if TYPE_CHECKING:
     from legolization.catalog import Cell
@@ -35,8 +35,10 @@ def restore_columns(
     """Restore original interior fill in columns around trouble cells.
 
     Every grid column within ``radius`` (Chebyshev) of a trouble cell's
-    column gets its full original content back, giving unstable regions
-    solid material to bear on. Returns the (possibly identical) new grid.
+    column gets its interior content back as colour-free ``IGNORE`` cells
+    (they were interior, hence invisible — any brick colour may cover them
+    without fragmenting merges), giving unstable regions solid material to
+    bear on. Returns the (possibly identical) new grid.
     """
     codes = hollowed.codes.copy()
     nx, ny, _ = hollowed.shape
@@ -46,7 +48,7 @@ def restore_columns(
         y_lo, y_hi = max(cy - radius, 0), min(cy + radius + 1, ny)
         region = codes[x_lo:x_hi, y_lo:y_hi, :]
         source = original.codes[x_lo:x_hi, y_lo:y_hi, :]
-        region[region == EMPTY] = source[region == EMPTY]
+        region[(region == EMPTY) & (source != EMPTY)] = IGNORE
     if np.array_equal(codes, hollowed.codes):
         return hollowed
     return hollowed.with_codes(codes)

@@ -21,6 +21,7 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from legolization.catalog import Category, default_catalog, rotate_offset
+from legolization.grid import EMPTY, colour_matches, merge_colour
 from legolization.layout import Layout
 from legolization.placement.base import ObjectiveWeights, evaluate
 from legolization.placement.merge import (
@@ -70,6 +71,7 @@ class _Candidate:
     anchor: tuple[int, int, int]
     yaw: int
     cells: tuple[Cell, ...]
+    colour: int
 
 
 @dataclass(slots=True)
@@ -121,7 +123,6 @@ class GreedyStrategy:
             if seed not in uncovered:
                 continue
             best: tuple[tuple[float, float, int, float], _Candidate] | None = None
-            colour = grid.code_at(*seed)
             for part in parts:
                 for candidate in _placements(part, seed, grid, uncovered, layout):
                     estimate = self._parts_estimate(grid, uncovered, candidate, seed)
@@ -138,7 +139,7 @@ class GreedyStrategy:
                 candidate.part.key,
                 *candidate.anchor,
                 candidate.yaw,
-                colour,
+                candidate.colour,
             )
             uncovered.difference_update(candidate.cells)
 
@@ -251,8 +252,12 @@ def _placements(
     uncovered: set[Cell],
     layout: Layout,
 ) -> list[_Candidate]:
-    """All valid placements of ``part`` covering ``seed``."""
-    colour = grid.code_at(*seed)
+    """All valid placements of ``part`` covering ``seed``.
+
+    A placement is colour-valid when its cells carry at most one specific
+    colour (IGNORE interior cells are wildcards); the brick takes that
+    colour, or stays IGNORE when the whole footprint is interior.
+    """
     results: list[_Candidate] = []
     seen_anchors: set[tuple[int, int, int, int]] = set()
     for yaw in part.orientations:
@@ -266,15 +271,17 @@ def _placements(
                 (anchor[0] + cx, anchor[1] + cy, anchor[2] + cz)
                 for cx, cy, cz in rotated
             ]
-            if all(
-                cell in uncovered and grid.code_at(*cell) == colour for cell in cells
-            ) and layout.can_place(part, *anchor, yaw):
+            if not all(cell in uncovered for cell in cells):
+                continue
+            colour = merge_colour(*(grid.code_at(*cell) for cell in cells))
+            if colour is not None and layout.can_place(part, *anchor, yaw):
                 results.append(
                     _Candidate(
                         part=part,
                         anchor=anchor,
                         yaw=yaw,
                         cells=tuple(cells),
+                        colour=colour,
                     )
                 )
     return results
@@ -287,10 +294,10 @@ def _run_length(
     start: Cell,
     step: tuple[int, int],
 ) -> int:
-    """Length of the same-colour uncovered run from ``start`` along ``step``."""
+    """Length of the colour-compatible uncovered run from ``start``."""
     x, y, z = start
     length = 0
-    while (x, y, z) in uncovered and grid.code_at(x, y, z) == colour:
+    while (x, y, z) in uncovered and colour_matches(grid.code_at(x, y, z), colour):
         length += 1
         x += step[0]
         y += step[1]
@@ -343,4 +350,4 @@ def _component_count(layout: Layout) -> int:
 def _is_filled(grid: VoxelGrid, cell: Cell) -> bool:
     x, y, z = cell
     nx, ny, nz = grid.shape
-    return 0 <= x < nx and 0 <= y < ny and 0 <= z < nz and grid.codes[x, y, z] >= 0
+    return 0 <= x < nx and 0 <= y < ny and 0 <= z < nz and grid.codes[x, y, z] != EMPTY

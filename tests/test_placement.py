@@ -12,10 +12,13 @@ from legolization.placement.greedy import GreedyStrategy, _h_lookahead
 from legolization.placement.luo import LuoStrategy
 from legolization.placement.merge import (
     atomize,
+    compact_columns,
+    final_remerge,
     improve_connectivity,
     maximal_random_merge,
     merged_rect,
     place_rect,
+    resolve_ignore_colours,
 )
 from legolization.placement.slopes import apply_slopes, apply_tiles
 
@@ -231,6 +234,7 @@ def test_bond_alpha2_distance_decay_matters():
             anchor=cells[0],
             yaw=0,
             cells=tuple(cells),
+            colour=4,
         )
         return strategy._bond_score(layout, candidate)  # noqa: SLF001
 
@@ -271,6 +275,152 @@ def test_reinforce_rebuilds_vary_with_rng():
 
     layouts = {rebuild(seed) for seed in range(4)}
     assert len(layouts) > 1
+
+
+def test_merged_rect_allows_ignore_wildcard():
+    from legolization.grid import IGNORE
+
+    layout = Layout(catalog=default_catalog())
+    red = layout.add("plate_1x1", 0, 0, 0, 0, 4)
+    interior = layout.add("plate_1x1", 1, 0, 0, 0, IGNORE)
+    assert merged_rect(layout, red, interior) == (0, 0, 1, 0)
+    maximal_random_merge(layout, np.random.default_rng(0))
+    (merged,) = list(layout)
+    assert merged.part_key == "plate_1x2"
+    assert merged.colour_code == 4  # the specific colour wins over IGNORE
+
+
+def test_soft_colour_merge_trades_colour_for_parts():
+    def build() -> Layout:
+        layout = Layout(catalog=default_catalog())
+        layout.add("plate_1x1", 0, 0, 0, 0, 4)
+        layout.add("plate_1x1", 1, 0, 0, 0, 1)
+        return layout
+
+    hard = build()
+    maximal_random_merge(hard, np.random.default_rng(0), colour_mode="hard")
+    assert len(hard) == 2  # colours never cross in hard mode
+
+    soft = build()
+    maximal_random_merge(
+        soft, np.random.default_rng(0), colour_mode="soft", colour_weight=0.0
+    )
+    (merged,) = list(soft)
+    assert merged.part_key == "plate_1x2"
+    assert merged.colour_code in {4, 1}
+
+
+def test_compact_columns_reforms_bricks_on_voted_phase():
+    layout = Layout(catalog=default_catalog())
+    ids = {layout.add("plate_1x1", 0, 0, z, 0, 4).brick_id for z in range(7)}
+    merged = compact_columns(layout, ids)
+    # Phase 0 wins (6 of 7 plates convert); the leftover plate stays.
+    assert merged == 2
+    kinds = sorted(b.part_key for b in layout)
+    assert kinds == ["brick_1x1", "brick_1x1", "plate_1x1"]
+    assert {b.layer for b in layout if b.part_key == "brick_1x1"} == {0, 3}
+
+
+def test_compact_columns_respects_colour_compatibility():
+    from legolization.grid import IGNORE
+
+    layout = Layout(catalog=default_catalog())
+    colours = (4, IGNORE, 4, 4, 1, 4)  # triple 2 mixes red and blue: skipped
+    ids = {
+        layout.add("plate_1x1", 0, 0, z, 0, colour).brick_id
+        for z, colour in enumerate(colours)
+    }
+    merged = compact_columns(layout, ids)
+    assert merged == 1
+    (brick,) = [b for b in layout if b.part_key == "brick_1x1"]
+    assert brick.layer == 0
+    assert brick.colour_code == 4  # IGNORE resolved by the specific plates
+
+
+def test_final_remerge_reclaims_plate_rafts():
+    # A 4x2 slab tiled as three mismatched plate layers — the raft shape
+    # connectivity repairs leave behind. Re-phasing must find brick_2x4.
+    codes = np.full((4, 2, 3), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    for y in (0, 1):
+        layout.add("plate_1x4", 0, y, 0, 0, 4)
+    for x in (0, 2):
+        for y in (0, 1):
+            layout.add("plate_1x2", x, y, 1, 0, 4)
+    layout.add("plate_2x2", 0, 0, 2, 0, 4)
+    layout.add("plate_2x2", 2, 0, 2, 0, 4)
+    assert len(layout) == 8
+
+    changed = final_remerge(layout, grid, np.random.default_rng(0))
+
+    assert changed
+    assert len(layout) == 1
+    assert next(iter(layout)).part_key == "brick_2x4"
+    _assert_exact_cover(layout, grid)
+
+
+def test_resolve_ignore_colours_uses_nearest_neighbour():
+    from legolization.grid import IGNORE
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x1", 1, 0, 0, 0, IGNORE)  # touches red
+    layout.add("brick_1x1", 5, 5, 0, 0, IGNORE)  # isolated
+    recoloured = resolve_ignore_colours(layout)
+    assert recoloured == 2
+    colours = sorted(b.colour_code for b in layout)
+    assert colours == [4, 4, 71]  # neighbour red, isolated falls back to gray
+
+
+def test_hollow_sphere_brick_count_regression():
+    # The audit's F3 case: repaired hollow shells used to carry ~3x the
+    # parts as permanent plate rafts. Guard the reclaimed count.
+    radius = 4
+    n = 2 * radius + 1
+    codes = np.full((n, n, n), EMPTY, dtype=np.int16)
+    xs, ys, zs = np.mgrid[0:n, 0:n, 0:n]
+    inside = (xs - radius) ** 2 + (ys - radius) ** 2 + (zs - radius) ** 2
+    codes[inside <= radius * radius] = 4
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+
+    from legolization.pipeline import PipelineConfig, run
+
+    result = run(grid, PipelineConfig(seed=0))
+    assert result.buildable
+    assert result.brick_count <= 160
+
+
+def _bad_bridge() -> tuple[Layout, VoxelGrid]:
+    """Build a bridge whose deck and load courses all butt at mid-span."""
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x1", 10, 0, 0, 0, 4)
+    for level in (3, 6, 9):
+        layout.add("brick_1x6", 0, 0, level, 0, 4)
+        layout.add("brick_1x4", 6, 0, level, 0, 4)
+        layout.add("brick_1x1", 10, 0, level, 0, 4)
+    codes = np.full((11, 1, 12), EMPTY, dtype=np.int16)
+    codes[0, 0, :3] = 4
+    codes[10, 0, :3] = 4
+    codes[:, 0, 3:] = 4
+    return layout, VoxelGrid(codes=codes)
+
+
+@pytest.mark.parametrize("acceptance", ["maximin", "rbe"])
+def test_luo_stabilize_repairs_collapsing_bridge(acceptance):
+    from legolization.placement.luo import LuoStrategy
+    from legolization.stability import analyze
+
+    layout, grid = _bad_bridge()
+    assert not analyze(layout).stable
+
+    strategy = LuoStrategy(acceptance=acceptance)
+    strategy._stabilize(layout, grid, np.random.default_rng(0))  # noqa: SLF001
+
+    result = analyze(layout)
+    assert result.stable
+    _assert_exact_cover(layout, grid)
 
 
 def test_improve_connectivity_bridges_grounded_towers():

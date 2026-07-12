@@ -66,6 +66,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--seed", type=int, default=0, help="random seed")
     parser.add_argument(
+        "--colour",
+        choices=("hard", "soft"),
+        default="hard",
+        help=(
+            "colour constraint for merges: hard = never cross colour "
+            "boundaries; soft = Luo importance sampling may trade small "
+            "colour errors for fewer bricks (luo strategy)"
+        ),
+    )
+    parser.add_argument(
+        "--colour-weight",
+        type=float,
+        default=1.0,
+        help="soft-colour discard weight w_c (higher = stricter, default 1.0)",
+    )
+    parser.add_argument(
+        "--dither",
+        action="store_true",
+        help="Floyd-Steinberg dither RGB inputs for smoother colour gradients",
+    )
+    parser.add_argument(
         "--stability-weight",
         type=float,
         default=4.0,
@@ -86,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
         refine=not args.no_refine,
         seed=args.seed,
         plates_per_voxel=args.plates_per_voxel,
+        colour_mode=args.colour,
+        colour_weight=args.colour_weight,
+        dither=args.dither,
         weights=ObjectiveWeights(stability=args.stability_weight),
         solver=SolverConfig(mode="milp" if args.milp else "lp"),
     )
