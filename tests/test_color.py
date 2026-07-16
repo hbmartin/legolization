@@ -2,8 +2,9 @@
 
 import numpy as np
 import pytest
+from ldraw.colour import Colour
 
-from legolization.color import default_palette
+from legolization.color import _is_solid, default_palette
 
 
 def test_primary_colours_quantize_exactly():
@@ -15,11 +16,36 @@ def test_primary_colours_quantize_exactly():
 
 def test_palette_is_solid_only():
     palette = default_palette()
-    banned = ("Trans", "Glitter", "Chrome", "Speckle", "Milky", "Rubber")
+    banned = (
+        "Trans",
+        "Glitter",
+        "Chrome",
+        "Speckle",
+        "Milky",
+        "Rubber",
+        "Modulex",
+        "Canvas",
+    )
     for name in palette.names:
         assert not any(token in name for token in banned), name
     assert 16 not in palette.codes
     assert 24 not in palette.codes
+
+
+def test_non_system_brick_lines_are_filtered():
+    # Newer LDConfig releases add Modulex (an incompatible brick line) and
+    # Canvas (fabric-part) colours; both must stay out of the palette even
+    # when the local library predates them, so test the filter directly.
+    non_system = (
+        ("Modulex_Clear", 30_000, "#FCFCFC"),
+        ("Modulex_Dark_Brown", 30_054, "#330000"),
+        ("Canvas_White", 20_015, "#F4F4F4"),
+    )
+    for name, code, rgb in non_system:
+        colour = Colour(code=code, name=name, rgb=rgb, alpha=255)
+        assert not _is_solid(name, colour), name
+    kept = Colour(code=15, name="White", rgb="#F4F4F4", alpha=255)
+    assert _is_solid("White", kept)
 
 
 def test_quantize_array_shape():

@@ -35,6 +35,13 @@ _NON_SOLID_TOKENS = (
     "Electric",
     "Undefined",
     "Colour",
+    # Present in newer LDConfig releases but not System bricks: Modulex is
+    # a separate, incompatible brick line (and Modulex_Clear is translucent
+    # despite its name), Canvas colours belong to fabric parts. Both shadow
+    # real brick colours under redmean — Modulex_Dark_Brown #330000
+    # out-quantizes Black for near-black inputs.
+    "Modulex",
+    "Canvas",
 )
 
 
