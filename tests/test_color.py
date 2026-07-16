@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from ldraw.colour import Colour
 
-from legolization.color import _is_solid, default_palette
+from legolization.color import Palette, _is_solid, default_palette
 
 
 def test_primary_colours_quantize_exactly():
@@ -55,6 +55,19 @@ def test_quantize_array_shape():
     assert codes.shape == (3,)
     assert codes[1] == 0
     assert codes[2] == 15
+
+
+def test_pure_black_prefers_black_over_dark_brown():
+    # LDConfig's measured values (2024+) put Dark_Brown #352100 nearer to
+    # pure black than Black #1B2A34 in RGB space (redmean picked 308); the
+    # CIELAB metric must keep near-black inputs on the near-neutral Black.
+    palette = Palette(
+        codes=np.asarray([0, 308], dtype=np.int16),
+        rgbs=np.asarray([[27, 42, 52], [53, 33, 0]], dtype=np.float64),
+        names=("Black", "Dark_Brown"),
+    )
+    assert palette.nearest((0, 0, 0)) == 0
+    assert palette.nearest((10, 10, 10)) == 0
 
 
 def test_rgb_roundtrip():
