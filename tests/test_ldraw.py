@@ -19,7 +19,7 @@ def _type1_lines(lines: list[str]) -> list[str]:
 def test_plate_at_origin(layout):
     brick = layout.add("plate_1x1", 0, 0, 0, 0, 4)
     line = piece_for(layout, brick).to_ldraw()
-    assert line == "1 4 0 -8 0 1 0 0 0 1 0 0 0 1 3024.DAT"
+    assert line == "1 4 0 -8 0 1 0 0 0 1 0 0 0 1 3024.dat"
 
 
 def test_brick_height_and_center(layout):
@@ -48,7 +48,7 @@ def test_slope_origin_lands_on_stud_cell(layout):
     fields = piece_for(layout, brick).to_ldraw().split()
     # Stud cell is local (0,1) → world (0,1): X=0, Z=20, brick height.
     assert fields[2:5] == ["0", "-24", "20"]
-    assert fields[14] == "3040B.DAT"
+    assert fields[14] == "3040b.dat"
 
 
 def test_steps_between_layers(layout):
@@ -70,7 +70,7 @@ def test_write_ldr_and_mpd(layout, tmp_path):
     write_model(layout, ldr)
     content = ldr.read_text()
     assert content.startswith("0 out")
-    assert "3005.DAT" in content
+    assert "3005.dat" in content
 
     mpd = tmp_path / "out.mpd"
     write_model(layout, mpd)
@@ -91,4 +91,4 @@ def test_roundtrip_through_pyldraw3(layout, tmp_path):
     model = read_model(path)
     pieces = [obj for obj in model.objects if isinstance(obj, Piece)]
     assert len(pieces) == 3
-    assert sorted(p.part for p in pieces) == ["3001", "3020", "3040B"]
+    assert sorted(p.part for p in pieces) == ["3001", "3020", "3040b"]
