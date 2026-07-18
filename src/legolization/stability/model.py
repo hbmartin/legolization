@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 
+from legolization import telemetry
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.stability.constants import (
     FOUR_POINT_OFFSETS,
@@ -158,6 +159,15 @@ def build_model(
     graph: ConnectionGraph | None = None,
 ) -> StabilityModel:
     """Build the sparse equilibrium system for a layout."""
+    with telemetry.span("stability.build_model", n=len(layout)):
+        return _build_model_body(layout, graph)
+
+
+def _build_model_body(
+    layout: Layout,
+    graph: ConnectionGraph | None,
+) -> StabilityModel:
+    """Run the body of :func:`build_model` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
     asm = _Assembler(layout)
     contact_points: list[ContactPoint] = []

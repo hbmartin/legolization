@@ -16,6 +16,8 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
+from legolization import telemetry
+
 if TYPE_CHECKING:
     from legolization.layout import Layout
 
@@ -72,6 +74,12 @@ class ConnectionGraph:
     @classmethod
     def from_layout(cls, layout: Layout) -> ConnectionGraph:
         """Extract all knob and side contacts from a layout."""
+        with telemetry.span("graph.from_layout", n=len(layout)):
+            return cls._from_layout_body(layout)
+
+    @classmethod
+    def _from_layout_body(cls, layout: Layout) -> ConnectionGraph:
+        """Run the body of :meth:`from_layout` without its telemetry span."""
         sockets: dict[tuple[int, int, int], int] = {}
         for brick in layout:
             for conn in layout.connectors_of(brick, top=False):

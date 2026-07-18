@@ -29,6 +29,7 @@ import numpy as np
 from scipy import sparse
 from scipy.optimize import linprog
 
+from legolization import telemetry
 from legolization.stability.constants import ALPHA, BETA, T_CAPACITY_N
 from legolization.stability.model import ROWS_PER_BRICK, StabilityModel, build_model
 
@@ -108,7 +109,8 @@ def analyze(
     """Build and solve the RBE for a layout."""
     if not len(layout):
         return StabilityResult(stable=True)
-    return solve_model(build_model(layout, graph), config or SolverConfig())
+    with telemetry.span("stability.analyze", n=len(layout)):
+        return solve_model(build_model(layout, graph), config or SolverConfig())
 
 
 def solve_model(
@@ -130,6 +132,12 @@ def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
     assembled by hand: minimize ``sum(t) + alpha*sum(dmax_i) + beta*sum(d)`` subject to
     ``-t <= A F + b <= t`` and ``d_j <= dmax_i``, all variables nonnegative.
     """
+    with telemetry.span("stability.lp", n=model.brick_count):
+        return _solve_lp_body(model, config)
+
+
+def _solve_lp_body(model: StabilityModel, config: SolverConfig) -> StabilityResult:
+    """Run the body of :func:`_solve_lp` without its telemetry span."""
     rows, force_count = model.a_matrix.shape
     dmax_bricks = [bid for bid, cols in model.bottom_drag_cols.items() if cols.size]
     dmax_index = {bid: force_count + rows + i for i, bid in enumerate(dmax_bricks)}
@@ -167,17 +175,18 @@ def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
     a_ub = sparse.vstack(blocks, format="csr")
     b_ub = np.concatenate(rhs)
     result = None
-    for method, options in _LP_ATTEMPTS:
-        result = linprog(
-            c=cost,
-            A_ub=a_ub,
-            b_ub=b_ub,
-            bounds=(0, None),
-            method=method,
-            options=options,
-        )
-        if result.success and result.x is not None:
-            break
+    with telemetry.span("stability.lp.linprog", n=model.brick_count):
+        for method, options in _LP_ATTEMPTS:
+            result = linprog(
+                c=cost,
+                A_ub=a_ub,
+                b_ub=b_ub,
+                bounds=(0, None),
+                method=method,
+                options=options,
+            )
+            if result.success and result.x is not None:
+                break
     if result is None or not result.success or result.x is None:
         message = result.message if result is not None else "no result"
         msg = f"stability LP failed: {message}"
@@ -209,6 +218,12 @@ def solve_maximin(model: StabilityModel) -> MaximinResult:
     an infeasible equilibrium means collapse. It carries no per-brick
     localization — pair it with :func:`analyze` for failure seeds.
     """
+    with telemetry.span("stability.maximin", n=model.brick_count):
+        return _solve_maximin_body(model)
+
+
+def _solve_maximin_body(model: StabilityModel) -> MaximinResult:
+    """Run the body of :func:`solve_maximin` without its telemetry span."""
     rows, force_count = model.a_matrix.shape
     var_count = force_count + 1
     cost = np.zeros(var_count)
@@ -256,6 +271,12 @@ def solve_maximin(model: StabilityModel) -> MaximinResult:
 
 def _solve_milp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
     """Solve with big-M complementarity via cvxpy (exact but slower)."""
+    with telemetry.span("stability.milp", n=model.brick_count):
+        return _solve_milp_body(model, config)
+
+
+def _solve_milp_body(model: StabilityModel, config: SolverConfig) -> StabilityResult:
+    """Run the body of :func:`_solve_milp` without its telemetry span."""
     forces = cp.Variable(model.var_count, nonneg=True)
     residual = model.a_matrix @ forces + model.b_vector
 

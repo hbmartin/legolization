@@ -6,8 +6,10 @@ import argparse
 import json
 import math
 import sys
+import time
 from pathlib import Path
 
+from legolization import telemetry
 from legolization.compare import Candidate, SelectionReport, run_all, select_best
 from legolization.instructions.sequencer import InstructionsConfig
 from legolization.ldraw_out import write_model
@@ -305,6 +307,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=4.0,
         help="objective weight of physical stability (default 4.0)",
     )
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "record telemetry span timings for this run to a JSON file "
+            "(single-strategy runs only; see scripts/profile_pipeline.py)"
+        ),
+    )
     return parser
 
 
@@ -399,17 +411,57 @@ def main(argv: list[str] | None = None) -> int:
     if args.strategy == "all":
         return _run_sweep(args, config=config, output=output)
     try:
-        result = run_file(
-            args.input,
-            output,
-            config,
-            bom_path=args.bom,
-            instructions_path=args.instructions,
-        )
+        if args.profile is not None:
+            started = time.perf_counter()
+            with telemetry.record() as session:
+                result = run_file(
+                    args.input,
+                    output,
+                    config,
+                    bom_path=args.bom,
+                    instructions_path=args.instructions,
+                )
+            _write_profile(
+                args,
+                session=session,
+                result=result,
+                total_seconds=time.perf_counter() - started,
+            )
+        else:
+            result = run_file(
+                args.input,
+                output,
+                config,
+                bom_path=args.bom,
+                instructions_path=args.instructions,
+            )
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return _print_result(result, output, instructions_path=args.instructions)
+
+
+def _write_profile(
+    args: argparse.Namespace,
+    *,
+    session: telemetry.Telemetry,
+    result: PipelineResult,
+    total_seconds: float,
+) -> None:
+    """Dump a run's telemetry spans plus metadata to ``args.profile``."""
+    payload = {
+        "schema": 1,
+        "input": str(args.input),
+        "strategy": args.strategy,
+        "seed": args.seed,
+        "brick_count": result.brick_count,
+        "step_count": result.step_count,
+        "total_seconds": round(total_seconds, 3),
+        "spans": session.to_dict(),
+    }
+    args.profile.parent.mkdir(parents=True, exist_ok=True)
+    args.profile.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"wrote {args.profile}")
 
 
 def _print_result(
