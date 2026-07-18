@@ -6,6 +6,9 @@ stability margin, bonding, aesthetics, and runtime; ``--json PATH`` also
 dumps the raw rows.
 
 Usage: ``uv run python scripts/benchmark.py [--seed N] [--json out.json]``
+
+To pick the best model for one input instead of tabulating, use the CLI's
+``--strategy all`` sweep (``legolization.compare``).
 """
 
 from __future__ import annotations

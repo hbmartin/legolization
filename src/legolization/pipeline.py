@@ -180,6 +180,53 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     )
 
 
+def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:
+    """Load a ``.vox``/``.npy`` grid using the config's voxelization knobs."""
+    config = config or PipelineConfig()
+    match input_path.suffix.lower():
+        case ".vox":
+            return VoxelGrid.from_vox(
+                input_path,
+                plates_per_voxel=config.plates_per_voxel,
+                dither=config.dither,
+                aspect_correct=config.aspect_correct,
+            )
+        case ".npy":
+            return VoxelGrid.from_npy(
+                input_path,
+                plates_per_voxel=config.plates_per_voxel,
+                dither=config.dither,
+                aspect_correct=config.aspect_correct,
+            )
+        case suffix:
+            msg = f"unsupported input format {suffix!r} (expected .vox or .npy)"
+            raise ValueError(msg)
+
+
+def write_outputs(
+    result: PipelineResult,
+    output_path: Path,
+    *,
+    bom_path: Path | None = None,
+) -> None:
+    """Write the ``.ldr``/``.mpd`` model and, when requested, the BOM.
+
+    ``bom_path`` writes the bill of materials (JSON when the suffix is
+    ``.json``, text otherwise).
+    """
+    write_model(result.layout, output_path, plan=result.plan)
+    if bom_path is not None:
+        bom = (
+            result.plan.bom
+            if result.plan is not None
+            else bill_of_materials(result.layout)
+        )
+        if bom_path.suffix.lower() == ".json":
+            bom_path.write_text(bom.to_json(model_name=output_path.name) + "\n")
+        else:
+            bom_path.write_text(bom.to_text() + "\n")
+
+
 def run_file(
     input_path: Path,
     output_path: Path,
@@ -193,36 +240,8 @@ def run_file(
     suffix is ``.json``, text otherwise).
     """
     config = config or PipelineConfig()
-    match input_path.suffix.lower():
-        case ".vox":
-            grid = VoxelGrid.from_vox(
-                input_path,
-                plates_per_voxel=config.plates_per_voxel,
-                dither=config.dither,
-                aspect_correct=config.aspect_correct,
-            )
-        case ".npy":
-            grid = VoxelGrid.from_npy(
-                input_path,
-                plates_per_voxel=config.plates_per_voxel,
-                dither=config.dither,
-                aspect_correct=config.aspect_correct,
-            )
-        case suffix:
-            msg = f"unsupported input format {suffix!r} (expected .vox or .npy)"
-            raise ValueError(msg)
-    result = run(grid, config)
-    write_model(result.layout, output_path, plan=result.plan)
-    if bom_path is not None:
-        bom = (
-            result.plan.bom
-            if result.plan is not None
-            else bill_of_materials(result.layout)
-        )
-        if bom_path.suffix.lower() == ".json":
-            bom_path.write_text(bom.to_json(model_name=output_path.name) + "\n")
-        else:
-            bom_path.write_text(bom.to_text() + "\n")
+    result = run(grid=load_grid(input_path, config), config=config)
+    write_outputs(result, output_path, bom_path=bom_path)
     return result
 
 
@@ -265,4 +284,11 @@ def _strategy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
     return make_strategy(config.strategy, catalog=catalog, config=config)
 
 
-__all__ = ["PipelineConfig", "PipelineResult", "run", "run_file"]
+__all__ = [
+    "PipelineConfig",
+    "PipelineResult",
+    "load_grid",
+    "run",
+    "run_file",
+    "write_outputs",
+]

@@ -76,7 +76,18 @@ uv run legolization model.npy --strategy luo --solid --seed 7
 uv run legolization model.vox --slopes --tiles      # surface finishing passes
 uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
 uv run legolization model.vox --milp                # cross-check the exact LP
+uv run legolization model.npy --strategy all --jobs 4 --report report.json
 ```
+
+`--strategy all` runs every registered strategy on the same input (in
+parallel worker processes; `--jobs 1` forces sequential) and keeps the best
+model. Selection is lexicographic, following the reference papers: candidates
+are first gated on buildability (stable, one connected component, nothing
+floating), and the survivors are ranked by the weighted objective, with ties
+broken by maximin friction capacity, then brick count. `--report` writes a
+JSON comparison of every strategy, `--keep-candidates DIR` also writes each
+strategy's model, and `--timeout SECONDS` bounds each strategy's soft time
+budget.
 
 The CLI reports brick count, mass, step count, and the physics verdict:
 
@@ -126,6 +137,8 @@ example models (brick count, stability margin, seam/perpendicularity/symmetry
 metrics, runtime). Highlights at seed 0: `bond` and `beauty` cover the arch in
 13 bricks where largest-first greedy needs 32, and `beauty --beauty-preset
 aesthetics` produces perfectly mirror-symmetric layers on symmetric models.
+For picking one model right now rather than tabulating, `--strategy all` is
+the CLI counterpart (see Usage).
 
 ## Development
 

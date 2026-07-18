@@ -260,7 +260,10 @@ tests confirm a side-stud connection transmits the expected friction load.
   against numpy masks instead of Python sets.
 - **Parallel restarts.** Both strategies are seed-sensitive; run a few seeds
   in a process pool and keep the best objective (all state is already
-  copyable via `Layout.copy`).
+  copyable via `Layout.copy`). *Partially delivered:* `--strategy all`
+  (`compare.run_all`) fans out over a spawn process pool and keeps the best
+  candidate — across strategies at one seed; the multi-seed sweep is now a
+  small extension of the same runner.
 
 ## I/O and tooling backlog
 
@@ -278,7 +281,9 @@ tests confirm a side-stud connection transmits the expected friction load.
   only). Malformed chunks and out-of-bounds voxels already fail cleanly.
 - **Richer CLI output.** `--report report.json` dumping `PipelineResult`
   (counts, mass, scores) for scripting — `--bom` already covers the parts
-  list; `scripts/benchmark.py` covers cross-strategy comparison.
+  list; `scripts/benchmark.py` covers cross-strategy comparison. *Done for
+  sweeps:* `--strategy all --report report.json` writes per-strategy metrics
+  plus the winner; extending it to single-strategy runs remains.
 - **TUI.** A small terminal UI showing layer-by-layer placement, the
   stability heatmap, and refinement progress would make tuning weights far
   less blind (re-add `textual` when this starts — it was dropped as an

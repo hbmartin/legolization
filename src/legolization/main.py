@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from legolization.compare import Candidate, SelectionReport, run_all, select_best
 from legolization.instructions.sequencer import InstructionsConfig
-from legolization.pipeline import PipelineConfig, run_file
+from legolization.ldraw_out import write_model
+from legolization.pipeline import (
+    PipelineConfig,
+    PipelineResult,
+    load_grid,
+    run_file,
+    write_outputs,
+)
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.registry import strategy_names
 from legolization.stability.solver import SolverConfig
@@ -31,9 +40,47 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--strategy",
-        choices=strategy_names(),
+        choices=(*strategy_names(), "all"),
         default="greedy",
-        help="placement strategy (default: greedy)",
+        help=(
+            "placement strategy (default: greedy); 'all' runs every strategy "
+            "and keeps the best result"
+        ),
+    )
+    sweep = parser.add_argument_group("strategy sweep (--strategy all)")
+    sweep.add_argument(
+        "--jobs",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "parallel worker processes for the sweep (default 0 = one per "
+            "strategy up to the CPU count; 1 = sequential)"
+        ),
+    )
+    sweep.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "per-strategy timeout; folded into --time-budget for strategies "
+            "that honour it"
+        ),
+    )
+    sweep.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="write a JSON comparison report of every strategy and the winner",
+    )
+    sweep.add_argument(
+        "--keep-candidates",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="also write every successful strategy's model into DIR",
     )
     parser.add_argument(
         "--time-budget",
@@ -165,7 +212,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI; returns a process exit code."""
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if args.strategy != "all" and (
+        args.jobs != 0
+        or args.timeout is not None
+        or args.report is not None
+        or args.keep_candidates is not None
+    ):
+        parser.error(
+            "--jobs/--timeout/--report/--keep-candidates require --strategy all"
+        )
     output: Path = args.output or args.input.with_suffix(".ldr")
     progress = (
         (lambda message: print(f"  {message}", file=sys.stderr, flush=True))
@@ -198,12 +255,18 @@ def main(argv: list[str] | None = None) -> int:
         weights=ObjectiveWeights(stability=args.stability_weight),
         solver=SolverConfig(mode="milp" if args.milp else "lp"),
     )
+    if args.strategy == "all":
+        return _run_sweep(args, config=config, output=output)
     try:
         result = run_file(args.input, output, config, bom_path=args.bom)
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    return _print_result(result, output)
 
+
+def _print_result(result: PipelineResult, output: Path) -> int:
+    """Print the standard result summary; returns the process exit code."""
     print(f"wrote {output}")
     print(
         f"  bricks: {result.brick_count}   mass: {result.mass_g:.1f} g   "
@@ -228,6 +291,86 @@ def main(argv: list[str] | None = None) -> int:
         print("  model is NOT fully buildable; try --strategy luo or --solid")
         return 2
     return 0
+
+
+def _run_sweep(
+    args: argparse.Namespace,
+    *,
+    config: PipelineConfig,
+    output: Path,
+) -> int:
+    """Run every strategy, report the field, and write the winning model."""
+    try:
+        grid = load_grid(args.input, config)
+    except (ValueError, OSError, RuntimeError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    candidates = run_all(
+        grid,
+        config,
+        jobs=args.jobs,
+        timeout_s=args.timeout,
+        progress=config.progress,
+    )
+    _print_table(candidates)
+    report = select_best(candidates)
+    if args.report is not None:
+        payload = {
+            "input": str(args.input),
+            "seed": config.seed,
+            "jobs": args.jobs,
+            **report.to_dict(),
+        }
+        args.report.write_text(json.dumps(payload, indent=2) + "\n")
+        print(f"wrote {args.report}")
+    winner = report.winner
+    if winner is None or winner.result is None:
+        print("error: every strategy failed", file=sys.stderr)
+        for candidate in report.candidates:
+            print(f"  {candidate.strategy}: {candidate.error}", file=sys.stderr)
+        return 1
+    if args.keep_candidates is not None:
+        _write_candidates(report, directory=args.keep_candidates, output=output)
+    write_outputs(winner.result, output, bom_path=args.bom)
+    print(f"selected {winner.strategy}: {report.reason}")
+    return _print_result(winner.result, output)
+
+
+def _print_table(candidates: list[Candidate]) -> None:
+    """Print one summary line per strategy."""
+    print(
+        f"  {'strategy':<8} {'bricks':>6} {'buildable':>9} "
+        f"{'objective':>9} {'capacity':>8} {'seconds':>7}"
+    )
+    for candidate in candidates:
+        if (metrics := candidate.metrics) is None:
+            print(
+                f"  {candidate.strategy:<8} "
+                f"error: {candidate.error} ({candidate.seconds:.1f}s)"
+            )
+        else:
+            print(
+                f"  {candidate.strategy:<8} {metrics.brick_count:>6} "
+                f"{'yes' if metrics.buildable else 'no':>9} "
+                f"{metrics.objective_total:>9.4f} "
+                f"{metrics.maximin_capacity:>8.3f} {candidate.seconds:>7.1f}"
+            )
+
+
+def _write_candidates(
+    report: SelectionReport,
+    *,
+    directory: Path,
+    output: Path,
+) -> None:
+    """Write every successful candidate's model into ``directory``."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for candidate in report.candidates:
+        if candidate.result is None:
+            continue
+        path = directory / f"{output.stem}.{candidate.strategy}{output.suffix}"
+        write_model(candidate.result.layout, path, plan=candidate.result.plan)
+        print(f"wrote {path}")
 
 
 if __name__ == "__main__":
