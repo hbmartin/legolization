@@ -14,3 +14,8 @@ wheels/
 *.iso.png
 *.top.png
 previous/
+*.obj
+*.zip
+triage_decisions.db
+reviews_triage/
+.mcp.json
