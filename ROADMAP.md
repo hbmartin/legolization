@@ -4,6 +4,19 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v3 progress notes
+
+Living log of the six-item v3 program (sequencer LP performance, MPD
+subassemblies, shape-preserving slopes, SNOT finishing pass, per-layer
+Kollsker MILP, LDraw model import). Every landed item appends a dated
+entry here with its measured proof numbers; entries are append-only.
+
+*(No items landed yet. Program plan approved 2026-07-18; evidence base:
+the profiling campaign on PR #16 — 99% of large-model runtime is cold
+HiGHS LP solves in sequencing, ~2 per step, superlinear per-solve cost —
+and `docs/unstable-prefix-report.md` — the floating-until-later-band
+step class is unorderable without subassemblies.)*
+
 ## Where things stand
 
 Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and
