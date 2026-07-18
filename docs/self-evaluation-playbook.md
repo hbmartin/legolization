@@ -105,7 +105,7 @@ weights (`ObjectiveWeights`) worth reporting.
 |---|---|
 | scattered one-brick steps, oversized steps | `instructions/chunking.py` |
 | dangling parts in steps (floating_after > 0) without warnings | `instructions/sequencer.py` / `blocking.py` |
-| many unstable prefixes on a buildable model | sequencer rescue paths (`search.py`), or genuinely hard shape |
+| many unstable prefixes on a buildable model | usually a genuinely unorderable shape (floating-until-later-band) — see `docs/unstable-prefix-report.md`; search tuning does not help |
 | floating shell fragments in final model | `hollow.py` restore / merge interplay |
 | every strategy unbuildable, max_score exactly 1.0 | toppling (CoM outside base) — shape needs a base, or RBE torque bug |
 | every strategy unbuildable on spanning shapes | connectivity/repair (`placement/repair.py`) |
