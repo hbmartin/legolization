@@ -1,28 +1,30 @@
 """Corpus sweep runner tests (scorecard assembly + regression diffing)."""
 
+from __future__ import annotations
+
 import importlib.util
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import ModuleType
+from typing import Protocol, cast
 
 import pytest
 
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "eval_corpus.py"
 
 
-def _load_eval() -> ModuleType:
+def _load_eval() -> _EvaluatorModule:
     spec = importlib.util.spec_from_file_location("eval_corpus_script", _SCRIPT)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module
+    return cast("_EvaluatorModule", module)
 
 
 @pytest.fixture(scope="module")
-def evaluator() -> ModuleType:
+def evaluator() -> _EvaluatorModule:
     return _load_eval()
 
 
@@ -37,6 +39,37 @@ class _FakeModel:
     up: str | None = None
     generator: str | None = "cantilever"
     abs_path: Path = field(default=Path("/nonexistent"))
+
+
+class _EvaluatorModule(Protocol):
+    """Typed surface of the dynamically loaded evaluator script."""
+
+    def build_row(
+        self,
+        model: _FakeModel,
+        report_dict: dict | None,
+        status: str,
+    ) -> dict:
+        """Build one evaluator scorecard row."""
+        ...
+
+    def compare_to_baseline(
+        self,
+        rows: list[dict],
+        baseline_rows: list[dict],
+        *,
+        tolerance: float,
+    ) -> tuple[list[str], list[str]]:
+        """Compare scorecard rows to their baseline."""
+        ...
+
+    def to_markdown(self, rows: list[dict]) -> str:
+        """Render scorecard rows as Markdown."""
+        ...
+
+    def main(self, argv: list[str] | None = None) -> int:
+        """Run the evaluator CLI."""
+        ...
 
 
 def _report_dict(
@@ -64,8 +97,12 @@ def _report_dict(
     }
 
 
-def test_build_row_extracts_winner_metrics(evaluator):
-    row = evaluator.build_row(_FakeModel(), _report_dict(), "ok")
+def test_build_row_extracts_winner_metrics(evaluator: _EvaluatorModule) -> None:
+    row = evaluator.build_row(
+        model=_FakeModel(),
+        report_dict=_report_dict(),
+        status="ok",
+    )
     assert row["winner"] == "greedy"
     assert row["buildable_count"] == 1
     assert row["expectation_ok"] is True
@@ -73,71 +110,317 @@ def test_build_row_extracts_winner_metrics(evaluator):
     assert row["brick_count"] == 10
 
 
-def test_build_row_skipped_has_no_winner(evaluator):
-    row = evaluator.build_row(_FakeModel(), None, "skipped: mesh not on disk")
+def test_build_row_skipped_has_no_winner(evaluator: _EvaluatorModule) -> None:
+    row = evaluator.build_row(
+        model=_FakeModel(),
+        report_dict=None,
+        status="skipped: mesh not on disk",
+    )
     assert row["winner"] is None
     assert row["buildable_count"] == 0
     assert row["expectation_ok"] is False  # expects 1 buildable, got none
 
 
-def test_build_row_expect_zero_passes_when_skipped(evaluator):
+def test_build_row_expect_zero_passes_when_skipped(
+    evaluator: _EvaluatorModule,
+) -> None:
     model = _FakeModel(name="sparse-pillars", expect_min_buildable=0)
-    row = evaluator.build_row(model, None, "skipped")
+    row = evaluator.build_row(
+        model=model,
+        report_dict=None,
+        status="skipped: mesh not on disk",
+    )
     assert row["expectation_ok"] is True
 
 
-def test_regression_buildable_drop_is_hard(evaluator):
-    old = [evaluator.build_row(_FakeModel(), _report_dict(), "ok")]
+def test_regression_buildable_drop_is_hard(
+    evaluator: _EvaluatorModule,
+) -> None:
+    old = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(),
+            status="ok",
+        )
+    ]
     new_report = _report_dict(buildable=False)
-    new = [evaluator.build_row(_FakeModel(), new_report, "ok")]
-    hard, _info = evaluator.compare_to_baseline(new, old, tolerance=0.05)
+    new = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=new_report,
+            status="ok",
+        )
+    ]
+    hard, _info = evaluator.compare_to_baseline(
+        rows=new,
+        baseline_rows=old,
+        tolerance=0.05,
+    )
     assert any("buildable strategies dropped" in line for line in hard)
     assert any("expectation newly failing" in line for line in hard)
 
 
-def test_regression_objective_worsening_is_hard(evaluator):
-    old = [evaluator.build_row(_FakeModel(), _report_dict(objective=0.5), "ok")]
-    new = [evaluator.build_row(_FakeModel(), _report_dict(objective=0.6), "ok")]
-    hard, _info = evaluator.compare_to_baseline(new, old, tolerance=0.05)
+def test_regression_objective_worsening_is_hard(
+    evaluator: _EvaluatorModule,
+) -> None:
+    old = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(objective=0.5),
+            status="ok",
+        )
+    ]
+    new = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(objective=0.6),
+            status="ok",
+        )
+    ]
+    hard, _info = evaluator.compare_to_baseline(
+        rows=new,
+        baseline_rows=old,
+        tolerance=0.05,
+    )
     assert any("objective worsened" in line for line in hard)
 
 
-def test_regression_within_tolerance_is_quiet(evaluator):
-    old = [evaluator.build_row(_FakeModel(), _report_dict(objective=0.5), "ok")]
-    new = [evaluator.build_row(_FakeModel(), _report_dict(objective=0.51), "ok")]
-    hard, info = evaluator.compare_to_baseline(new, old, tolerance=0.05)
+def test_regression_within_tolerance_is_quiet(
+    evaluator: _EvaluatorModule,
+) -> None:
+    old = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(objective=0.5),
+            status="ok",
+        )
+    ]
+    new = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(objective=0.51),
+            status="ok",
+        )
+    ]
+    hard, info = evaluator.compare_to_baseline(
+        rows=new,
+        baseline_rows=old,
+        tolerance=0.05,
+    )
     assert hard == []
     assert info == []
 
 
-def test_winner_change_is_informational(evaluator):
-    old = [evaluator.build_row(_FakeModel(), _report_dict(winner="greedy"), "ok")]
-    new = [evaluator.build_row(_FakeModel(), _report_dict(winner="bond"), "ok")]
-    hard, info = evaluator.compare_to_baseline(new, old, tolerance=0.05)
+def test_winner_change_is_informational(evaluator: _EvaluatorModule) -> None:
+    old = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(winner="greedy"),
+            status="ok",
+        )
+    ]
+    new = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(winner="bond"),
+            status="ok",
+        )
+    ]
+    hard, info = evaluator.compare_to_baseline(
+        rows=new,
+        baseline_rows=old,
+        tolerance=0.05,
+    )
     assert hard == []
     assert any("winner greedy -> bond" in line for line in info)
 
 
-def test_new_and_missing_models_are_informational(evaluator):
-    old = [evaluator.build_row(_FakeModel(name="gone"), _report_dict(), "ok")]
-    new = [evaluator.build_row(_FakeModel(name="fresh"), _report_dict(), "ok")]
-    hard, info = evaluator.compare_to_baseline(new, old, tolerance=0.05)
+def test_new_and_missing_models_are_informational(
+    evaluator: _EvaluatorModule,
+) -> None:
+    old = [
+        evaluator.build_row(
+            model=_FakeModel(name="gone"),
+            report_dict=_report_dict(),
+            status="ok",
+        )
+    ]
+    new = [
+        evaluator.build_row(
+            model=_FakeModel(name="fresh"),
+            report_dict=_report_dict(),
+            status="ok",
+        )
+    ]
+    hard, info = evaluator.compare_to_baseline(
+        rows=new,
+        baseline_rows=old,
+        tolerance=0.05,
+    )
     assert hard == []
     assert any("new model" in line for line in info)
     assert any("not in this run" in line for line in info)
 
 
-def test_markdown_rendering(evaluator):
-    rows = [evaluator.build_row(_FakeModel(), _report_dict(), "ok")]
-    table = evaluator.to_markdown(rows)
+def test_markdown_rendering(evaluator: _EvaluatorModule) -> None:
+    rows = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(),
+            status="ok",
+        )
+    ]
+    table = evaluator.to_markdown(rows=rows)
     assert table.splitlines()[0].startswith("| model | status | winner")
     assert "| cantilever | ok | greedy | 1 | 0.5 | 10 |" in table
 
 
-@pytest.mark.slow
-def test_smoke_sweep_two_models(evaluator, tmp_path):
+@pytest.mark.parametrize(
+    "scope_args",
+    [
+        [],
+        ["--kind", "synthetic", "--models", "cantilever"],
+        ["--kind", "synthetic", "--traits", "fast"],
+        ["--kind", "synthetic", "--strategies", "greedy"],
+        ["--kind", "synthetic", "--seed", "1"],
+    ],
+)
+def test_write_baseline_rejects_noncanonical_scope(
+    evaluator: _EvaluatorModule,
+    scope_args: list[str],
+) -> None:
+    with pytest.raises(SystemExit, match="unfiltered --kind synthetic"):
+        evaluator.main(argv=[*scope_args, "--write-baseline"])
+
+
+def test_skips_are_unevaluated_but_errors_fail(
+    evaluator: _EvaluatorModule,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = [
+        evaluator.build_row(
+            model=_FakeModel(name="missing-mesh", expect_min_buildable=1),
+            report_dict=None,
+            status="skipped: mesh not on disk (download)",
+        ),
+        evaluator.build_row(
+            model=_FakeModel(name="expected-unbuildable", expect_min_buildable=0),
+            report_dict=None,
+            status="error: all failed",
+        ),
+    ]
+
+    def fake_sweep(
+        _corpus: object,
+        _models: object,
+        _args: object,
+    ) -> list[dict]:
+        return rows
+
+    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
     exit_code = evaluator.main(
-        [
+        argv=[
+            "--models",
+            "cantilever",
+            "--out",
+            str(tmp_path / "runs"),
+            "--baseline",
+            str(tmp_path / "missing-baseline.json"),
+        ]
+    )
+
+    assert exit_code == 1
+    output = capsys.readouterr().out
+    assert "evaluation failures: expected-unbuildable" in output
+    assert "expectation failures: missing-mesh" not in output
+
+
+def test_failed_sweep_does_not_replace_baseline(
+    evaluator: _EvaluatorModule,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text("existing baseline\n")
+    rows = [
+        evaluator.build_row(
+            model=_FakeModel(name="expected-unbuildable", expect_min_buildable=0),
+            report_dict=None,
+            status="error: all failed",
+        )
+    ]
+
+    def fake_sweep(
+        _corpus: object,
+        _models: object,
+        _args: object,
+    ) -> list[dict]:
+        return rows
+
+    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
+    exit_code = evaluator.main(
+        argv=[
+            "--kind",
+            "synthetic",
+            "--out",
+            str(tmp_path / "runs"),
+            "--baseline",
+            str(baseline),
+            "--write-baseline",
+        ]
+    )
+
+    assert exit_code == 1
+    assert baseline.read_text() == "existing baseline\n"
+
+
+def test_clean_canonical_sweep_writes_baseline(
+    evaluator: _EvaluatorModule,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = tmp_path / "baseline.json"
+    rows = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_report_dict(),
+            status="ok",
+        )
+    ]
+
+    def fake_sweep(
+        _corpus: object,
+        _models: object,
+        _args: object,
+    ) -> list[dict]:
+        return rows
+
+    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
+    exit_code = evaluator.main(
+        argv=[
+            "--kind",
+            "synthetic",
+            "--out",
+            str(tmp_path / "runs"),
+            "--baseline",
+            str(baseline),
+            "--write-baseline",
+        ]
+    )
+
+    assert exit_code == 0
+    assert baseline.exists()
+
+
+@pytest.mark.slow
+def test_smoke_sweep_two_models(
+    evaluator: _EvaluatorModule,
+    tmp_path: Path,
+) -> None:
+    exit_code = evaluator.main(
+        argv=[
             "--models",
             "cantilever,letter-t",
             "--strategies",
@@ -148,11 +431,10 @@ def test_smoke_sweep_two_models(evaluator, tmp_path):
             str(tmp_path / "runs"),
             "--baseline",
             str(tmp_path / "baseline.json"),
-            "--write-baseline",
         ]
     )
     assert exit_code == 0
-    assert (tmp_path / "baseline.json").exists()
+    assert not (tmp_path / "baseline.json").exists()
     runs = list((tmp_path / "runs").iterdir())
     assert len(runs) == 1
     assert (runs[0] / "scorecard.md").exists()

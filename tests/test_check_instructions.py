@@ -1,10 +1,12 @@
 """Instruction-checker script tests."""
 
+from __future__ import annotations
+
 import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType
+from typing import Protocol, cast
 
 import pytest
 
@@ -17,26 +19,57 @@ _SCRIPT = Path(__file__).parent.parent / "scripts" / "check_instructions.py"
 _HEART = Path(__file__).parent.parent / "data" / "examples" / "heart.vox"
 
 
-def _load_checker() -> ModuleType:
+class _CheckerModule(Protocol):
+    """Typed surface of the dynamically loaded checker script."""
+
+    def check_steps(
+        self,
+        result_layout: Layout,
+        plan: InstructionPlan,
+        max_step_size: int,
+    ) -> list[dict]:
+        """Audit the instruction steps."""
+        ...
+
+    def main(self, argv: list[str] | None = None) -> int:
+        """Run the checker CLI."""
+        ...
+
+
+def _load_checker() -> _CheckerModule:
     spec = importlib.util.spec_from_file_location("check_instructions", _SCRIPT)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module
+    return cast("_CheckerModule", module)
 
 
 @pytest.fixture(scope="module")
-def checker() -> ModuleType:
+def checker() -> _CheckerModule:
     return _load_checker()
 
 
-def test_check_steps_flags_floating_prefix(checker):
+def test_check_steps_flags_floating_prefix(checker: _CheckerModule) -> None:
     # Two stacked bricks sequenced upper-first: the first prefix dangles.
     layout = Layout(catalog=default_catalog())
-    lower = layout.add("brick_1x2", 0, 0, 0, 0, 4).brick_id
-    upper = layout.add("brick_1x2", 0, 0, 3, 0, 4).brick_id
+    lower = layout.add(
+        part_key="brick_1x2",
+        x=0,
+        y=0,
+        layer=0,
+        yaw=0,
+        colour_code=4,
+    ).brick_id
+    upper = layout.add(
+        part_key="brick_1x2",
+        x=0,
+        y=0,
+        layer=3,
+        yaw=0,
+        colour_code=4,
+    ).brick_id
     plan = InstructionPlan(
         steps=(
             BuildStep(
@@ -55,16 +88,30 @@ def test_check_steps_flags_floating_prefix(checker):
         warnings=(),
         bom=bill_of_materials(layout),
     )
-    rows = checker.check_steps(layout, plan, max_step_size=10)
+    rows = checker.check_steps(
+        result_layout=layout,
+        plan=plan,
+        max_step_size=10,
+    )
     assert rows[0]["floating_after"] == 1
     assert "floating" in rows[0]["flags"]
     assert rows[1]["floating_after"] == 0
     assert rows[1]["flags"] == []
 
 
-def test_check_steps_flags_oversized(checker):
+def test_check_steps_flags_oversized(checker: _CheckerModule) -> None:
     layout = Layout(catalog=default_catalog())
-    ids = tuple(layout.add("brick_1x1", x, 0, 0, 0, 4).brick_id for x in range(4))
+    ids = tuple(
+        layout.add(
+            part_key="brick_1x1",
+            x=x,
+            y=0,
+            layer=0,
+            yaw=0,
+            colour_code=4,
+        ).brick_id
+        for x in range(4)
+    )
     plan = InstructionPlan(
         steps=(
             BuildStep(
@@ -77,11 +124,19 @@ def test_check_steps_flags_oversized(checker):
         warnings=(),
         bom=bill_of_materials(layout),
     )
-    rows = checker.check_steps(layout, plan, max_step_size=3)
+    rows = checker.check_steps(
+        result_layout=layout,
+        plan=plan,
+        max_step_size=3,
+    )
     assert rows[0]["flags"] == ["oversized"]
 
 
-def test_end_to_end_heart(checker, tmp_path, capsys):
+def test_end_to_end_heart(
+    checker: _CheckerModule,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     json_path = tmp_path / "report.json"
     exit_code = checker.main([str(_HEART), "--json", str(json_path)])
     # The heart's lobes start as floating islands: warnings, not violations.
@@ -96,9 +151,12 @@ def test_end_to_end_heart(checker, tmp_path, capsys):
     assert "steps" in out
 
 
-def test_end_to_end_json_stdout(checker, capsys):
+def test_end_to_end_json_stdout(
+    checker: _CheckerModule,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     exit_code = checker.main([str(_HEART), "--json", "-"])
     assert exit_code in (0, 2)
     stdout = capsys.readouterr().out
-    payload, _end = json.JSONDecoder().raw_decode(stdout[stdout.index("{") :])
+    payload = json.loads(stdout)
     assert payload["input"].endswith("heart.vox")

@@ -63,7 +63,7 @@ def test_run_file_rejects_unknown_suffix(tmp_path):
         run_file(bad, tmp_path / "out.ldr")
 
 
-def test_run_file_rejects_corrupt_mesh(tmp_path):
+def test_run_file_rejects_corrupt_mesh(tmp_path: Path) -> None:
     bad = tmp_path / "box.stl"
     bad.write_bytes(b"not a mesh at all")
     with pytest.raises(ValueError, match=r"failed to load mesh|no triangle faces"):

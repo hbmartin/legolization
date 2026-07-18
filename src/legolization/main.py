@@ -211,6 +211,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="keep shell meshes unfilled instead of flooding the interior",
     )
+    mesh.add_argument(
+        "--largest-component-only",
+        action="store_true",
+        help=(
+            "discard disconnected voxel islands outside the largest mesh "
+            "component (always reported)"
+        ),
+    )
     scale = parser.add_mutually_exclusive_group()
     scale.add_argument(
         "--plates-per-voxel",
@@ -326,11 +334,13 @@ def main(argv: list[str] | None = None) -> int:
         or args.up is not None
         or args.mesh_colour is not None
         or args.no_fill
+        or args.largest_component_only
     )
     if mesh_flags and not mesh_input:
         parser.error(
-            "--target-studs/--pitch/--up/--mesh-colour/--no-fill apply only "
-            "to mesh inputs (.obj/.stl/.ply)"
+            "--target-studs/--pitch/--up/--mesh-colour/--no-fill/"
+            "--largest-component-only apply only to mesh inputs "
+            "(.obj/.stl/.ply)"
         )
     if mesh_input and (
         args.plates_per_voxel is not None or args.aspect_correct or args.dither
@@ -381,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
                 else DEFAULT_MESH_COLOUR
             ),
             fill=not args.no_fill,
+            keep_largest=args.largest_component_only,
         ),
         weights=ObjectiveWeights(stability=args.stability_weight),
         solver=SolverConfig(mode="milp" if args.milp else "lp"),

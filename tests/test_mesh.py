@@ -21,6 +21,18 @@ def _box() -> trimesh.Trimesh:
     return trimesh.creation.box(extents=_BOX_EXTENTS)
 
 
+def _two_components() -> trimesh.Trimesh:
+    return trimesh.util.concatenate(
+        [
+            trimesh.creation.box(extents=(2.0, 2.0, 2.0)),
+            trimesh.creation.box(
+                extents=(1.0, 1.0, 1.0),
+                transform=trimesh.transformations.translation_matrix((5.0, 0.0, 0.0)),
+            ),
+        ]
+    )
+
+
 def test_box_shape_and_counts() -> None:
     grid = grid_from_mesh(_box(), options=MeshOptions(target_studs=8))
     assert grid.shape == (9, 5, 5)
@@ -90,19 +102,10 @@ def test_no_fill_leaves_shell() -> None:
 
 
 def test_largest_component_filter() -> None:
-    two = trimesh.util.concatenate(
-        [
-            trimesh.creation.box(extents=(2.0, 2.0, 2.0)),
-            trimesh.creation.box(
-                extents=(1.0, 1.0, 1.0),
-                transform=trimesh.transformations.translation_matrix((5.0, 0.0, 0.0)),
-            ),
-        ]
-    )
     messages: list[str] = []
     grid = grid_from_mesh(
-        two,
-        options=MeshOptions(target_studs=12),
+        _two_components(),
+        options=MeshOptions(target_studs=12, keep_largest=True),
         progress=messages.append,
     )
     structure = ndimage.generate_binary_structure(rank=3, connectivity=1)
@@ -111,9 +114,33 @@ def test_largest_component_filter() -> None:
     assert any("dropped" in message for message in messages)
 
 
+def test_disconnected_components_are_preserved_by_default() -> None:
+    grid = grid_from_mesh(
+        _two_components(),
+        options=MeshOptions(target_studs=12),
+    )
+    structure = ndimage.generate_binary_structure(rank=3, connectivity=1)
+    _labels, components = ndimage.label(grid.filled_mask, structure=structure)
+    assert components == 2
+
+
+def test_largest_component_filter_warns_without_progress() -> None:
+    with pytest.warns(UserWarning, match="dropped"):
+        grid_from_mesh(
+            _two_components(),
+            options=MeshOptions(target_studs=12, keep_largest=True),
+        )
+
+
 def test_grid_dim_cap_raises() -> None:
     with pytest.raises(ValueError, match="reduce --target-studs"):
         grid_from_mesh(_box(), options=MeshOptions(pitch=0.001))
+
+
+def test_grid_cell_cap_raises_below_axis_limit() -> None:
+    cube = trimesh.creation.box(extents=(100.0, 100.0, 100.0))
+    with pytest.raises(ValueError, match=r"cells; cap 16_000_000"):
+        grid_from_mesh(cube, options=MeshOptions(pitch=0.5))
 
 
 def test_determinism() -> None:
@@ -188,3 +215,24 @@ def test_cli_mesh_happy_path(
     assert exit_code == 0
     assert out.exists()
     assert "wrote" in capsys.readouterr().out
+
+
+def test_cli_largest_component_only_reports_removal(tmp_path: Path) -> None:
+    path = tmp_path / "two-components.stl"
+    _two_components().export(path)
+    out = tmp_path / "two-components.ldr"
+
+    with pytest.warns(UserWarning, match="dropped"):
+        exit_code = main(
+            [
+                str(path),
+                "-o",
+                str(out),
+                "--target-studs",
+                "12",
+                "--largest-component-only",
+            ]
+        )
+
+    assert exit_code == 0
+    assert out.exists()

@@ -11,6 +11,7 @@ construction.
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -31,6 +32,7 @@ MESH_SUFFIXES: frozenset[str] = frozenset({".obj", ".stl", ".ply"})
 DEFAULT_MESH_COLOUR = 7  # light grey
 _PLATES_PER_STUD = 2.5  # 20 LDU stud pitch / 8 LDU plate height
 _MAX_GRID_DIM = 512
+_MAX_GRID_CELLS = 16_000_000
 _HORIZONTAL_AXES = 2
 # 6-connectivity for the largest-component filter, matching grid semantics.
 _FACE_STRUCTURE = ndimage.generate_binary_structure(rank=3, connectivity=1)
@@ -52,7 +54,7 @@ class MeshOptions:
     up: Literal["x", "y", "z"] = "z"
     colour_code: int = DEFAULT_MESH_COLOUR
     fill: bool = True
-    keep_largest: bool = True
+    keep_largest: bool = False
 
     def __post_init__(self) -> None:
         """Reject invalid programmatic configuration at the API boundary."""
@@ -114,11 +116,15 @@ def grid_from_mesh(
         raise ValueError(msg)
     if options.keep_largest:
         mask, dropped = _largest_component(mask)
-        if dropped and progress is not None:
-            progress(
+        if dropped:
+            message = (
                 f"dropped {dropped} voxels disconnected from the largest "
                 f"component (non-watertight mesh?)"
             )
+            if progress is not None:
+                progress(message)
+            else:
+                warnings.warn(message, UserWarning, stacklevel=2)
     codes = np.where(mask, options.colour_code, EMPTY).astype(np.int16)
     return VoxelGrid.from_array(codes, plates_per_voxel=1, palette=palette)
 
@@ -169,10 +175,17 @@ def _stud_pitch(mesh: trimesh.Trimesh, options: MeshOptions) -> float:
 def _check_grid_dims(mesh: trimesh.Trimesh, pitch: float) -> None:
     """Reject pitches that would blow up the voxel grid before voxelizing."""
     dims = [math.ceil(float(extent) / pitch) + 2 for extent in mesh.extents]
+    listed = "x".join(str(dim) for dim in dims)
     if max(dims) > _MAX_GRID_DIM:
-        listed = "x".join(str(dim) for dim in dims)
         msg = (
             f"voxelization would need a ~{listed} grid (cap {_MAX_GRID_DIM}); "
+            f"reduce --target-studs or increase --pitch"
+        )
+        raise ValueError(msg)
+    if (cell_count := math.prod(dims)) > _MAX_GRID_CELLS:
+        msg = (
+            f"voxelization would need a ~{listed} grid "
+            f"({cell_count:_} cells; cap {_MAX_GRID_CELLS:_}); "
             f"reduce --target-studs or increase --pitch"
         )
         raise ValueError(msg)

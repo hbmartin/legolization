@@ -233,6 +233,73 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _validate_baseline_scope(args: argparse.Namespace) -> None:
+    """Require the committed baseline's canonical, reproducible sweep scope."""
+    filtered = any(
+        value is not None for value in (args.models, args.traits, args.strategies)
+    )
+    if args.write_baseline and (args.kind != "synthetic" or args.seed != 0 or filtered):
+        msg = (
+            "--write-baseline requires an unfiltered --kind synthetic sweep "
+            "with --seed 0"
+        )
+        raise SystemExit(msg)
+
+
+def _assess_rows(rows: list[dict]) -> tuple[int, list[dict]]:
+    """Return the status code and successful physics-verdict rows."""
+    evaluated_rows = [row for row in rows if not row["status"].startswith("skipped:")]
+    failed_runs = [
+        row["model"] for row in evaluated_rows if row["status"].startswith("error:")
+    ]
+    successful_rows = [row for row in evaluated_rows if row["status"] == "ok"]
+    expectation_failures = [
+        row["model"] for row in successful_rows if not row["expectation_ok"]
+    ]
+    if failed_runs:
+        print(f"evaluation failures: {', '.join(failed_runs)}")
+    if expectation_failures:
+        print(f"expectation failures: {', '.join(expectation_failures)}")
+    return int(bool(failed_runs or expectation_failures)), successful_rows
+
+
+def _baseline_regression_status(
+    args: argparse.Namespace,
+    rows: list[dict],
+) -> int:
+    """Compare successful rows with the baseline and return an exit status."""
+    if not args.baseline.exists() or args.write_baseline:
+        return 0
+    baseline_rows = json.loads(args.baseline.read_text())["models"]
+    hard, info = compare_to_baseline(
+        rows=rows,
+        baseline_rows=baseline_rows,
+        tolerance=args.tolerance,
+    )
+    for line in info:
+        print(f"note: {line}")
+    for line in hard:
+        print(f"REGRESSION: {line}")
+    return int(bool(hard))
+
+
+def _write_baseline(
+    args: argparse.Namespace,
+    payload: dict,
+    *,
+    exit_code: int,
+) -> None:
+    """Write a clean canonical baseline, preserving any prior file on failure."""
+    if not args.write_baseline:
+        return
+    if exit_code:
+        print("baseline not written because the evaluation failed", file=sys.stderr)
+        return
+    args.baseline.parent.mkdir(parents=True, exist_ok=True)
+    args.baseline.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"wrote {args.baseline}")
+
+
 def _sweep(
     corpus: ModuleType,
     models: list[CorpusModelLike],
@@ -272,6 +339,7 @@ def _sweep(
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     args = _parse_args(argv)
+    _validate_baseline_scope(args)
     corpus = load_corpus_module()
     models = corpus.select_models(corpus.load_manifest(), args.models)
     if args.traits is not None:
@@ -292,24 +360,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote {out_dir / 'scorecard.json'}")
     print(to_markdown(rows))
 
-    exit_code = 0
-    if not all(row["expectation_ok"] for row in rows):
-        failed = [row["model"] for row in rows if not row["expectation_ok"]]
-        print(f"expectation failures: {', '.join(failed)}")
-        exit_code = 1
-    if args.baseline.exists() and not args.write_baseline:
-        baseline_rows = json.loads(args.baseline.read_text())["models"]
-        hard, info = compare_to_baseline(rows, baseline_rows, tolerance=args.tolerance)
-        for line in info:
-            print(f"note: {line}")
-        for line in hard:
-            print(f"REGRESSION: {line}")
-        if hard:
-            exit_code = 1
-    if args.write_baseline:
-        args.baseline.parent.mkdir(parents=True, exist_ok=True)
-        args.baseline.write_text(json.dumps(payload, indent=2) + "\n")
-        print(f"wrote {args.baseline}")
+    exit_code, successful_rows = _assess_rows(rows)
+    exit_code = max(
+        exit_code,
+        _baseline_regression_status(args=args, rows=successful_rows),
+    )
+    _write_baseline(args=args, payload=payload, exit_code=exit_code)
     return exit_code
 
 
