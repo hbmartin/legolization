@@ -101,6 +101,11 @@ the common Y-up convention, `--mesh-colour CODE` picks the uniform colour,
 and `--no-fill` keeps shell meshes hollow. Disconnected mesh components are
 preserved by default; `--largest-component-only` discards every smaller
 voxel island and always reports how many voxels were removed.
+`--mesh-colour-mode sampled` colours each voxel from the mesh's
+texture/vertex colours (nearest-vertex, quantized to the LDraw palette),
+falling back to `--mesh-colour` with a note when the mesh carries no
+colour data — note a loose `.obj` without its `.mtl`/texture (e.g. the
+corpus `spot.obj`) has none, so it stays uniform.
 
 `--strategy all` runs every registered strategy on the same input (in
 parallel worker processes; `--jobs 1` forces sequential) and keeps the best

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import trimesh
 from scipy import ndimage
+from scipy.spatial import KDTree
 
 from legolization.color import default_palette
 from legolization.grid import EMPTY, VoxelGrid
@@ -44,15 +45,18 @@ class MeshOptions:
 
     ``pitch`` (model units per stud) overrides ``target_studs`` when set.
     ``up`` names the mesh's vertical axis — most ``.obj`` files are y-up.
-    ``fill`` floods the enclosed volume; disable for shell meshes. Filled
-    cells all take ``colour_code`` (per-voxel colour sampling is a later
-    milestone; interiors are hollowed away downstream regardless).
+    ``fill`` floods the enclosed volume; disable for shell meshes.
+    ``colour_mode="sampled"`` colours each voxel from the nearest mesh
+    vertex (texture and vertex colours both work, via trimesh's
+    ``to_color``); meshes without colour data fall back to the uniform
+    ``colour_code``, which is also what ``"uniform"`` always applies.
     """
 
     target_studs: int = 32
     pitch: float | None = None
     up: Literal["x", "y", "z"] = "z"
     colour_code: int = DEFAULT_MESH_COLOUR
+    colour_mode: Literal["uniform", "sampled"] = "uniform"
     fill: bool = True
     keep_largest: bool = False
 
@@ -68,6 +72,9 @@ class MeshOptions:
             raise ValueError(msg)
         if self.up not in {"x", "y", "z"}:
             msg = "up must be one of 'x', 'y', or 'z'"
+            raise ValueError(msg)
+        if self.colour_mode not in {"uniform", "sampled"}:
+            msg = "colour_mode must be 'uniform' or 'sampled'"
             raise ValueError(msg)
 
 
@@ -117,16 +124,67 @@ def grid_from_mesh(
     if options.keep_largest:
         mask, dropped = _largest_component(mask)
         if dropped:
-            message = (
+            _notify(
+                progress,
                 f"dropped {dropped} voxels disconnected from the largest "
-                f"component (non-watertight mesh?)"
+                f"component (non-watertight mesh?)",
             )
-            if progress is not None:
-                progress(message)
-            else:
-                warnings.warn(message, UserWarning, stacklevel=2)
+    if options.colour_mode == "sampled":
+        colours = _vertex_colours(working)
+        if colours is not None:
+            rgba = _sampled_rgba(working, voxels, mask, colours)
+            return VoxelGrid.from_array(rgba, plates_per_voxel=1, palette=palette)
+        _notify(progress, "mesh has no colour data; using the uniform colour")
     codes = np.where(mask, options.colour_code, EMPTY).astype(np.int16)
     return VoxelGrid.from_array(codes, plates_per_voxel=1, palette=palette)
+
+
+def _notify(progress: Callable[[str], None] | None, message: str) -> None:
+    """Route a loader message to the progress callback or a UserWarning."""
+    if progress is not None:
+        progress(message)
+    else:
+        warnings.warn(message, UserWarning, stacklevel=3)
+
+
+def _vertex_colours(mesh: trimesh.Trimesh) -> np.ndarray | None:
+    """Per-vertex RGBA from texture or vertex colours; None when absent."""
+    visual = getattr(mesh, "visual", None)
+    if visual is None or getattr(visual, "kind", None) is None:
+        return None
+    try:
+        colour_visual = visual.to_color() if hasattr(visual, "to_color") else visual
+        colours = np.asarray(colour_visual.vertex_colors, dtype=np.uint8)
+    except Exception:  # noqa: BLE001 - visuals raise arbitrary types
+        return None
+    if colours.ndim != 2 or len(colours) != len(mesh.vertices):
+        return None
+    return colours
+
+
+def _sampled_rgba(
+    working: trimesh.Trimesh,
+    voxels: trimesh.voxel.VoxelGrid,
+    mask: np.ndarray,
+    colours: np.ndarray,
+) -> np.ndarray:
+    """Colour every filled cell from its nearest mesh vertex.
+
+    The query runs in the true metric — the 2.5x z pre-stretch is undone
+    on both voxel centres and vertices, so "nearest" is not biased toward
+    laterally distant vertices. Interior cells inherit the nearest
+    surface colour and are relabelled IGNORE downstream anyway.
+    """
+    filled = np.argwhere(mask)
+    centres = np.asarray(voxels.indices_to_points(filled), dtype=np.float64)
+    centres[:, 2] /= _PLATES_PER_STUD
+    vertices = np.asarray(working.vertices, dtype=np.float64).copy()
+    vertices[:, 2] /= _PLATES_PER_STUD
+    _, nearest = KDTree(vertices).query(centres, workers=-1)
+    rgba = np.zeros((*mask.shape, 4), dtype=np.uint8)
+    rgba[filled[:, 0], filled[:, 1], filled[:, 2]] = colours[nearest]
+    rgba[..., 3] = np.where(mask, 255, 0).astype(np.uint8)
+    return rgba
 
 
 def _load_mesh(path: Path) -> trimesh.Trimesh:

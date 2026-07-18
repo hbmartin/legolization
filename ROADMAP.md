@@ -47,8 +47,12 @@ merge-engine filler for large regions instead of CPLEX.
 Shipped as designed below, with two deviations: the pitch derives from the
 **largest horizontal extent** (`max(extents[:2]) / target_studs`), not the
 overall max — "target studs" means footprint, and the overall max would
-shrink tall models; and colour sampling is deferred — v1 applies a uniform
-`--mesh-colour` (interiors are hollowed away regardless). A
+shrink tall models; and colour sampling landed as **nearest-vertex** via
+scipy's cKDTree (`--mesh-colour-mode sampled`; texture and vertex colours
+both route through trimesh's `to_color`), not `ProximityQuery.on_surface`
+— rtree is not a dependency, and vertex density exceeds voxel resolution
+for every corpus mesh. Meshes without colour data fall back to the
+uniform `--mesh-colour` with a note. A
 largest-component filter (6-connected, with a "dropped N voxels" progress
 warning) handles non-watertight meshes; `--up {x,y,z}` orients Y-up `.obj`
 files via a proper rotation. See `src/legolization/mesh.py` and

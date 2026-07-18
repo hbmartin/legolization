@@ -232,6 +232,16 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     mesh.add_argument(
+        "--mesh-colour-mode",
+        choices=("uniform", "sampled"),
+        default=None,
+        help=(
+            "uniform (default) paints every voxel --mesh-colour; sampled "
+            "takes each voxel's colour from the mesh's texture/vertex "
+            "colours, falling back to --mesh-colour when the mesh has none"
+        ),
+    )
+    mesh.add_argument(
         "--no-fill",
         action="store_true",
         help="keep shell meshes unfilled instead of flooding the interior",
@@ -368,14 +378,15 @@ def main(argv: list[str] | None = None) -> int:
         args.target_studs is not None
         or args.pitch is not None
         or args.up is not None
+        or args.mesh_colour_mode is not None
         or args.mesh_colour is not None
         or args.no_fill
         or args.largest_component_only
     )
     if mesh_flags and not mesh_input:
         parser.error(
-            "--target-studs/--pitch/--up/--mesh-colour/--no-fill/"
-            "--largest-component-only apply only to mesh inputs "
+            "--target-studs/--pitch/--up/--mesh-colour/--mesh-colour-mode/"
+            "--no-fill/--largest-component-only apply only to mesh inputs "
             "(.obj/.stl/.ply)"
         )
     if mesh_input and (
@@ -425,6 +436,11 @@ def main(argv: list[str] | None = None) -> int:
                 args.mesh_colour
                 if args.mesh_colour is not None
                 else DEFAULT_MESH_COLOUR
+            ),
+            colour_mode=(
+                args.mesh_colour_mode
+                if args.mesh_colour_mode is not None
+                else "uniform"
             ),
             fill=not args.no_fill,
             keep_largest=args.largest_component_only,

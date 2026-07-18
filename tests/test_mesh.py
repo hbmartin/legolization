@@ -6,6 +6,7 @@ from typing import Literal, cast
 import numpy as np
 import pytest
 import trimesh
+import trimesh.visual
 from scipy import ndimage
 
 from legolization.grid import EMPTY, VoxelGrid
@@ -236,3 +237,141 @@ def test_cli_largest_component_only_reports_removal(tmp_path: Path) -> None:
 
     assert exit_code == 0
     assert out.exists()
+
+
+# --- colour sampling -------------------------------------------------------
+
+
+def _split_colour_box() -> trimesh.Trimesh:
+    """Box with red vertices on the low-x half and blue on the high-x half."""
+    box = trimesh.creation.box(extents=_BOX_EXTENTS)
+    colours = np.where(
+        box.vertices[:, 0:1] < 0,
+        np.array([200, 30, 30, 255], dtype=np.uint8),
+        np.array([30, 30, 200, 255], dtype=np.uint8),
+    ).astype(np.uint8)
+    box.visual = trimesh.visual.ColorVisuals(mesh=box, vertex_colors=colours)
+    return box
+
+
+def test_sampled_vertex_colours_split_box() -> None:
+    grid = grid_from_mesh(
+        _split_colour_box(),
+        options=MeshOptions(target_studs=8, colour_mode="sampled"),
+    )
+    nx = grid.shape[0]
+    low = grid.codes[: nx // 2 - 1][grid.filled_mask[: nx // 2 - 1]]
+    high = grid.codes[nx // 2 + 1 :][grid.filled_mask[nx // 2 + 1 :]]
+    assert low.size
+    assert high.size
+    assert len(set(low.tolist())) == 1
+    assert len(set(high.tolist())) == 1
+    assert set(low.tolist()) != set(high.tolist())
+
+
+def test_sampled_interior_inherits_surface_colour() -> None:
+    grid = grid_from_mesh(
+        _split_colour_box(),
+        options=MeshOptions(target_studs=8, colour_mode="sampled"),
+    )
+    assert grid.filled_count == 225  # same coverage as the uniform golden
+    assert (grid.codes[grid.filled_mask] != EMPTY).all()
+
+
+def test_sampled_falls_back_to_uniform_without_colours() -> None:
+    messages: list[str] = []
+    grid = grid_from_mesh(
+        _box(),
+        options=MeshOptions(target_studs=6, colour_mode="sampled", colour_code=4),
+        progress=messages.append,
+    )
+    assert (grid.codes[grid.filled_mask] == 4).all()
+    assert any("no colour data" in message for message in messages)
+
+
+def test_sampled_fallback_warns_without_progress() -> None:
+    with pytest.warns(UserWarning, match="no colour data"):
+        grid_from_mesh(
+            _box(),
+            options=MeshOptions(target_studs=6, colour_mode="sampled"),
+        )
+
+
+def test_sampled_is_deterministic() -> None:
+    options = MeshOptions(target_studs=8, colour_mode="sampled")
+    first = grid_from_mesh(_split_colour_box(), options=options)
+    second = grid_from_mesh(_split_colour_box(), options=options)
+    assert np.array_equal(first.codes, second.codes)
+
+
+def test_sampled_respects_up_axis() -> None:
+    # Red on the +y half in a y-up frame must land in the TOP layers.
+    box = trimesh.creation.box(extents=(1.9, 3.9, 0.9))
+    colours = np.where(
+        box.vertices[:, 1:2] > 0,
+        np.array([200, 30, 30, 255], dtype=np.uint8),
+        np.array([240, 240, 240, 255], dtype=np.uint8),
+    ).astype(np.uint8)
+    box.visual = trimesh.visual.ColorVisuals(mesh=box, vertex_colors=colours)
+    grid = grid_from_mesh(
+        box,
+        options=MeshOptions(target_studs=4, up="y", colour_mode="sampled"),
+    )
+    nlayers = grid.shape[2]
+    top = set(
+        grid.codes[:, :, nlayers - 2 :][grid.filled_mask[:, :, nlayers - 2 :]].tolist()
+    )
+    bottom = set(grid.codes[:, :, :2][grid.filled_mask[:, :, :2]].tolist())
+    assert top != bottom
+
+
+def test_sampled_textured_mesh_in_memory() -> None:
+    image_module = pytest.importorskip("PIL.Image")
+    image = image_module.new("RGB", (2, 1))
+    image.putpixel((0, 0), (200, 30, 30))
+    image.putpixel((1, 0), (30, 30, 200))
+    box = trimesh.creation.box(extents=_BOX_EXTENTS)
+    uv = np.where(box.vertices[:, 0:1] < 0, 0.0, 1.0) * np.array([1.0, 0.0])
+    uv = np.hstack([uv[:, 0:1], np.full((len(box.vertices), 1), 0.5)])
+    box.visual = trimesh.visual.TextureVisuals(
+        uv=uv,
+        material=trimesh.visual.material.SimpleMaterial(image=image),
+    )
+    grid = grid_from_mesh(
+        box,
+        options=MeshOptions(target_studs=8, colour_mode="sampled"),
+    )
+    codes = set(grid.codes[grid.filled_mask].tolist())
+    assert len(codes) == 2
+
+
+def test_mesh_options_reject_invalid_colour_mode() -> None:
+    with pytest.raises(ValueError, match="colour_mode"):
+        MeshOptions(colour_mode=cast("Literal['uniform', 'sampled']", "vibes"))
+
+
+def test_cli_sampled_colour_mode_on_ply(tmp_path: Path) -> None:
+    path = tmp_path / "box.ply"
+    _split_colour_box().export(path)
+    out = tmp_path / "box.ldr"
+    exit_code = main(
+        [
+            str(path),
+            "-o",
+            str(out),
+            "--target-studs",
+            "6",
+            "--mesh-colour-mode",
+            "sampled",
+        ]
+    )
+    assert exit_code == 0
+    assert out.exists()
+
+
+def test_cli_colour_mode_rejects_voxel_input(tmp_path: Path) -> None:
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(npy), "--mesh-colour-mode", "sampled"])
+    assert excinfo.value.code == 2
