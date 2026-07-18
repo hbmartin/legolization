@@ -6,17 +6,23 @@ emitted prefix is a physically stable, vertically insertable structure:
 - a chunk is *ready* when its supports are placed, no already-placed brick
   blocks its vertical insertion, and pulling it forward cannot strand a
   still-unplaced brick under a new overhang;
-- among the first ``beam_width`` ready chunks, the earliest whose prefix
-  the RBE calls stable is taken (one LP per step on the fast path);
-- when no ready chunk yields a stable prefix, the best-scoring one is
-  emitted with ``prefix_stable=False`` and a warning (``stability_policy=
-  "strict"`` raises instead) — genuinely unorderable prefixes exist, e.g.
-  cantilevers whose counterweight shares their band.
+- among the first ``beam_width`` ready chunks — evaluated nearest-previous-
+  step first when ``spatial_tiebreak`` is on (Ma et al.'s continuity
+  heuristic) — the earliest whose prefix the RBE calls stable is taken
+  (one LP per step on the fast path);
+- when the greedy pass degrades (readiness deadlock, or no ready chunk
+  yields a stable prefix), the remainder is re-planned by
+  assembly-by-disassembly (:mod:`search`), which walks backward from the
+  complete structure along a maximal-stability path; steps that stay
+  unstable get ``prefix_stable=False`` and a warning
+  (``stability_policy="strict"`` raises instead) — genuinely unorderable
+  prefixes exist, e.g. cantilevers whose counterweight sits on their tail.
+  ``fallback="band"`` restores the legacy unchecked band-order escape.
 
 Pure band order is always insertion-feasible (a placed brick above an
-unplaced one's column would have to overlap it), so the loop can always
-fall back to it. Everything is deterministic: no RNG, and every ordering
-key ends in a brick id.
+unplaced one's column would have to overlap it). Everything is
+deterministic: no RNG, and every ordering key ends in a brick id or a
+deterministic chunk position.
 """
 
 from __future__ import annotations
@@ -26,10 +32,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from legolization.graph import GROUND_ID, ConnectionGraph
-from legolization.instructions.blocking import vertical_blockers
+from legolization.instructions.blocking import chunk_ready, vertical_blockers
 from legolization.instructions.bom import BillOfMaterials, bill_of_materials
-from legolization.instructions.chunking import chunk_bands, mirror_pairs
-from legolization.stability.solver import SolverConfig, analyze
+from legolization.instructions.chunking import chunk_bands, chunk_centroid, mirror_pairs
+from legolization.instructions.search import (
+    ChunkVerdict,
+    beam_order,
+    disassembly_order,
+)
+from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
     from legolization.layout import Layout
@@ -56,6 +67,11 @@ class InstructionsConfig:
     beam_width: int = 4
     stability_policy: Literal["warn", "strict"] = "warn"
     solver: SolverConfig | None = None
+    spatial_tiebreak: bool = True
+    fallback: Literal["disassembly", "band"] = "disassembly"
+    search: Literal["greedy", "beam"] = "greedy"
+    beam_states: int = 3
+    lp_budget: int | None = None  # beam mode; None = 8 x chunk count
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +143,7 @@ def plan_instructions(
     )
 
 
-def _sequence(  # noqa: PLR0913, C901 - the greedy loop owns all sequencing state
+def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing state
     layout: Layout,
     config: InstructionsConfig,
     chunks: list[tuple[int, tuple[int, ...]]],
@@ -139,6 +155,9 @@ def _sequence(  # noqa: PLR0913, C901 - the greedy loop owns all sequencing stat
     placed: set[int] = set()
     steps: list[BuildStep] = []
     warnings: list[str] = []
+    cache: dict[frozenset[int], StabilityResult] = {}
+    centroids = [chunk_centroid(layout, chunk) for _, chunk in chunks]
+    previous_centroid: tuple[float, float] | None = None
 
     def emit(chunk: tuple[int, ...], *, stable: bool, score: float) -> None:
         ordered = tuple(
@@ -162,30 +181,86 @@ def _sequence(  # noqa: PLR0913, C901 - the greedy loop owns all sequencing stat
         )
         placed.update(chunk)
 
+    def analyze_prefix(chunk: tuple[int, ...]) -> StabilityResult:
+        key = frozenset(placed | set(chunk))
+        if (hit := cache.get(key)) is None:
+            cache[key] = hit = analyze(layout.subset(key), config.solver)
+        return hit
+
+    def emit_verdicts(verdicts: list[ChunkVerdict]) -> None:
+        for verdict in verdicts:
+            if not verdict.stable:
+                if config.stability_policy == "strict":
+                    msg = (
+                        f"no stable ordering at step {len(steps) + 1} "
+                        f"(best prefix score {verdict.max_score:.3f})"
+                    )
+                    raise InstructionsError(msg)
+                warnings.append(
+                    f"step {len(steps) + 1}: prefix unstable "
+                    f"(score {verdict.max_score:.2f}); "
+                    "support the overhang by hand while building"
+                )
+            emit(verdict.chunk, stable=verdict.stable, score=verdict.max_score)
+
+    def rescue() -> None:
+        """Re-plan the whole remainder by assembly-by-disassembly."""
+        emit_verdicts(
+            disassembly_order(
+                layout,
+                placed=frozenset(placed),
+                chunks=[chunks[position] for position in pending],
+                supports=supports,
+                blockers=blockers,
+                config=config,
+                cache=cache,
+            )
+        )
+
+    if config.search == "beam":
+        emit_verdicts(
+            beam_order(
+                layout,
+                chunks=chunks,
+                supports=supports,
+                blockers=blockers,
+                blocks=blocks,
+                config=config,
+                cache=cache,
+            )
+        )
+        return steps, warnings
+
     while pending:
-        ready: list[int] = []
-        for position in pending:
-            _, chunk = chunks[position]
-            if not _ready(chunk, placed, supports, blockers, blocks):
-                continue
-            ready.append(position)
-            if len(ready) >= config.beam_width:
-                break
+        ready = _gather_ready(
+            pending,
+            chunks,
+            placed,
+            supports,
+            blockers,
+            blocks,
+            limit=config.beam_width,
+        )
         if not ready:
-            # Belt-and-braces: fall back to pure band order, which is
-            # always insertion-feasible.
+            if config.fallback == "disassembly":
+                rescue()
+                break
+            # Legacy escape hatch: pure band order is always
+            # insertion-feasible, but its verdicts go unchecked.
             warnings.append("sequencer deadlocked; remaining steps follow band order")
             for position in pending:
                 _, chunk = chunks[position]
-                result = analyze(layout.subset(placed | set(chunk)), config.solver)
+                result = analyze_prefix(chunk)
                 emit(chunk, stable=result.stable, score=result.max_score)
             break
+        if config.spatial_tiebreak and previous_centroid is not None:
+            ready = _spatial_order(ready, chunks, centroids, previous_centroid)
 
         chosen: int | None = None
         best: tuple[float, int] | None = None
         for position in ready:
             _, chunk = chunks[position]
-            result = analyze(layout.subset(placed | set(chunk)), config.solver)
+            result = analyze_prefix(chunk)
             if result.stable:
                 chosen = position
                 emit(chunk, stable=True, score=result.max_score)
@@ -195,6 +270,12 @@ def _sequence(  # noqa: PLR0913, C901 - the greedy loop owns all sequencing stat
         if chosen is None:
             assert best is not None  # noqa: S101 - ready was non-empty
             score, position = best
+            if config.fallback == "disassembly":
+                # No stable prefix in the window: re-plan the remainder
+                # along the maximal-stability disassembly path instead of
+                # committing to the least-bad forward pick.
+                rescue()
+                break
             if config.stability_policy == "strict":
                 msg = (
                     f"no stable ordering at step {len(steps) + 1} "
@@ -208,29 +289,53 @@ def _sequence(  # noqa: PLR0913, C901 - the greedy loop owns all sequencing stat
             )
             emit(chunk, stable=False, score=score)
             chosen = position
+        previous_centroid = centroids[chosen]
         pending.remove(chosen)
     return steps, warnings
 
 
-def _ready(
-    chunk: tuple[int, ...],
+def _gather_ready(  # noqa: PLR0913 - the readiness scan reads all sequencing state
+    pending: list[int],
+    chunks: list[tuple[int, tuple[int, ...]]],
     placed: set[int],
     supports: dict[int, set[int]],
     blockers: dict[int, frozenset[int]],
     blocks: dict[int, set[int]],
-) -> bool:
-    chunk_set = set(chunk)
-    settled = placed | chunk_set
-    for brick_id in chunk:
-        if not supports[brick_id] <= placed:
-            return False
-        if blockers[brick_id] & placed:
-            return False
-        # Pull-forward safety: placing this chunk must not strand any
-        # still-unplaced brick under a new overhang.
-        if not blocks[brick_id] <= settled:
-            return False
-    return True
+    *,
+    limit: int,
+) -> list[int]:
+    """First ``limit`` pending chunk positions whose insertion is feasible."""
+    ready: list[int] = []
+    for position in pending:
+        _, chunk = chunks[position]
+        if not chunk_ready(chunk, placed, supports, blockers, blocks):
+            continue
+        ready.append(position)
+        if len(ready) >= limit:
+            break
+    return ready
+
+
+def _spatial_order(
+    ready: list[int],
+    chunks: list[tuple[int, tuple[int, ...]]],
+    centroids: list[tuple[float, float]],
+    previous: tuple[float, float],
+) -> list[int]:
+    """Evaluate spatially adjacent candidates first (Ma et al. continuity).
+
+    Ordering only: with the first-stable early exit intact this costs no
+    extra LP calls, it just prefers the ready chunk nearest the previous
+    step when several prefixes are equally viable.
+    """
+    previous_x, previous_y = previous
+
+    def key(position: int) -> tuple[float, int, int]:
+        centroid_x, centroid_y = centroids[position]
+        distance_sq = (centroid_x - previous_x) ** 2 + (centroid_y - previous_y) ** 2
+        return (distance_sq, chunks[position][0], position)
+
+    return sorted(ready, key=key)
 
 
 def _assign_rotsteps(

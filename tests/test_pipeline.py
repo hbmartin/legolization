@@ -7,6 +7,7 @@ import pytest
 
 import legolization.pipeline as pipeline_module
 from legolization.grid import EMPTY, IGNORE, VoxelGrid
+from legolization.instructions import InstructionsConfig
 from legolization.main import main
 from legolization.pipeline import PipelineConfig, run, run_file
 
@@ -61,6 +62,35 @@ def test_run_file_rejects_unknown_suffix(tmp_path):
         run_file(bad, tmp_path / "out.ldr")
 
 
+def test_run_file_writes_instruction_booklet(tmp_path, monkeypatch):
+    # ROADMAP acceptance: booklet step sections match the .ldr STEP structure.
+    # Renderer disabled: the booklet must still be written, with placeholders.
+    monkeypatch.setenv("LEGOLIZATION_RENDERER", "none")
+    npy = tmp_path / "box.npy"
+    np.save(npy, _box_codes())
+    out = tmp_path / "box.ldr"
+    booklet_path = tmp_path / "box.html"
+    result = run_file(npy, out, PipelineConfig(seed=0), instructions_path=booklet_path)
+    markup = booklet_path.read_text()
+    assert markup.count('<section class="step"') == result.step_count
+    assert out.read_text().count("0 STEP") == result.step_count
+    assert "no LDraw renderer" in markup
+
+
+def test_run_file_booklet_requires_a_plan(tmp_path, monkeypatch):
+    monkeypatch.setenv("LEGOLIZATION_RENDERER", "none")
+    npy = tmp_path / "box.npy"
+    np.save(npy, _box_codes())
+    config = PipelineConfig(seed=0, instructions=InstructionsConfig(mode="layer"))
+    with pytest.raises(ValueError, match="needs smart steps"):
+        run_file(
+            npy,
+            tmp_path / "box.ldr",
+            config,
+            instructions_path=tmp_path / "box.html",
+        )
+
+
 def test_cli_end_to_end(tmp_path, capsys):
     npy = tmp_path / "box.npy"
     np.save(npy, _box_codes())
@@ -76,6 +106,49 @@ def test_cli_reports_missing_file(tmp_path, capsys):
     code = main([str(tmp_path / "nope.npy"), "-o", str(tmp_path / "o.ldr")])
     assert code == 1
     assert "error" in capsys.readouterr().err
+
+
+def test_cli_instructions_pdf_end_to_end(tmp_path, capsys, monkeypatch):
+    import math
+
+    import pypdf
+
+    monkeypatch.setenv("LEGOLIZATION_RENDERER", "none")
+    npy = tmp_path / "box.npy"
+    np.save(npy, _box_codes())
+    out = tmp_path / "box.ldr"
+    pdf = tmp_path / "box.pdf"
+    code = main([str(npy), "-o", str(out), "--instructions", str(pdf)])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert str(pdf) in captured.out
+    steps = out.read_text().count("0 STEP")
+    # Small box: BOM fits the cover, so pages = cover + 2-step pages.
+    assert len(pypdf.PdfReader(pdf).pages) == 1 + math.ceil(steps / 2)
+
+
+def test_cli_instructions_requires_smart_steps(tmp_path):
+    npy = tmp_path / "box.npy"
+    np.save(npy, _box_codes())
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(npy),
+                "--steps",
+                "layer",
+                "--instructions",
+                str(tmp_path / "box.html"),
+            ]
+        )
+    assert excinfo.value.code == 2
+
+
+def test_cli_instructions_rejects_unknown_suffix(tmp_path):
+    npy = tmp_path / "box.npy"
+    np.save(npy, _box_codes())
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(npy), "--instructions", str(tmp_path / "box.docx")])
+    assert excinfo.value.code == 2
 
 
 def test_hollow_restore_loop_fires_on_instability(monkeypatch):

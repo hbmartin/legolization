@@ -12,6 +12,8 @@ from legolization.graph import ConnectionGraph
 from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
 from legolization.instructions.bom import bill_of_materials
+from legolization.instructions.booklet import ModelStats, write_booklet
+from legolization.instructions.render import render_step_images
 from legolization.instructions.sequencer import (
     InstructionPlan,
     InstructionsConfig,
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from legolization.catalog import Catalog
+    from legolization.instructions.booklet import Booklet
     from legolization.layout import Layout
     from legolization.placement.base import PlacementStrategy
 
@@ -208,11 +211,15 @@ def write_outputs(
     output_path: Path,
     *,
     bom_path: Path | None = None,
-) -> None:
-    """Write the ``.ldr``/``.mpd`` model and, when requested, the BOM.
+    instructions_path: Path | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> Booklet | None:
+    """Write the model plus, when requested, the BOM and instruction booklet.
 
     ``bom_path`` writes the bill of materials (JSON when the suffix is
-    ``.json``, text otherwise).
+    ``.json``, text otherwise). ``instructions_path`` renders per-step images
+    of the just-written model and writes a booklet (``.html`` or ``.pdf``);
+    without a renderer installed the booklet gets placeholder boxes.
     """
     write_model(result.layout, output_path, plan=result.plan)
     if bom_path is not None:
@@ -225,6 +232,31 @@ def write_outputs(
             bom_path.write_text(bom.to_json(model_name=output_path.name) + "\n")
         else:
             bom_path.write_text(bom.to_text() + "\n")
+    if instructions_path is None:
+        return None
+    if result.plan is None:
+        msg = 'an instruction booklet needs smart steps (not steps mode "layer")'
+        raise ValueError(msg)
+    images = render_step_images(output_path, result.plan, progress=progress)
+    booklet = write_booklet(
+        result.plan,
+        ModelStats(
+            name=output_path.stem,
+            brick_count=result.brick_count,
+            mass_g=result.mass_g,
+            step_count=result.step_count,
+            stable=result.stability.stable,
+            buildable=result.buildable,
+            component_count=result.component_count,
+            floating_count=result.floating_count,
+        ),
+        images,
+        instructions_path,
+    )
+    if progress is not None:
+        for warning in images.warnings:
+            progress(f"warning: {warning}")
+    return booklet
 
 
 def run_file(
@@ -233,15 +265,23 @@ def run_file(
     config: PipelineConfig | None = None,
     *,
     bom_path: Path | None = None,
+    instructions_path: Path | None = None,
 ) -> PipelineResult:
     """Load a ``.vox``/``.npy`` grid, run the pipeline, write ``.ldr``/``.mpd``.
 
     ``bom_path`` additionally writes the bill of materials (JSON when the
-    suffix is ``.json``, text otherwise).
+    suffix is ``.json``, text otherwise); ``instructions_path`` an
+    instruction booklet (``.html`` or ``.pdf``).
     """
     config = config or PipelineConfig()
     result = run(grid=load_grid(input_path, config), config=config)
-    write_outputs(result, output_path, bom_path=bom_path)
+    write_outputs(
+        result,
+        output_path,
+        bom_path=bom_path,
+        instructions_path=instructions_path,
+        progress=config.progress,
+    )
     return result
 
 
