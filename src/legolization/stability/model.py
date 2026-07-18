@@ -86,6 +86,45 @@ class StabilityModel:
         return slice(ROWS_PER_BRICK * index, ROWS_PER_BRICK * (index + 1))
 
 
+def brick_centroid(layout: Layout, brick_id: int) -> tuple[float, float, float]:
+    """Filled-cell mass centroid in (stud, stud, plate) units."""
+    cells = layout.filled_cells_of(layout.bricks[brick_id])
+    xs = sum(c[0] for c in cells) / len(cells)
+    ys = sum(c[1] for c in cells) / len(cells)
+    zs = sum(c[2] for c in cells) / len(cells) + 0.5
+    return (xs, ys, zs)
+
+
+def force_entries(
+    centroid: tuple[float, float, float],
+    position: tuple[float, float, float],
+    direction: tuple[float, float, float],
+) -> tuple[tuple[int, float], ...]:
+    """Nonzero (row-offset, coefficient) pairs for one applied force.
+
+    ``position`` is in grid units (stud, stud, plate); levers are taken
+    about ``centroid`` and converted to meters. Shared by the batch
+    assembler and the incremental prefix solver so both engines compute
+    identical float expressions.
+    """
+    cx, cy, cz = centroid
+    rx = (position[0] - cx) * KNOB_PITCH_M
+    ry = (position[1] - cy) * KNOB_PITCH_M
+    rz = (position[2] - cz) * PLATE_HEIGHT_M
+    fx, fy, fz = direction
+    return tuple(
+        (row_offset, coeff)
+        for row_offset, coeff in (
+            (_FX, fx),
+            (_FY, fy),
+            (_FZ, fz),
+            (_TX, ry * fz - rz * fy),
+            (_TY, rz * fx - rx * fz),
+        )
+        if coeff
+    )
+
+
 class _Assembler:
     """Accumulates sparse triplets for the equilibrium system."""
 
@@ -97,15 +136,7 @@ class _Assembler:
         self.cols: list[int] = []
         self.data: list[float] = []
         self.var_count = 0
-        self.centroids = {bid: self._centroid(bid) for bid in self.brick_ids}
-
-    def _centroid(self, brick_id: int) -> tuple[float, float, float]:
-        """Filled-cell mass centroid in (stud, stud, plate) units."""
-        cells = self.layout.filled_cells_of(self.layout.bricks[brick_id])
-        xs = sum(c[0] for c in cells) / len(cells)
-        ys = sum(c[1] for c in cells) / len(cells)
-        zs = sum(c[2] for c in cells) / len(cells) + 0.5
-        return (xs, ys, zs)
+        self.centroids = {bid: brick_centroid(layout, bid) for bid in self.brick_ids}
 
     def new_var(self) -> int:
         """Allocate one nonnegative force-magnitude variable."""
@@ -120,32 +151,17 @@ class _Assembler:
         direction: tuple[float, float, float],
         position: tuple[float, float, float],
     ) -> None:
-        """Add ``F = magnitude·direction`` at ``position`` to a brick's rows.
-
-        ``position`` is in grid units (stud, stud, plate); levers are taken
-        about the brick's centroid and converted to meters.
-        """
+        """Add ``F = magnitude·direction`` at ``position`` to a brick's rows."""
         base = ROWS_PER_BRICK * self.index[brick_id]
-        cx, cy, cz = self.centroids[brick_id]
-        rx = (position[0] - cx) * KNOB_PITCH_M
-        ry = (position[1] - cy) * KNOB_PITCH_M
-        rz = (position[2] - cz) * PLATE_HEIGHT_M
-        fx, fy, fz = direction
-        entries = (
-            (_FX, fx),
-            (_FY, fy),
-            (_FZ, fz),
-            (_TX, ry * fz - rz * fy),
-            (_TY, rz * fx - rx * fz),
-        )
-        for row_offset, coeff in entries:
-            if coeff:
-                self.rows.append(base + row_offset)
-                self.cols.append(col)
-                self.data.append(coeff)
+        for row_offset, coeff in force_entries(
+            self.centroids[brick_id], position, direction
+        ):
+            self.rows.append(base + row_offset)
+            self.cols.append(col)
+            self.data.append(coeff)
 
 
-def _cavity_pattern(layout: Layout, brick_id: int) -> tuple[tuple[float, float], ...]:
+def cavity_pattern(layout: Layout, brick_id: int) -> tuple[tuple[float, float], ...]:
     """Contact-point offsets for a brick's bottom cavities (by min width)."""
     footprint = layout.part_of(layout.bricks[brick_id]).footprint
     xs = [dx for dx, _ in footprint]
@@ -177,7 +193,7 @@ def _build_model_body(
     down: tuple[float, float, float] = (0.0, 0.0, -1.0)
 
     for knob in graph.knob_contacts:
-        pattern = _cavity_pattern(layout, knob.above_id)
+        pattern = cavity_pattern(layout, knob.above_id)
         z_plane = float(knob.interface_layer)
         for ox, oy in pattern:
             position = (knob.x + ox, knob.y + oy, z_plane)
