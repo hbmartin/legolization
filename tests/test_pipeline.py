@@ -56,9 +56,16 @@ def test_run_file_npy_to_ldr(tmp_path):
 
 
 def test_run_file_rejects_unknown_suffix(tmp_path):
-    bad = tmp_path / "box.stl"
+    bad = tmp_path / "box.step"
     bad.touch()
     with pytest.raises(ValueError, match="unsupported input format"):
+        run_file(bad, tmp_path / "out.ldr")
+
+
+def test_run_file_rejects_corrupt_mesh(tmp_path):
+    bad = tmp_path / "box.stl"
+    bad.write_bytes(b"not a mesh at all")
+    with pytest.raises(ValueError, match=r"failed to load mesh|no triangle faces"):
         run_file(bad, tmp_path / "out.ldr")
 
 

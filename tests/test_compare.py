@@ -2,7 +2,9 @@
 
 import json
 import string
+from concurrent.futures import Future
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -10,17 +12,19 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 import legolization.compare
+import legolization.main as main_module
 from legolization.compare import (
     Candidate,
     CandidateMetrics,
     _candidate_config,
+    _collect,
     candidate_metrics,
     run_all,
     select_best,
 )
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.main import main
-from legolization.pipeline import PipelineConfig, run
+from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import ObjectiveWeights
 from legolization.stability import SolverConfig
 
@@ -48,11 +52,16 @@ _BASE_METRICS = CandidateMetrics(
 )
 
 
-def _metrics(**overrides) -> CandidateMetrics:
+def _metrics(**overrides: float) -> CandidateMetrics:
     return replace(_BASE_METRICS, **overrides)
 
 
-def _candidate(name: str, *, error: str | None = None, **overrides) -> Candidate:
+def _candidate(
+    name: str,
+    *,
+    error: str | None = None,
+    **overrides: float,
+) -> Candidate:
     if error is not None:
         return Candidate(strategy=name, seconds=0.1, error=error)
     return Candidate(strategy=name, seconds=0.1, metrics=_metrics(**overrides))
@@ -66,14 +75,14 @@ def _box_grid() -> VoxelGrid:
 # --- select_best: deterministic units ------------------------------------
 
 
-def test_empty_input_has_no_winner():
+def test_empty_input_has_no_winner() -> None:
     report = select_best([])
     assert report.winner is None
     assert report.candidates == ()
     assert "failed" in report.reason
 
 
-def test_buildable_gate_dominates_objective():
+def test_buildable_gate_dominates_objective() -> None:
     # An unbuildable layout with a spectacular objective must still lose.
     shaky = _candidate("shaky", buildable=False, objective_total=0.01)
     solid = _candidate("solid", buildable=True, objective_total=5.0)
@@ -82,31 +91,31 @@ def test_buildable_gate_dominates_objective():
     assert "buildable" in report.reason
 
 
-def test_lower_objective_wins_among_buildable():
+def test_lower_objective_wins_among_buildable() -> None:
     a = _candidate("a", objective_total=2.0)
     b = _candidate("b", objective_total=1.0)
     assert select_best([a, b]).winner is b
 
 
-def test_capacity_breaks_objective_ties():
+def test_capacity_breaks_objective_ties() -> None:
     weak = _candidate("weak", objective_total=1.0, maximin_capacity=0.2)
     strong = _candidate("strong", objective_total=1.0, maximin_capacity=0.9)
     assert select_best([weak, strong]).winner is strong
 
 
-def test_brick_count_breaks_capacity_ties():
+def test_brick_count_breaks_capacity_ties() -> None:
     many = _candidate("many", brick_count=50)
     few = _candidate("few", brick_count=20)
     assert select_best([many, few]).winner is few
 
 
-def test_name_breaks_full_ties():
+def test_name_breaks_full_ties() -> None:
     twin_b = _candidate("b")
     twin_a = _candidate("a")
     assert select_best([twin_b, twin_a]).winner is twin_a
 
 
-def test_unbuildable_fallback_orders_by_components_then_stress():
+def test_unbuildable_fallback_orders_by_components_then_stress() -> None:
     shattered = _candidate(
         "shattered", buildable=False, component_count=3, max_score=0.2
     )
@@ -117,7 +126,7 @@ def test_unbuildable_fallback_orders_by_components_then_stress():
     assert "no candidate is buildable" in report.reason
 
 
-def test_errored_candidates_are_reported_but_never_win():
+def test_errored_candidates_are_reported_but_never_win() -> None:
     broken = _candidate("broken", error="RuntimeError: kaboom")
     ok = _candidate("ok", buildable=False, component_count=4, max_score=1.0)
     report = select_best([broken, ok])
@@ -125,7 +134,7 @@ def test_errored_candidates_are_reported_but_never_win():
     assert broken in report.candidates
 
 
-def test_all_errored_yields_no_winner():
+def test_all_errored_yields_no_winner() -> None:
     report = select_best([_candidate("x", error="boom"), _candidate("y", error="pow")])
     assert report.winner is None
     assert report.reason == "every strategy failed"
@@ -157,7 +166,7 @@ _metrics_st = st.builds(
 
 
 @st.composite
-def _candidate_lists(draw) -> list[Candidate]:
+def _candidate_lists(draw: st.DrawFn) -> list[Candidate]:
     names = draw(
         st.lists(
             st.text(alphabet=string.ascii_lowercase, min_size=1, max_size=8),
@@ -175,14 +184,14 @@ def _candidate_lists(draw) -> list[Candidate]:
 
 
 @given(st.data())
-def test_selection_is_order_independent(data):
+def test_selection_is_order_independent(data: st.DataObject) -> None:
     candidates = data.draw(_candidate_lists())
     shuffled = data.draw(st.permutations(candidates))
     assert select_best(shuffled) == select_best(candidates)
 
 
 @given(_candidate_lists())
-def test_winner_is_gated_and_optimal(candidates):
+def test_winner_is_gated_and_optimal(candidates: list[Candidate]) -> None:
     report = select_best(candidates)
     scored = [
         (c, c.metrics) for c in candidates if c.error is None and c.metrics is not None
@@ -213,7 +222,7 @@ def test_winner_is_gated_and_optimal(candidates):
 
 
 @given(_candidate_lists())
-def test_report_lists_everyone_and_serializes(candidates):
+def test_report_lists_everyone_and_serializes(candidates: list[Candidate]) -> None:
     report = select_best(candidates)
     assert [c.strategy for c in report.candidates] == sorted(
         c.strategy for c in candidates
@@ -227,7 +236,7 @@ def test_report_lists_everyone_and_serializes(candidates):
 # --- candidate_metrics on a real pipeline result --------------------------
 
 
-def test_candidate_metrics_on_real_result():
+def test_candidate_metrics_on_real_result() -> None:
     result = run(grid=_box_grid(), config=PipelineConfig(seed=0))
     metrics = candidate_metrics(
         result,
@@ -245,7 +254,7 @@ def test_candidate_metrics_on_real_result():
 # --- run_all: sequential, error isolation, parallel ------------------------
 
 
-def test_run_all_sequential_two_strategies():
+def test_run_all_sequential_two_strategies() -> None:
     lines: list[str] = []
     candidates = run_all(
         _box_grid(),
@@ -264,10 +273,12 @@ def test_run_all_sequential_two_strategies():
     assert winner.metrics.buildable
 
 
-def test_one_failing_strategy_does_not_kill_sweep(monkeypatch):
+def test_one_failing_strategy_does_not_kill_sweep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     real_run = legolization.compare.run
 
-    def flaky_run(*, grid, config) -> object:
+    def flaky_run(*, grid: VoxelGrid, config: PipelineConfig) -> PipelineResult:
         if config.strategy == "bond":
             raise RuntimeError("kaboom")
         return real_run(grid=grid, config=config)
@@ -289,8 +300,20 @@ def test_one_failing_strategy_does_not_kill_sweep(monkeypatch):
     assert winner.strategy == "greedy"
 
 
+def test_collect_converts_future_exception_to_candidate() -> None:
+    future: Future[Candidate] = Future()
+    future.set_exception(TypeError("cannot unpickle result"))
+
+    candidate = _collect(future, strategy="bond")
+
+    assert candidate.strategy == "bond"
+    assert candidate.error == (
+        "failed to retrieve result: TypeError: cannot unpickle result"
+    )
+
+
 @pytest.mark.parametrize("strategy", ["greedy", "bond"])
-def test_candidate_config_strips_progress_and_sets_strategy(strategy):
+def test_candidate_config_strips_progress_and_sets_strategy(strategy: str) -> None:
     config = PipelineConfig(progress=print, time_budget_s=9.0)
     clone = _candidate_config(config, strategy=strategy, timeout_s=4.0)
     assert clone.strategy == strategy
@@ -299,7 +322,7 @@ def test_candidate_config_strips_progress_and_sets_strategy(strategy):
     assert clone.seed == config.seed
 
 
-def test_parallel_matches_sequential():
+def test_parallel_matches_sequential() -> None:
     grid = _box_grid()
     config = PipelineConfig(seed=0)
     sequential = run_all(grid, config, jobs=1, names=("greedy", "bond"))
@@ -317,11 +340,14 @@ def test_parallel_matches_sequential():
 # --- CLI ------------------------------------------------------------------
 
 
-def test_cli_sweep_end_to_end(tmp_path, capsys):
+def test_cli_sweep_end_to_end(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     npy = tmp_path / "box.npy"
     np.save(npy, np.full((4, 3, 2), 4, dtype=np.int16))
     out = tmp_path / "box.ldr"
-    report_path = tmp_path / "report.json"
+    report_path = tmp_path / "reports" / "report.json"
     candidates_dir = tmp_path / "candidates"
     code = main(
         [
@@ -356,15 +382,91 @@ def test_cli_sweep_end_to_end(tmp_path, capsys):
     assert "wrote" in captured.out
 
 
-def test_cli_sweep_flags_require_strategy_all(tmp_path, capsys):
+def test_cli_sweep_flags_require_strategy_all(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     with pytest.raises(SystemExit) as excinfo:
         main([str(tmp_path / "x.npy"), "--jobs", "2"])
     assert excinfo.value.code == 2
     assert "--strategy all" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("flag", "value", "message"),
+    [
+        ("--jobs", "-1", "greater than or equal to zero"),
+        ("--timeout", "0", "greater than zero"),
+        ("--timeout", "-1", "greater than zero"),
+        ("--timeout", "nan", "greater than zero"),
+        ("--timeout", "inf", "greater than zero"),
+    ],
+)
+def test_cli_sweep_rejects_invalid_numeric_options(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    value: str,
+    message: str,
+) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(tmp_path / "x.npy"),
+                "--strategy",
+                "all",
+                flag,
+                value,
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_cli_sweep_reports_output_oserror(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((4, 3, 2), 4, dtype=np.int16))
+    result = run(grid=_box_grid(), config=PipelineConfig(seed=0))
+    candidate = Candidate(
+        strategy="greedy",
+        seconds=0.1,
+        result=result,
+        metrics=_metrics(),
+    )
+
+    def fake_run_all(*args: object, **kwargs: object) -> list[Candidate]:
+        return [candidate]
+
+    def fail_write_outputs(*args: object, **kwargs: object) -> None:
+        message = "disk full"
+        raise OSError(message)
+
+    monkeypatch.setattr(main_module, "run_all", fake_run_all)
+    monkeypatch.setattr(main_module, "write_outputs", fail_write_outputs)
+
+    code = main(
+        [
+            str(npy),
+            "-o",
+            str(tmp_path / "box.ldr"),
+            "--strategy",
+            "all",
+            "--jobs",
+            "1",
+        ]
+    )
+
+    assert code == 1
+    assert "error: disk full" in capsys.readouterr().err
+
+
 @pytest.mark.slow
-def test_full_sweep_selects_buildable_winner():
+def test_full_sweep_selects_buildable_winner() -> None:
     codes = np.full((6, 6, 3), EMPTY, dtype=np.int16)
     for z in range(3):
         lo, hi = z, 6 - z

@@ -4,6 +4,11 @@ Always run ruff and pytest and ty and pyrefly (with uv) after making any changes
 
 You may refer to the papers in @references/ for implementation guidance
 
+For judging output quality (renders, strategy comparison, instruction
+sensibility, corpus regression sweeps), follow
+docs/self-evaluation-playbook.md and the compare-strategies /
+inspect-instructions / eval-corpus skills in .claude/skills/
+
 ## Development Notes
 
 - The project supports Python 3.12+

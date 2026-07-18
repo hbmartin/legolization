@@ -295,7 +295,12 @@ def _run_parallel(
     timeout_s: float | None,
     progress: Callable[[str], None] | None,
 ) -> list[Candidate]:
-    """Fan out over a spawn pool; stragglers and pool crashes become errors."""
+    """Fan out over a spawn pool with a soft, sweep-wide wait deadline.
+
+    Pending futures become timeout candidates once the deadline passes.
+    Already-running workers cannot be terminated by ``ProcessPoolExecutor``
+    and may continue after this function returns.
+    """
     start = time.perf_counter()
     candidates: list[Candidate] = []
     executor = ProcessPoolExecutor(
@@ -331,7 +336,7 @@ def _run_parallel(
 
 
 def _collect(future: Future[Candidate], *, strategy: str) -> Candidate:
-    """Unwrap a finished future; pool-level crashes become error candidates."""
+    """Unwrap a finished future; retrieval failures become error candidates."""
     try:
         return future.result(timeout=0)
     except BrokenProcessPool:
@@ -339,6 +344,12 @@ def _collect(future: Future[Candidate], *, strategy: str) -> Candidate:
             strategy=strategy,
             seconds=0.0,
             error="worker process pool broke (native crash?)",
+        )
+    except Exception as error:  # noqa: BLE001 - isolate worker transport failures
+        return Candidate(
+            strategy=strategy,
+            seconds=0.0,
+            error=(f"failed to retrieve result: {type(error).__name__}: {error}"),
         )
 
 

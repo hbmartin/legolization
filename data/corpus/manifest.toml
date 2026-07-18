@@ -1,0 +1,193 @@
+# Self-evaluation corpus. Source of truth for `scripts/corpus.py` and
+# `scripts/eval_corpus.py`. Mesh binaries and generated .npy files are
+# gitignored; this manifest (URLs, hashes, generators, expectations) is
+# what's committed.
+#
+# Mesh provenance: alecjacobson/common-3d-test-models @ 8a4f864 (2023-03-23).
+# Licences vary per model (Stanford scans are research-use; Crane models are
+# CC0; Suzanne is from Blender) - see the source repo's README for details.
+# That is why the meshes are downloaded on demand rather than vendored.
+#
+# expect_min_buildable = how many of the 6 strategies must produce a
+# buildable model for this input (0 = expected unbuildable by design).
+
+# --- curated meshes ------------------------------------------------------
+
+[[model]]
+name = "spot"
+kind = "mesh"
+path = "data/corpus/meshes/spot.obj"
+source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/spot.obj"
+sha256 = "0738b5e8608fed74e5e8c7aa8dd0af97b4b74f9f6cbf7aac84cd7e40b2e44a75"
+license = "CC0 (Keenan Crane)"
+target_studs = 36
+up = "y"
+traits = ["smooth-blob", "baseline", "legs"]
+expect_min_buildable = 1
+notes = "Smooth cow; the friendly baseline mesh. Thin legs stress supports."
+
+[[model]]
+name = "stanford-bunny"
+kind = "mesh"
+path = "data/corpus/meshes/stanford-bunny.obj"
+source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/stanford-bunny.obj"
+sha256 = "1eb35d1e21ce99e5ce911353b6be278990713448dd9e8f5c9387f9de39b32205"
+license = "Stanford Scanning Repository (research use)"
+target_studs = 32
+up = "y"
+traits = ["organic", "ears-overhang"]
+expect_min_buildable = 1
+notes = "Classic scan; ears are cantilevered overhangs."
+
+[[model]]
+name = "teapot"
+kind = "mesh"
+path = "data/corpus/meshes/teapot.obj"
+source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/teapot.obj"
+sha256 = "1b5396fedd74b577e32cef41146582c2f2e1a050d5b4915193c0ac1ad4187ed4"
+license = "Utah teapot (public domain)"
+target_studs = 32
+up = "y"
+traits = ["open-surface", "spout-handle-overhang"]
+expect_min_buildable = 1
+notes = "Open (non-watertight) surface; spout and handle are thin overhangs."
+
+[[model]]
+name = "armadillo"
+kind = "mesh"
+path = "data/corpus/meshes/armadillo.obj"
+source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/armadillo.obj"
+sha256 = "d2fd040334c12b16804fbcb9962391232cc24708244617f931baaa871210563e"
+license = "Stanford Scanning Repository (research use)"
+target_studs = 32
+up = "y"
+traits = ["organic", "limbs-overhang", "large"]
+expect_min_buildable = 1
+notes = "Limbs and snout are unsupported in many build orders."
+
+[[model]]
+name = "homer"
+kind = "mesh"
+path = "data/corpus/meshes/homer.obj"
+source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/homer.obj"
+sha256 = "b20b1391fd62964f65703d748514d86d747d1202d38e55e0f1addac7a5a10e8b"
+license = "see source repo"
+target_studs = 28
+up = "y"
+traits = ["organic", "thin-arms"]
+expect_min_buildable = 1
+notes = "Thin arms fragment at low resolution - largest-component filter test."
+
+[[model]]
+name = "suzanne"
+kind = "mesh"
+path = "data/corpus/meshes/suzanne.obj"
+source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/suzanne.obj"
+sha256 = "d8684326f9bd8cfc24d3d302c1042fa16f63d2e66e49ed56b413fa20bed271e6"
+license = "Blender (GPL-compatible)"
+target_studs = 28
+up = "y"
+traits = ["non-watertight", "ears-overhang", "fast"]
+expect_min_buildable = 1
+notes = "Non-watertight; exercises the fill fallback path."
+
+# --- synthetic stress shapes ---------------------------------------------
+
+[[model]]
+name = "cantilever"
+kind = "synthetic"
+path = "data/corpus/synthetic/cantilever.npy"
+generator = "cantilever"
+traits = ["stability", "repair", "unstable-prefix", "fast"]
+expect_min_buildable = 1
+notes = "Arm over a base slab - joint stress + one unstable prefix step."
+
+[[model]]
+name = "topple-arm"
+kind = "synthetic"
+path = "data/corpus/synthetic/topple-arm.npy"
+generator = "topple_arm"
+traits = ["stability", "topple", "fast"]
+expect_min_buildable = 0
+notes = "One-sided arm, CoM past the base - physically must tip (RBE torque pin)."
+
+[[model]]
+name = "mushroom"
+kind = "synthetic"
+path = "data/corpus/synthetic/mushroom.npy"
+generator = "mushroom"
+traits = ["overhang", "sequencing", "fast"]
+expect_min_buildable = 1
+notes = "Wide cap on thin stem - overhang sequencing and disassembly rescue."
+
+[[model]]
+name = "two-towers-bridge"
+kind = "synthetic"
+path = "data/corpus/synthetic/two-towers-bridge.npy"
+generator = "two_towers_bridge"
+traits = ["connectivity", "mid-build-instability", "fast"]
+expect_min_buildable = 1
+notes = "Deck spanning two towers - connectivity gate, mid-build spans."
+
+[[model]]
+name = "thin-shell"
+kind = "synthetic"
+path = "data/corpus/synthetic/thin-shell.npy"
+generator = "thin_shell"
+traits = ["seed-variance", "fragmentation"]
+expect_min_buildable = 1
+notes = "One-voxel dome - fragmentation and seed variance hotspot."
+
+[[model]]
+name = "letter-t"
+kind = "synthetic"
+path = "data/corpus/synthetic/letter-t.npy"
+generator = "letter_t"
+traits = ["dangling-instructions", "fast"]
+expect_min_buildable = 1
+notes = "T bar ends dangle mid-build - instruction floating-part check."
+
+[[model]]
+name = "letter-h"
+kind = "synthetic"
+path = "data/corpus/synthetic/letter-h.npy"
+generator = "letter_h"
+traits = ["dangling-instructions", "fast"]
+expect_min_buildable = 1
+notes = "H crossbar suspended between posts - dangling-step risk."
+
+[[model]]
+name = "letter-h-bicolour"
+kind = "synthetic"
+path = "data/corpus/synthetic/letter-h-bicolour.npy"
+generator = "letter_h_bicolour"
+traits = ["colour-constraint", "least-bad", "fast"]
+expect_min_buildable = 0
+notes = "Two-colour H - hard colour constraint makes the bar unanchorable (pin)."
+
+[[model]]
+name = "staircase-overhang"
+kind = "synthetic"
+path = "data/corpus/synthetic/staircase-overhang.npy"
+generator = "staircase_overhang"
+traits = ["overhang", "refine", "fast"]
+expect_min_buildable = 1
+notes = "Progressive sideways steps - overhang limit and refine loop."
+
+[[model]]
+name = "wide-arch"
+kind = "synthetic"
+path = "data/corpus/synthetic/wide-arch.npy"
+generator = "wide_arch"
+traits = ["keystone", "mid-build-instability", "fast"]
+expect_min_buildable = 1
+notes = "Flat lintel over a wide gap - bigger sibling of data/examples/arch."
+
+[[model]]
+name = "sparse-pillars"
+kind = "synthetic"
+path = "data/corpus/synthetic/sparse-pillars.npy"
+generator = "sparse_pillars"
+traits = ["disconnected", "least-bad", "fast"]
+expect_min_buildable = 0
+notes = "Four disconnected pillars - exercises least-bad selection (exit 2)."

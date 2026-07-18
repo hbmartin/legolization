@@ -91,7 +91,15 @@ uv run legolization model.vox --slopes --tiles      # surface finishing passes
 uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
 uv run legolization model.vox --milp                # cross-check the exact LP
 uv run legolization model.npy --strategy all --jobs 4 --report report.json
+uv run legolization model.obj --up y --target-studs 24   # mesh input (M6)
 ```
+
+Mesh inputs (`.obj`/`.stl`/`.ply`) are voxelized directly at plate
+resolution (always aspect-correct): `--target-studs N` sets the footprint
+width (or `--pitch` for explicit model-units-per-stud), `--up y` handles
+the common Y-up convention, `--mesh-colour CODE` picks the uniform colour,
+and `--no-fill` keeps shell meshes hollow. Disconnected voxel islands from
+non-watertight meshes are dropped to the largest component with a warning.
 
 `--strategy all` runs every registered strategy on the same input (in
 parallel worker processes; `--jobs 1` forces sequential) and keeps the best
@@ -100,8 +108,10 @@ are first gated on buildability (stable, one connected component, nothing
 floating), and the survivors are ranked by the weighted objective, with ties
 broken by maximin friction capacity, then brick count. `--report` writes a
 JSON comparison of every strategy, `--keep-candidates DIR` also writes each
-strategy's model, and `--timeout SECONDS` bounds each strategy's soft time
-budget.
+strategy's model, and `--timeout SECONDS` sets a soft deadline for the overall
+parallel sweep while also becoming the cooperative time budget for strategies
+that support one. Workers already running at the deadline cannot be terminated
+and may continue after the sweep returns.
 
 The CLI reports brick count, mass, step count, and the physics verdict:
 

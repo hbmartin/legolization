@@ -20,6 +20,7 @@ from legolization.instructions.sequencer import (
     plan_instructions,
 )
 from legolization.ldraw_out import write_model
+from legolization.mesh import MESH_SUFFIXES, MeshOptions, mesh_to_grid
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.repair import RepairConfig, repair_stability
@@ -65,6 +66,7 @@ class PipelineConfig:
     repair: bool = True
     repair_config: RepairConfig = field(default_factory=RepairConfig)
     instructions: InstructionsConfig = field(default_factory=InstructionsConfig)
+    mesh: MeshOptions = field(default_factory=MeshOptions)
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
 
@@ -184,7 +186,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
 
 
 def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:
-    """Load a ``.vox``/``.npy`` grid using the config's voxelization knobs."""
+    """Load a ``.vox``/``.npy``/mesh grid using the config's voxelization knobs."""
     config = config or PipelineConfig()
     match input_path.suffix.lower():
         case ".vox":
@@ -201,8 +203,17 @@ def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGr
                 dither=config.dither,
                 aspect_correct=config.aspect_correct,
             )
+        case suffix if suffix in MESH_SUFFIXES:
+            return mesh_to_grid(
+                input_path,
+                options=config.mesh,
+                progress=config.progress,
+            )
         case suffix:
-            msg = f"unsupported input format {suffix!r} (expected .vox or .npy)"
+            msg = (
+                f"unsupported input format {suffix!r} "
+                f"(expected .vox, .npy, .obj, .stl, or .ply)"
+            )
             raise ValueError(msg)
 
 

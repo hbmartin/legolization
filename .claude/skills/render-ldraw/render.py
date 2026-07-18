@@ -47,6 +47,12 @@ VIEWS: dict[str, tuple[int, int]] = {
 RENDER_TIMEOUT_S = 240
 RENDERER_PRIORITY = ("ldview", "leocad")
 
+# macOS app bundles are not on PATH; probe their executables directly.
+APP_BUNDLE_EXECUTABLES: dict[str, tuple[str, ...]] = {
+    "ldview": ("/Applications/LDView.app/Contents/MacOS/LDView",),
+    "leocad": ("/Applications/LeoCAD.app/Contents/MacOS/LeoCAD",),
+}
+
 # Directories that commonly hold an LDraw parts library. Globs are expanded and
 # each candidate is validated by the presence of a ``parts`` subdirectory.
 LDRAW_DIR_CANDIDATES: tuple[str, ...] = (
@@ -66,7 +72,7 @@ class RenderRequest:
 
     model: Path
     outputs: dict[str, Path]
-    renderers: list[str]
+    renderers: list[tuple[str, str]]  # (name, executable)
     size: tuple[int, int]
     views: list[str]
     ldraw_dir: Path | None
@@ -92,8 +98,18 @@ def _run(cmd: list[str]) -> tuple[bool, str]:
     return True, ""
 
 
-def _detect() -> list[str]:
-    return [renderer for renderer in RENDERER_PRIORITY if shutil.which(renderer)]
+def _detect() -> list[tuple[str, str]]:
+    """Find available renderers as (name, executable) pairs, PATH first."""
+    found: list[tuple[str, str]] = []
+    for renderer in RENDERER_PRIORITY:
+        if executable := shutil.which(renderer):
+            found.append((renderer, executable))
+            continue
+        for bundle in APP_BUNDLE_EXECUTABLES.get(renderer, ()):
+            if Path(bundle).is_file():
+                found.append((renderer, bundle))
+                break
+    return found
 
 
 def _is_ldraw_dir(path: Path) -> bool:
@@ -122,7 +138,8 @@ def _detect_ldraw_dir(explicit: Path | None) -> Path | None:
     return None
 
 
-def _render_ldview(
+def _render_ldview(  # noqa: PLR0913 - one scalar per render knob
+    executable: str,
     model: Path,
     out: Path,
     angle: tuple[int, int],
@@ -132,7 +149,7 @@ def _render_ldview(
     lat, lon = angle
     width, height = size
     cmd = [
-        "ldview",
+        executable,
         str(model),
         f"-SaveSnapshot={out}",
         f"-SaveWidth={width}",
@@ -146,7 +163,8 @@ def _render_ldview(
     return _run(cmd)
 
 
-def _render_leocad(
+def _render_leocad(  # noqa: PLR0913 - one scalar per render knob
+    executable: str,
     model: Path,
     out: Path,
     angle: tuple[int, int],
@@ -156,7 +174,7 @@ def _render_leocad(
     lat, lon = angle
     width, height = size
     cmd = [
-        "leocad",
+        executable,
         str(model),
         "--image",
         str(out),
@@ -271,8 +289,8 @@ def _prepare_request(args: argparse.Namespace) -> RenderRequest | None:
     renderers = _detect()
     if not renderers:
         print(
-            "renderer: NONE — no ldview/leocad on PATH; cannot render. "
-            "Run preflight.sh or install LeoCAD.",
+            "renderer: NONE — no ldview/leocad on PATH or in /Applications; "
+            "cannot render. Run preflight.sh or install LeoCAD.",
             file=sys.stderr,
         )
         return None
@@ -301,10 +319,13 @@ def _prepare_request(args: argparse.Namespace) -> RenderRequest | None:
     )
 
 
-def _render_with_backend(request: RenderRequest, renderer: str) -> list[Path]:
+def _render_with_backend(
+    request: RenderRequest, renderer: tuple[str, str]
+) -> list[Path]:
     """Render all requested views with one backend."""
-    print(f"renderer: {renderer}", file=sys.stderr)
-    render_fn = RENDERERS[renderer]
+    name, executable = renderer
+    print(f"renderer: {name} ({executable})", file=sys.stderr)
+    render_fn = RENDERERS[name]
     produced: list[Path] = []
     for view in request.views:
         out = request.outputs[view]
@@ -314,7 +335,7 @@ def _render_with_backend(request: RenderRequest, renderer: str) -> list[Path]:
             continue
 
         _, err = render_fn(
-            request.model, out, VIEWS[view], request.size, request.ldraw_dir
+            executable, request.model, out, VIEWS[view], request.size, request.ldraw_dir
         )
         # The image on disk is the real signal: a renderer can exit non-zero
         # yet leave a valid PNG, or exit zero without writing one.
@@ -374,11 +395,14 @@ def main(argv: list[str] | None = None) -> int:
         produced = _render_with_backend(request, renderer)
         if produced:
             print(
-                f"Rendered {len(produced)} view(s) with {renderer}.",
+                f"Rendered {len(produced)} view(s) with {renderer[0]}.",
                 file=sys.stderr,
             )
             return 0
-        print(f"{renderer} produced no images; trying next renderer.", file=sys.stderr)
+        print(
+            f"{renderer[0]} produced no images; trying next renderer.",
+            file=sys.stderr,
+        )
 
     print("No images produced.", file=sys.stderr)
     return 1

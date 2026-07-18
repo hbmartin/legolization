@@ -19,3 +19,8 @@ previous/
 triage_decisions.db
 reviews_triage/
 .mcp.json
+
+# evaluation corpus binaries (regenerable via scripts/corpus.py) + run output
+data/corpus/meshes/
+data/corpus/synthetic/
+eval/runs/
