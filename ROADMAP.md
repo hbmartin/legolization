@@ -28,7 +28,6 @@ failMAX = 100, soft colour constraints, `.vox`/`.npy` robustness, and
 
 Deliberately **not** done yet, and covered below:
 
-- **M6** — mesh front-end (`.obj`/`.stl` voxelization)
 - **SNOT** — sideways building (the data model is ready; nothing is built)
 - Slope/tile surface finishing is minimal and **opt-in** (`--slopes`,
   `--tiles`) because the slope pass adds material outside the voxel shape
@@ -43,12 +42,19 @@ merge-engine filler for large regions instead of CPLEX.
 
 ---
 
-## M6 — Mesh front-end (`mesh.py`)
+## M6 — Mesh front-end (`mesh.py`) — DONE (2026-07-18)
 
-**Goal:** `legolization model.obj --target-studs 40 -o model.ldr` works
-end-to-end, feeding the existing pipeline a `VoxelGrid`.
+Shipped as designed below, with two deviations: the pitch derives from the
+**largest horizontal extent** (`max(extents[:2]) / target_studs`), not the
+overall max — "target studs" means footprint, and the overall max would
+shrink tall models; and colour sampling is deferred — v1 applies a uniform
+`--mesh-colour` (interiors are hollowed away regardless). A
+largest-component filter (6-connected, with a "dropped N voxels" progress
+warning) handles non-watertight meshes; `--up {x,y,z}` orients Y-up `.obj`
+files via a proper rotation. See `src/legolization/mesh.py` and
+`tests/test_mesh.py`.
 
-**Design sketch**
+**Original design sketch**
 
 - `trimesh.load(path)` → optionally repair/fill → voxelize. For solid models
   use `mesh.voxelized(pitch).fill()`; for shells skip `fill()` and let

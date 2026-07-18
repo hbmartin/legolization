@@ -82,14 +82,17 @@ markers = [
     "slow: full benchmark sweeps; deselect with -m 'not slow'",
 ]
 
+[tool.ty.src]
+exclude = ['papers\ PDFs']
+
 [tool.deptry]
 known_first_party = ["legolization"]
 extend_exclude = ["papers PDFs"]
 
 [tool.deptry.per_rule_ignores]
 # clarabel/highspy/osqp/scs are cvxpy/scipy solver backends loaded by name at
-# runtime, never imported; trimesh is reserved for the M6 mesh front-end.
-DEP002 = ["clarabel", "highspy", "osqp", "scs", "trimesh"]
+# runtime, never imported.
+DEP002 = ["clarabel", "highspy", "osqp", "scs"]
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12.0"]

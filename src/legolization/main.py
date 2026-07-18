@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
 from legolization.compare import Candidate, SelectionReport, run_all, select_best
 from legolization.instructions.sequencer import InstructionsConfig
 from legolization.ldraw_out import write_model
+from legolization.mesh import DEFAULT_MESH_COLOUR, MESH_SUFFIXES, MeshOptions
 from legolization.pipeline import (
     PipelineConfig,
     PipelineResult,
@@ -22,15 +24,55 @@ from legolization.placement.registry import strategy_names
 from legolization.stability.solver import SolverConfig
 
 
+def _non_negative_int(value: str) -> int:
+    """Parse an integer greater than or equal to zero for argparse."""
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        msg = f"{value!r} is not an integer"
+        raise argparse.ArgumentTypeError(msg) from error
+    if parsed < 0:
+        msg = f"{value!r} must be greater than or equal to zero"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
+
+
+def _positive_int(value: str) -> int:
+    """Parse an integer greater than zero for argparse."""
+    parsed = _non_negative_int(value)
+    if parsed == 0:
+        msg = f"{value!r} must be greater than zero"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    """Parse a finite float greater than zero for argparse."""
+    try:
+        parsed = float(value)
+    except ValueError as error:
+        msg = f"{value!r} is not a number"
+        raise argparse.ArgumentTypeError(msg) from error
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        msg = f"{value!r} must be a finite number greater than zero"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="legolization",
         description=(
-            "Convert a colored voxel model (.vox or .npy) into a physically "
-            "stable LEGO model in LDraw format with step-by-step instructions."
+            "Convert a colored voxel model (.vox or .npy) or a triangle mesh "
+            "(.obj, .stl, .ply) into a physically stable LEGO model in LDraw "
+            "format with step-by-step instructions."
         ),
     )
-    parser.add_argument("input", type=Path, help="input .vox or .npy voxel model")
+    parser.add_argument(
+        "input",
+        type=Path,
+        help="input .vox/.npy voxel model or .obj/.stl/.ply mesh",
+    )
     parser.add_argument(
         "-o",
         "--output",
@@ -50,7 +92,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sweep = parser.add_argument_group("strategy sweep (--strategy all)")
     sweep.add_argument(
         "--jobs",
-        type=int,
+        type=_non_negative_int,
         default=0,
         metavar="N",
         help=(
@@ -60,12 +102,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sweep.add_argument(
         "--timeout",
-        type=float,
+        type=_positive_float,
         default=None,
         metavar="SECONDS",
         help=(
-            "per-strategy timeout; folded into --time-budget for strategies "
-            "that honour it"
+            "soft sweep-wide deadline in parallel mode; also folded into "
+            "--time-budget for strategies that honour it (running workers "
+            "may continue after the sweep returns)"
         ),
     )
     sweep.add_argument(
@@ -131,11 +174,48 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="debug cross-check of the exact LP with MILP complementarity (slower)",
     )
+    mesh = parser.add_argument_group("mesh input (.obj/.stl/.ply)")
+    mesh_pitch = mesh.add_mutually_exclusive_group()
+    mesh_pitch.add_argument(
+        "--target-studs",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="widest horizontal extent of the model in studs (default 32)",
+    )
+    mesh_pitch.add_argument(
+        "--pitch",
+        type=_positive_float,
+        default=None,
+        metavar="UNITS",
+        help="mesh model units per stud (overrides --target-studs)",
+    )
+    mesh.add_argument(
+        "--up",
+        choices=("x", "y", "z"),
+        default=None,
+        help="mesh vertical axis (default z; most .obj files are y-up)",
+    )
+    mesh.add_argument(
+        "--mesh-colour",
+        type=int,
+        default=None,
+        metavar="CODE",
+        help=(
+            f"LDraw colour code for all mesh voxels "
+            f"(default {DEFAULT_MESH_COLOUR} = light grey)"
+        ),
+    )
+    mesh.add_argument(
+        "--no-fill",
+        action="store_true",
+        help="keep shell meshes unfilled instead of flooding the interior",
+    )
     scale = parser.add_mutually_exclusive_group()
     scale.add_argument(
         "--plates-per-voxel",
         type=int,
-        default=3,
+        default=None,
         help="vertical plates per input voxel (default 3 = brick height)",
     )
     scale.add_argument(
@@ -239,6 +319,27 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--instructions requires --steps smart")
         if args.instructions.suffix.lower() not in {".html", ".pdf"}:
             parser.error("--instructions must end in .html or .pdf")
+    mesh_input = args.input.suffix.lower() in MESH_SUFFIXES
+    mesh_flags = (
+        args.target_studs is not None
+        or args.pitch is not None
+        or args.up is not None
+        or args.mesh_colour is not None
+        or args.no_fill
+    )
+    if mesh_flags and not mesh_input:
+        parser.error(
+            "--target-studs/--pitch/--up/--mesh-colour/--no-fill apply only "
+            "to mesh inputs (.obj/.stl/.ply)"
+        )
+    if mesh_input and (
+        args.plates_per_voxel is not None or args.aspect_correct or args.dither
+    ):
+        parser.error(
+            "--plates-per-voxel/--aspect-correct/--dither do not apply to "
+            "mesh inputs (meshes are voxelized at plate resolution and are "
+            "always aspect-correct)"
+        )
     output: Path = args.output or args.input.with_suffix(".ldr")
     progress = (
         (lambda message: print(f"  {message}", file=sys.stderr, flush=True))
@@ -253,7 +354,9 @@ def main(argv: list[str] | None = None) -> int:
         refine=not args.no_refine,
         repair=not args.no_repair,
         seed=args.seed,
-        plates_per_voxel=args.plates_per_voxel,
+        plates_per_voxel=(
+            args.plates_per_voxel if args.plates_per_voxel is not None else 3
+        ),
         aspect_correct=args.aspect_correct,
         shell_plates=args.shell_plates,
         colour_mode=args.colour,
@@ -267,6 +370,17 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.steps,
             target_step_size=args.step_size,
             rotstep=not args.no_rotstep,
+        ),
+        mesh=MeshOptions(
+            target_studs=(args.target_studs if args.target_studs is not None else 32),
+            pitch=args.pitch,
+            up=args.up if args.up is not None else "z",
+            colour_code=(
+                args.mesh_colour
+                if args.mesh_colour is not None
+                else DEFAULT_MESH_COLOUR
+            ),
+            fill=not args.no_fill,
         ),
         weights=ObjectiveWeights(stability=args.stability_weight),
         solver=SolverConfig(mode="milp" if args.milp else "lp"),
@@ -343,30 +457,35 @@ def _run_sweep(
     )
     _print_table(candidates)
     report = select_best(candidates)
-    if args.report is not None:
-        payload = {
-            "input": str(args.input),
-            "seed": config.seed,
-            "jobs": args.jobs,
-            **report.to_dict(),
-        }
-        args.report.write_text(json.dumps(payload, indent=2) + "\n")
-        print(f"wrote {args.report}")
-    winner = report.winner
-    if winner is None or winner.result is None:
-        print("error: every strategy failed", file=sys.stderr)
-        for candidate in report.candidates:
-            print(f"  {candidate.strategy}: {candidate.error}", file=sys.stderr)
+    try:
+        if args.report is not None:
+            payload = {
+                "input": str(args.input),
+                "seed": config.seed,
+                "jobs": args.jobs,
+                **report.to_dict(),
+            }
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(json.dumps(payload, indent=2) + "\n")
+            print(f"wrote {args.report}")
+        winner = report.winner
+        if winner is None or winner.result is None:
+            print("error: every strategy failed", file=sys.stderr)
+            for candidate in report.candidates:
+                print(f"  {candidate.strategy}: {candidate.error}", file=sys.stderr)
+            return 1
+        if args.keep_candidates is not None:
+            _write_candidates(report, directory=args.keep_candidates, output=output)
+        write_outputs(
+            winner.result,
+            output,
+            bom_path=args.bom,
+            instructions_path=args.instructions,
+            progress=config.progress,
+        )
+    except OSError as error:
+        print(f"error: {error}", file=sys.stderr)
         return 1
-    if args.keep_candidates is not None:
-        _write_candidates(report, directory=args.keep_candidates, output=output)
-    write_outputs(
-        winner.result,
-        output,
-        bom_path=args.bom,
-        instructions_path=args.instructions,
-        progress=config.progress,
-    )
     print(f"selected {winner.strategy}: {report.reason}")
     return _print_result(winner.result, output, instructions_path=args.instructions)
 
