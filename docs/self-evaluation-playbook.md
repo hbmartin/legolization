@@ -141,13 +141,22 @@ weights (`ObjectiveWeights`) worth reporting.
 - Progress lines print only when stderr is a TTY; background runs are
   silent until done. Check the scorecard file, not the console.
 
-## 9. Current state (2026-07-18)
+## 9. Current state (2026-07-18, end of day)
 
-- Baseline scope: synthetic corpus (10 shapes), committed at
-  `eval/baselines/scorecard.json`. Mesh rows are additive future work —
-  run them in a long background sweep and widen the baseline when stable.
-- Known-hard rows: `topple-arm`, `sparse-pillars` expect 0 by design;
-  `thin-shell` has real seed variance.
+- Baseline scope: synthetic corpus (11 shapes incl. `topple-arm` and
+  `letter-h-bicolour` physics pins), committed at
+  `eval/baselines/scorecard.json`. A full mesh sweep (manifest sizes
+  reduced to 16–24 studs per the profiling data) runs overnight; widen
+  the baseline scope only after a clean run.
+- Known-hard rows: `topple-arm`, `sparse-pillars`, `letter-h-bicolour`
+  expect 0 by design; `thin-shell` has real seed variance — quantify it
+  with `eval_corpus.py --models thin-shell --seeds 0,1,2` (seed_spread).
 - The heart example ships with two warned unstable steps (its lobes start
   as floating islands that join later) — the canonical example of a
-  *tolerated* dangling step: machine-flagged, warned, buildable.
+  *tolerated* dangling step: machine-flagged, warned, buildable. The full
+  diagnosis of this class lives in `docs/unstable-prefix-report.md`.
+- Performance ground truth (see `scripts/profile_pipeline.py` and the PR
+  #16 campaign table): the HiGHS LP solve is ~99% of large-model runtime
+  (299 solves, ~4.9 s each at n≈1000), sequencing owns the wall clock,
+  and model construction is <1% — optimize solve count/warm-starts, not
+  caching.

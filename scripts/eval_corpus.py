@@ -55,6 +55,7 @@ class CorpusModelLike(Protocol):
     target_studs: int | None
     up: Literal["x", "y", "z"] | None
     generator: str | None
+    largest_component_only: bool
 
     @property
     def abs_path(self) -> Path:
@@ -90,6 +91,7 @@ def model_grid(corpus: ModuleType, model: CorpusModelLike) -> VoxelGrid | None:
                 options=MeshOptions(
                     target_studs=model.target_studs or 32,
                     up=model.up or "z",
+                    keep_largest=model.largest_component_only,
                 ),
             )
 

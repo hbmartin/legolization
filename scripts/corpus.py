@@ -56,6 +56,7 @@ class CorpusModel:
     up: str | None = None
     generator: str | None = None
     plates_per_voxel: int = 3
+    largest_component_only: bool = False
     extra_args: tuple[str, ...] = field(default=())
 
     @property
@@ -83,6 +84,7 @@ def load_manifest(path: Path = MANIFEST) -> list[CorpusModel]:
             up=entry.get("up"),
             generator=entry.get("generator"),
             plates_per_voxel=entry.get("plates_per_voxel", 3),
+            largest_component_only=entry.get("largest_component_only", False),
             extra_args=tuple(entry.get("extra_args", ())),
         )
         for entry in data.get("model", ())
