@@ -1,5 +1,8 @@
 """Mesh front-end: voxelization, orientation, CLI wiring."""
 
+from pathlib import Path
+from typing import Literal, cast
+
 import numpy as np
 import pytest
 import trimesh
@@ -18,13 +21,13 @@ def _box() -> trimesh.Trimesh:
     return trimesh.creation.box(extents=_BOX_EXTENTS)
 
 
-def test_box_shape_and_counts():
+def test_box_shape_and_counts() -> None:
     grid = grid_from_mesh(_box(), options=MeshOptions(target_studs=8))
     assert grid.shape == (9, 5, 5)
     assert grid.filled_count == 225  # solid box: every cell filled
 
 
-def test_cube_voxelizes_at_plate_resolution():
+def test_cube_voxelizes_at_plate_resolution() -> None:
     # The 2.5x pre-stretch: a cube must come out ~2.5x taller in layers
     # than it is wide in studs (boundary padding skews the ratio slightly).
     cube = trimesh.creation.box(extents=(4.0, 4.0, 4.0))
@@ -33,7 +36,7 @@ def test_cube_voxelizes_at_plate_resolution():
     assert 2.0 < nlayers / nx <= 2.5
 
 
-def test_pitch_overrides_target_studs():
+def test_pitch_overrides_target_studs() -> None:
     grid = grid_from_mesh(
         _box(),
         options=MeshOptions(target_studs=32, pitch=1.0),
@@ -41,7 +44,7 @@ def test_pitch_overrides_target_studs():
     assert grid.shape[0] <= 6  # 3.9 units at 1 unit/stud, not 32 studs
 
 
-def test_zero_horizontal_extent_raises():
+def test_zero_horizontal_extent_raises() -> None:
     degenerate = trimesh.Trimesh(
         vertices=[(0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 0.0, 2.0)],
         faces=[[0, 1, 2]],
@@ -51,7 +54,7 @@ def test_zero_horizontal_extent_raises():
         grid_from_mesh(degenerate)
 
 
-def test_up_axis_y_moves_long_axis_into_layers():
+def test_up_axis_y_moves_long_axis_into_layers() -> None:
     tall_in_y = trimesh.creation.box(extents=(1.9, 3.9, 0.9))
     grid = grid_from_mesh(tall_in_y, options=MeshOptions(target_studs=4, up="y"))
     nx, ny, nlayers = grid.shape
@@ -59,7 +62,7 @@ def test_up_axis_y_moves_long_axis_into_layers():
     assert nlayers > ny
 
 
-def test_uniform_colour_applied():
+def test_uniform_colour_applied() -> None:
     grid = grid_from_mesh(
         _box(),
         options=MeshOptions(target_studs=6, colour_code=4),
@@ -68,12 +71,12 @@ def test_uniform_colour_applied():
     assert (filled == 4).all()
 
 
-def test_bad_colour_raises():
+def test_bad_colour_raises() -> None:
     with pytest.raises(ValueError, match="unknown LDraw colour code"):
         grid_from_mesh(_box(), options=MeshOptions(colour_code=99_999))
 
 
-def test_no_fill_leaves_shell():
+def test_no_fill_leaves_shell() -> None:
     sphere = trimesh.creation.icosphere(subdivisions=2, radius=1.0)
     solid = grid_from_mesh(sphere, options=MeshOptions(target_studs=10))
     shell = grid_from_mesh(
@@ -86,7 +89,7 @@ def test_no_fill_leaves_shell():
     assert shell.codes[centre] == EMPTY
 
 
-def test_largest_component_filter():
+def test_largest_component_filter() -> None:
     two = trimesh.util.concatenate(
         [
             trimesh.creation.box(extents=(2.0, 2.0, 2.0)),
@@ -108,18 +111,29 @@ def test_largest_component_filter():
     assert any("dropped" in message for message in messages)
 
 
-def test_grid_dim_cap_raises():
+def test_grid_dim_cap_raises() -> None:
     with pytest.raises(ValueError, match="reduce --target-studs"):
         grid_from_mesh(_box(), options=MeshOptions(pitch=0.001))
 
 
-def test_determinism():
+def test_determinism() -> None:
     first = grid_from_mesh(_box(), options=MeshOptions(target_studs=8))
     second = grid_from_mesh(_box(), options=MeshOptions(target_studs=8))
     assert np.array_equal(first.codes, second.codes)
 
 
-def test_load_grid_dispatches_mesh_suffix(tmp_path):
+def test_mesh_options_reject_invalid_values() -> None:
+    with pytest.raises(ValueError, match="target_studs must be positive"):
+        MeshOptions(target_studs=0)
+    with pytest.raises(ValueError, match="pitch must be finite and positive"):
+        MeshOptions(pitch=0.0)
+    with pytest.raises(ValueError, match="pitch must be finite and positive"):
+        MeshOptions(pitch=float("inf"))
+    with pytest.raises(ValueError, match="up must be one of"):
+        MeshOptions(up=cast("Literal['x', 'y', 'z']", "invalid"))
+
+
+def test_load_grid_dispatches_mesh_suffix(tmp_path: Path) -> None:
     path = tmp_path / "box.stl"
     _box().export(path)
     grid = load_grid(path, PipelineConfig(mesh=MeshOptions(target_studs=6)))
@@ -127,14 +141,14 @@ def test_load_grid_dispatches_mesh_suffix(tmp_path):
     assert grid.filled_count > 0
 
 
-def test_mesh_to_grid_reads_obj(tmp_path):
+def test_mesh_to_grid_reads_obj(tmp_path: Path) -> None:
     path = tmp_path / "box.obj"
     _box().export(path)
     grid = mesh_to_grid(path, options=MeshOptions(target_studs=6))
     assert grid.filled_count > 0
 
 
-def test_run_file_mesh_end_to_end(tmp_path):
+def test_run_file_mesh_end_to_end(tmp_path: Path) -> None:
     path = tmp_path / "box.stl"
     _box().export(path)
     out = tmp_path / "box.ldr"
@@ -147,7 +161,7 @@ def test_run_file_mesh_end_to_end(tmp_path):
     assert result.buildable
 
 
-def test_cli_mesh_flags_reject_voxel_input(tmp_path):
+def test_cli_mesh_flags_reject_voxel_input(tmp_path: Path) -> None:
     npy = tmp_path / "box.npy"
     np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
     with pytest.raises(SystemExit) as excinfo:
@@ -155,7 +169,7 @@ def test_cli_mesh_flags_reject_voxel_input(tmp_path):
     assert excinfo.value.code == 2
 
 
-def test_cli_voxel_flags_reject_mesh_input(tmp_path):
+def test_cli_voxel_flags_reject_mesh_input(tmp_path: Path) -> None:
     path = tmp_path / "box.stl"
     _box().export(path)
     with pytest.raises(SystemExit) as excinfo:
@@ -163,7 +177,10 @@ def test_cli_voxel_flags_reject_mesh_input(tmp_path):
     assert excinfo.value.code == 2
 
 
-def test_cli_mesh_happy_path(tmp_path, capsys):
+def test_cli_mesh_happy_path(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     path = tmp_path / "box.stl"
     _box().export(path)
     out = tmp_path / "box.ldr"

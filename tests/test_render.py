@@ -87,19 +87,22 @@ def _leocad_runner(content: bytes = b"png-") -> Callable[[list[str], float], str
 # --- detection ---
 
 
-def test_env_override_none_disables(monkeypatch):
+def test_env_override_none_disables(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(render_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
     assert detect_renderer(env={"LEGOLIZATION_RENDERER": "none"}) is None
 
 
-def test_env_override_explicit_path_infers_kind(tmp_path):
+def test_env_override_explicit_path_infers_kind(tmp_path: Path) -> None:
     exe = tmp_path / "MyLDView"
     exe.write_text("#!/bin/sh\n")
     renderer = detect_renderer(env={"LEGOLIZATION_RENDERER": str(exe)})
     assert renderer == Renderer(kind="ldview", executable=exe)
 
 
-def test_env_override_command_name(monkeypatch, tmp_path):
+def test_env_override_command_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     exe = tmp_path / "leocad"
     exe.write_text("#!/bin/sh\n")
     monkeypatch.setattr(
@@ -111,14 +114,17 @@ def test_env_override_command_name(monkeypatch, tmp_path):
     assert renderer == Renderer(kind="leocad", executable=exe)
 
 
-def test_path_prefers_leocad(monkeypatch):
+def test_path_prefers_leocad(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(render_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
     renderer = detect_renderer(env={})
     assert renderer is not None
     assert renderer.kind == "leocad"
 
 
-def test_app_bundle_fallback(monkeypatch, tmp_path):
+def test_app_bundle_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     exe = tmp_path / "LDView"
     exe.write_text("#!/bin/sh\n")
     monkeypatch.setattr(render_mod.shutil, "which", lambda name: None)
@@ -127,19 +133,22 @@ def test_app_bundle_fallback(monkeypatch, tmp_path):
     assert renderer == Renderer(kind="ldview", executable=exe)
 
 
-def test_no_renderer_found(monkeypatch):
+def test_no_renderer_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(render_mod.shutil, "which", lambda name: None)
     monkeypatch.setattr(render_mod, "_APP_BUNDLES", ())
     assert detect_renderer(env={}) is None
 
 
-def test_detect_ldraw_dir_explicit(tmp_path):
+def test_detect_ldraw_dir_explicit(tmp_path: Path) -> None:
     library = _ldraw_dir(tmp_path)
     assert detect_ldraw_dir(library) == library
     assert detect_ldraw_dir(tmp_path / "missing") is None
 
 
-def test_detect_ldraw_dir_env(monkeypatch, tmp_path):
+def test_detect_ldraw_dir_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     library = _ldraw_dir(tmp_path)
     monkeypatch.setattr(render_mod, "_LDRAW_GLOBS", ())
     monkeypatch.setattr(render_mod, "_LDRAW_DIRS", ())
@@ -150,7 +159,7 @@ def test_detect_ldraw_dir_env(monkeypatch, tmp_path):
 # --- camera math and sanitizing ---
 
 
-def test_step_longitudes_accumulate_rel_rotsteps():
+def test_step_longitudes_accumulate_rel_rotsteps() -> None:
     plan = _plan(4, rotsteps={2: RotStep(yaw=90), 4: RotStep(yaw=90)})
     longitudes = _step_longitudes(plan, base=45.0)
     assert longitudes[0] == 45.0
@@ -158,7 +167,7 @@ def test_step_longitudes_accumulate_rel_rotsteps():
     assert longitudes[3] == (45.0 + _YAW_SIGN * 180) % 360.0
 
 
-def test_step_longitudes_abs_and_end():
+def test_step_longitudes_abs_and_end() -> None:
     plan = _plan(
         3,
         rotsteps={2: RotStep(yaw=270, mode="ABS"), 3: RotStep(yaw=0, mode="END")},
@@ -169,7 +178,7 @@ def test_step_longitudes_abs_and_end():
     assert longitudes[2] == 45.0
 
 
-def test_view_segments_group_consecutive_runs():
+def test_view_segments_group_consecutive_runs() -> None:
     assert _view_segments((45.0, 45.0, 315.0, 315.0, 45.0)) == [
         (1, 2, 45.0),
         (3, 4, 315.0),
@@ -177,7 +186,7 @@ def test_view_segments_group_consecutive_runs():
     ]
 
 
-def test_sanitized_strips_only_rotstep_lines():
+def test_sanitized_strips_only_rotstep_lines() -> None:
     lines = [
         "0 FILE m.ldr",
         "0 ROTSTEP 0 90 0 REL",
@@ -196,7 +205,7 @@ def test_sanitized_strips_only_rotstep_lines():
 # --- LeoCAD flow ---
 
 
-def test_leocad_renders_segments_and_orders_images(tmp_path):
+def test_leocad_renders_segments_and_orders_images(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=3)
     plan = _plan(3, rotsteps={3: RotStep(yaw=90)})
     config = RenderConfig(renderer=_leocad(tmp_path), ldraw_dir=_ldraw_dir(tmp_path))
@@ -208,7 +217,7 @@ def test_leocad_renders_segments_and_orders_images(tmp_path):
     assert images.warnings == ()
 
 
-def test_leocad_command_shape(tmp_path):
+def test_leocad_command_shape(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=2)
     library = _ldraw_dir(tmp_path)
     calls: list[list[str]] = []
@@ -228,7 +237,7 @@ def test_leocad_command_shape(tmp_path):
     assert cmd[lat_at + 1 : lat_at + 3] == ["30", "45"]
 
 
-def test_zero_byte_images_are_failures(tmp_path):
+def test_zero_byte_images_are_failures(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=2)
     config = RenderConfig(renderer=_leocad(tmp_path), ldraw_dir=_ldraw_dir(tmp_path))
 
@@ -246,17 +255,19 @@ def test_zero_byte_images_are_failures(tmp_path):
     assert "produced no image" in images.warnings[0]
 
 
-def test_renderer_writing_nothing_yields_warnings(tmp_path):
+def test_renderer_writing_nothing_yields_warnings(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=2)
     config = RenderConfig(renderer=_leocad(tmp_path), ldraw_dir=_ldraw_dir(tmp_path))
-    images = render_step_images(
-        model, _plan(2), config=config, runner=lambda cmd, timeout_s: "boom"
-    )
+
+    def fail_runner(_cmd: list[str], _timeout_s: float) -> str:
+        return "boom"
+
+    images = render_step_images(model, _plan(2), config=config, runner=fail_runner)
     assert images.images == (None, None)
     assert all("boom" in warning for warning in images.warnings)
 
 
-def test_timeout_is_a_warning_not_a_crash(tmp_path):
+def test_timeout_is_a_warning_not_a_crash(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=2)
     config = RenderConfig(renderer=_leocad(tmp_path), ldraw_dir=_ldraw_dir(tmp_path))
 
@@ -268,7 +279,10 @@ def test_timeout_is_a_warning_not_a_crash(tmp_path):
     assert any("timed out" in warning for warning in images.warnings)
 
 
-def test_missing_ldraw_library_warns_but_renders(tmp_path, monkeypatch):
+def test_missing_ldraw_library_warns_but_renders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(render_mod, "_LDRAW_GLOBS", ())
     monkeypatch.setattr(render_mod, "_LDRAW_DIRS", ())
     monkeypatch.delenv("LDRAWDIR", raising=False)
@@ -282,7 +296,7 @@ def test_missing_ldraw_library_warns_but_renders(tmp_path, monkeypatch):
 # --- LDView flow ---
 
 
-def test_ldview_one_invocation_per_step(tmp_path):
+def test_ldview_one_invocation_per_step(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=2)
     calls: list[list[str]] = []
 
@@ -311,7 +325,10 @@ def test_ldview_one_invocation_per_step(tmp_path):
 # --- degradation and integration ---
 
 
-def test_no_renderer_degrades_to_placeholders(tmp_path, monkeypatch):
+def test_no_renderer_degrades_to_placeholders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("LEGOLIZATION_RENDERER", "none")
     model = _model_file(tmp_path, steps=3)
     images = render_step_images(model, _plan(3))
@@ -326,7 +343,7 @@ def test_no_renderer_degrades_to_placeholders(tmp_path, monkeypatch):
     detect_renderer() is None or detect_ldraw_dir() is None,
     reason="no LDraw renderer/library installed",
 )
-def test_real_renderer_end_to_end(tmp_path):
+def test_real_renderer_end_to_end(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=2)
     images = render_step_images(model, _plan(2, rotsteps={2: RotStep(yaw=90)}))
     assert images.complete

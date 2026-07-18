@@ -54,6 +54,20 @@ class MeshOptions:
     fill: bool = True
     keep_largest: bool = True
 
+    def __post_init__(self) -> None:
+        """Reject invalid programmatic configuration at the API boundary."""
+        if self.target_studs <= 0:
+            msg = "target_studs must be positive"
+            raise ValueError(msg)
+        if self.pitch is not None and (
+            not math.isfinite(self.pitch) or self.pitch <= 0.0
+        ):
+            msg = "pitch must be finite and positive"
+            raise ValueError(msg)
+        if self.up not in {"x", "y", "z"}:
+            msg = "up must be one of 'x', 'y', or 'z'"
+            raise ValueError(msg)
+
 
 def mesh_to_grid(
     path: Path,

@@ -32,7 +32,9 @@ if TYPE_CHECKING:
     from legolization.instructions.sequencer import BuildStep, InstructionPlan
 
 _COVER_BOM_ROWS = 24
+_COVER_WARNING_ROWS = 4
 _PARTS_PAGE_ROWS = 40
+_WARNING_PAGE_ROWS = 20
 _PDF_MARGIN = 36.0  # ½ inch
 _PDF_CALLOUT_LINES = 8
 
@@ -78,14 +80,20 @@ class Booklet:
     stats: ModelStats
     config: BookletConfig
     total: tuple[BomEntry, ...]
+    warning_pages: tuple[tuple[str, ...], ...]
     overflow_parts_pages: tuple[tuple[BomEntry, ...], ...]
     step_pages: tuple[tuple[StepEntry, ...], ...]
     warnings: tuple[str, ...]
 
     @property
     def page_count(self) -> int:
-        """Cover plus overflow parts pages plus step pages."""
-        return 1 + len(self.overflow_parts_pages) + len(self.step_pages)
+        """Cover plus warning, overflow-parts, and step pages."""
+        return (
+            1
+            + len(self.warning_pages)
+            + len(self.overflow_parts_pages)
+            + len(self.step_pages)
+        )
 
 
 def build_booklet(
@@ -97,6 +105,7 @@ def build_booklet(
 ) -> Booklet:
     """Paginate a plan into a booklet; image presence never changes layout."""
     config = config or BookletConfig()
+    warnings = plan.warnings + images.warnings
     entries = tuple(
         StepEntry(
             step=step,
@@ -110,14 +119,29 @@ def build_booklet(
         stats=stats,
         config=config,
         total=plan.bom.total,
+        warning_pages=tuple(
+            tuple(rows)
+            for rows in batched(
+                warnings[_COVER_WARNING_ROWS:],
+                _WARNING_PAGE_ROWS,
+            )
+        ),
         overflow_parts_pages=tuple(
             tuple(rows) for rows in batched(overflow, _PARTS_PAGE_ROWS)
         ),
         step_pages=tuple(
             tuple(page) for page in batched(entries, config.steps_per_page)
         ),
-        warnings=plan.warnings + images.warnings,
+        warnings=warnings,
     )
+
+
+def validate_booklet_path(path: Path) -> None:
+    """Reject unsupported booklet destinations before other artifacts are written."""
+    if path.suffix.lower() not in {".html", ".pdf"}:
+        suffix = path.suffix.lower()
+        msg = f"unsupported booklet format {suffix!r} (expected .html or .pdf)"
+        raise ValueError(msg)
 
 
 def write_booklet(
@@ -129,15 +153,12 @@ def write_booklet(
     config: BookletConfig | None = None,
 ) -> Booklet:
     """Build the booklet and write it in the format the suffix picks."""
+    validate_booklet_path(path)
     booklet = build_booklet(plan, stats, images, config=config)
-    match path.suffix.lower():
-        case ".html":
-            path.write_text(booklet_html(booklet), encoding="utf-8")
-        case ".pdf":
-            write_booklet_pdf(booklet, path)
-        case suffix:
-            msg = f"unsupported booklet format {suffix!r} (expected .html or .pdf)"
-            raise ValueError(msg)
+    if path.suffix.lower() == ".html":
+        path.write_text(booklet_html(booklet), encoding="utf-8")
+    else:
+        write_booklet_pdf(booklet, path)
     return booklet
 
 
@@ -190,6 +211,8 @@ def booklet_html(booklet: Booklet) -> str:
         "<body>",
         *_html_cover(booklet, title),
     ]
+    for warnings in booklet.warning_pages:
+        lines.extend(_html_warnings_page(warnings))
     for rows in booklet.overflow_parts_pages:
         lines.append('<div class="page parts">')
         lines.append("<h2>Parts (continued)</h2>")
@@ -230,15 +253,29 @@ def _html_cover(booklet: Booklet, title: str) -> list[str]:
         ),
         "</tbody></table>",
     ]
-    if booklet.warnings:
+    if cover_warnings := booklet.warnings[:_COVER_WARNING_ROWS]:
         lines.append('<div class="warnings"><ul>')
-        lines.extend(f"<li>{html.escape(warning)}</li>" for warning in booklet.warnings)
+        lines.extend(f"<li>{html.escape(warning)}</li>" for warning in cover_warnings)
+        if booklet.warning_pages:
+            remaining = len(booklet.warnings) - len(cover_warnings)
+            lines.append(f"<li>{remaining} more warning(s) on the next page …</li>")
         lines.append("</ul></div>")
     lines.append("<h2>Parts</h2>")
     lines.extend(_html_parts_table(booklet.total[:_COVER_BOM_ROWS]))
     if len(booklet.total) > _COVER_BOM_ROWS:
         lines.append("<p>continued on the next page …</p>")
     lines.append("</div>")
+    return lines
+
+
+def _html_warnings_page(warnings: tuple[str, ...]) -> list[str]:
+    lines = [
+        '<div class="page warning-list">',
+        "<h2>Warnings (continued)</h2>",
+        '<div class="warnings"><ul>',
+    ]
+    lines.extend(f"<li>{html.escape(warning)}</li>" for warning in warnings)
+    lines.extend(["</ul></div>", "</div>"])
     return lines
 
 
@@ -312,6 +349,9 @@ def write_booklet_pdf(booklet: Booklet, path: Path) -> None:
     canvas.setTitle(booklet.config.title or booklet.stats.name)
     _pdf_cover(canvas, booklet, height=height)
     canvas.showPage()
+    for warnings in booklet.warning_pages:
+        _pdf_warnings_page(canvas, warnings, height=height)
+        canvas.showPage()
     for rows in booklet.overflow_parts_pages:
         _pdf_parts_page(canvas, rows, height=height)
         canvas.showPage()
@@ -336,8 +376,17 @@ def _pdf_cover(canvas: Canvas, booklet: Booklet, *, height: float) -> None:
     )
     canvas.drawString(_PDF_MARGIN, cursor, summary)
     cursor -= 14
-    for warning in booklet.warnings:
+    cover_warnings = booklet.warnings[:_COVER_WARNING_ROWS]
+    for warning in cover_warnings:
         canvas.drawString(_PDF_MARGIN, cursor, f"warning: {warning}"[:110])
+        cursor -= 12
+    if booklet.warning_pages:
+        remaining = len(booklet.warnings) - len(cover_warnings)
+        canvas.drawString(
+            _PDF_MARGIN,
+            cursor,
+            f"{remaining} more warning(s) on the next page ...",
+        )
         cursor -= 12
     cursor -= 10
     canvas.setFont("Helvetica-Bold", 12)
@@ -347,6 +396,22 @@ def _pdf_cover(canvas: Canvas, booklet: Booklet, *, height: float) -> None:
     if len(booklet.total) > _COVER_BOM_ROWS:
         canvas.setFont("Helvetica-Oblique", 9)
         canvas.drawString(_PDF_MARGIN, _PDF_MARGIN, "continued on the next page …")
+
+
+def _pdf_warnings_page(
+    canvas: Canvas,
+    warnings: tuple[str, ...],
+    *,
+    height: float,
+) -> None:
+    canvas.setFont("Helvetica-Bold", 12)
+    cursor = height - _PDF_MARGIN - 12
+    canvas.drawString(_PDF_MARGIN, cursor, "Warnings (continued)")
+    cursor -= 18
+    canvas.setFont("Helvetica", 9)
+    for warning in warnings:
+        canvas.drawString(_PDF_MARGIN, cursor, f"warning: {warning}"[:110])
+        cursor -= 12
 
 
 def _pdf_parts_page(

@@ -7,6 +7,7 @@ import pytest
 from legolization.catalog import default_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.instructions import (
+    InstructionPlan,
     InstructionsConfig,
     InstructionsError,
     plan_instructions,
@@ -18,12 +19,13 @@ from legolization.instructions.metrics import plan_quality
 from legolization.instructions.search import disassembly_order
 from legolization.layout import Layout
 from legolization.pipeline import PipelineConfig, load_grid, run
+from legolization.stability import SolverConfig, StabilityResult
 
 _EXAMPLES = Path(__file__).parent.parent / "data" / "examples"
 
 
 @pytest.fixture(scope="module")
-def hollow_pyramid():
+def hollow_pyramid() -> tuple[Layout, InstructionPlan]:
     """Build the shipped pyramid at default settings.
 
     Its hollow shell has genuinely unorderable overhang steps, so the
@@ -35,7 +37,14 @@ def hollow_pyramid():
     return result.layout, result.plan
 
 
-def _sequencing_inputs(layout, config) -> tuple[list, dict, dict]:
+def _sequencing_inputs(
+    layout: Layout,
+    config: InstructionsConfig,
+) -> tuple[
+    list[tuple[int, tuple[int, ...]]],
+    dict[int, set[int]],
+    dict[int, frozenset[int]],
+]:
     graph = ConnectionGraph.from_layout(layout)
     supports = {brick_id: set() for brick_id in layout.bricks}
     for below_id, above_id in graph.support_edges():
@@ -46,7 +55,7 @@ def _sequencing_inputs(layout, config) -> tuple[list, dict, dict]:
     return chunks, supports, blockers
 
 
-def test_full_disassembly_covers_all_chunks_stably():
+def test_full_disassembly_covers_all_chunks_stably() -> None:
     # Solid ground row + a second storey: every forward prefix is stable,
     # so a full-layout disassembly must find an all-stable order.
     layout = _two_storey_layout()
@@ -75,7 +84,9 @@ def test_full_disassembly_covers_all_chunks_stably():
         placed |= chunk_set
 
 
-def test_rescue_plan_verifies_and_warns(hollow_pyramid):
+def test_rescue_plan_verifies_and_warns(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     layout, plan = hollow_pyramid
     assert verify_plan(layout, plan) == []
     assert sorted(plan.order) == sorted(layout.bricks)
@@ -84,7 +95,9 @@ def test_rescue_plan_verifies_and_warns(hollow_pyramid):
     assert plan_quality(plan).unstable_steps >= 1
 
 
-def test_rescue_is_deterministic(hollow_pyramid):
+def test_rescue_is_deterministic(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     layout, plan = hollow_pyramid
     again = plan_instructions(layout, config=InstructionsConfig())
     assert [step.brick_ids for step in again.steps] == [
@@ -92,7 +105,9 @@ def test_rescue_is_deterministic(hollow_pyramid):
     ]
 
 
-def test_rescue_never_beats_band_fallback_on_unstable_steps(hollow_pyramid):
+def test_rescue_never_beats_band_fallback_on_unstable_steps(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     layout, rescue_plan = hollow_pyramid
     band_plan = plan_instructions(layout, config=InstructionsConfig(fallback="band"))
     assert verify_plan(layout, band_plan) == []
@@ -102,20 +117,26 @@ def test_rescue_never_beats_band_fallback_on_unstable_steps(hollow_pyramid):
     )
 
 
-def test_strict_mode_raises_through_the_rescue(hollow_pyramid):
+def test_strict_mode_raises_through_the_rescue(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     layout, _ = hollow_pyramid
     with pytest.raises(InstructionsError, match="no stable ordering"):
         plan_instructions(layout, config=InstructionsConfig(stability_policy="strict"))
 
 
-def test_band_fallback_still_warns_per_step(hollow_pyramid):
+def test_band_fallback_still_warns_per_step(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     layout, _ = hollow_pyramid
     plan = plan_instructions(layout, config=InstructionsConfig(fallback="band"))
     assert any("prefix unstable" in warning for warning in plan.warnings)
     assert any(not step.prefix_stable for step in plan.steps)
 
 
-def test_configs_share_the_greedy_happy_path(hollow_pyramid):
+def test_configs_share_the_greedy_happy_path(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     # Until the first degradation, rescue and band configs agree exactly.
     layout, rescue_plan = hollow_pyramid
     band_plan = plan_instructions(layout, config=InstructionsConfig(fallback="band"))
@@ -128,7 +149,9 @@ def test_configs_share_the_greedy_happy_path(hollow_pyramid):
     ]
 
 
-def test_plan_quality_reflects_the_rescue_path(hollow_pyramid):
+def test_plan_quality_reflects_the_rescue_path(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     _, plan = hollow_pyramid
     quality = plan_quality(plan)
     assert quality.step_count == len(plan.steps)
@@ -144,7 +167,7 @@ def _two_storey_layout() -> Layout:
     return layout
 
 
-def test_beam_search_verifies_and_is_deterministic():
+def test_beam_search_verifies_and_is_deterministic() -> None:
     layout = _two_storey_layout()
     config = InstructionsConfig(search="beam", target_step_size=4, rotstep=False)
     plan = plan_instructions(layout, config=config)
@@ -157,7 +180,9 @@ def test_beam_search_verifies_and_is_deterministic():
     ]
 
 
-def test_beam_never_does_worse_than_greedy_rescue(hollow_pyramid):
+def test_beam_never_does_worse_than_greedy_rescue(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     layout, rescue_plan = hollow_pyramid
     config = InstructionsConfig(search="beam")
     beam_plan = plan_instructions(layout, config=config)
@@ -169,16 +194,22 @@ def test_beam_never_does_worse_than_greedy_rescue(hollow_pyramid):
     )
 
 
-def test_beam_respects_the_lp_budget(monkeypatch):
+def test_beam_respects_the_lp_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import legolization.instructions.search as search_module
 
     layout = _two_storey_layout()
     real_analyze = search_module.analyze
     calls = {"count": 0}
 
-    def counting_analyze(*args, **kwargs) -> object:
+    def counting_analyze(
+        target: Layout,
+        config: SolverConfig | None = None,
+        graph: ConnectionGraph | None = None,
+    ) -> StabilityResult:
         calls["count"] += 1
-        return real_analyze(*args, **kwargs)
+        return real_analyze(target, config, graph)
 
     monkeypatch.setattr(search_module, "analyze", counting_analyze)
     budget = 3
@@ -192,10 +223,39 @@ def test_beam_respects_the_lp_budget(monkeypatch):
     assert calls["count"] <= budget + config.beam_width
 
 
-def test_beam_strict_mode_raises_on_unorderable_models(hollow_pyramid):
+def test_beam_strict_mode_raises_on_unorderable_models(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+) -> None:
     layout, _ = hollow_pyramid
     with pytest.raises(InstructionsError, match="no stable ordering"):
         plan_instructions(
             layout,
             config=InstructionsConfig(search="beam", stability_policy="strict"),
         )
+
+
+def test_band_deadlock_honours_strict_policy(
+    hollow_pyramid: tuple[Layout, InstructionPlan],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.instructions.sequencer as sequencer_module
+
+    layout, _ = hollow_pyramid
+
+    def no_ready(*_args: object, **_kwargs: object) -> list[int]:
+        return []
+
+    monkeypatch.setattr(sequencer_module, "_gather_ready", no_ready)
+    with pytest.raises(InstructionsError, match="no stable ordering"):
+        plan_instructions(
+            layout,
+            config=InstructionsConfig(
+                fallback="band",
+                stability_policy="strict",
+            ),
+        )
+
+
+def test_instructions_config_rejects_nonpositive_beam_width() -> None:
+    with pytest.raises(ValueError, match="beam_width must be positive"):
+        InstructionsConfig(beam_width=0)

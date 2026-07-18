@@ -2,7 +2,9 @@
 
 import base64
 import math
+from dataclasses import replace
 from html.parser import HTMLParser
+from pathlib import Path
 
 import pypdf
 import pytest
@@ -93,7 +95,11 @@ class _HtmlCounts(HTMLParser):
         self.images = 0
         self.placeholders = 0
 
-    def handle_starttag(self, tag, attrs) -> None:
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
         classes = (dict(attrs).get("class") or "").split()
         src = dict(attrs).get("src") or ""
         if tag == "div" and "page" in classes:
@@ -114,7 +120,7 @@ def _counts(markup: str) -> _HtmlCounts:
 
 @pytest.mark.parametrize("steps_per_page", [1, 2, 3])
 @pytest.mark.parametrize(("steps", "bom_rows"), [(1, 5), (6, 30), (9, 120)])
-def test_page_math(steps, bom_rows, steps_per_page):
+def test_page_math(steps: int, bom_rows: int, steps_per_page: int) -> None:
     plan = _plan(steps, bom_rows)
     booklet = build_booklet(
         plan,
@@ -127,7 +133,7 @@ def test_page_math(steps, bom_rows, steps_per_page):
     assert _counts(booklet_html(booklet)).pages == booklet.page_count
 
 
-def test_html_structure_with_images():
+def test_html_structure_with_images() -> None:
     plan = _plan(5, 10)
     booklet = build_booklet(plan, _STATS, _images(5, _PNG))
     markup = booklet_html(booklet)
@@ -142,7 +148,7 @@ def test_html_structure_with_images():
     assert 'id="step-3"' in markup
 
 
-def test_html_without_images_keeps_page_count():
+def test_html_without_images_keeps_page_count() -> None:
     plan = _plan(5, 10)
     with_images = build_booklet(plan, _STATS, _images(5, _PNG))
     without = build_booklet(plan, _STATS, _images(5, None))
@@ -154,7 +160,7 @@ def test_html_without_images_keeps_page_count():
     assert "no LDraw renderer found" in markup
 
 
-def test_html_escapes_part_and_colour_text():
+def test_html_escapes_part_and_colour_text() -> None:
     entry = BomEntry(
         part_key="brick<weird>",
         ldraw_part="3005.dat",
@@ -179,7 +185,7 @@ def test_html_escapes_part_and_colour_text():
     assert "mind the &lt;gap&gt;" in markup
 
 
-def test_pdf_page_count_matches(tmp_path):
+def test_pdf_page_count_matches(tmp_path: Path) -> None:
     plan = _plan(5, 60)
     mixed = StepImages(
         images=(_PNG, None, _PNG, None, _PNG),
@@ -192,7 +198,7 @@ def test_pdf_page_count_matches(tmp_path):
     assert len(pypdf.PdfReader(path).pages) == booklet.page_count
 
 
-def test_write_booklet_dispatches_on_suffix(tmp_path):
+def test_write_booklet_dispatches_on_suffix(tmp_path: Path) -> None:
     plan = _plan(2, 4)
     images = _images(2, _PNG)
     html_booklet = write_booklet(plan, _STATS, images, tmp_path / "book.html")
@@ -204,7 +210,25 @@ def test_write_booklet_dispatches_on_suffix(tmp_path):
         write_booklet(plan, _STATS, images, tmp_path / "book.docx")
 
 
-def test_real_plan_carries_per_step_callouts():
+def test_warning_overflow_pages_match_html_and_pdf(tmp_path: Path) -> None:
+    warnings = tuple(f"renderer failed for step {index}" for index in range(50))
+    plan = replace(_plan(1, 4), warnings=warnings)
+    booklet = build_booklet(plan, _STATS, _images(1, _PNG))
+    markup = booklet_html(booklet)
+    path = tmp_path / "warnings.pdf"
+
+    write_booklet_pdf(booklet, path)
+
+    assert len(booklet.warning_pages) == 3
+    assert _counts(markup).pages == booklet.page_count
+    reader = pypdf.PdfReader(path)
+    assert len(reader.pages) == booklet.page_count
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    assert warnings[0] in text
+    assert warnings[-1] in text
+
+
+def test_real_plan_carries_per_step_callouts() -> None:
     layout = Layout(catalog=default_catalog())
     for x in range(8):
         layout.add("brick_1x1", x, 0, 0, 0, 4)

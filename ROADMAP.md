@@ -138,7 +138,7 @@ prefix-stable sequencing over the vertical block graph (warn or strict
 policy), and a hand-rolled JSON/text BOM with per-step callouts (`--bom`).
 Items 4–5 shipped as `instructions/render.py` + `instructions/booklet.py`:
 
-4. **Rendering** went LeoCAD-first rather than the LDView-first sketch:
+**4. Rendering** went LeoCAD-first rather than the LDView-first sketch:
    LeoCAD's CLI exports a whole run of steps per invocation (`-f/-t`,
    numbered by absolute step) and highlights each step's new bricks
    (`--highlight`); LDView (`-SaveSnapshot -Step=N -AutoCrop=0`) is the
@@ -148,7 +148,7 @@ Items 4–5 shipped as `instructions/render.py` + `instructions/booklet.py`:
    non-empty PNG on disk, never the exit code. The camera is driven from
    the plan's own RotStep data against a ROTSTEP-stripped temp copy, so
    framing stays constant and both backends agree.
-5. **Booklet assembly** is HTML-first with a reportlab-canvas PDF writer:
+**5. Booklet assembly** is HTML-first with a reportlab-canvas PDF writer:
    one `Booklet` pagination model feeds both, so page counts match by
    construction (cover + overflow parts pages + N steps/page, default 2).
    No renderer → placeholder boxes, identical page count, warning banner.

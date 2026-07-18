@@ -12,7 +12,11 @@ from legolization.graph import ConnectionGraph
 from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
 from legolization.instructions.bom import bill_of_materials
-from legolization.instructions.booklet import ModelStats, write_booklet
+from legolization.instructions.booklet import (
+    ModelStats,
+    validate_booklet_path,
+    write_booklet,
+)
 from legolization.instructions.render import render_step_images
 from legolization.instructions.sequencer import (
     InstructionPlan,
@@ -232,26 +236,29 @@ def write_outputs(
     of the just-written model and writes a booklet (``.html`` or ``.pdf``);
     without a renderer installed the booklet gets placeholder boxes.
     """
-    write_model(result.layout, output_path, plan=result.plan)
+    plan = result.plan
+    if instructions_path is not None:
+        if plan is None:
+            msg = 'an instruction booklet needs smart steps (not steps mode "layer")'
+            raise ValueError(msg)
+        validate_booklet_path(instructions_path)
+    write_model(result.layout, output_path, plan=plan)
     if bom_path is not None:
-        bom = (
-            result.plan.bom
-            if result.plan is not None
-            else bill_of_materials(result.layout)
-        )
+        bom = plan.bom if plan is not None else bill_of_materials(result.layout)
         if bom_path.suffix.lower() == ".json":
             bom_path.write_text(bom.to_json(model_name=output_path.name) + "\n")
         else:
             bom_path.write_text(bom.to_text() + "\n")
-    if instructions_path is None:
+    if instructions_path is None or plan is None:
         return None
-    if result.plan is None:
-        msg = 'an instruction booklet needs smart steps (not steps mode "layer")'
-        raise ValueError(msg)
-    images = render_step_images(output_path, result.plan, progress=progress)
+    images = render_step_images(
+        model_path=output_path,
+        plan=plan,
+        progress=progress,
+    )
     booklet = write_booklet(
-        result.plan,
-        ModelStats(
+        plan=plan,
+        stats=ModelStats(
             name=output_path.stem,
             brick_count=result.brick_count,
             mass_g=result.mass_g,
@@ -261,8 +268,8 @@ def write_outputs(
             component_count=result.component_count,
             floating_count=result.floating_count,
         ),
-        images,
-        instructions_path,
+        images=images,
+        path=instructions_path,
     )
     if progress is not None:
         for warning in images.warnings:
