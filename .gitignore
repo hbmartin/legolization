@@ -19,6 +19,7 @@ previous/
 triage_decisions.db
 reviews_triage/
 .mcp.json
+.claude/settings.local.json
 
 # evaluation corpus binaries (regenerable via scripts/corpus.py) + run output
 data/corpus/meshes/

@@ -1,6 +1,7 @@
 """Pipeline orchestration and CLI smoke tests."""
 
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -62,7 +63,7 @@ def test_run_file_rejects_unknown_suffix(tmp_path):
         run_file(bad, tmp_path / "out.ldr")
 
 
-def test_run_file_rejects_corrupt_mesh(tmp_path):
+def test_run_file_rejects_corrupt_mesh(tmp_path: Path) -> None:
     bad = tmp_path / "box.stl"
     bad.write_bytes(b"not a mesh at all")
     with pytest.raises(ValueError, match=r"failed to load mesh|no triangle faces"):
@@ -89,13 +90,36 @@ def test_run_file_booklet_requires_a_plan(tmp_path, monkeypatch):
     npy = tmp_path / "box.npy"
     np.save(npy, _box_codes())
     config = PipelineConfig(seed=0, instructions=InstructionsConfig(mode="layer"))
+    output_path = tmp_path / "box.ldr"
     with pytest.raises(ValueError, match="needs smart steps"):
         run_file(
             npy,
-            tmp_path / "box.ldr",
+            output_path,
             config,
             instructions_path=tmp_path / "box.html",
         )
+    assert not output_path.exists()
+
+
+def test_run_file_validates_booklet_suffix_before_writing(
+    tmp_path: Path,
+) -> None:
+    npy = tmp_path / "box.npy"
+    np.save(npy, _box_codes())
+    output_path = tmp_path / "box.ldr"
+    bom_path = tmp_path / "box.json"
+
+    with pytest.raises(ValueError, match="unsupported booklet format"):
+        run_file(
+            npy,
+            output_path,
+            PipelineConfig(seed=0),
+            bom_path=bom_path,
+            instructions_path=tmp_path / "box.docx",
+        )
+
+    assert not output_path.exists()
+    assert not bom_path.exists()
 
 
 def test_cli_end_to_end(tmp_path, capsys):

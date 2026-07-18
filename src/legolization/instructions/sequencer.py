@@ -73,6 +73,12 @@ class InstructionsConfig:
     beam_states: int = 3
     lp_budget: int | None = None  # beam mode; None = 8 x chunk count
 
+    def __post_init__(self) -> None:
+        """Validate search widths before sequencing starts."""
+        if self.beam_width <= 0:
+            msg = "beam_width must be positive"
+            raise ValueError(msg)
+
 
 @dataclass(frozen=True, slots=True)
 class RotStep:
@@ -251,7 +257,15 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
             for position in pending:
                 _, chunk = chunks[position]
                 result = analyze_prefix(chunk)
-                emit(chunk, stable=result.stable, score=result.max_score)
+                emit_verdicts(
+                    [
+                        ChunkVerdict(
+                            chunk=chunk,
+                            stable=result.stable,
+                            max_score=result.max_score,
+                        )
+                    ]
+                )
             break
         if config.spatial_tiebreak and previous_centroid is not None:
             ready = _spatial_order(ready, chunks, centroids, previous_centroid)

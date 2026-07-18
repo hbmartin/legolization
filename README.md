@@ -98,8 +98,9 @@ Mesh inputs (`.obj`/`.stl`/`.ply`) are voxelized directly at plate
 resolution (always aspect-correct): `--target-studs N` sets the footprint
 width (or `--pitch` for explicit model-units-per-stud), `--up y` handles
 the common Y-up convention, `--mesh-colour CODE` picks the uniform colour,
-and `--no-fill` keeps shell meshes hollow. Disconnected voxel islands from
-non-watertight meshes are dropped to the largest component with a warning.
+and `--no-fill` keeps shell meshes hollow. Disconnected mesh components are
+preserved by default; `--largest-component-only` discards every smaller
+voxel island and always reports how many voxels were removed.
 
 `--strategy all` runs every registered strategy on the same input (in
 parallel worker processes; `--jobs 1` forces sequential) and keeps the best

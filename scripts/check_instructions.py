@@ -102,7 +102,7 @@ def _dump_step_images(
             continue
         (render_dir / f"step-{index:03d}.png").write_bytes(image)
         written += 1
-    print(f"wrote {written}/{len(images.images)} step images to {render_dir}")
+    progress(f"wrote {written}/{len(images.images)} step images to {render_dir}")
     return list(images.warnings)
 
 
@@ -166,16 +166,21 @@ def main(argv: list[str] | None = None) -> int:
         "steps": steps,
     }
     _emit_json(payload, args.json_path)
+    report_stream = sys.stderr if args.json_path == "-" else sys.stdout
     for violation in violations:
-        print(f"VIOLATION: {violation}")
+        print(f"VIOLATION: {violation}", file=report_stream)
     for warning in warnings:
-        print(f"warning: {warning}")
+        print(f"warning: {warning}", file=report_stream)
     for row in flagged:
-        print(f"flagged step {row['index']}: {', '.join(row['flags'])}")
+        print(
+            f"flagged step {row['index']}: {', '.join(row['flags'])}",
+            file=report_stream,
+        )
     print(
         f"{quality.step_count} steps, {quality.unstable_steps} unstable, "
         f"max prefix score {quality.max_prefix_score:.4f}, "
-        f"{len(flagged)} flagged"
+        f"{len(flagged)} flagged",
+        file=report_stream,
     )
     if violations:
         return 1

@@ -63,7 +63,7 @@ silhouette fidelity, surface quality, and colour against the numbers.
 
 ## Notes
 
-- `--jobs 0` = one worker per strategy; use `--jobs 1` when debugging (no
-  process pool, clean tracebacks).
+- `--jobs 0` = up to one worker per strategy, capped at CPU count; use
+  `--jobs 1` when debugging (no process pool, clean tracebacks).
 - smga/beauty honour `--time-budget`; a sweep `--timeout` folds into it.
 - For a corpus-wide view instead of one model, use the eval-corpus skill.

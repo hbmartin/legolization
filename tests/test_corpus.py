@@ -1,7 +1,10 @@
 """Corpus manifest and synthetic-generator tests."""
 
+import hashlib
 import importlib.util
+import io
 import sys
+import urllib.error
 from pathlib import Path
 from types import ModuleType
 
@@ -29,7 +32,7 @@ def corpus() -> ModuleType:
     return _load_corpus()
 
 
-def test_manifest_parses_and_matches_registry(corpus):
+def test_manifest_parses_and_matches_registry(corpus: ModuleType) -> None:
     models = corpus.load_manifest()
     assert len(models) >= 14
     for model in models:
@@ -46,13 +49,13 @@ def test_manifest_parses_and_matches_registry(corpus):
                 assert model.up is not None, model.name
 
 
-def test_manifest_names_unique(corpus):
+def test_manifest_names_unique(corpus: ModuleType) -> None:
     models = corpus.load_manifest()
     names = [model.name for model in models]
     assert len(names) == len(set(names))
 
 
-def test_generators_deterministic_and_nonempty(corpus):
+def test_generators_deterministic_and_nonempty(corpus: ModuleType) -> None:
     for name, generator in corpus.GENERATORS.items():
         first = generator()
         second = generator()
@@ -64,7 +67,7 @@ def test_generators_deterministic_and_nonempty(corpus):
         assert grid.filled_count > 0, name
 
 
-def test_mushroom_has_overhang(corpus):
+def test_mushroom_has_overhang(corpus: ModuleType) -> None:
     codes = corpus.mushroom()
     filled = codes != EMPTY
     # Overhang: some filled voxel above an empty column bottom.
@@ -72,7 +75,7 @@ def test_mushroom_has_overhang(corpus):
     assert above.any()
 
 
-def test_bridge_splits_without_deck(corpus):
+def test_bridge_splits_without_deck(corpus: ModuleType) -> None:
     codes = corpus.two_towers_bridge()
     filled = codes != EMPTY
     deck_layers = 2
@@ -87,7 +90,7 @@ def test_bridge_splits_without_deck(corpus):
     assert without_deck == 2
 
 
-def test_sparse_pillars_are_disconnected(corpus):
+def test_sparse_pillars_are_disconnected(corpus: ModuleType) -> None:
     from scipy import ndimage
 
     codes = corpus.sparse_pillars()
@@ -96,13 +99,17 @@ def test_sparse_pillars_are_disconnected(corpus):
     assert components == 4
 
 
-def test_select_rejects_unknown_names(corpus):
+def test_select_rejects_unknown_names(corpus: ModuleType) -> None:
     models = corpus.load_manifest()
     with pytest.raises(SystemExit, match="unknown corpus model"):
         corpus.select_models(models, "no-such-model")
 
 
-def test_generate_writes_files(corpus, tmp_path, monkeypatch):
+def test_generate_writes_files(
+    corpus: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(corpus, "_REPO", tmp_path)
     models = [
         corpus.CorpusModel(
@@ -117,7 +124,12 @@ def test_generate_writes_files(corpus, tmp_path, monkeypatch):
     assert np.array_equal(saved, corpus.cantilever())
 
 
-def test_verify_flags_stale_synthetic(corpus, tmp_path, monkeypatch, capsys):
+def test_verify_flags_stale_synthetic(
+    corpus: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     monkeypatch.setattr(corpus, "_REPO", tmp_path)
     model = corpus.CorpusModel(
         name="cantilever",
@@ -131,7 +143,12 @@ def test_verify_flags_stale_synthetic(corpus, tmp_path, monkeypatch, capsys):
     assert "STALE" in capsys.readouterr().out
 
 
-def test_verify_flags_missing(corpus, tmp_path, monkeypatch, capsys):
+def test_verify_flags_missing(
+    corpus: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     monkeypatch.setattr(corpus, "_REPO", tmp_path)
     model = corpus.CorpusModel(
         name="cantilever",
@@ -141,3 +158,80 @@ def test_verify_flags_missing(corpus, tmp_path, monkeypatch, capsys):
     )
     assert corpus.verify([model]) == 1
     assert "MISSING" in capsys.readouterr().out
+
+
+def test_verify_reports_corrupt_synthetic_and_continues(
+    corpus: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(corpus, "_REPO", tmp_path)
+    synthetic = tmp_path / "synthetic"
+    synthetic.mkdir()
+    (synthetic / "corrupt.npy").write_bytes(b"not a numpy file")
+    np.save(synthetic / "valid.npy", corpus.letter_t())
+    models = [
+        corpus.CorpusModel(
+            name="corrupt",
+            kind="synthetic",
+            path=Path("synthetic/corrupt.npy"),
+            generator="cantilever",
+        ),
+        corpus.CorpusModel(
+            name="valid",
+            kind="synthetic",
+            path=Path("synthetic/valid.npy"),
+            generator="letter_t",
+        ),
+    ]
+
+    assert corpus.verify(models) == 1
+    output = capsys.readouterr().out
+    assert "CORRUPT corrupt" in output
+    assert "ok valid" in output
+
+
+def test_download_isolates_failures_and_replaces_atomically(
+    corpus: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(corpus, "_REPO", tmp_path)
+    good_data = b"verified mesh"
+    good_hash = hashlib.sha256(good_data).hexdigest()
+    old_path = tmp_path / "meshes" / "failed.stl"
+    old_path.parent.mkdir(parents=True)
+    old_path.write_bytes(b"existing artifact")
+
+    def fake_urlopen(url: str, *, timeout: float) -> io.BytesIO:
+        assert timeout == 30.0
+        if url.endswith("failed.stl"):
+            raise urllib.error.URLError("offline")
+        return io.BytesIO(good_data)
+
+    monkeypatch.setattr(corpus.urllib.request, "urlopen", fake_urlopen)
+    models = [
+        corpus.CorpusModel(
+            name="failed",
+            kind="mesh",
+            path=Path("meshes/failed.stl"),
+            source_url="https://example.com/failed.stl",
+            sha256="0" * 64,
+        ),
+        corpus.CorpusModel(
+            name="good",
+            kind="mesh",
+            path=Path("meshes/good.stl"),
+            source_url="https://example.com/good.stl",
+            sha256=good_hash,
+        ),
+    ]
+
+    assert corpus.download(models) == 1
+    assert old_path.read_bytes() == b"existing artifact"
+    assert (tmp_path / "meshes" / "good.stl").read_bytes() == good_data
+    output = capsys.readouterr().out
+    assert "download failed" in output
+    assert "ok meshes/good.stl" in output

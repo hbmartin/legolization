@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import shutil
 import sys
 import tomllib
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -33,6 +36,7 @@ if TYPE_CHECKING:
 _REPO = Path(__file__).resolve().parent.parent
 MANIFEST = _REPO / "data" / "corpus" / "manifest.toml"
 _EMPTY = -1  # legolization.grid.EMPTY, inlined so generators stay numpy-pure
+_DOWNLOAD_TIMEOUT_S = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,13 +311,30 @@ def download(models: list[CorpusModel], only: str | None = None) -> int:
             continue
         model.abs_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"fetching {model.source_url}")
-        urllib.request.urlretrieve(model.source_url, model.abs_path)  # noqa: S310 - https enforced above
-        if (actual := _sha256_of(model.abs_path)) != model.sha256:
-            model.abs_path.unlink()
-            print(
-                f"error: {model.name}: sha256 mismatch "
-                f"(expected {model.sha256}, got {actual}); file removed"
-            )
+        try:
+            with TemporaryDirectory(
+                dir=model.abs_path.parent,
+                prefix=f".{model.abs_path.name}.",
+            ) as temp_dir:
+                temp_path = Path(temp_dir) / model.abs_path.name
+                with (
+                    urllib.request.urlopen(  # noqa: S310 - https enforced above
+                        model.source_url,
+                        timeout=_DOWNLOAD_TIMEOUT_S,
+                    ) as response,
+                    temp_path.open("wb") as target,
+                ):
+                    shutil.copyfileobj(response, target)
+                if (actual := _sha256_of(temp_path)) != model.sha256:
+                    print(
+                        f"error: {model.name}: sha256 mismatch "
+                        f"(expected {model.sha256}, got {actual}); file discarded"
+                    )
+                    status = 1
+                    continue
+                temp_path.replace(model.abs_path)
+        except (OSError, urllib.error.URLError) as error:
+            print(f"error: {model.name}: download failed: {error}")
             status = 1
             continue
         print(f"ok {model.path}")
@@ -336,7 +357,13 @@ def verify(models: list[CorpusModel]) -> int:
                 print(f"{'ok' if ok else 'HASH MISMATCH'} {model.name}")
             case "synthetic":
                 expected = GENERATORS[model.generator or ""]()
-                ok = bool(np.array_equal(np.load(model.abs_path), expected))
+                try:
+                    actual = np.load(model.abs_path)
+                except (EOFError, OSError, ValueError) as error:
+                    print(f"CORRUPT {model.name}: {error}")
+                    status = 1
+                    continue
+                ok = bool(np.array_equal(actual, expected))
                 print(f"{'ok' if ok else 'STALE (regenerate)'} {model.name}")
             case _:
                 ok = False

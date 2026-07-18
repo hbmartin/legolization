@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from legolization.catalog import default_catalog
+from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.instructions import (
     BuildStep,
@@ -22,6 +23,7 @@ from legolization.instructions.chunking import chunk_bands, mirror_pairs
 from legolization.layout import Layout
 from legolization.ldraw_out import model_lines
 from legolization.pipeline import PipelineConfig, run
+from legolization.stability import SolverConfig, StabilityResult
 
 
 def _pyramid_layout() -> Layout:
@@ -295,7 +297,7 @@ def _three_islands() -> tuple[Layout, list[int], list[int], list[int]]:
     return layout, island_a, island_b, island_c
 
 
-def test_spatial_tiebreak_prefers_the_adjacent_chunk():
+def test_spatial_tiebreak_prefers_the_adjacent_chunk() -> None:
     layout, island_a, island_b, island_c = _three_islands()
     config = InstructionsConfig(target_step_size=3, max_step_size=3, rotstep=False)
     plan = plan_instructions(layout, config=config)
@@ -307,7 +309,7 @@ def test_spatial_tiebreak_prefers_the_adjacent_chunk():
     assert set(plan.steps[2].brick_ids) == set(island_b)
 
 
-def test_spatial_tiebreak_off_restores_chunk_order():
+def test_spatial_tiebreak_off_restores_chunk_order() -> None:
     layout, island_a, island_b, island_c = _three_islands()
     config = InstructionsConfig(
         target_step_size=3,
@@ -324,16 +326,22 @@ def test_spatial_tiebreak_off_restores_chunk_order():
     ]
 
 
-def test_happy_path_runs_one_lp_per_step(monkeypatch):
+def test_happy_path_runs_one_lp_per_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import legolization.instructions.sequencer as sequencer_module
 
     layout, *_ = _three_islands()
     real_analyze = sequencer_module.analyze
     calls = {"count": 0}
 
-    def counting_analyze(*args, **kwargs) -> object:
+    def counting_analyze(
+        target: Layout,
+        config: SolverConfig | None = None,
+        graph: ConnectionGraph | None = None,
+    ) -> StabilityResult:
         calls["count"] += 1
-        return real_analyze(*args, **kwargs)
+        return real_analyze(target, config, graph)
 
     monkeypatch.setattr(sequencer_module, "analyze", counting_analyze)
     config = InstructionsConfig(target_step_size=3, max_step_size=3, rotstep=False)
