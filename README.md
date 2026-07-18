@@ -50,9 +50,22 @@ solver stack — no Gurobi required.
   fragment on invisible boundaries.
 - **Instructions**: smart step sequencing (default) chunks each layer into
   ~7-brick spatially coherent steps, keeps mirror-symmetric halves together,
+  prefers spatially adjacent steps (Ma et al.'s continuity heuristic),
   guarantees every prefix is stable and vertically insertable (or warns), and
-  adds `0 ROTSTEP` view hints. `--bom out.json` writes a bill of materials
-  with per-step callouts.
+  adds `0 ROTSTEP` view hints. When the greedy pass hits an unstable stretch
+  it re-plans the remainder by assembly-by-disassembly along a
+  maximal-stability path (Tian et al. / Luo); an opt-in beam search
+  (`InstructionsConfig(search="beam")`) explores whole build orders. `--bom
+  out.json` writes a bill of materials with per-step callouts.
+- **Booklets**: `--instructions out.html` (or `.pdf`) writes a paginated
+  instruction booklet — cover page with model stats, parts list, and one
+  rendered image per step with new bricks highlighted and per-step part
+  callouts. Step images render through LeoCAD (preferred; batched per-step
+  export) or LDView, auto-detected from `$LEGOLIZATION_RENDERER`, PATH, then
+  `/Applications`; the parts library is found via `$LDRAWDIR` or common
+  install paths. Without a renderer the booklet is still written with
+  placeholder boxes (`LEGOLIZATION_RENDERER=none` disables rendering
+  explicitly, e.g. in CI).
 - **Output**: a valid `.ldr` or `.mpd` written through
   [pyldraw3](https://pypi.org/project/pyldraw3/). Open it in
   [LDView](https://tcobbs.github.io/ldview/) or
@@ -72,6 +85,7 @@ uv run ldraw generate   # once: generate ldraw.library.* part/colour modules
 uv run legolization data/examples/heart.vox -o heart.ldr
 uv run legolization model.npy --strategy beauty --beauty-preset aesthetics
 uv run legolization model.vox --strategy bond --bom parts.json
+uv run legolization model.vox --instructions booklet.pdf   # rendered booklet
 uv run legolization model.npy --strategy luo --solid --seed 7
 uv run legolization model.vox --slopes --tiles      # surface finishing passes
 uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect

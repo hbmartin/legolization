@@ -279,3 +279,65 @@ def test_cli_layer_steps_keep_legacy_output(tmp_path):
     # The legacy path steps once per plate layer.
     layout_layers = layer.read_text().count("0 STEP")
     assert layout_layers > 0
+
+
+def _three_islands() -> tuple[Layout, list[int], list[int], list[int]]:
+    """Three separated ground clusters that chunk one-to-one.
+
+    Chunk order (by centroid y, then x) is A, B, C; spatially C is much
+    closer to A (122 studs squared) than B is (400), so continuity should
+    visit A, C, B while plain chunk order visits A, B, C.
+    """
+    layout = Layout(catalog=default_catalog())
+    island_a = [layout.add("brick_1x1", x, 0, 0, 0, 4).brick_id for x in range(3)]
+    island_b = [layout.add("brick_1x1", x, 0, 0, 0, 4).brick_id for x in range(20, 23)]
+    island_c = [layout.add("brick_1x1", 0, y, 0, 0, 4).brick_id for y in range(10, 13)]
+    return layout, island_a, island_b, island_c
+
+
+def test_spatial_tiebreak_prefers_the_adjacent_chunk():
+    layout, island_a, island_b, island_c = _three_islands()
+    config = InstructionsConfig(target_step_size=3, max_step_size=3, rotstep=False)
+    plan = plan_instructions(layout, config=config)
+    assert verify_plan(layout, plan, config=config) == []
+    assert set(plan.steps[0].brick_ids) == set(island_a)
+    # All three chunks are equally stable; continuity picks the nearby
+    # island over the distant one.
+    assert set(plan.steps[1].brick_ids) == set(island_c)
+    assert set(plan.steps[2].brick_ids) == set(island_b)
+
+
+def test_spatial_tiebreak_off_restores_chunk_order():
+    layout, island_a, island_b, island_c = _three_islands()
+    config = InstructionsConfig(
+        target_step_size=3,
+        max_step_size=3,
+        rotstep=False,
+        spatial_tiebreak=False,
+    )
+    plan = plan_instructions(layout, config=config)
+    assert verify_plan(layout, plan, config=config) == []
+    assert [set(step.brick_ids) for step in plan.steps] == [
+        set(island_a),
+        set(island_b),
+        set(island_c),
+    ]
+
+
+def test_happy_path_runs_one_lp_per_step(monkeypatch):
+    import legolization.instructions.sequencer as sequencer_module
+
+    layout, *_ = _three_islands()
+    real_analyze = sequencer_module.analyze
+    calls = {"count": 0}
+
+    def counting_analyze(*args, **kwargs) -> object:
+        calls["count"] += 1
+        return real_analyze(*args, **kwargs)
+
+    monkeypatch.setattr(sequencer_module, "analyze", counting_analyze)
+    config = InstructionsConfig(target_step_size=3, max_step_size=3, rotstep=False)
+    plan = plan_instructions(layout, config=config)
+    # Ground-band chunks are all stable: the early exit takes the first
+    # candidate every time, so the spatial ordering costs no extra LPs.
+    assert calls["count"] == len(plan.steps) == 3

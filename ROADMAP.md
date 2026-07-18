@@ -30,8 +30,6 @@ Deliberately **not** done yet, and covered below:
 
 - **M6** — mesh front-end (`.obj`/`.stl` voxelization)
 - **SNOT** — sideways building (the data model is ready; nothing is built)
-- **Rendered instruction booklets** — smart steps, ROTSTEP, and the BOM
-  exist; images/PDF do not
 - Slope/tile surface finishing is minimal and **opt-in** (`--slopes`,
   `--tiles`) because the slope pass adds material outside the voxel shape
 - Assorted physics-fidelity, placement-quality, performance, and tooling items
@@ -128,32 +126,48 @@ zero colour/volume error; tile coverage on a flat-roofed test model exceeds
 
 ## Build instructions v2 — rendered booklets
 
-Items 1–3 are **done** (the `instructions/` package): smart step chunking
-with mirror-pair co-stepping and ROTSTEP view hints, greedy prefix-stable
-sequencing over the vertical block graph (warn or strict policy), and a
-hand-rolled JSON/text BOM with per-step callouts (`--bom`; pyldraw3's
-`ldraw.bom` turned out to need Colour objects and a parts catalog we never
-load). Remaining: images and page layout.
+**Done** (all five items). Items 1–3 (the `instructions/` package): smart
+step chunking with mirror-pair co-stepping and ROTSTEP view hints, greedy
+prefix-stable sequencing over the vertical block graph (warn or strict
+policy), and a hand-rolled JSON/text BOM with per-step callouts (`--bom`).
+Items 4–5 shipped as `instructions/render.py` + `instructions/booklet.py`:
 
-**Work items, in dependency order**
+4. **Rendering** went LeoCAD-first rather than the LDView-first sketch:
+   LeoCAD's CLI exports a whole run of steps per invocation (`-f/-t`,
+   numbered by absolute step) and highlights each step's new bricks
+   (`--highlight`); LDView (`-SaveSnapshot -Step=N -AutoCrop=0`) is the
+   fallback, one process per step. Detection: `$LEGOLIZATION_RENDERER`
+   (`none` disables) → PATH → `/Applications` app bundles; parts library
+   via `$LDRAWDIR` → pyldraw3's cache → common install dirs. Success is a
+   non-empty PNG on disk, never the exit code. The camera is driven from
+   the plan's own RotStep data against a ROTSTEP-stripped temp copy, so
+   framing stays constant and both backends agree.
+5. **Booklet assembly** is HTML-first with a reportlab-canvas PDF writer:
+   one `Booklet` pagination model feeds both, so page counts match by
+   construction (cover + overflow parts pages + N steps/page, default 2).
+   No renderer → placeholder boxes, identical page count, warning banner.
 
-4. **Rendering.** Options, in order of preference:
-   - **LDView command line** (`-SaveSnapshot`): free and already installed,
-     but it must be configured with an LDraw directory first — on this
-     machine an unconfigured LDView exits 0 *without writing the file*, so
-     the harness must verify the PNG exists. Point it at pyldraw3's cache
-     (`~/Library/Caches/pyldraw3/<version>/ldraw`).
-   - L3P + POV-Ray for print quality (heavier toolchain).
-   - Studio's instruction maker as the manual fallback.
-5. **Booklet assembly.** Compose step PNGs + BOM callouts into a PDF
-   (`weasyprint` or `reportlab` — new dependency, decide at implementation
-   time). One page per N steps, cover page with model stats from
-   `PipelineResult`.
+Acceptance holds: `legolization model.vox --instructions model.pdf` (or
+`.html`) writes the booklet; regression tests assert booklet step sections
+== `.ldr` `0 STEP` count == `PipelineResult.step_count` and pypdf page
+counts, with rendering disabled via `LEGOLIZATION_RENDERER=none` in CI and
+a `slow`-marked real-render test locally.
 
-**Acceptance:** `legolization model.vox --instructions model.pdf` produces a
-paginated booklet where each step image matches the STEP structure of the
-`.ldr`, and a regression test asserts page/step counts (rendering itself can
-be skipped in CI when LDView is absent).
+### Sequencing upgrades (landed with v2)
+
+Paper-driven upgrades to the sequencer (`instructions/search.py`,
+`metrics.py`): a spatial-continuity tiebreak orders ready candidates by
+distance to the previous step before LP evaluation (zero extra LPs);
+both degradation paths (deadlock, no-stable-prefix) now re-plan the
+remainder by **assembly-by-disassembly** along a maximal-stability path
+(`fallback="band"` is the legacy escape hatch); an opt-in **beam search**
+(`search="beam"`, `beam_states`, `lp_budget`) explores whole build orders
+ranked by (unstable prefixes, summed scores); `sequence_similarity`
+(Kendall's τ + RLSD) and `plan_quality` quantify orders. Deferred: MPD
+subassembly submodels (would change the `InstructionPlan` data model the
+booklet consumes; `BuildStep` can gain `submodel` additively later) and
+±X/±Y block edges (SNOT-only; the blocker-map `Mapping[int,
+frozenset[int]]` seam in `blocking.py` is the plug-in point).
 
 ---
 
@@ -297,8 +311,9 @@ tests confirm a side-stud connection transmits the expected friction load.
    `--aspect-correct` resampling and `--target-studs` design are ready).
 2. Shape-preserving slopes + tile splitting (small; makes finishing
    default-on).
-3. Instruction rendering (LDView snapshots → PDF booklet; the sequencing,
-   ROTSTEP, and BOM layers it builds on are done).
+3. ~~Instruction rendering~~ — **done** (`--instructions out.html|out.pdf`:
+   LeoCAD/LDView step images + HTML/reportlab booklet, plus the
+   disassembly-rescue/beam sequencing upgrades).
 4. Performance items as models grow (incremental re-analysis first — the
    per-step prefix LPs and ALNS rounds would benefit most).
 5. SNOT stages 1–3 (large; start after the orientation model design is

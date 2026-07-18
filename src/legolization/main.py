@@ -202,6 +202,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="also write a bill of materials (.json for JSON, else text)",
     )
     parser.add_argument(
+        "--instructions",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "also write a step-by-step instruction booklet with rendered "
+            "images (.html or .pdf); step images need LeoCAD or LDView"
+        ),
+    )
+    parser.add_argument(
         "--stability-weight",
         type=float,
         default=4.0,
@@ -223,6 +233,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "--jobs/--timeout/--report/--keep-candidates require --strategy all"
         )
+    if args.instructions is not None:
+        # Fail in milliseconds, not after a full pipeline run.
+        if args.steps == "layer":
+            parser.error("--instructions requires --steps smart")
+        if args.instructions.suffix.lower() not in {".html", ".pdf"}:
+            parser.error("--instructions must end in .html or .pdf")
     output: Path = args.output or args.input.with_suffix(".ldr")
     progress = (
         (lambda message: print(f"  {message}", file=sys.stderr, flush=True))
@@ -258,16 +274,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.strategy == "all":
         return _run_sweep(args, config=config, output=output)
     try:
-        result = run_file(args.input, output, config, bom_path=args.bom)
+        result = run_file(
+            args.input,
+            output,
+            config,
+            bom_path=args.bom,
+            instructions_path=args.instructions,
+        )
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    return _print_result(result, output)
+    return _print_result(result, output, instructions_path=args.instructions)
 
 
-def _print_result(result: PipelineResult, output: Path) -> int:
+def _print_result(
+    result: PipelineResult,
+    output: Path,
+    *,
+    instructions_path: Path | None = None,
+) -> int:
     """Print the standard result summary; returns the process exit code."""
     print(f"wrote {output}")
+    if instructions_path is not None:
+        print(f"wrote {instructions_path}")
     print(
         f"  bricks: {result.brick_count}   mass: {result.mass_g:.1f} g   "
         f"steps: {result.step_count}   slopes: {result.slopes_added}   "
@@ -331,9 +360,15 @@ def _run_sweep(
         return 1
     if args.keep_candidates is not None:
         _write_candidates(report, directory=args.keep_candidates, output=output)
-    write_outputs(winner.result, output, bom_path=args.bom)
+    write_outputs(
+        winner.result,
+        output,
+        bom_path=args.bom,
+        instructions_path=args.instructions,
+        progress=config.progress,
+    )
     print(f"selected {winner.strategy}: {report.reason}")
-    return _print_result(winner.result, output)
+    return _print_result(winner.result, output, instructions_path=args.instructions)
 
 
 def _print_table(candidates: list[Candidate]) -> None:

@@ -205,3 +205,12 @@ def _centroid(layout: Layout, brick: PlacedBrick) -> tuple[float, float]:
         sum(x for x, _ in columns) / len(columns),
         sum(y for _, y in columns) / len(columns),
     )
+
+
+def chunk_centroid(layout: Layout, chunk: tuple[int, ...]) -> tuple[float, float]:
+    """Mean of the member bricks' footprint centroids."""
+    points = [_centroid(layout, layout.bricks[brick_id]) for brick_id in chunk]
+    return (
+        sum(x for x, _ in points) / len(points),
+        sum(y for _, y in points) / len(points),
+    )
