@@ -119,11 +119,12 @@ def build_row(
     if report_dict is None:
         return row
     candidates = report_dict["candidates"]
-    buildable_count = sum(
-        1
+    buildable_strategies = {
+        candidate["strategy"]
         for candidate in candidates
         if candidate["metrics"] is not None and candidate["metrics"]["buildable"]
-    )
+    }
+    buildable_count = len(buildable_strategies)
     row.update(
         {
             "buildable_count": buildable_count,
@@ -134,8 +135,14 @@ def build_row(
             "candidates": candidates,
         }
     )
+    _add_seed_spread(row, report_dict, candidates)
     winner = next(
-        (c for c in candidates if c["strategy"] == report_dict["winner"]),
+        (
+            c
+            for c in candidates
+            if c["strategy"] == report_dict["winner"]
+            and c.get("seed", 0) == report_dict.get("winner_seed", c.get("seed", 0))
+        ),
         None,
     )
     if winner is not None and winner["metrics"] is not None:
@@ -149,6 +156,45 @@ def build_row(
             }
         )
     return row
+
+
+def _add_seed_spread(row: dict, report_dict: dict, candidates: list[dict]) -> None:
+    """Attach multi-seed spread stats (what each single-seed run would give)."""
+    seeds_present = sorted({c.get("seed", 0) for c in candidates})
+    if len(seeds_present) <= 1:
+        return
+    per_seed_best: list[dict] = []
+    buildable_seeds: list[int] = []
+    for seed in seeds_present:
+        seed_metrics = [
+            c["metrics"]
+            for c in candidates
+            if c.get("seed", 0) == seed
+            and c["metrics"] is not None
+            and c["metrics"]["buildable"]
+        ]
+        if seed_metrics:
+            buildable_seeds.append(seed)
+            per_seed_best.append(
+                min(
+                    seed_metrics,
+                    key=lambda m: (
+                        m["objective_total"],
+                        -m["maximin_capacity"],
+                        m["brick_count"],
+                    ),
+                )
+            )
+    row["seeds"] = seeds_present
+    row["winner_seed"] = report_dict.get("winner_seed")
+    if per_seed_best:
+        row["seed_spread"] = {
+            "buildable_seeds": buildable_seeds,
+            "brick_min": min(m["brick_count"] for m in per_seed_best),
+            "brick_max": max(m["brick_count"] for m in per_seed_best),
+            "objective_min": round(min(m["objective_total"] for m in per_seed_best), 4),
+            "objective_max": round(max(m["objective_total"] for m in per_seed_best), 4),
+        }
 
 
 def compare_to_baseline(
@@ -217,6 +263,19 @@ def to_markdown(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _seed_list(value: str) -> tuple[int, ...]:
+    """Parse a comma-separated seed list for argparse."""
+    parts = [part.strip() for part in value.split(",")]
+    if not parts or any(not part for part in parts):
+        msg = f"{value!r} must be comma-separated integers"
+        raise argparse.ArgumentTypeError(msg)
+    try:
+        return tuple(int(part) for part in parts)
+    except ValueError as error:
+        msg = f"{value!r} must be comma-separated integers"
+        raise argparse.ArgumentTypeError(msg) from error
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", default=None, metavar="NAME,...")
@@ -226,6 +285,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--jobs", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seeds", type=_seed_list, default=None, metavar="N,N,...")
     parser.add_argument("--out", type=Path, default=RUNS)
     parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--write-baseline", action="store_true")
@@ -236,12 +296,13 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 def _validate_baseline_scope(args: argparse.Namespace) -> None:
     """Require the committed baseline's canonical, reproducible sweep scope."""
     filtered = any(
-        value is not None for value in (args.models, args.traits, args.strategies)
+        value is not None
+        for value in (args.models, args.traits, args.strategies, args.seeds)
     )
     if args.write_baseline and (args.kind != "synthetic" or args.seed != 0 or filtered):
         msg = (
             "--write-baseline requires an unfiltered --kind synthetic sweep "
-            "with --seed 0"
+            "with --seed 0 and no --seeds"
         )
         raise SystemExit(msg)
 
@@ -269,6 +330,11 @@ def _baseline_regression_status(
 ) -> int:
     """Compare successful rows with the baseline and return an exit status."""
     if not args.baseline.exists() or args.write_baseline:
+        return 0
+    if args.seeds is not None and len(args.seeds) > 1:
+        # An any-seed-buildable run against the seed-0 baseline would mask
+        # regressions; spread stats are the multi-seed deliverable instead.
+        print("note: multi-seed run; baseline comparison skipped")
         return 0
     baseline_rows = json.loads(args.baseline.read_text())["models"]
     hard, info = compare_to_baseline(
@@ -327,6 +393,7 @@ def _sweep(
             PipelineConfig(seed=args.seed),
             jobs=args.jobs,
             names=names,
+            seeds=args.seeds,
             timeout_s=args.timeout,
             progress=lambda message: print(f"  {message}", file=sys.stderr),
         )
@@ -354,7 +421,12 @@ def main(argv: list[str] | None = None) -> int:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_dir = args.out / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {"seed": args.seed, "generated": stamp, "models": rows}
+    payload = {
+        "seed": args.seed,
+        "seeds": list(args.seeds) if args.seeds is not None else None,
+        "generated": stamp,
+        "models": rows,
+    }
     (out_dir / "scorecard.json").write_text(json.dumps(payload, indent=2) + "\n")
     (out_dir / "scorecard.md").write_text(to_markdown(rows) + "\n")
     print(f"wrote {out_dir / 'scorecard.json'}")

@@ -70,10 +70,11 @@ class CandidateMetrics:
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
-    """One strategy's outcome: a scored result or a captured error."""
+    """One (strategy, seed) outcome: a scored result or a captured error."""
 
     strategy: str
     seconds: float
+    seed: int = 0
     result: PipelineResult | None = None
     metrics: CandidateMetrics | None = None
     error: str | None = None
@@ -96,6 +97,7 @@ class SelectionReport:
         """JSON-safe summary (no layouts or numpy payloads)."""
         return {
             "winner": self.winner.strategy if self.winner is not None else None,
+            "winner_seed": self.winner.seed if self.winner is not None else None,
             "reason": self.reason,
             "buildable": (
                 self.winner is not None
@@ -105,6 +107,7 @@ class SelectionReport:
             "candidates": [
                 {
                     "strategy": candidate.strategy,
+                    "seed": candidate.seed,
                     "seconds": round(candidate.seconds, 3),
                     "error": candidate.error,
                     "metrics": (
@@ -155,7 +158,9 @@ def candidate_metrics(
 
 def select_best(candidates: Sequence[Candidate]) -> SelectionReport:
     """Pick the winner lexicographically; independent of input order."""
-    ordered = tuple(sorted(candidates, key=lambda candidate: candidate.strategy))
+    ordered = tuple(
+        sorted(candidates, key=lambda candidate: (candidate.strategy, candidate.seed))
+    )
     scored = [
         (candidate, candidate.metrics)
         for candidate in ordered
@@ -175,6 +180,7 @@ def select_best(candidates: Sequence[Candidate]) -> SelectionReport:
                 -pair[1].maximin_capacity,
                 pair[1].brick_count,
                 pair[0].strategy,
+                pair[0].seed,
             ),
         )
         reason = (
@@ -191,6 +197,7 @@ def select_best(candidates: Sequence[Candidate]) -> SelectionReport:
                 pair[1].max_score,
                 pair[1].objective_total,
                 pair[0].strategy,
+                pair[0].seed,
             ),
         )
         reason = (
@@ -208,26 +215,34 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     *,
     jobs: int = 0,
     names: Sequence[str] | None = None,
+    seeds: Sequence[int] | None = None,
     timeout_s: float | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> list[Candidate]:
-    """Run each strategy on ``grid``; a single failure never kills the sweep.
+    """Run each (strategy, seed) job; a single failure never kills the sweep.
 
-    ``jobs=0`` picks one worker per strategy capped at the CPU count;
-    ``jobs=1`` runs sequentially in-process (no pool, no pickling).
-    Returns candidates sorted by strategy name regardless of completion
-    order.
+    ``seeds`` adds restart candidates: every strategy runs once per seed
+    (deduplicated, order preserved); None or empty means one run at
+    ``config.seed``. ``jobs=0`` picks one worker per job capped at the
+    CPU count; ``jobs=1`` runs sequentially in-process (no pool, no
+    pickling). ``timeout_s`` stays one sweep-wide soft deadline — more
+    seeds squeeze the same budget. Returns candidates sorted by
+    (strategy, seed) regardless of completion order.
     """
     chosen = tuple(names) if names is not None else tuple(strategy_names())
+    chosen_seeds = tuple(dict.fromkeys(seeds)) if seeds else (config.seed,)
     configs = {
-        name: _candidate_config(config, strategy=name, timeout_s=timeout_s)
+        (name, seed): _candidate_config(
+            config, strategy=name, seed=seed, timeout_s=timeout_s
+        )
         for name in chosen
+        for seed in chosen_seeds
     }
-    workers = jobs if jobs > 0 else min(len(chosen), os.cpu_count() or 1)
+    workers = jobs if jobs > 0 else min(len(configs), os.cpu_count() or 1)
     if workers == 1:
         candidates = []
-        for name in chosen:
-            candidate = _run_candidate(grid, configs[name])
+        for candidate_config in configs.values():
+            candidate = _run_candidate(grid, candidate_config)
             _report(progress, candidate)
             candidates.append(candidate)
     else:
@@ -238,22 +253,24 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
             timeout_s=timeout_s,
             progress=progress,
         )
-    return sorted(candidates, key=lambda candidate: candidate.strategy)
+    return sorted(candidates, key=lambda c: (c.strategy, c.seed))
 
 
 def _candidate_config(
     config: PipelineConfig,
     *,
     strategy: str,
+    seed: int,
     timeout_s: float | None,
 ) -> PipelineConfig:
-    """Clone the config for one strategy; strip the unpicklable progress."""
+    """Clone the config for one job; strip the unpicklable progress."""
     budgets = [
         budget for budget in (config.time_budget_s, timeout_s) if budget is not None
     ]
     return replace(
         config,
         strategy=strategy,
+        seed=seed,
         progress=None,
         time_budget_s=min(budgets) if budgets else None,
     )
@@ -277,11 +294,13 @@ def _run_candidate(grid: VoxelGrid, config: PipelineConfig) -> Candidate:
         return Candidate(
             strategy=config.strategy,
             seconds=time.perf_counter() - start,
+            seed=config.seed,
             error=f"{type(error).__name__}: {error}",
         )
     return Candidate(
         strategy=config.strategy,
         seconds=time.perf_counter() - start,
+        seed=config.seed,
         result=result,
         metrics=metrics,
     )
@@ -289,7 +308,7 @@ def _run_candidate(grid: VoxelGrid, config: PipelineConfig) -> Candidate:
 
 def _run_parallel(
     grid: VoxelGrid,
-    configs: dict[str, PipelineConfig],
+    configs: dict[tuple[str, int], PipelineConfig],
     *,
     workers: int,
     timeout_s: float | None,
@@ -308,24 +327,26 @@ def _run_parallel(
         mp_context=get_context("spawn"),
     )
     try:
-        pending: dict[Future[Candidate], str] = {
-            executor.submit(_run_candidate, grid, candidate_config): name
-            for name, candidate_config in configs.items()
+        pending: dict[Future[Candidate], tuple[str, int]] = {
+            executor.submit(_run_candidate, grid, candidate_config): key
+            for key, candidate_config in configs.items()
         }
         deadline = None if timeout_s is None else timeout_s + _TIMEOUT_SLACK_S
         try:
             for future in as_completed(pending, timeout=deadline):
-                candidate = _collect(future, strategy=pending.pop(future))
+                name, seed = pending.pop(future)
+                candidate = _collect(future, strategy=name, seed=seed)
                 _report(progress, candidate)
                 candidates.append(candidate)
         except TimeoutError:
             pass
         elapsed = time.perf_counter() - start
         timeout_text = "" if timeout_s is None else f" after {timeout_s:.0f}s"
-        for name in pending.values():
+        for name, seed in pending.values():
             candidate = Candidate(
                 strategy=name,
                 seconds=elapsed,
+                seed=seed,
                 error=f"timed out{timeout_text}",
             )
             _report(progress, candidate)
@@ -335,7 +356,7 @@ def _run_parallel(
     return candidates
 
 
-def _collect(future: Future[Candidate], *, strategy: str) -> Candidate:
+def _collect(future: Future[Candidate], *, strategy: str, seed: int) -> Candidate:
     """Unwrap a finished future; retrieval failures become error candidates."""
     try:
         return future.result(timeout=0)
@@ -343,12 +364,14 @@ def _collect(future: Future[Candidate], *, strategy: str) -> Candidate:
         return Candidate(
             strategy=strategy,
             seconds=0.0,
+            seed=seed,
             error="worker process pool broke (native crash?)",
         )
     except Exception as error:  # noqa: BLE001 - isolate worker transport failures
         return Candidate(
             strategy=strategy,
             seconds=0.0,
+            seed=seed,
             error=(f"failed to retrieve result: {type(error).__name__}: {error}"),
         )
 
@@ -357,7 +380,8 @@ def _report(progress: Callable[[str], None] | None, candidate: Candidate) -> Non
     if progress is None:
         return
     verdict = "ok" if candidate.ok else f"error: {candidate.error}"
-    progress(f"{candidate.strategy}: {verdict} ({candidate.seconds:.1f}s)")
+    tag = f"[seed {candidate.seed}]" if candidate.seed else ""
+    progress(f"{candidate.strategy}{tag}: {verdict} ({candidate.seconds:.1f}s)")
 
 
 __all__ = [

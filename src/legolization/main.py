@@ -48,6 +48,19 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _seed_list(value: str) -> tuple[int, ...]:
+    """Parse a comma-separated seed list for argparse."""
+    parts = [part.strip() for part in value.split(",")]
+    if not parts or any(not part for part in parts):
+        msg = f"{value!r} must be comma-separated integers"
+        raise argparse.ArgumentTypeError(msg)
+    try:
+        return tuple(int(part) for part in parts)
+    except ValueError as error:
+        msg = f"{value!r} must be comma-separated integers"
+        raise argparse.ArgumentTypeError(msg) from error
+
+
 def _positive_float(value: str) -> float:
     """Parse a finite float greater than zero for argparse."""
     try:
@@ -126,6 +139,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="DIR",
         help="also write every successful strategy's model into DIR",
+    )
+    sweep.add_argument(
+        "--seeds",
+        type=_seed_list,
+        default=None,
+        metavar="N,N,...",
+        help=(
+            "run every strategy once per listed seed and pick the overall "
+            "best (restarts; --timeout still bounds the whole sweep)"
+        ),
     )
     parser.add_argument(
         "--time-budget",
@@ -329,9 +352,10 @@ def main(argv: list[str] | None = None) -> int:
         or args.timeout is not None
         or args.report is not None
         or args.keep_candidates is not None
+        or args.seeds is not None
     ):
         parser.error(
-            "--jobs/--timeout/--report/--keep-candidates require --strategy all"
+            "--jobs/--timeout/--report/--keep-candidates/--seeds require --strategy all"
         )
     if args.instructions is not None:
         # Fail in milliseconds, not after a full pipeline run.
@@ -515,6 +539,7 @@ def _run_sweep(
         grid,
         config,
         jobs=args.jobs,
+        seeds=args.seeds,
         timeout_s=args.timeout,
         progress=config.progress,
     )
@@ -525,6 +550,7 @@ def _run_sweep(
             payload = {
                 "input": str(args.input),
                 "seed": config.seed,
+                "seeds": list(args.seeds) if args.seeds is not None else None,
                 "jobs": args.jobs,
                 **report.to_dict(),
             }
@@ -549,25 +575,31 @@ def _run_sweep(
     except OSError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"selected {winner.strategy}: {report.reason}")
+    winner_tag = (
+        f" (seed {winner.seed})" if len({c.seed for c in report.candidates}) > 1 else ""
+    )
+    print(f"selected {winner.strategy}{winner_tag}: {report.reason}")
     return _print_result(winner.result, output, instructions_path=args.instructions)
 
 
 def _print_table(candidates: list[Candidate]) -> None:
-    """Print one summary line per strategy."""
+    """Print one summary line per (strategy, seed) candidate."""
+    multi_seed = len({candidate.seed for candidate in candidates}) > 1
+    seed_header = f" {'seed':>4}" if multi_seed else ""
     print(
-        f"  {'strategy':<8} {'bricks':>6} {'buildable':>9} "
+        f"  {'strategy':<8}{seed_header} {'bricks':>6} {'buildable':>9} "
         f"{'objective':>9} {'capacity':>8} {'seconds':>7}"
     )
     for candidate in candidates:
+        seed_cell = f" {candidate.seed:>4}" if multi_seed else ""
         if (metrics := candidate.metrics) is None:
             print(
-                f"  {candidate.strategy:<8} "
+                f"  {candidate.strategy:<8}{seed_cell} "
                 f"error: {candidate.error} ({candidate.seconds:.1f}s)"
             )
         else:
             print(
-                f"  {candidate.strategy:<8} {metrics.brick_count:>6} "
+                f"  {candidate.strategy:<8}{seed_cell} {metrics.brick_count:>6} "
                 f"{'yes' if metrics.buildable else 'no':>9} "
                 f"{metrics.objective_total:>9.4f} "
                 f"{metrics.maximin_capacity:>8.3f} {candidate.seconds:>7.1f}"
@@ -582,10 +614,14 @@ def _write_candidates(
 ) -> None:
     """Write every successful candidate's model into ``directory``."""
     directory.mkdir(parents=True, exist_ok=True)
+    multi_seed = len({c.seed for c in report.candidates}) > 1
     for candidate in report.candidates:
         if candidate.result is None:
             continue
-        path = directory / f"{output.stem}.{candidate.strategy}{output.suffix}"
+        seed_tag = f".seed{candidate.seed}" if multi_seed else ""
+        path = (
+            directory / f"{output.stem}.{candidate.strategy}{seed_tag}{output.suffix}"
+        )
         write_model(candidate.result.layout, path, plan=candidate.result.plan)
         print(f"wrote {path}")
 
