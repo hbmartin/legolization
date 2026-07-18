@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv tool *)",
+      "mcp__paper-search-mcp__search_arxiv",
+      "mcp__paper-search-mcp__search_semantic",
+      "mcp__paper-search-mcp__search_openalex"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "paper-search-mcp"
+  ]
+}
