@@ -122,11 +122,14 @@ class KollskerStrategy(BondStrategy):
         deadline: float | None,
     ) -> list[Rect2D] | None:
         """Two-stage lexicographic MILP; None means use the fallback."""
+        if self._time_limit(deadline) is None:
+            return None  # deadline already spent: don't pay for enumeration
         candidates = enumerate_layer_rects(problem, component, self.catalog)
         if not candidates or len(candidates) > self.candidate_limit:
             return None
+        # Recheck: enumeration itself may have consumed the remainder.
         if (stage1_limit := self._time_limit(deadline)) is None:
-            return None  # deadline already spent: straight to the fallback
+            return None
         started = time.monotonic()
         cover = _cover_matrix(component, candidates)
         ones = np.ones(len(candidates))

@@ -1,5 +1,7 @@
 """Per-layer Kollsker set-partitioning MILP strategy."""
 
+import time
+
 import numpy as np
 import pytest
 
@@ -278,3 +280,34 @@ def test_expired_deadline_skips_the_milp_entirely(
     )
     assert calls["milp"] == 0  # straight to the bond fallback
     assert {c for r in rects for c in r.columns()} == problem.columns
+
+
+def test_expired_deadline_skips_enumeration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #18 P2: candidate enumeration ran BEFORE the deadline check, so
+    # an already-expired budget still paid the enumeration cost on every
+    # component. An expired deadline must go straight to the fallback.
+    import legolization.placement.layered.kollsker as kollsker_mod
+
+    calls = {"enumerate": 0}
+    real_enumerate = kollsker_mod.enumerate_layer_rects
+
+    def counting_enumerate(*args: object, **kwargs: object) -> object:
+        calls["enumerate"] += 1
+        return real_enumerate(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(kollsker_mod, "enumerate_layer_rects", counting_enumerate)
+    catalog = default_catalog()
+    problem = _layer_problem({(x, y) for x in range(4) for y in range(3)})
+    layout = Layout(catalog=catalog)
+    context = build_context(layout, problem)
+    strategy = KollskerStrategy(catalog=catalog)
+    rects = strategy.tile(
+        problem,
+        context,
+        rng=np.random.default_rng(0),
+        deadline=time.monotonic() - 1.0,  # already expired
+    )
+    assert calls["enumerate"] == 0
+    assert {c for r in rects for c in r.columns()} == problem.columns  # fallback tiled
