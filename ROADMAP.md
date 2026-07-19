@@ -145,6 +145,29 @@ one sequencing run. Library `run()`/`run_file` APIs unchanged — the
 race is CLI-level policy; eval harnesses pin their own seeds and are
 unaffected.
 
+### 2026-07-19 — v5 program end
+
+Full gates green (547 tests; ruff/ty/pyrefly/lizard CCN-18 clean).
+Final synthetic sweep: 11/11 PASS, zero diffs vs the WS-2 baseline.
+Fresh profiles (seed 0): pyramid 1.1 s / 124 bricks / 23 steps;
+suzanne@16 41.8 s / 365 / 77 — up from v4's 31.7 s/60 steps because
+default subassembly extraction sequences more, smaller steps (the U1
+trade: 21 fewer unstable steps for ~10 s on this model). spot@24's
+program-end profile and the mesh baseline cut remain in
+docs/v5-pending-measurements.md (long runs deferred by user call).
+Version 0.4.0.
+
+## Self-eval log
+
+Dated outcomes of the standing cadence (`docs/self-evaluation-playbook.md`
+§10); append-only.
+
+- 2026-07-19 — v5 program-end sweep: synthetic corpus 11/11 PASS, zero
+  hard regressions vs the WS-2 baseline; mushroom worst-row check via
+  check_instructions (kollsker 8 unstable with subassemblies — the
+  gap-column limit recorded in WS-3); insertion audit flags cantilever
+  4/16, mushroom 19/52 press-fragile steps as the next quality target.
+
 ## v4 progress notes
 
 Living log of the v4 program (PR #17 review remediation, residual

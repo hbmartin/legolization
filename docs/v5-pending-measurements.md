@@ -43,3 +43,16 @@ fully clean; pre-flip and post-flip tables are identical, so the
 physics flip is orthogonal). The `InstructionsConfig.subassemblies`
 default flip is pre-approved on this evidence; the spot cell is
 verification coverage, not a gate — record its number when run.
+
+## 3. spot@24 program-end profile (WS-5)
+
+The v5-end profile set ran pyramid + suzanne only; spot (~9 min) is
+deferred:
+
+    uv run python scripts/profile_pipeline.py spot --target-studs 24 \
+        --label v5-end --seed 0
+
+Compare the result block against the v4 record (996 bricks / 155
+steps); with subassemblies default-on the step count will move — that
+is the U1 trade, not a regression. Wall belongs to the same session's
+before-run per docs/performance-testing.md.
