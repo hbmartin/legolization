@@ -90,6 +90,29 @@ class Part:
     """Local stud-axis direction for sideways-mounted parts (LDraw
     orientation only); None for ordinary stud-up parts."""
 
+    emit_yaw_offset: int = 0
+    """Extra LDraw yaw composed with the placement yaw at emission —
+    carriers whose .dat side-stud axis differs from the modelled local
+    lateral direction (87087's stud points LDraw -Z; +90 lands it on
+    local +x)."""
+
+    mount_matrices: tuple[tuple[tuple[int, int], tuple[int, ...]], ...] = ()
+    """Cladding emission rotations: ``((outward_xy, 9 row-major ints),
+    ...)`` per outward grid direction, pinned as catalog data (probed
+    against pyldraw3's rotation sign convention, not composed at
+    runtime). Empty for non-cladding parts."""
+
+    mount_offset_ldu: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    """Cladding origin offset in LDU along ``(outward, vertical,
+    transverse)``; vertical is measured from ``-PLATE_LDU * layer``."""
+
+    def mount_matrix(self, outward: tuple[int, int]) -> tuple[int, ...] | None:
+        """Return the pinned emission rotation for ``outward`` claddings."""
+        for direction, rows in self.mount_matrices:
+            if direction == outward:
+                return rows
+        return None
+
     def __post_init__(self) -> None:
         if not self.filled_cells:
             object.__setattr__(self, "filled_cells", self.occupied_cells)
@@ -237,51 +260,98 @@ def _slope_part(spec: dict[str, Any]) -> Part:
     )
 
 
-def _snot_part(spec: dict[str, Any]) -> Part:
-    """Expand a sideways (SNOT) JSON spec.
+def _cell(raw: list[int] | tuple[int, ...]) -> Cell:
+    """Validate a 3-int JSON cell."""
+    x, y, z = (int(v) for v in raw)
+    return (x, y, z)
 
-    Two parts are modelled. ``brick_1x1_side_stud`` (87087) is a normal
-    1x1 brick column plus a lateral stud at mid-height pointing along
-    local ``+x``. ``tile_1x1_snot`` (3070b mounted sideways) occupies the
-    full 3-plate window of the column it clads — conservative collision
-    volume — with a single lateral anti-stud pointing back along local
-    ``-x`` toward its bracket, and only its centre cell counted as shape
-    fill.
+
+def _connectors(raw: list[dict[str, Any]]) -> tuple[Connector, ...]:
+    """Expand JSON ``{cell, direction}`` records."""
+    return tuple(
+        Connector(cell=_cell(entry["cell"]), direction=_cell(entry["direction"]))
+        for entry in raw
+    )
+
+
+def _carrier_part(spec: dict[str, Any]) -> Part:
+    """Expand a carrier spec: stud-up body plus lateral studs (87087, 11211).
+
+    Structurally a normal brick — full rect body, top studs, bottom
+    anti-studs, tiled around by carve-and-refill — plus the
+    ``lateral_studs`` the catalog data declares. Lateral studs are
+    appended after the top studs so existing connector indexing holds.
     """
-    key = str(spec["key"])
+    width, length = (int(v) for v in spec["size_studs"])
     height = int(spec["height_plates"])
-    cells = frozenset((0, 0, dz) for dz in range(height))
-    if key == "brick_1x1_side_stud":
-        return Part(
-            key=key,
-            ldraw_part=str(spec["ldraw_part"]),
-            category=Category.SNOT,
-            occupied_cells=cells,
-            top_connectors=(
-                Connector(cell=(0, 0, height - 1), direction=UP),
-                Connector(cell=(0, 0, 1), direction=(1, 0, 0)),
-            ),
-            bottom_connectors=(Connector(cell=(0, 0, 0), direction=DOWN),),
-            height_plates=height,
-            mass_g=float(spec["mass_g"]),
-            orientations=_FULL_YAWS,
-        )
-    if key == "tile_1x1_snot":
-        return Part(
-            key=key,
-            ldraw_part=str(spec["ldraw_part"]),
-            category=Category.SNOT,
-            occupied_cells=cells,
-            top_connectors=(),
-            bottom_connectors=(Connector(cell=(0, 0, 1), direction=(-1, 0, 0)),),
-            height_plates=height,
-            mass_g=float(spec["mass_g"]),
-            orientations=_FULL_YAWS,
-            filled_cells=frozenset({(0, 0, 1)}),
-            mount_normal=(-1, 0, 0),
-        )
-    msg = f"unknown snot part spec {key!r}"
-    raise ValueError(msg)
+    columns = [(dx, dy) for dy in range(width) for dx in range(length)]
+    return Part(
+        key=str(spec["key"]),
+        ldraw_part=str(spec["ldraw_part"]),
+        category=Category.SNOT,
+        occupied_cells=frozenset(
+            (dx, dy, dz) for dx, dy in columns for dz in range(height)
+        ),
+        top_connectors=(
+            *(Connector(cell=(dx, dy, height - 1), direction=UP) for dx, dy in columns),
+            *_connectors(spec["lateral_studs"]),
+        ),
+        bottom_connectors=tuple(
+            Connector(cell=(dx, dy, 0), direction=DOWN) for dx, dy in columns
+        ),
+        height_plates=height,
+        mass_g=float(spec["mass_g"]),
+        orientations=_FULL_YAWS,
+        emit_yaw_offset=int(spec.get("emit_yaw_offset", 0)),
+    )
+
+
+def _cladding_part(spec: dict[str, Any]) -> Part:
+    """Expand a cladding spec: a sideways facade part (3070b, sideways 3069b).
+
+    Occupies the full 3-plate window of every column it clads —
+    conservative collision volume — with ``sockets`` pointing back along
+    ``mount_normal`` toward the carrier studs and only the declared
+    ``filled_cells`` counted as shape fill. Emission rotations per
+    outward direction are pinned catalog data (``mount_matrices``), not
+    runtime composition.
+    """
+    height = int(spec["height_plates"])
+    columns = [(int(cx), int(cy)) for cx, cy in spec["window_columns"]]
+    matrices = tuple(
+        ((int(key.split(",")[0]), int(key.split(",")[1])), tuple(int(v) for v in rows))
+        for key, rows in spec["mount_matrices"].items()
+    )
+    offset_out, offset_up, offset_across = (float(v) for v in spec["mount_offset_ldu"])
+    return Part(
+        key=str(spec["key"]),
+        ldraw_part=str(spec["ldraw_part"]),
+        category=Category.SNOT,
+        occupied_cells=frozenset(
+            (dx, dy, dz) for dx, dy in columns for dz in range(height)
+        ),
+        top_connectors=(),
+        bottom_connectors=_connectors(spec["sockets"]),
+        height_plates=height,
+        mass_g=float(spec["mass_g"]),
+        orientations=_FULL_YAWS,
+        filled_cells=frozenset(_cell(cell) for cell in spec["filled_cells"]),
+        mount_normal=_cell(spec["mount_normal"]),
+        mount_matrices=matrices,
+        mount_offset_ldu=(offset_out, offset_up, offset_across),
+    )
+
+
+def _snot_part(spec: dict[str, Any]) -> Part:
+    """Expand a sideways (SNOT) JSON spec by its declared ``snot_role``."""
+    match spec.get("snot_role"):
+        case "carrier":
+            return _carrier_part(spec)
+        case "cladding":
+            return _cladding_part(spec)
+        case role:
+            msg = f"unknown snot_role {role!r} for part spec {spec.get('key')!r}"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True, eq=False)

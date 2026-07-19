@@ -106,3 +106,27 @@ def _footprint_size(part) -> tuple[int, int]:
     xs = [dx for dx, _ in part.footprint]
     ys = [dy for _, dy in part.footprint]
     return max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+
+
+def test_snot_specs_validate_role(catalog):
+    from legolization.catalog import _snot_part
+
+    with pytest.raises(ValueError, match="snot_role"):
+        _snot_part({"key": "mystery_bracket", "category": "snot"})
+    with pytest.raises(ValueError, match="snot_role"):
+        _snot_part({"key": "bad", "category": "snot", "snot_role": "sideways"})
+
+
+def test_cladding_mount_matrices_pinned(catalog):
+    # The emission rotations are catalog data; every cladding must pin
+    # all four outward directions and expose them via mount_matrix.
+    for part in catalog.by_category(Category.SNOT):
+        if part.mount_normal is None:
+            continue
+        outwards = {direction for direction, _ in part.mount_matrices}
+        assert outwards == {(1, 0), (-1, 0), (0, 1), (0, -1)}
+        for direction in outwards:
+            rows = part.mount_matrix(direction)
+            assert rows is not None
+            assert len(rows) == 9
+        assert part.mount_matrix((2, 0)) is None
