@@ -243,3 +243,51 @@ def test_warm_fail_falls_back_cold(monkeypatch: pytest.MonkeyPatch):
     cold = analyze(layout.subset([ids[0]]), _WARM)
     assert result.stable == cold.stable
     assert "stability.prefix.warm_fail" in session.spans
+
+
+def _hanging_decoration_layout() -> tuple[Layout, int, int]:
+    """Two towers, a bridge, and a decorative piece hanging BELOW it.
+
+    The decoration's only connection is its top studs into the bridge's
+    bottom sockets — the class of piece the user's models add underneath
+    (vertically below) existing structure.
+    """
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    layout.add("brick_2x2", 4, 0, 0, 0, 4)
+    layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    layout.add("brick_2x2", 4, 0, 3, 0, 4)
+    bridge = layout.add("brick_1x6", 0, 0, 6, 0, 4)
+    decoration = layout.add("brick_1x1", 2, 0, 3, 0, 14)  # hangs under it
+    return layout, bridge.brick_id, decoration.brick_id
+
+
+def test_probe_brick_below_matches_cold():
+    # Probing a chunk whose brick seats BELOW an already-present brick
+    # grows the present brick's bottom-drag rows (the grown-base
+    # plumbing); the warm result must match cold exactly, including
+    # after a rollback of the grown state.
+    layout, bridge, decoration = _hanging_decoration_layout()
+    towers = sorted(set(layout.bricks) - {bridge, decoration})
+    solver = _warm_prefix(layout)
+    solver.probe(tuple(towers))
+    solver.commit(tuple(towers))
+    solver.probe((bridge,))
+    solver.commit((bridge,))
+
+    warm = solver.probe((decoration,))
+    cold = analyze(layout, _WARM)
+    assert warm.stable == cold.stable
+    assert _score_drift(warm, cold) < 1e-9
+
+    # Reject the decoration (rollback trims the grown drag columns),
+    # probe it again: identical to a fresh solver's answer.
+    solver.probe((decoration,))
+    again = solver.probe((decoration,))
+    fresh = _warm_prefix(layout)
+    fresh.probe(tuple(towers))
+    fresh.commit(tuple(towers))
+    fresh.probe((bridge,))
+    fresh.commit((bridge,))
+    fresh_probe = fresh.probe((decoration,))
+    assert _score_drift(again, fresh_probe) < 1e-12

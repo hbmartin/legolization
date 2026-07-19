@@ -259,3 +259,31 @@ def test_band_deadlock_honours_strict_policy(
 def test_instructions_config_rejects_nonpositive_beam_width() -> None:
     with pytest.raises(ValueError, match="beam_width must be positive"):
         InstructionsConfig(beam_width=0)
+
+
+def test_rescue_orders_underneath_decoration_before_support() -> None:
+    # A decorative piece hanging BELOW a bridge deadlocks the greedy
+    # pass (it is vertically blocked once the bridge is placed, and the
+    # bridge is unsupported without it) - the rescue must order the
+    # decoration BEFORE its overhang, identically on both engines, and
+    # verify_plan must accept the result. This pins the ordering
+    # semantics every rescue optimization has to preserve.
+    from legolization.stability.solver import SolverConfig
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    layout.add("brick_2x2", 4, 0, 0, 0, 4)
+    layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    layout.add("brick_2x2", 4, 0, 3, 0, 4)
+    bridge = layout.add("brick_1x6", 0, 0, 6, 0, 4)
+    decoration = layout.add("brick_1x1", 2, 0, 3, 0, 14)
+
+    orders = {}
+    for engine in ("scipy", "highspy"):
+        config = InstructionsConfig(rotstep=False, solver=SolverConfig(engine=engine))
+        plan = plan_instructions(layout, config=config)
+        assert verify_plan(layout, plan, config=config) == []
+        order = plan.order
+        assert order.index(decoration.brick_id) < order.index(bridge.brick_id)
+        orders[engine] = order
+    assert orders["scipy"] == orders["highspy"]
