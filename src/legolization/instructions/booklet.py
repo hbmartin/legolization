@@ -186,6 +186,9 @@ thead th { border-bottom: 1px solid #999; }
          vertical-align: middle; margin-left: 8px; }
 .badge.unstable { background: #fdd; color: #900; }
 .badge.rotate { background: #def; color: #036; }
+.badge.subassembly { background: #e8f5e9; color: #1b5e20; }
+.callout { background: #e8f5e9; border: 1px solid #a5d6a7; padding: 8px;
+           margin: 8px 0; font-size: 0.9em; }
 .step img { max-width: 100%; display: block; margin: 8px 0; }
 .placeholder { border: 1px dashed #bbb; color: #888; padding: 40px;
                text-align: center; margin: 8px 0; }
@@ -304,12 +307,25 @@ def _html_step(entry: StepEntry) -> list[str]:
     step = entry.step
     badges = ""
     if not step.prefix_stable:
-        badges += '<span class="badge unstable">unstable — support by hand</span>'
+        label = (
+            "unstable — support while attaching"
+            if step.attaches is not None
+            else "unstable — support by hand"
+        )
+        badges += f'<span class="badge unstable">{label}</span>'
     if step.rotstep is not None:
         badges += '<span class="badge rotate">rotate the model</span>'
+    if step.submodel is not None:
+        badges += (
+            f'<span class="badge subassembly">subassembly {step.submodel} '
+            "— build on the table</span>"
+        )
+    title = f"Step {step.index}"
+    if step.attaches is not None:
+        title = f"Step {step.index} — attach subassembly {step.attaches}"
     lines = [
         f'<section class="step" id="step-{step.index}">',
-        f"<h2>Step {step.index}{badges}</h2>",
+        f"<h2>{title}{badges}</h2>",
     ]
     if entry.image_png is not None:
         encoded = base64.b64encode(entry.image_png).decode("ascii")
@@ -320,6 +336,11 @@ def _html_step(entry: StepEntry) -> list[str]:
         lines.append(
             '<div class="placeholder">step image unavailable — '
             "no LDraw renderer found</div>"
+        )
+    if step.attaches is not None:
+        lines.append(
+            f'<div class="callout">Requires subassembly {step.attaches} — '
+            "built in the preceding steps.</div>"
         )
     if entry.parts:
         lines.extend(_html_parts_table(entry.parts))
@@ -469,8 +490,16 @@ def _pdf_step_slot(
 ) -> None:
     step = entry.step
     label = f"Step {step.index}"
+    if step.attaches is not None:
+        label += f" — attach subassembly {step.attaches}"
+    elif step.submodel is not None:
+        label += f" — subassembly {step.submodel} (build on the table)"
     if not step.prefix_stable:
-        label += "   [unstable — support by hand]"
+        label += (
+            "   [unstable — support while attaching]"
+            if step.attaches is not None
+            else "   [unstable — support by hand]"
+        )
     if step.rotstep is not None:
         label += "   [rotate the model]"
     canvas.setFont("Helvetica-Bold", 14)

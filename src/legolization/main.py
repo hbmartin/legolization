@@ -318,6 +318,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="omit 0 ROTSTEP view-rotation hints from smart steps",
     )
     parser.add_argument(
+        "--subassemblies",
+        action="store_true",
+        help=(
+            "extract persistently floating clusters as separately built "
+            "subassemblies with attach steps (write .mpd output to get "
+            "submodel FILE sections; .ldr flattens them)"
+        ),
+    )
+    parser.add_argument(
         "--bom",
         type=Path,
         default=None,
@@ -353,10 +362,8 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the CLI; returns a process exit code."""
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject invalid flag combinations in milliseconds, not after a run."""
     if args.strategy != "all" and (
         args.jobs != 0
         or args.timeout is not None
@@ -367,8 +374,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "--jobs/--timeout/--report/--keep-candidates/--seeds require --strategy all"
         )
+    if args.subassemblies and args.steps == "layer":
+        parser.error("--subassemblies requires --steps smart")
     if args.instructions is not None:
-        # Fail in milliseconds, not after a full pipeline run.
         if args.steps == "layer":
             parser.error("--instructions requires --steps smart")
         if args.instructions.suffix.lower() not in {".html", ".pdf"}:
@@ -397,6 +405,13 @@ def main(argv: list[str] | None = None) -> int:
             "mesh inputs (meshes are voxelized at plate resolution and are "
             "always aspect-correct)"
         )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the CLI; returns a process exit code."""
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    _validate_args(parser, args)
     output: Path = args.output or args.input.with_suffix(".ldr")
     progress = (
         (lambda message: print(f"  {message}", file=sys.stderr, flush=True))
@@ -427,6 +442,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.steps,
             target_step_size=args.step_size,
             rotstep=not args.no_rotstep,
+            subassemblies=args.subassemblies,
         ),
         mesh=MeshOptions(
             target_studs=(args.target_studs if args.target_studs is not None else 32),

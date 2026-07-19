@@ -92,3 +92,70 @@ def test_roundtrip_through_pyldraw3(layout, tmp_path):
     pieces = [obj for obj in model.objects if isinstance(obj, Piece)]
     assert len(pieces) == 3
     assert sorted(p.part for p in pieces) == ["3001", "3020", "3040b"]
+
+
+def _subassembly_layout(layout: Layout) -> Layout:
+    for level in (0, 3, 6):
+        layout.add("brick_2x2", 3, 3, level, 0, 15)  # stem
+    layout.add("brick_2x2", 1, 3, 9, 0, 4)  # petal, no support below
+    layout.add("brick_2x2", 3, 3, 9, 0, 4)  # hub on the stem
+    layout.add("brick_2x2", 2, 3, 12, 0, 4)  # bridge petal to hub
+    return layout
+
+
+def test_mpd_submodel_structure(layout, tmp_path):
+    from legolization.instructions import InstructionsConfig, plan_instructions
+
+    _subassembly_layout(layout)
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert len(plan.subassemblies) == 1
+    sub = plan.subassemblies[0]
+
+    mpd = tmp_path / "model.mpd"
+    write_model(layout, mpd, plan=plan)
+    lines = mpd.read_text().splitlines()
+
+    file_headers = [line for line in lines if line.startswith("0 FILE ")]
+    assert file_headers == ["0 FILE model.mpd", f"0 FILE model-{sub.name}.ldr"]
+    assert lines.count("0 NOFILE") == 2
+
+    # The attach step is a single colour-16 reference at -8 * anchor_layer.
+    reference = next(
+        line for line in _type1_lines(lines) if line.endswith(f"model-{sub.name}.ldr")
+    )
+    fields = reference.split()
+    assert fields[:5] == ["1", "16", "0", str(-8 * sub.anchor_layer), "0"]
+    assert fields[5:14] == ["1", "0", "0", "0", "1", "0", "0", "0", "1"]
+
+    # Main-file steps == main + attach steps; sub file carries its own steps.
+    boundary = lines.index(f"0 FILE model-{sub.name}.ldr")
+    main_lines, sub_lines = lines[:boundary], lines[boundary:]
+    assert main_lines.count("0 STEP") == len(plan.main_steps())
+    assert sub_lines.count("0 STEP") == len(plan.sub_steps(sub.name))
+
+    # Sub bricks are emitted in the local grounded frame: the unit's lowest
+    # brick tops out at y = -8 * height, exactly as if it sat on the table.
+    sub_type1 = _type1_lines(sub_lines)
+    assert len(sub_type1) == len(sub.brick_ids)
+    ys = [float(line.split()[3]) for line in sub_type1]
+    assert max(ys) == -24.0  # brick_2x2 on the table
+
+
+def test_ldr_fallback_flattens_submodels(layout, tmp_path):
+    from legolization.instructions import InstructionsConfig, plan_instructions
+
+    _subassembly_layout(layout)
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert plan.subassemblies
+
+    ldr = tmp_path / "model.ldr"
+    write_model(layout, ldr, plan=plan)
+    lines = ldr.read_text().splitlines()
+    assert not any(line.startswith("0 FILE") for line in lines)
+    type1 = _type1_lines(lines)
+    assert len(type1) == len(layout.bricks)
+    assert all(line.endswith(".dat") for line in type1)

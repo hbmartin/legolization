@@ -101,3 +101,35 @@ def test_smart_plan_tracks_bottom_up_raster_order():
     )
     result = sequence_similarity(raster, plan.order)
     assert result.kendall_tau > 0.5
+
+
+def test_plan_quality_counts_subassemblies():
+    from legolization.instructions import Subassembly
+
+    plan = InstructionPlan(
+        steps=(
+            BuildStep(
+                index=1, brick_ids=(1,), prefix_stable=True, prefix_max_score=0.1
+            ),
+            BuildStep(
+                index=2,
+                brick_ids=(2,),
+                prefix_stable=True,
+                prefix_max_score=0.0,
+                submodel="sub-1",
+            ),
+            BuildStep(
+                index=3,
+                brick_ids=(),
+                prefix_stable=True,
+                prefix_max_score=0.2,
+                attaches="sub-1",
+            ),
+        ),
+        warnings=(),
+        bom=BillOfMaterials(total=(), per_step=()),
+        subassemblies=(Subassembly(name="sub-1", brick_ids=(2,), anchor_layer=3),),
+    )
+    quality = plan_quality(plan)
+    assert quality.subassembly_count == 1
+    assert quality.attach_steps == 1

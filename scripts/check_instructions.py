@@ -49,12 +49,32 @@ def check_steps(
     plan: InstructionPlan,
     max_step_size: int,
 ) -> list[dict]:
-    """Audit each step's after-state; returns one JSON-safe row per step."""
+    """Audit each step's after-state; returns one JSON-safe row per step.
+
+    Sub-build steps are audited in the subassembly's own grounded frame
+    (the unit sits on the table); attach steps merge the whole unit into
+    the world before the check.
+    """
+    subs = {sub.name: sub for sub in plan.subassemblies}
+    sub_placed: dict[str, set[int]] = {name: set() for name in subs}
     rows: list[dict] = []
     placed: set[int] = set()
     for step in plan.steps:
-        placed |= set(step.brick_ids)
-        graph = ConnectionGraph.from_layout(result_layout.subset(placed))
+        if step.submodel is not None:
+            sub = subs[step.submodel]
+            seen = sub_placed[step.submodel]
+            seen |= set(step.brick_ids)
+            audit_layout = result_layout.subset(seen).translated(dz=sub.anchor_layer)
+            size = len(step.brick_ids)
+        else:
+            if step.attaches is not None:
+                placed |= set(subs[step.attaches].brick_ids)
+                size = len(subs[step.attaches].brick_ids)
+            else:
+                size = len(step.brick_ids)
+            placed |= set(step.brick_ids)
+            audit_layout = result_layout.subset(placed)
+        graph = ConnectionGraph.from_layout(audit_layout)
         floating_after = len(graph.floating_ids())
         flags = []
         if floating_after:
@@ -63,15 +83,19 @@ def check_steps(
             flags.append("unstable-prefix")
         if len(step.brick_ids) > max_step_size:
             flags.append("oversized")
+        if step.attaches is not None:
+            flags.append("attach")
         rows.append(
             {
                 "index": step.index,
-                "size": len(step.brick_ids),
+                "size": size,
                 "prefix_stable": step.prefix_stable,
                 "prefix_max_score": round(step.prefix_max_score, 4),
                 "floating_after": floating_after,
                 "components_after": graph.component_count(),
                 "rotstep": step.rotstep.yaw if step.rotstep else None,
+                "submodel": step.submodel,
+                "attaches": step.attaches,
                 "flags": flags,
             }
         )
@@ -88,7 +112,8 @@ def _dump_step_images(
     if result.plan is None:
         return ["no plan to render"]
     with tempfile.TemporaryDirectory() as tmp:
-        model_path = Path(tmp) / "model.ldr"
+        suffix = ".mpd" if result.plan.subassemblies else ".ldr"
+        model_path = Path(tmp) / f"model{suffix}"
         write_model(result.layout, model_path, plan=result.plan)
         images = render_step_images(
             model_path,
@@ -113,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strategy", default="greedy")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--step-size", type=int, default=7)
+    parser.add_argument("--subassemblies", action="store_true")
     parser.add_argument("--json", dest="json_path", default=None, metavar="PATH")
     parser.add_argument("--render-dir", type=Path, default=None, metavar="DIR")
     parser.add_argument("--target-studs", type=int, default=32, metavar="N")
@@ -125,7 +151,10 @@ def main(argv: list[str] | None = None) -> int:
     config = PipelineConfig(
         strategy=args.strategy,
         seed=args.seed,
-        instructions=InstructionsConfig(target_step_size=args.step_size),
+        instructions=InstructionsConfig(
+            target_step_size=args.step_size,
+            subassemblies=args.subassemblies,
+        ),
         mesh=MeshOptions(target_studs=args.target_studs, up=args.up),
         progress=progress,
     )
@@ -161,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
             "unstable_steps": quality.unstable_steps,
             "max_prefix_score": round(quality.max_prefix_score, 4),
             "mean_prefix_score": round(quality.mean_prefix_score, 4),
+            "subassembly_count": quality.subassembly_count,
+            "attach_steps": quality.attach_steps,
         },
         "flagged_steps": [row["index"] for row in flagged],
         "steps": steps,

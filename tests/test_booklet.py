@@ -240,3 +240,25 @@ def test_real_plan_carries_per_step_callouts() -> None:
     )
     assert all(entry.parts for entry in entries)
     assert sum(part.quantity for entry in entries for part in entry.parts) == 8
+
+
+def test_subassembly_badges_and_attach_callouts() -> None:
+    from legolization.instructions import InstructionsConfig
+
+    layout = Layout(catalog=default_catalog())
+    for level in (0, 3, 6):
+        layout.add("brick_2x2", 3, 3, level, 0, 15)  # stem
+    layout.add("brick_2x2", 1, 3, 9, 0, 4)  # petal, no support below
+    layout.add("brick_2x2", 3, 3, 9, 0, 4)  # hub on the stem
+    layout.add("brick_2x2", 2, 3, 12, 0, 4)  # bridge petal to hub
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert plan.subassemblies
+    sub = plan.subassemblies[0]
+    booklet = build_booklet(plan, _STATS, _images(len(plan.steps), None))
+    document = booklet_html(booklet)
+    assert f"subassembly {sub.name} — build on the table" in document
+    assert f"attach subassembly {sub.name}" in document
+    assert f"Requires subassembly {sub.name}" in document
+    assert document.count('<section class="step"') == len(plan.steps)

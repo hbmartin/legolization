@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from legolization.instructions.sequencer import InstructionPlan
+    from legolization.instructions.sequencer import BuildStep, InstructionPlan
 
 type RendererKind = Literal["leocad", "ldview"]
 type Runner = Callable[[list[str], float], str]
@@ -170,7 +170,15 @@ def render_step_images(
     runner: Runner | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> StepImages:
-    """Render one PNG per plan step from the written model file."""
+    """Render one PNG per plan step from the written model file.
+
+    Plans with subassemblies render in passes: the main model's steps
+    from the written ``.mpd`` (whose main-file step count equals the
+    plan's main+attach steps), then each subassembly's FILE section
+    sliced into its own temp ``.ldr`` — renderer-agnostic, no submodel
+    CLI flags needed. The returned ``images`` tuple stays aligned with
+    the flat ``plan.steps``.
+    """
     config = config or RenderConfig()
     renderer = config.renderer or detect_renderer()
     if renderer is None:
@@ -187,49 +195,165 @@ def render_step_images(
             f"(set ${_ENV_LDRAW_DIR} or RenderConfig.ldraw_dir)"
         )
     run = runner or _run_subprocess
-    longitudes = _step_longitudes(plan, base=config.longitude)
-    with tempfile.TemporaryDirectory(prefix="legolization-render-") as tmp:
-        sanitized = Path(tmp) / model_path.name
-        sanitized.write_text(
-            _sanitized(model_path.read_text(encoding="utf-8")),
-            encoding="utf-8",
+    text = model_path.read_text(encoding="utf-8")
+    if not plan.subassemblies:
+        longitudes = _step_longitudes(plan.steps, base=config.longitude)
+        collected = _render_text(
+            model_path.name,
+            text,
+            longitudes,
+            renderer,
+            config,
+            ldraw_dir,
+            run,
+            progress,
+            warnings,
         )
-        match renderer.kind:
-            case "leocad":
-                collected = _render_leocad(
-                    renderer=renderer,
-                    model=sanitized,
-                    longitudes=longitudes,
-                    config=config,
-                    ldraw_dir=ldraw_dir,
-                    run=run,
-                    progress=progress,
-                    warnings=warnings,
-                )
-            case "ldview":
-                collected = _render_ldview(
-                    renderer=renderer,
-                    model=sanitized,
-                    longitudes=longitudes,
-                    config=config,
-                    ldraw_dir=ldraw_dir,
-                    run=run,
-                    progress=progress,
-                    warnings=warnings,
-                )
-    step_numbers = range(1, len(longitudes) + 1)
-    return StepImages(
-        images=tuple(collected.get(step_no) for step_no in step_numbers),
-        renderer=renderer,
-        warnings=tuple(warnings),
+        images = tuple(
+            collected.get(step_no) for step_no in range(1, len(longitudes) + 1)
+        )
+        return StepImages(images=images, renderer=renderer, warnings=tuple(warnings))
+    return _render_with_subassemblies(
+        model_path,
+        plan,
+        text,
+        renderer,
+        config,
+        ldraw_dir,
+        run,
+        progress,
+        warnings,
     )
 
 
-def _step_longitudes(plan: InstructionPlan, *, base: float) -> tuple[float, ...]:
-    """Camera longitude per step, accumulated from the plan's ROTSTEP hints."""
+def _render_with_subassemblies(  # noqa: PLR0913 - one bag of render state
+    model_path: Path,
+    plan: InstructionPlan,
+    text: str,
+    renderer: Renderer,
+    config: RenderConfig,
+    ldraw_dir: Path | None,
+    run: Runner,
+    progress: Callable[[str], None] | None,
+    warnings: list[str],
+) -> StepImages:
+    main = plan.main_steps()
+    main_longitudes = _step_longitudes(main, base=config.longitude)
+    collected_main = _render_text(
+        model_path.name,
+        text,
+        main_longitudes,
+        renderer,
+        config,
+        ldraw_dir,
+        run,
+        progress,
+        warnings,
+    )
+    sub_collected: dict[str, dict[int, bytes]] = {}
+    stem = model_path.stem
+    if "0 FILE" in text:
+        for sub in plan.subassemblies:
+            sub_file = f"{stem}-{sub.name}.ldr"
+            sub_text = _extract_submodel(text, sub_file)
+            if sub_text is None:
+                warnings.append(f"submodel {sub_file} not found in the model file")
+                continue
+            n_steps = len(plan.sub_steps(sub.name))
+            sub_collected[sub.name] = _render_text(
+                sub_file,
+                sub_text,
+                (config.longitude,) * n_steps,
+                renderer,
+                config,
+                ldraw_dir,
+                run,
+                progress,
+                warnings,
+            )
+    else:
+        warnings.append(
+            "subassembly step images need .mpd output (the .ldr fallback "
+            "flattens submodels)"
+        )
+    images: list[bytes | None] = []
+    main_ordinal = 0
+    sub_ordinals: dict[str, int] = dict.fromkeys(sub_collected, 0)
+    for step in plan.steps:
+        if step.submodel is not None:
+            if step.submodel in sub_collected:
+                sub_ordinals[step.submodel] += 1
+                images.append(
+                    sub_collected[step.submodel].get(sub_ordinals[step.submodel])
+                )
+            else:
+                images.append(None)
+        else:
+            main_ordinal += 1
+            images.append(collected_main.get(main_ordinal))
+    return StepImages(images=tuple(images), renderer=renderer, warnings=tuple(warnings))
+
+
+def _extract_submodel(text: str, file_name: str) -> str | None:
+    """Slice one ``0 FILE`` section's body out of an ``.mpd`` document."""
+    lines = text.splitlines()
+    start: int | None = None
+    for i, line in enumerate(lines):
+        if line.strip() == f"0 FILE {file_name}":
+            start = i + 1
+        elif start is not None and line.strip() == "0 NOFILE":
+            return "\n".join(lines[start:i]) + "\n"
+    return None
+
+
+def _render_text(  # noqa: PLR0913 - one bag of render state, locally owned
+    name: str,
+    text: str,
+    longitudes: tuple[float, ...],
+    renderer: Renderer,
+    config: RenderConfig,
+    ldraw_dir: Path | None,
+    run: Runner,
+    progress: Callable[[str], None] | None,
+    warnings: list[str],
+) -> dict[int, bytes]:
+    with tempfile.TemporaryDirectory(prefix="legolization-render-") as tmp:
+        sanitized = Path(tmp) / name
+        sanitized.write_text(_sanitized(text), encoding="utf-8")
+        match renderer.kind:
+            case "leocad":
+                return _render_leocad(
+                    renderer=renderer,
+                    model=sanitized,
+                    longitudes=longitudes,
+                    config=config,
+                    ldraw_dir=ldraw_dir,
+                    run=run,
+                    progress=progress,
+                    warnings=warnings,
+                )
+            case _:
+                return _render_ldview(
+                    renderer=renderer,
+                    model=sanitized,
+                    longitudes=longitudes,
+                    config=config,
+                    ldraw_dir=ldraw_dir,
+                    run=run,
+                    progress=progress,
+                    warnings=warnings,
+                )
+
+
+def _step_longitudes(
+    steps: tuple[BuildStep, ...],
+    *,
+    base: float,
+) -> tuple[float, ...]:
+    """Camera longitude per step, accumulated from the steps' ROTSTEP hints."""
     view = 0.0
     longitudes: list[float] = []
-    for step in plan.steps:
+    for step in steps:
         if (rotstep := step.rotstep) is not None:
             match rotstep.mode:
                 case "REL":

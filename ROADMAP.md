@@ -51,6 +51,57 @@ solver-tolerance-level score drift on degenerate optima — the same drift
 class scipy exhibits across its own versions. Remaining headroom: 80
 cold LPs on grounded-stable rescue states at n≈1000.
 
+### 2026-07-19 — Item 2: MPD subassembly steps
+
+Shipped `instructions/subassembly.py` behind `--subassemblies`
+(`InstructionsConfig.subassemblies=False` default — flag-off is
+byte-identical to before, pinned by the goldens): a post-pass on the
+finished plan that walks per-prefix `ConnectionGraph.floating_ids()`
+(no extra LPs), finds persistent floating runs, closes them into
+stud-connected clusters of the run's placement window, validates each
+cluster (grounding on attach: `floating_ids(P∪S) ∩ S = ∅`; unit
+vertical insertability: no placed brick overhangs any cluster brick),
+and rewrites the plan: cluster bricks become a separately built unit —
+sequenced by a recursive `plan_instructions` on the grounded, table-
+level translated sub-layout — plus one attach step that places the unit
+as a whole. Emission writes real multi-`FILE` `.mpd` submodels (attach
+= one colour-16 reference line at `-8·anchor_layer`; `.ldr` falls back
+to world-frame flattening), the booklet gets per-unit sections, attach
+callouts, and "support while attaching" labels, `verify_plan` audits
+sub steps in the sub's own grounded frame, and step images render per
+submodel section (no renderer CLI flags needed).
+
+Proof (`scripts/check_instructions.py --subassemblies`, seed 0,
+before-JSONs from the pre-item baseline):
+| model | unstable steps | subs | attach steps | violations |
+|---|---|---|---|---|
+| mushroom | **17 → 0** | 5 | 5 | 0 |
+| heart.vox | 2 → 1 | 1 | 1 | 0 |
+| letter-t | 1 → 0 | 1 | 1 | 0 |
+| cantilever | 1 → 0 | 1 | 1 | 0 |
+| wide-arch | 2 → 0 | 1 | 1 | 0 |
+| two-towers-bridge | 0 → 0 | 0 | 0 | 0 |
+
+Mushroom (the worst instruction-quality case in the corpus, 17 unstable
+steps with up to 26 bricks floating mid-build) now builds with zero
+unstable steps: the cap is assembled as five table-built units. Heart's
+one residual is *inside* a sub build (the lobe overhang floats even on
+the table until the next sub step ties it) and carries the honest
+"support the overhang by hand" warning. Two-towers-bridge extracts
+nothing and its flag-on JSON is byte-identical to flag-off on the same
+code. Booklet renders verified visually: sub steps build flat on the
+table with highlights, the attach step seats the whole highlighted unit
+on the stem. 422 tests; goldens untouched.
+
+Deviations from plan: `max_subassemblies` defaults to 6, not the
+planned 4 — measured on mushroom, cap 4 leaves one floating window
+uncaptured (1 unstable step); cap 6 captures all five. The planned
+"attach steps stay warned" caveat mostly did not materialize: attach
+prefixes re-analyze as stable everywhere in the proof set (the RBE sees
+the same final geometry; it was the *intermediate* orders that were
+unstable). Old roadmap "Deferred: MPD subassembly submodels" marked
+DONE.
+
 ## Where things stand
 
 Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and
@@ -220,11 +271,11 @@ remainder by **assembly-by-disassembly** along a maximal-stability path
 (`fallback="band"` is the legacy escape hatch); an opt-in **beam search**
 (`search="beam"`, `beam_states`, `lp_budget`) explores whole build orders
 ranked by (unstable prefixes, summed scores); `sequence_similarity`
-(Kendall's τ + RLSD) and `plan_quality` quantify orders. Deferred: MPD
-subassembly submodels (would change the `InstructionPlan` data model the
-booklet consumes; `BuildStep` can gain `submodel` additively later) and
-±X/±Y block edges (SNOT-only; the blocker-map `Mapping[int,
-frozenset[int]]` seam in `blocking.py` is the plug-in point).
+(Kendall's τ + RLSD) and `plan_quality` quantify orders. MPD
+subassembly submodels: **DONE in v3 item 2** (`--subassemblies`, see the
+progress notes above). Still deferred: ±X/±Y block edges (SNOT-only; the
+blocker-map `Mapping[int, frozenset[int]]` seam in `blocking.py` is the
+plug-in point).
 
 ---
 

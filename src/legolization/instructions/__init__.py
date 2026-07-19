@@ -35,6 +35,7 @@ from legolization.instructions.sequencer import (
     InstructionsConfig,
     InstructionsError,
     RotStep,
+    Subassembly,
     plan_instructions,
     verify_plan,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "SequenceSimilarity",
     "StepEntry",
     "StepImages",
+    "Subassembly",
     "bill_of_materials",
     "booklet_html",
     "build_booklet",

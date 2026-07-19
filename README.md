@@ -57,6 +57,12 @@ solver stack — no Gurobi required.
   maximal-stability path (Tian et al. / Luo); an opt-in beam search
   (`InstructionsConfig(search="beam")`) explores whole build orders. `--bom
   out.json` writes a bill of materials with per-step callouts.
+- **Subassemblies**: `--subassemblies` detects stretches that float in every
+  build order (mushroom caps, arches), lifts them out as separately built
+  units — each constructed stably on the table, then attached as one piece —
+  and emits them as `.mpd` submodel FILE sections. Booklets get per-unit
+  sections and attach callouts; the `.ldr` fallback flattens attach steps
+  back to world-frame bricks.
 - **Booklets**: `--instructions out.html` (or `.pdf`) writes a paginated
   instruction booklet — cover page with model stats, parts list, and one
   rendered image per step with new bricks highlighted and per-step part
@@ -88,6 +94,7 @@ uv run legolization model.vox --strategy bond --bom parts.json
 uv run legolization model.vox --instructions booklet.pdf   # rendered booklet
 uv run legolization model.npy --strategy luo --solid --seed 7
 uv run legolization model.vox --slopes --tiles      # surface finishing passes
+uv run legolization model.vox -o out.mpd --subassemblies  # separately built units
 uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
 uv run legolization model.vox --milp                # cross-check the exact LP
 uv run legolization model.npy --strategy all --jobs 4 --report report.json

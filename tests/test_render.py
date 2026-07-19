@@ -17,6 +17,7 @@ from legolization.instructions.render import (
     _YAW_SIGN,
     RenderConfig,
     Renderer,
+    _extract_submodel,
     _sanitized,
     _step_longitudes,
     _view_segments,
@@ -161,7 +162,7 @@ def test_detect_ldraw_dir_env(
 
 def test_step_longitudes_accumulate_rel_rotsteps() -> None:
     plan = _plan(4, rotsteps={2: RotStep(yaw=90), 4: RotStep(yaw=90)})
-    longitudes = _step_longitudes(plan, base=45.0)
+    longitudes = _step_longitudes(plan.steps, base=45.0)
     assert longitudes[0] == 45.0
     assert longitudes[1] == longitudes[2] == (45.0 + _YAW_SIGN * 90) % 360.0
     assert longitudes[3] == (45.0 + _YAW_SIGN * 180) % 360.0
@@ -172,7 +173,7 @@ def test_step_longitudes_abs_and_end() -> None:
         3,
         rotsteps={2: RotStep(yaw=270, mode="ABS"), 3: RotStep(yaw=0, mode="END")},
     )
-    longitudes = _step_longitudes(plan, base=45.0)
+    longitudes = _step_longitudes(plan.steps, base=45.0)
     assert longitudes[0] == 45.0
     assert longitudes[1] == (45.0 + _YAW_SIGN * 270) % 360.0
     assert longitudes[2] == 45.0
@@ -350,3 +351,119 @@ def test_real_renderer_end_to_end(tmp_path: Path) -> None:
     for image in images.images:
         assert image is not None
         assert image.startswith(b"\x89PNG")
+
+
+# --- subassembly rendering ---
+
+
+_MPD_TEXT = """0 FILE model.mpd
+1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat
+0 STEP
+1 16 0 -72 0 1 0 0 0 1 0 0 0 1 model-sub-1.ldr
+0 STEP
+1 4 20 -24 0 1 0 0 0 1 0 0 0 1 3005.dat
+0 STEP
+0 NOFILE
+0 FILE model-sub-1.ldr
+1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat
+0 STEP
+1 4 0 -48 0 1 0 0 0 1 0 0 0 1 3005.dat
+0 STEP
+0 NOFILE
+"""
+
+
+def test_extract_submodel_slices_file_section() -> None:
+    body = _extract_submodel(_MPD_TEXT, "model-sub-1.ldr")
+    assert body is not None
+    assert body.count("0 STEP") == 2
+    assert "0 FILE" not in body
+    assert _extract_submodel(_MPD_TEXT, "model-sub-9.ldr") is None
+
+
+def _sub_plan() -> InstructionPlan:
+    from legolization.instructions import Subassembly
+
+    steps = (
+        BuildStep(index=1, brick_ids=(1,), prefix_stable=True, prefix_max_score=0.0),
+        BuildStep(
+            index=2,
+            brick_ids=(10,),
+            prefix_stable=True,
+            prefix_max_score=0.0,
+            submodel="sub-1",
+        ),
+        BuildStep(
+            index=3,
+            brick_ids=(11,),
+            prefix_stable=True,
+            prefix_max_score=0.0,
+            submodel="sub-1",
+        ),
+        BuildStep(
+            index=4,
+            brick_ids=(),
+            prefix_stable=True,
+            prefix_max_score=0.0,
+            attaches="sub-1",
+        ),
+        BuildStep(index=5, brick_ids=(2,), prefix_stable=True, prefix_max_score=0.0),
+    )
+    return InstructionPlan(
+        steps=steps,
+        warnings=(),
+        bom=BillOfMaterials(total=(), per_step=()),
+        subassemblies=(Subassembly(name="sub-1", brick_ids=(10, 11), anchor_layer=9),),
+    )
+
+
+def _naming_runner() -> Callable[[list[str], float], str]:
+    """Stamp each PNG with the rendered file's stem for mapping assertions."""
+
+    def run(cmd: list[str], timeout_s: float) -> str:
+        model = Path(cmd[1])
+        out = Path(cmd[cmd.index("-i") + 1])
+        first = int(cmd[cmd.index("-f") + 1])
+        last = int(cmd[cmd.index("-t") + 1])
+        for step_no in range(first, last + 1):
+            name = "step.png" if first == last else f"step{step_no:02d}.png"
+            (out.parent / name).write_bytes(f"{model.stem}:{step_no}".encode())
+        return ""
+
+    return run
+
+
+def test_sub_images_align_with_flat_plan_steps(tmp_path: Path) -> None:
+    plan = _sub_plan()
+    model = tmp_path / "model.mpd"
+    model.write_text(_MPD_TEXT)
+    images = render_step_images(
+        model,
+        plan,
+        config=RenderConfig(renderer=_leocad(tmp_path), ldraw_dir=_ldraw_dir(tmp_path)),
+        runner=_naming_runner(),
+    )
+    assert [
+        image.decode() if image is not None else None for image in images.images
+    ] == ["model:1", "model-sub-1:1", "model-sub-1:2", "model:2", "model:3"]
+
+
+def test_ldr_input_with_subassemblies_warns(tmp_path: Path) -> None:
+    plan = _sub_plan()
+    model = tmp_path / "model.ldr"
+    body = _MPD_TEXT.splitlines()[1:7]  # main section only, no FILE headers
+    model.write_text("\n".join(body) + "\n")
+    images = render_step_images(
+        model,
+        plan,
+        config=RenderConfig(renderer=_leocad(tmp_path), ldraw_dir=_ldraw_dir(tmp_path)),
+        runner=_naming_runner(),
+    )
+    assert any(".mpd" in warning for warning in images.warnings)
+    assert [image is None for image in images.images] == [
+        False,
+        True,
+        True,
+        False,
+        False,
+    ]

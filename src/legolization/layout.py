@@ -8,7 +8,7 @@ O(n²) scans of the sample repos).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -156,6 +156,28 @@ class Layout:
         self.bricks = other.bricks
         self.occupancy = other.occupancy
         self._next_id = other._next_id
+
+    def translated(self, *, dz: int) -> Layout:
+        """Return an id-preserving copy shifted down by ``dz`` plate layers.
+
+        Used to analyze a subassembly as its own grounded-on-table
+        structure. Constructs the dicts directly — ``add`` would reassign
+        brick ids, and subassembly bookkeeping depends on them.
+        """
+        bricks = {
+            bid: replace(brick, layer=brick.layer - dz)
+            for bid, brick in self.bricks.items()
+        }
+        occupancy = {(x, y, z - dz): bid for (x, y, z), bid in self.occupancy.items()}
+        if any(cell[2] < 0 for cell in occupancy):
+            msg = f"translation by {dz} would sink bricks below ground"
+            raise ValueError(msg)
+        return Layout(
+            catalog=self.catalog,
+            bricks=bricks,
+            occupancy=occupancy,
+            _next_id=self._next_id,
+        )
 
     def total_mass_g(self) -> float:
         """Total mass of all placed bricks in grams."""

@@ -371,3 +371,119 @@ def test_happy_path_runs_one_probe_per_step_warm() -> None:
     probes = session.spans.get("stability.prefix.probe")
     assert probes is not None
     assert probes.calls == len(plan.steps) == 3
+
+
+# --- subassemblies ---------------------------------------------------------
+
+
+def _add_mini_mushroom(layout: Layout, x0: int) -> None:
+    """Stem with an overhanging petal only held by a bridge from above."""
+    for level in (0, 3, 6):
+        layout.add("brick_2x2", x0 + 2, 3, level, 0, 15)  # stem
+    layout.add("brick_2x2", x0, 3, 9, 0, 4)  # petal, no support below
+    layout.add("brick_2x2", x0 + 2, 3, 9, 0, 4)  # hub on the stem
+    layout.add("brick_2x2", x0 + 1, 3, 12, 0, 4)  # bridge petal to hub
+
+
+def _mini_mushroom() -> Layout:
+    layout = Layout(catalog=default_catalog())
+    _add_mini_mushroom(layout, 1)
+    return layout
+
+
+def test_subassembly_extraction_on_mini_mushroom() -> None:
+    layout = _mini_mushroom()
+    base = plan_instructions(layout, config=InstructionsConfig(rotstep=False))
+    base_unstable = sum(1 for s in base.steps if not s.prefix_stable)
+    assert base_unstable > 0
+    config = InstructionsConfig(rotstep=False, subassemblies=True)
+    plan = plan_instructions(layout, config=config)
+    assert plan.subassemblies
+    assert sorted(plan.order) == sorted(layout.bricks)
+    unstable = sum(1 for s in plan.steps if not s.prefix_stable)
+    assert unstable <= base_unstable
+    for sub in plan.subassemblies:
+        sub_steps = plan.sub_steps(sub.name)
+        assert sub_steps
+        assert all(s.prefix_stable for s in sub_steps)
+        attach = [s for s in plan.steps if s.attaches == sub.name]
+        assert len(attach) == 1
+        assert attach[0].brick_ids == ()
+        assert sub.anchor_layer == min(
+            layout.bricks[bid].layer for bid in sub.brick_ids
+        )
+    assert verify_plan(layout, plan, config=config) == []
+
+
+def test_subassemblies_off_is_todays_plan() -> None:
+    layout = _mini_mushroom()
+    config = InstructionsConfig(rotstep=False)
+    plain = plan_instructions(layout, config=config)
+    assert plain.subassemblies == ()
+    assert all(s.submodel is None and s.attaches is None for s in plain.steps)
+
+
+def test_min_sub_bricks_gate() -> None:
+    layout = _mini_mushroom()
+    config = InstructionsConfig(
+        rotstep=False, subassemblies=True, min_sub_bricks=10_000
+    )
+    plan = plan_instructions(layout, config=config)
+    assert plan.subassemblies == ()
+
+
+def test_max_subassemblies_cap() -> None:
+    layout = Layout(catalog=default_catalog())
+    _add_mini_mushroom(layout, 1)
+    _add_mini_mushroom(layout, 11)  # disjoint twin -> two candidate clusters
+    uncapped = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert len(uncapped.subassemblies) == 2
+    capped = plan_instructions(
+        layout,
+        config=InstructionsConfig(
+            rotstep=False, subassemblies=True, max_subassemblies=1
+        ),
+    )
+    assert len(capped.subassemblies) == 1
+
+
+def test_verify_plan_flags_broken_subassembly() -> None:
+    layout = _mini_mushroom()
+    config = InstructionsConfig(rotstep=False, subassemblies=True)
+    plan = plan_instructions(layout, config=config)
+    assert plan.subassemblies
+    # Attach step that claims to place bricks is a violation.
+    broken_steps = tuple(
+        replace(s, brick_ids=tuple(plan.subassemblies[0].brick_ids[:1]))
+        if s.attaches is not None
+        else s
+        for s in plan.steps
+    )
+    broken = replace(plan, steps=broken_steps)
+    violations = verify_plan(layout, broken, config=config)
+    assert violations
+
+
+def test_subassembly_plans_are_deterministic() -> None:
+    layout = _mini_mushroom()
+    config = InstructionsConfig(rotstep=False, subassemblies=True)
+    a = plan_instructions(layout, config=config)
+    b = plan_instructions(layout, config=config)
+    assert a.steps == b.steps
+    assert a.subassemblies == b.subassemblies
+
+
+def test_layout_translated_preserves_ids() -> None:
+    layout = _mini_mushroom()
+    ids = sorted(layout.bricks)
+    top = layout.subset(bid for bid in ids if layout.bricks[bid].layer >= 9)
+    moved = top.translated(dz=9)
+    assert sorted(moved.bricks) == sorted(top.bricks)
+    assert min(b.layer for b in moved) == 0
+    assert all(
+        moved.bricks[bid].layer == top.bricks[bid].layer - 9 for bid in moved.bricks
+    )
+    with pytest.raises(ValueError, match="below ground"):
+        top.translated(dz=100)

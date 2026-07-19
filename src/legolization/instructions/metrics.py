@@ -33,6 +33,8 @@ class PlanQuality:
     unstable_steps: int
     max_prefix_score: float
     mean_prefix_score: float
+    subassembly_count: int = 0
+    attach_steps: int = 0
 
 
 def sequence_similarity(
@@ -89,4 +91,6 @@ def plan_quality(plan: InstructionPlan) -> PlanQuality:
         unstable_steps=sum(1 for step in plan.steps if not step.prefix_stable),
         max_prefix_score=max(scores),
         mean_prefix_score=sum(scores) / len(scores),
+        subassembly_count=len(plan.subassemblies),
+        attach_steps=sum(1 for step in plan.steps if step.attaches is not None),
     )
