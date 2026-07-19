@@ -267,6 +267,13 @@ def test_import_cli_rejects_placement_flags(tmp_path):
         ["-o", str(tmp_path / "x.ldr"), "--strategy", "luo"],
         ["-o", str(tmp_path / "x.ldr"), "--slopes"],
         ["-o", str(tmp_path / "x.ldr"), "--dither"],
+        # PR #18 pre-existing obs: these were silently ignored before.
+        ["-o", str(tmp_path / "x.ldr"), "--seed", "7"],
+        ["-o", str(tmp_path / "x.ldr"), "--time-budget", "5"],
+        ["-o", str(tmp_path / "x.ldr"), "--beauty-preset", "stability"],
+        ["-o", str(tmp_path / "x.ldr"), "--colour", "soft"],
+        ["-o", str(tmp_path / "x.ldr"), "--shell-plates", "2"],
+        ["-o", str(tmp_path / "x.ldr"), "--stability-weight", "2.0"],
     ):
         with pytest.raises(SystemExit) as excinfo:
             main([str(source), *extra])

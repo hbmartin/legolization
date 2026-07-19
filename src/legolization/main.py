@@ -563,22 +563,37 @@ def _validate_ldraw_args(
         parser.error(
             "--strategy does not apply to .ldr/.mpd inputs (import skips placement)"
         )
-    placement_flags = (
-        args.solid
-        or args.slopes is not None
-        or args.tiles
-        or args.snot
-        or args.no_refine
-        or args.no_repair
-        or args.milp
-        or args.plates_per_voxel is not None
-        or args.aspect_correct
-        or args.dither
-    )
-    if placement_flags:
+    # Non-None defaults compare against the default value, matching the
+    # --strategy check above: an explicitly-passed default is
+    # indistinguishable but also harmless.
+    ignored = [
+        name
+        for name, given in (
+            ("--solid", args.solid),
+            ("--slopes", args.slopes is not None),
+            ("--tiles", args.tiles),
+            ("--snot", args.snot),
+            ("--no-refine", args.no_refine),
+            ("--no-repair", args.no_repair),
+            ("--milp", args.milp),
+            ("--plates-per-voxel", args.plates_per_voxel is not None),
+            ("--aspect-correct", args.aspect_correct),
+            ("--dither", args.dither),
+            ("--time-budget", args.time_budget is not None),
+            ("--ga-generations", args.ga_generations != 200),
+            ("--beauty-preset", args.beauty_preset != "balanced"),
+            ("--shell-plates", args.shell_plates != 3),
+            ("--seed", args.seed != 0),
+            ("--colour", args.colour != "hard"),
+            ("--colour-weight", args.colour_weight != 1.0),
+            ("--stability-weight", args.stability_weight != 4.0),
+        )
+        if given
+    ]
+    if ignored:
         parser.error(
-            "placement/voxelization flags do not apply to .ldr/.mpd "
-            "inputs (the model's bricks are imported as-is)"
+            f"{'/'.join(ignored)} do not apply to .ldr/.mpd inputs "
+            "(placement never runs: the model's bricks are imported as-is)"
         )
     if args.output is None:
         parser.error(
