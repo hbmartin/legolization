@@ -160,6 +160,40 @@ field), 99781/4070/4733 (half-plate arms, sub-cell depth, blocker
 over-conservatism), true 8-LDU tile depth (the grid cannot express
 8-of-20-LDU horizontal occupancy).
 
+### 2026-07-19 — PR #18 review remediation (11 commits)
+
+Every finding in `docs/pr-18-review.md` addressed on this branch
+(v4 scope; the two v5-scope responses — BridgeSynthesizer enumeration
+order, vectorized `unsupported_ratio` — land on roadmap-v5). P1: the
+outward ray walk in `instructions/blocking.py` now bisects per-line
+sorted occupancy indexes built in the same pass as the stud-sweep
+`columns` dict — a billion-stud gap costs one bisect (<0.1 s test pin)
+instead of a coordinate-by-coordinate walk to global bounds, with a
+dense-vs-sparse semantics-equality test. P2s: `improve_connectivity`
+takes a monotonic `deadline` checked before every iteration and draw
+(engine passes its remaining budget); trajectory rows follow a global
+gauge-emission sequence (`Telemetry.events`), fixing the
+placed-before-repaired inversion; the layered engine emits the
+promised `place.tiled.components`/`place.compacted.components` gauges
+and `count_trajectory`'s docstring states exact per-phase coverage;
+`git_sha` resolves linked-worktree `gitdir:`/`commondir` indirections
+(pinned by a real `git worktree add` + `pack-refs` test); kollsker
+checks the deadline before AND after candidate enumeration; profiles
+stamp the effective input identity (`ResolvedInput`: source, manifest
+mesh options via the new shared `eval_corpus.model_mesh_options`,
+sha256/generator input hash) instead of the ignored CLI flags;
+`_Bucket` regained the legacy `[calls, seconds]` sequence interface
+(JSON pin untouched). P3s: `bridge_draws < 1` and negative
+`connectivity_fail_max` raise at their boundaries; `count_trajectory`
+argparse validates strategy names and numeric flags up front.
+Pre-existing obs 1: LDraw inputs now reject all eight previously
+silently-ignored placement flags via a data-driven table that names
+the offenders. Pre-existing obs 2 (SNOT chunks force the cold rescue
+path) is deferred to the performance backlog below — it requires
+teaching the warm PrefixSolver lateral contacts, a workstream with
+dual-engine equivalence nets, not a checkbox. Gates per commit: ruff,
+526 fast tests, ty, pyrefly (pdfplumber baseline), lizard CCN-18.
+
 ### 2026-07-19 — v4 program end
 
 Full gates green (516 tests; ruff/ty/pyrefly/lizard CCN-18 clean;
@@ -774,6 +808,16 @@ tests confirm a side-stud connection transmits the expected friction load.
   (`compare.run_all`) fans out over a spawn process pool and keeps the best
   candidate — across strategies at one seed; the multi-seed sweep is now a
   small extension of the same runner.
+- **Warm sequencing for SNOT layouts.** The warm prefix/removal solvers
+  decline any layout containing lateral parts
+  (`stability/prefix.py::_has_lateral_parts`), so `--snot` models
+  sequence entirely on the cold engine — and the sequencer's rescue
+  path (disassembly-order fallback) pays cold LP costs per step
+  (PR #18 review, pre-existing observation). The fix is teaching
+  `PrefixSolver` lateral contact discovery (docs/performance-testing.md
+  §7's known gap), which is its own workstream: it needs dual-engine
+  equivalence nets mirroring `tests/test_prefix_solver.py` before any
+  SNOT model can trust warm verdicts, not a review checkbox.
 
 ## I/O and tooling backlog
 
