@@ -245,9 +245,25 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     }
     workers = jobs if jobs > 0 else min(len(configs), os.cpu_count() or 1)
     if workers == 1:
+        # One monotonic deadline for the whole sequential sweep: stop
+        # launching once it expires and hand each candidate only the
+        # remaining budget (PR #17 review, P1 — previously every
+        # candidate got a fresh full timeout and the sweep overran).
+        deadline = time.monotonic() + timeout_s if timeout_s is not None else None
         candidates = []
-        for candidate_config in configs.values():
-            candidate = _run_candidate(grid, candidate_config)
+        for (name, seed), candidate_config in configs.items():
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                candidate = Candidate(
+                    strategy=name,
+                    seconds=0.0,
+                    error="sweep deadline expired before this candidate started",
+                    seed=seed,
+                )
+            else:
+                candidate = _run_candidate(
+                    grid, _restrict_budget(candidate_config, remaining)
+                )
             _report(progress, candidate)
             candidates.append(candidate)
     else:
@@ -279,6 +295,17 @@ def _candidate_config(
         progress=None,
         time_budget_s=min(budgets) if budgets else None,
     )
+
+
+def _restrict_budget(
+    config: PipelineConfig,
+    remaining: float | None,
+) -> PipelineConfig:
+    """Tighten a candidate's time budget to the sweep's remaining seconds."""
+    if remaining is None:
+        return config
+    budgets = [b for b in (config.time_budget_s, remaining) if b is not None]
+    return replace(config, time_budget_s=min(budgets))
 
 
 def _run_candidate(grid: VoxelGrid, config: PipelineConfig) -> Candidate:

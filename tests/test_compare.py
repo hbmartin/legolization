@@ -622,3 +622,38 @@ def test_full_sweep_selects_buildable_winner() -> None:
     assert winner is not None
     assert winner.metrics is not None
     assert winner.metrics.buildable
+
+
+def test_sequential_sweep_enforces_one_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PR #17 review (P1): with jobs=1 every candidate used to get a fresh
+    # full timeout; the sweep must stop launching once its single
+    # monotonic deadline expires and report the skipped candidates.
+    clock = {"now": 0.0}
+    monkeypatch.setattr(legolization.compare.time, "monotonic", lambda: clock["now"])
+
+    def fake_run_candidate(grid: object, config: PipelineConfig) -> Candidate:
+        clock["now"] += 0.05  # each candidate costs 50 ms
+        return Candidate(
+            strategy=config.strategy,
+            seconds=0.05,
+            seed=config.seed,
+        )
+
+    monkeypatch.setattr(legolization.compare, "_run_candidate", fake_run_candidate)
+    codes = np.full((2, 2, 2), 4, dtype=np.int16)
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
+    candidates = run_all(
+        grid,
+        PipelineConfig(seed=0),
+        names=("greedy",),
+        seeds=(0, 1, 2),
+        jobs=1,
+        timeout_s=0.08,
+    )
+    ran = [c for c in candidates if c.error is None]
+    skipped = [c for c in candidates if c.error is not None]
+    assert len(ran) == 2  # third start would exceed the 80 ms deadline
+    assert len(skipped) == 1
+    assert "deadline expired" in (skipped[0].error or "")
