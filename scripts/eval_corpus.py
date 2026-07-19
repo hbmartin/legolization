@@ -98,10 +98,37 @@ def model_grid(corpus: ModuleType, model: CorpusModelLike) -> VoxelGrid | None:
             )
 
 
+def unsupported_ratio(grid: VoxelGrid | None) -> float | None:
+    """Liu et al. 2024's Cs: fraction of filled voxels with nothing below.
+
+    A cheap difficulty stat — higher means more overhang and a layout
+    that needs more sophisticated support design.
+    """
+    if grid is None or grid.filled_count == 0:
+        return None
+    from legolization.grid import EMPTY  # noqa: PLC0415 - scripts stay lean
+
+    codes = grid.codes
+    filled = 0
+    unsupported = 0
+    nx, ny, nz = grid.shape
+    for x in range(nx):
+        for y in range(ny):
+            for z in range(nz):
+                if codes[x, y, z] == EMPTY:
+                    continue
+                filled += 1
+                if z > 0 and codes[x, y, z - 1] == EMPTY:
+                    unsupported += 1
+    return round(unsupported / filled, 4)
+
+
 def build_row(
     model: CorpusModelLike,
     report_dict: dict | None,
     status: str,
+    *,
+    grid: VoxelGrid | None = None,
 ) -> dict:
     """Assemble one JSON-safe scorecard row."""
     row: dict = {
@@ -109,6 +136,7 @@ def build_row(
         "kind": model.kind,
         "traits": list(model.traits),
         "status": status,
+        "unsupported_ratio": unsupported_ratio(grid),
         "expect_min_buildable": model.expect_min_buildable,
         "buildable_count": 0,
         "expectation_ok": model.expect_min_buildable == 0,
@@ -439,7 +467,7 @@ def _sweep(
         )
         report = select_best(candidates)
         status = "ok" if report.winner is not None else "error: all failed"
-        rows.append(build_row(model, report.to_dict(), status))
+        rows.append(build_row(model, report.to_dict(), status, grid=grid))
     return rows
 
 
