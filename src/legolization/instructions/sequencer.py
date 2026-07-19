@@ -167,8 +167,17 @@ def plan_instructions(
             blocks[blocker].add(brick_id)
 
     chunks = chunk_bands(layout, config=config, pairs=mirror_pairs(layout))
+    # With subassemblies on, strictness is judged AFTER the rewrite: the
+    # extraction exists to stabilize persistently floating stretches, so
+    # the pre-rewrite sequence must be allowed to carry warnings
+    # (PR #17 review — strict+subassemblies used to raise before the
+    # rewrite could make the plan stable).
+    strict_after_rewrite = config.subassemblies and config.stability_policy == "strict"
+    sequencing_config = (
+        replace(config, stability_policy="warn") if strict_after_rewrite else config
+    )
     ordered_steps, warnings = _sequence(
-        layout, config, chunks, supports, blockers, blocks
+        layout, sequencing_config, chunks, supports, blockers, blocks
     )
     plan = InstructionPlan(
         steps=tuple(ordered_steps),
@@ -181,6 +190,13 @@ def plan_instructions(
         )
 
         plan = extract_subassemblies(layout, plan, config=config)
+        if strict_after_rewrite and any(not step.prefix_stable for step in plan.steps):
+            unstable = [step.index for step in plan.steps if not step.prefix_stable]
+            msg = (
+                f"no stable ordering even with subassemblies "
+                f"(steps {unstable} stay unstable)"
+            )
+            raise InstructionsError(msg)
     if config.rotstep:
         plan = replace(
             plan, steps=tuple(_assign_rotsteps_subaware(layout, list(plan.steps)))
@@ -525,6 +541,7 @@ def verify_plan(
             walker.attach_step(step)
         else:
             walker.main_step(step)
+    walker.finish()
     return walker.violations
 
 
@@ -541,6 +558,7 @@ class _PlanVerifier:
     placed: set[int]
     prefix_solver: PrefixSolver | None
     violations: list[str]
+    attach_counts: dict[str, int]
 
     @classmethod
     def create(
@@ -567,6 +585,7 @@ class _PlanVerifier:
             # Final-order main prefixes are strictly append-only: warm fit.
             prefix_solver=PrefixSolver.create(layout, config.solver),
             violations=[],
+            attach_counts=dict.fromkeys(subs, 0),
         )
 
     def _analyzed(self, subset: set[int]) -> StabilityResult:
@@ -606,6 +625,7 @@ class _PlanVerifier:
             self.violations.append(f"step {step.index}: unknown subassembly")
             return
         unit = set(sub.brick_ids)
+        self.attach_counts[sub.name] += 1
         if self.sub_placed[sub.name] != unit:
             self.violations.append(
                 f"step {step.index}: attach before subassembly complete"
@@ -634,6 +654,25 @@ class _PlanVerifier:
         self.placed |= unit
         if self.prefix_solver is not None:
             self.prefix_solver.commit(tuple(unit))
+
+    def finish(self) -> None:
+        """Whole-plan checks after the walk.
+
+        ``plan.order`` counts sub-build bricks, so a plan missing its
+        attach step still "covers" every brick while the emitted world
+        holds only the main model (PR #17 review) — require each
+        declared subassembly to attach exactly once and the final world
+        to equal the layout.
+        """
+        for name, count in sorted(self.attach_counts.items()):
+            if count != 1:
+                self.violations.append(
+                    f"subassembly {name} attached {count} time(s), expected 1"
+                )
+        if self.placed != set(self.layout.bricks):
+            self.violations.append(
+                "final assembly does not place every brick in the layout"
+            )
 
     def main_step(self, step: BuildStep) -> None:
         """Check one ordinary step's supports, blockers, and verdict."""

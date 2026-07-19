@@ -511,3 +511,57 @@ def test_profile_rejected_for_sweep_and_import(tmp_path):
             ]
         )
     assert excinfo.value.code == 2
+
+
+def test_verify_plan_requires_exactly_one_attach():
+    # Removing the attach step used to leave plan.order complete while
+    # the emitted world lost the whole subassembly (PR #17 review).
+    layout = _mini_mushroom()
+    config = InstructionsConfig(rotstep=False, subassemblies=True)
+    plan = plan_instructions(layout, config=config)
+    assert plan.subassemblies
+    without_attach = replace(
+        plan,
+        steps=tuple(s for s in plan.steps if s.attaches is None),
+    )
+    violations = verify_plan(layout, without_attach, config=config)
+    assert any("attached 0 time" in v for v in violations)
+    assert any("does not place every brick" in v for v in violations)
+
+    doubled = replace(
+        plan,
+        steps=(*plan.steps, next(s for s in plan.steps if s.attaches is not None)),
+    )
+    violations = verify_plan(layout, doubled, config=config)
+    assert any("attached 2 time" in v for v in violations)
+
+
+def test_strict_policy_judged_after_subassembly_rewrite():
+    # The mini mushroom is unorderable without subassemblies (strict
+    # raises), but fully stable with them: strict + subassemblies must
+    # succeed by enforcing strictness on the rewritten plan.
+    layout = _mini_mushroom()
+    with pytest.raises(InstructionsError, match="no stable ordering"):
+        plan_instructions(
+            layout,
+            config=InstructionsConfig(rotstep=False, stability_policy="strict"),
+        )
+    plan = plan_instructions(
+        layout,
+        config=InstructionsConfig(
+            rotstep=False, stability_policy="strict", subassemblies=True
+        ),
+    )
+    assert plan.subassemblies
+    assert all(step.prefix_stable for step in plan.steps)
+
+
+def test_strict_with_subassemblies_still_raises_when_unfixable(bad_bridge):
+    layout, _ = bad_bridge  # collapses even fully built
+    with pytest.raises(InstructionsError, match="no stable ordering"):
+        plan_instructions(
+            layout,
+            config=InstructionsConfig(
+                rotstep=False, stability_policy="strict", subassemblies=True
+            ),
+        )

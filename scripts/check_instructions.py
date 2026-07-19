@@ -76,6 +76,10 @@ def check_steps(
             audit_layout = result_layout.subset(placed)
         graph = ConnectionGraph.from_layout(audit_layout)
         floating_after = len(graph.floating_ids())
+        # "attach" is neutral metadata (the ``attaches`` field), never a
+        # flag: flags drive the exit-2 warning status, and a valid
+        # subassembly plan must be able to come back clean (PR #17
+        # review).
         flags = []
         if floating_after:
             flags.append("floating")
@@ -83,8 +87,6 @@ def check_steps(
             flags.append("unstable-prefix")
         if len(step.brick_ids) > max_step_size:
             flags.append("oversized")
-        if step.attaches is not None:
-            flags.append("attach")
         rows.append(
             {
                 "index": step.index,
