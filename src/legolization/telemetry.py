@@ -65,6 +65,11 @@ class Telemetry:
 
     spans: dict[str, SpanStats] = field(default_factory=dict)
     values: dict[str, list[float]] = field(default_factory=dict)
+    events: list[tuple[str, float]] = field(default_factory=list)
+    """Every gauge reading in emission order — the global sequence the
+    per-name ``values`` lists cannot reconstruct (PR #18 review: phase
+    rows printed placed-before-repaired because names were ordered
+    independently)."""
 
     def add(self, name: str, seconds: float, n: int | None = None) -> None:
         """Record one finished call of ``name``."""
@@ -74,9 +79,12 @@ class Telemetry:
         """Append one exact gauge reading.
 
         Spans bucket ``n`` by powers of two; phase-boundary quantities
-        like brick counts need this lossless channel.
+        like brick counts need this lossless channel. The reading joins
+        both the per-name ``values`` list and the global ``events``
+        sequence.
         """
         self.values.setdefault(name, []).append(value)
+        self.events.append((name, value))
 
     def to_dict(self) -> dict[str, object]:
         """JSON-safe span view: ``{name: {calls, seconds, buckets}}``.
@@ -101,6 +109,10 @@ class Telemetry:
     def values_dict(self) -> dict[str, list[float]]:
         """JSON-safe gauge view: ``{name: [reading, ...]}`` in order."""
         return {name: list(entries) for name, entries in sorted(self.values.items())}
+
+    def events_list(self) -> list[tuple[str, float]]:
+        """Gauge readings in global emission order (JSON-safe pairs)."""
+        return list(self.events)
 
 
 class _Span:

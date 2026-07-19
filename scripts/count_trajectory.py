@@ -74,23 +74,47 @@ class _Row(NamedTuple):
     stable: bool | None
 
 
-def _rows(values: dict[str, list[float]]) -> list[_Row]:
-    """Flatten the gauge readings into ordered phase rows."""
+def _rows(events: list[tuple[str, float]]) -> list[_Row]:
+    """Order phase rows by gauge EMISSION sequence, not by phase name.
+
+    Grouping per name printed pass-two tiling before pass-one repair
+    (and even placed before repaired, which is emitted first inside
+    _place_and_repair) — deltas were attributed to the wrong phase
+    (PR #18 review). Rows now follow the global event log; the i-th
+    ``.bricks`` reading of a phase pairs with that phase's i-th
+    companion components/stable readings.
+    """
+    labels = dict(_PHASES)
+    by_name: dict[str, list[float]] = {}
+    for name, value in events:
+        by_name.setdefault(name, []).append(value)
     rows: list[_Row] = []
-    for key, label in _PHASES:
-        bricks = values.get(f"{key}.bricks", [])
-        components = values.get(f"{key}.components", [])
-        stable = values.get(f"{key}.stable", [])
-        for i, count in enumerate(bricks):
-            rows.append(
-                _Row(
-                    phase=label,
-                    occurrence=i + 1,
-                    bricks=int(count),
-                    components=int(components[i]) if i < len(components) else None,
-                    stable=bool(stable[i]) if i < len(stable) else None,
-                )
+    seen: dict[str, int] = {}
+    for name, value in events:
+        if not name.endswith(".bricks"):
+            continue
+        key = name.removesuffix(".bricks")
+        if key not in labels:
+            continue
+        occurrence = seen.get(key, 0) + 1
+        seen[key] = occurrence
+        components = by_name.get(f"{key}.components", [])
+        stable = by_name.get(f"{key}.stable", [])
+        rows.append(
+            _Row(
+                phase=labels[key],
+                occurrence=occurrence,
+                bricks=int(value),
+                components=(
+                    int(components[occurrence - 1])
+                    if occurrence <= len(components)
+                    else None
+                ),
+                stable=(
+                    bool(stable[occurrence - 1]) if occurrence <= len(stable) else None
+                ),
             )
+        )
     return rows
 
 
@@ -125,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     total = time.perf_counter() - started
 
     values = session.values_dict()
-    rows = _rows(values)
+    rows = _rows(session.events_list())
     connectivity = session.spans.get("connectivity.attempt")
     accepts = session.spans.get("connectivity.accept")
     payload = {
@@ -153,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "trajectory": [row._asdict() for row in rows],
         "values": values,
+        "events": [[name, value] for name, value in session.events_list()],
     }
     variant = "".join(
         tag
