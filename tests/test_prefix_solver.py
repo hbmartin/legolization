@@ -291,3 +291,54 @@ def test_probe_brick_below_matches_cold():
     fresh.commit((bridge,))
     fresh_probe = fresh.probe((decoration,))
     assert _score_drift(again, fresh_probe) < 1e-12
+
+
+_DIRECT = SolverConfig(engine="highspy", rescue_direct_min_bricks=1)
+
+
+def test_direct_rescue_solve_matches_cold():
+    # With the size gate forced open, every uncached component solves
+    # through highspy directly; verdicts must match the scipy path with
+    # only alternative-optima-class drift.
+    layout, ids = _tower_layout()
+    scope = frozenset(ids)
+    direct = RemovalSolver.create(layout, scope, _DIRECT)
+    assert direct is not None
+    cold = RemovalSolver.create(layout, scope, _WARM)
+    assert cold is not None
+    for chunk in ((), (ids[4],), (ids[3], ids[4])):
+        a = direct.probe_without(chunk)
+        b = cold.probe_without(chunk)
+        assert a.stable == b.stable
+        assert abs(a.objective - b.objective) <= 1e-6 + 1e-3 * abs(b.objective)
+
+
+def test_direct_rescue_failure_falls_back_to_scipy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.stability.prefix as prefix_mod
+
+    def failing(*args: object, **kwargs: object) -> object:
+        msg = "direct solve exploded"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(prefix_mod, "_solve_lp_highspy", failing)
+    layout, ids = _tower_layout()
+    solver = RemovalSolver.create(layout, frozenset(ids), _DIRECT)
+    assert solver is not None
+    with telemetry.record() as session:
+        result = solver.probe_without(())
+    cold = analyze(layout, _WARM)
+    assert result.stable == cold.stable
+    assert session.spans["stability.rescue.cold_fallback"].calls >= 1
+
+
+def test_direct_rescue_gate_keeps_small_models_scipy_exact():
+    # Default gate (200 bricks): heart-sized components never take the
+    # direct path, protecting the 1e-6 equivalence and plan-bytes pins.
+    layout, ids = _tower_layout()
+    solver = RemovalSolver.create(layout, frozenset(ids), _WARM)
+    assert solver is not None
+    with telemetry.record() as session:
+        solver.probe_without(())
+    assert "stability.rescue.cold_direct" not in session.spans
