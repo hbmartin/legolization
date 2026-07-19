@@ -74,10 +74,12 @@ class Candidate:
 
     strategy: str
     seconds: float
-    seed: int = 0
     result: PipelineResult | None = None
     metrics: CandidateMetrics | None = None
     error: str | None = None
+    # Appended after the original fields: positional callers predating the
+    # multi-seed sweep keep their meaning (PR #17 review).
+    seed: int = 0
 
     @property
     def ok(self) -> bool:

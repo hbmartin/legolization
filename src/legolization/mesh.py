@@ -56,9 +56,11 @@ class MeshOptions:
     pitch: float | None = None
     up: Literal["x", "y", "z"] = "z"
     colour_code: int = DEFAULT_MESH_COLOUR
-    colour_mode: Literal["uniform", "sampled"] = "uniform"
     fill: bool = True
     keep_largest: bool = False
+    # Appended after the original fields: positional callers predating
+    # colour sampling keep their meaning (PR #17 review).
+    colour_mode: Literal["uniform", "sampled"] = "uniform"
 
     def __post_init__(self) -> None:
         """Reject invalid programmatic configuration at the API boundary."""

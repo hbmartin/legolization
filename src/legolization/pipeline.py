@@ -56,9 +56,6 @@ class PipelineConfig:
     ``"smooth"`` (or legacy ``True``) adds slopes outside the shape."""
 
     tiles: bool = False
-    snot: bool = False
-    """Clad tall flat wall faces with sideways tiles on 87087 brackets."""
-
     refine: bool = True
     seed: int = 0
     plates_per_voxel: int = 3
@@ -71,8 +68,6 @@ class PipelineConfig:
     dither: bool = False
     time_budget_s: float | None = None
     ga_generations: int = 200
-    milp_layer_time_s: float = 10.0
-    milp_bond_weight: float = 1.0
     beauty_preset: Literal["balanced", "stability", "aesthetics", "efficiency"] = (
         "balanced"
     )
@@ -83,6 +78,15 @@ class PipelineConfig:
     mesh: MeshOptions = field(default_factory=MeshOptions)
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
+
+    # Fields below are appended after the 0.2.0 layout so positional
+    # callers keep their meaning (PR #17 review); add new fields at the
+    # end only.
+    snot: bool = False
+    """Clad tall flat wall faces with sideways tiles on 87087 brackets."""
+
+    milp_layer_time_s: float = 10.0
+    milp_bond_weight: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,8 +104,11 @@ class PipelineResult:
     floating_count: int
     slopes_added: int = 0
     tiles_added: int = 0
-    snot_added: int = 0
     plan: InstructionPlan | None = None
+
+    # Appended after the 0.2.0 layout for positional compatibility
+    # (PR #17 review); add new fields at the end only.
+    snot_added: int = 0
 
     @property
     def step_count(self) -> int:
