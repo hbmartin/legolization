@@ -153,9 +153,20 @@ class LayeredStrategy:
                     f"layer {index + 1}/{len(problems)} "
                     f"({100 * done // total}% of cells)"
                 )
+        recording = telemetry.current() is not None
         telemetry.value("place.tiled.bricks", len(layout))
+        if recording:  # graph builds only when a session is recording
+            telemetry.value(
+                "place.tiled.components",
+                ConnectionGraph.from_layout(layout).component_count(),
+            )
         compact_vertical(layout)
         telemetry.value("place.compacted.bricks", len(layout))
+        if recording:
+            telemetry.value(
+                "place.compacted.components",
+                ConnectionGraph.from_layout(layout).component_count(),
+            )
         # Layered tilings are per-layer minima worth defending: best-of-k
         # bridging resists the count inflation measured in
         # docs/kollsker-drift-report.md. The greedy path keeps the

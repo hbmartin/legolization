@@ -1,12 +1,14 @@
 """Trace a model's brick count and topology through every pipeline phase.
 
 Runs one strategy on one model under telemetry recording and tabulates
-the exact-value gauges the pipeline and layered engine emit: bricks,
-components, and stability after tiling, vertical compaction,
-improve_connectivity, repair, each hollow-restore round, and the final
-remerge. This is the measurement tool behind
-``docs/kollsker-drift-report.md`` — a per-layer-optimal tiling that ends
-worse than a heuristic did so in one of these phases.
+the exact-value gauges the pipeline and layered engine emit, in global
+emission order. Coverage per phase (PR #18 review made the promise
+precise): the layered engine's tiled/compacted/connected phases carry
+bricks + components (no stability — an LP per engine phase is not paid
+for a diagnostic); the pipeline's placed/repaired/restored/remerged
+phases carry bricks + components + stability. This is the measurement
+tool behind ``docs/kollsker-drift-report.md`` — a per-layer-optimal
+tiling that ends worse than a heuristic did so in one of these phases.
 
 Usage::
 

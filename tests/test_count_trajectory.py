@@ -39,9 +39,18 @@ def test_smoke_letter_t(
     assert payload["schema"] == 1
     assert payload["run"]["strategy"] == "bond"
     assert payload["result"]["brick_count"] > 0
-    labels = [row["phase"] for row in payload["trajectory"]]
-    assert "tiled (per-layer minimum)" in labels
-    assert "final_remerge" in labels
+    rows = {(row["phase"], row["occurrence"]): row for row in payload["trajectory"]}
+    # The engine phases carry actual component values now, not just
+    # labels (PR #18 review: the smoke test must assert the gauges).
+    tiled = rows[("tiled (per-layer minimum)", 1)]
+    assert tiled["bricks"] > 0
+    assert tiled["components"] is not None
+    assert tiled["components"] >= 1
+    compacted = rows[("compact_vertical", 1)]
+    assert compacted["components"] is not None
+    remerged = rows[("final_remerge", 1)]
+    assert remerged["stable"] is not None
+    assert remerged["components"] == payload["result"]["components"]
     out = capsys.readouterr().out
     assert "final_remerge" in out
 
