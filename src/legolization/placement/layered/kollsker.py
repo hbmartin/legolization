@@ -75,6 +75,12 @@ class KollskerStrategy(BondStrategy):
             rects.extend(solved)
         return rects
 
+    def _time_limit(self, deadline: float | None) -> float:
+        """Per-solve budget from the layer cap and the remaining deadline."""
+        if deadline is None:
+            return self.layer_time_s
+        return min(self.layer_time_s, max(deadline - time.monotonic(), 0.1))
+
     def _solve_component(
         self,
         problem: LayerProblem,
@@ -86,9 +92,6 @@ class KollskerStrategy(BondStrategy):
         candidates = enumerate_layer_rects(problem, component, self.catalog)
         if not candidates or len(candidates) > self.candidate_limit:
             return None
-        time_limit = self.layer_time_s
-        if deadline is not None:
-            time_limit = min(time_limit, max(deadline - time.monotonic(), 0.1))
         cover = _cover_matrix(component, candidates)
         ones = np.ones(len(candidates))
         stage1 = milp(
@@ -96,7 +99,7 @@ class KollskerStrategy(BondStrategy):
             constraints=LinearConstraint(cover, lb=1.0, ub=1.0),
             integrality=ones,
             bounds=Bounds(0, 1),
-            options={"time_limit": time_limit},
+            options={"time_limit": self._time_limit(deadline)},
         )
         if not stage1.success or stage1.x is None:
             return None
@@ -111,7 +114,8 @@ class KollskerStrategy(BondStrategy):
             ],
             integrality=ones,
             bounds=Bounds(0, 1),
-            options={"time_limit": time_limit},
+            # Recomputed: stage 1 may have consumed most of the budget.
+            options={"time_limit": self._time_limit(deadline)},
         )
         chosen = stage2 if stage2.success and stage2.x is not None else stage1
         return [
