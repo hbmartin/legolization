@@ -369,3 +369,60 @@ def test_side_contact_transverse_extent_recorded(layout):
     (side,) = graph.side_contacts
     assert side.axis == 1
     assert (side.t_lo, side.t_hi) == (0.0, 3.0)
+
+
+# --- paper knob rule (Q x X) ---
+
+
+def _catalog_with_3x3() -> Any:
+    from legolization.catalog import (
+        DOWN,
+        UP,
+        Category,
+        Connector,
+        Part,
+        default_catalog,
+    )
+
+    catalog = default_catalog()
+    columns = [(dx, dy) for dx in range(3) for dy in range(3)]
+    part = Part(
+        key="brick_3x3",
+        ldraw_part="99999",
+        category=Category.BRICK,
+        occupied_cells=frozenset((dx, dy, dz) for dx, dy in columns for dz in range(3)),
+        top_connectors=tuple(
+            Connector(cell=(dx, dy, 2), direction=UP) for dx, dy in columns
+        ),
+        bottom_connectors=tuple(
+            Connector(cell=(dx, dy, 0), direction=DOWN) for dx, dy in columns
+        ),
+        height_plates=3,
+        mass_g=3.0,
+    )
+    catalog.parts["brick_3x3"] = part
+    return catalog
+
+
+def test_paper_knob_rule_splits_edge_and_interior():
+    layout = Layout(catalog=_catalog_with_3x3())
+    layout.add("brick_3x3", 0, 0, 0, 0, 4)
+    # 9 ground knobs under a 3x3 body: release rule gives 3 points each;
+    # paper rule keeps 3 on the 8 edge knobs and lifts the centre knob
+    # to 4 — one extra contact point = 2 extra shared vars.
+    release = build_model(layout)
+    paper = build_model(layout, paper_knob_rule=True)
+    knobs = 9
+    assert release.var_count == knobs * 3 * 2 + knobs * 4
+    assert paper.var_count == release.var_count + 1 * 2
+
+
+def test_paper_knob_rule_inert_for_shipped_catalog(layout):
+    # No shipped part has min footprint dimension >= 3, so the flag is
+    # a provable no-op on any layout built from the default catalog.
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    layout.add("brick_2x4", 0, 0, 3, 0, 4)
+    release = build_model(layout)
+    paper = build_model(layout, paper_knob_rule=True)
+    assert paper.var_count == release.var_count
+    assert paper.a_matrix.shape == release.a_matrix.shape

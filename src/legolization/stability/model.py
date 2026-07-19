@@ -240,7 +240,11 @@ def _add_lateral_knob(
 
 
 def cavity_pattern(layout: Layout, brick_id: int) -> tuple[tuple[float, float], ...]:
-    """Contact-point offsets for a brick's bottom cavities (by min width)."""
+    """Contact-point offsets for a brick's bottom cavities (by min width).
+
+    The StableLego *release* rule: 1-wide cavities pinch at four points,
+    everything wider at three — uniform per brick.
+    """
     footprint = layout.part_of(layout.bricks[brick_id]).footprint
     xs = [dx for dx, _ in footprint]
     ys = [dy for _, dy in footprint]
@@ -248,15 +252,53 @@ def cavity_pattern(layout: Layout, brick_id: int) -> tuple[tuple[float, float], 
     return FOUR_POINT_OFFSETS if min_dim == 1 else THREE_POINT_OFFSETS
 
 
+def footprint_columns(
+    layout: Layout,
+    brick_id: int,
+) -> tuple[frozenset[tuple[int, int]], int]:
+    """A brick's world footprint columns and its min footprint dimension."""
+    columns = frozenset((x, y) for x, y, _ in layout.cells_of(layout.bricks[brick_id]))
+    xs = [x for x, _ in columns]
+    ys = [y for _, y in columns]
+    min_dim = min(max(xs) - min(xs) + 1, max(ys) - min(ys) + 1)
+    return columns, min_dim
+
+
+def knob_pattern(
+    columns: frozenset[tuple[int, int]],
+    min_dim: int,
+    column: tuple[int, int],
+) -> tuple[tuple[float, float], ...]:
+    """Per-knob contact offsets under the StableLego *paper* rule.
+
+    1×X cavities pinch at four points; 2×X at three; on Q×X bodies with
+    Q ≥ 3 the edge connections take three points and the interior ones
+    four. Inert for the shipped catalog (no part has min dimension ≥ 3)
+    but exact for any future wide part.
+    """
+    if min_dim == 1:
+        return FOUR_POINT_OFFSETS
+    if min_dim == 2:
+        return THREE_POINT_OFFSETS
+    x, y = column
+    interior = all(
+        (x + dx, y + dy) in columns for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+    )
+    return FOUR_POINT_OFFSETS if interior else THREE_POINT_OFFSETS
+
+
 def build_model(
     layout: Layout,
     graph: ConnectionGraph | None = None,
     *,
     torque_z: bool = False,
+    paper_knob_rule: bool = False,
 ) -> StabilityModel:
     """Build the sparse equilibrium system for a layout."""
     with telemetry.span("stability.build_model", n=len(layout)):
-        return _build_model_body(layout, graph, torque_z=torque_z)
+        return _build_model_body(
+            layout, graph, torque_z=torque_z, paper_knob_rule=paper_knob_rule
+        )
 
 
 def _add_side_contact(asm: _Assembler, side: SideContact) -> None:
@@ -295,6 +337,7 @@ def _build_model_body(
     graph: ConnectionGraph | None,
     *,
     torque_z: bool = False,
+    paper_knob_rule: bool = False,
 ) -> StabilityModel:
     """Run the body of :func:`build_model` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
@@ -305,11 +348,18 @@ def _build_model_body(
     up: tuple[float, float, float] = (0.0, 0.0, 1.0)
     down: tuple[float, float, float] = (0.0, 0.0, -1.0)
 
+    footprints: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
     for knob in graph.knob_contacts:
         if knob.normal != (0, 0, 1):
             _add_lateral_knob(asm, knob, contact_points, bottom_drag_cols)
             continue
-        pattern = cavity_pattern(layout, knob.above_id)
+        if paper_knob_rule:
+            if knob.above_id not in footprints:
+                footprints[knob.above_id] = footprint_columns(layout, knob.above_id)
+            columns, min_dim = footprints[knob.above_id]
+            pattern = knob_pattern(columns, min_dim, (knob.x, knob.y))
+        else:
+            pattern = cavity_pattern(layout, knob.above_id)
         z_plane = float(knob.interface_layer)
         for ox, oy in pattern:
             position = (knob.x + ox, knob.y + oy, z_plane)

@@ -95,6 +95,12 @@ class SolverConfig:
     contacts to four corner generators. Default follows the v5 A/B
     verdict."""
 
+    paper_knob_rule: bool = False
+    """Per-knob contact points per the StableLego *paper* (edge knobs 3,
+    interior knobs 4 on min-dimension-3+ bodies) instead of the
+    release's uniform per-brick rule. Inert for the shipped catalog —
+    no part has min footprint dimension >= 3."""
+
 
 @dataclass(frozen=True, slots=True)
 class BrickScore:
@@ -138,7 +144,12 @@ def analyze(
         return StabilityResult(stable=True)
     config = config or SolverConfig()
     with telemetry.span("stability.analyze", n=len(layout)):
-        model = build_model(layout, graph, torque_z=config.torque_z)
+        model = build_model(
+            layout,
+            graph,
+            torque_z=config.torque_z,
+            paper_knob_rule=config.paper_knob_rule,
+        )
         return solve_model(model, config)
 
 

@@ -56,7 +56,9 @@ from legolization.stability.model import (
     brick_centroid,
     build_model,
     cavity_pattern,
+    footprint_columns,
     force_entries,
+    knob_pattern,
     rows_per_brick,
 )
 from legolization.stability.solver import (
@@ -209,6 +211,7 @@ class PrefixSolver:
         self._centroid: dict[int, tuple[float, float, float]] = {}
         self._mass_kg: dict[int, float] = {}
         self._pattern: dict[int, tuple[tuple[float, float], ...]] = {}
+        self._footprint: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
         for brick in layout:
             bid = brick.brick_id
             tops = tuple(c.cell for c in layout.connectors_of(brick, top=True))
@@ -226,6 +229,8 @@ class PrefixSolver:
             self._centroid[bid] = brick_centroid(layout, bid)
             self._mass_kg[bid] = layout.part_of(brick).mass_g / 1000.0
             self._pattern[bid] = cavity_pattern(layout, bid)
+            if config.paper_knob_rule:
+                self._footprint[bid] = footprint_columns(layout, bid)
         # Stud-only reachability data for the LP-free floating shortcut.
         self._grounded = frozenset(
             bid
@@ -545,7 +550,12 @@ class PrefixSolver:
         drag_links: list[tuple[int, int]],
         appendage: _Appendage,
     ) -> None:
-        for ox, oy in self._pattern[above]:
+        if self._config.paper_knob_rule:
+            columns, min_dim = self._footprint[above]
+            pattern = knob_pattern(columns, min_dim, (x, y))
+        else:
+            pattern = self._pattern[above]
+        for ox, oy in pattern:
             position = (x + ox, y + oy, z_plane)
             loads_normal: list[_Load] = [(above, _UP, position)]
             loads_drag: list[_Load] = [(above, _DOWN, position)]
