@@ -51,9 +51,42 @@ def vertical_blockers(layout: Layout) -> dict[int, frozenset[int]]:
             if brick_id not in lateral:
                 blockers[brick_id] |= above - {brick_id}
             above.add(brick_id)
+    for brick in layout:
+        if brick.brick_id not in lateral:
+            blockers[brick.brick_id] |= _stud_sweep_blockers(layout, brick, columns)
     for brick_id, brick in lateral.items():
         blockers[brick_id] = _outward_ray_blockers(layout, brick)
     return {brick_id: frozenset(ids) for brick_id, ids in blockers.items()}
+
+
+def _stud_sweep_blockers(
+    layout: Layout,
+    brick: PlacedBrick,
+    columns: dict[tuple[int, int], list[tuple[int, int]]],
+) -> set[int]:
+    """Bricks swept by a carrier's protruding side studs on the way down.
+
+    A carrier is still inserted vertically, but its side stud protrudes
+    into the neighbour column and sweeps it from above: anything
+    occupying that column at or above the stud's final height blocks the
+    insertion (conservative full-cell model, same as the collision
+    grid). Ordinary bricks have no lateral top connectors and pay one
+    generator pass; bottom-up sequencing already satisfies the
+    constraint, it only bites when steps are reordered.
+    """
+    found: set[int] = set()
+    for conn in layout.connectors_of(brick, top=True):
+        if conn.direction[2] == 0:  # lateral studs only
+            target = (
+                conn.cell[0] + conn.direction[0],
+                conn.cell[1] + conn.direction[1],
+            )
+            found.update(
+                occupant
+                for z, occupant in columns.get(target, [])
+                if z >= conn.cell[2] and occupant != brick.brick_id
+            )
+    return found
 
 
 def _outward_ray_blockers(layout: Layout, brick: PlacedBrick) -> set[int]:

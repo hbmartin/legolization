@@ -168,7 +168,10 @@ def test_tile_blockers_follow_the_outward_ray():
     clear = layout.add("brick_1x1", 0, 2, 0, 0, 4)  # unrelated
     blockers = vertical_blockers(layout)
     assert blockers[tile.brick_id] == frozenset({wall.brick_id})
-    assert blockers[bracket.brick_id] == frozenset()
+    # The bracket's protruding stud sweeps the tile's column on the way
+    # down, so the tile blocks the bracket (the support edge already
+    # orders bracket first — consistent, not a deadlock).
+    assert blockers[bracket.brick_id] == frozenset({tile.brick_id})
     assert blockers[clear.brick_id] == frozenset()
 
 
@@ -345,3 +348,94 @@ def test_v1_emitted_file_imports_identically():
         ("tile_1x1_snot", -1, 0, 0, 180, 4),
         ("tile_1x1_snot", -1, 0, 3, 180, 4),
     ]
+
+
+# --- v2 parts: 11211 carrier + sideways 1x2 tile ---
+
+
+def test_two_stud_carrier_modelled():
+    catalog = default_catalog()
+    carrier = catalog["brick_1x2_side_studs"]
+    ups = [c for c in carrier.top_connectors if c.direction == (0, 0, 1)]
+    laterals = [c for c in carrier.top_connectors if c.direction[2] == 0]
+    assert len(ups) == 2
+    assert [c.cell for c in laterals] == [(0, 0, 1), (1, 0, 1)]
+    assert all(c.direction == (0, -1, 0) for c in laterals)
+    assert len(carrier.bottom_connectors) == 2
+    tile = catalog["tile_1x2_snot"]
+    assert len(tile.occupied_cells) == 6  # two conservative 3-plate windows
+    assert tile.filled_cells == frozenset({(0, 0, 1), (1, 0, 1)})
+    assert [c.direction for c in tile.bottom_connectors] == [(0, 1, 0), (0, 1, 0)]
+
+
+def test_two_stud_carrier_mates_both_sockets():
+    layout = Layout(catalog=default_catalog())
+    carrier = layout.add("brick_1x2_side_studs", 0, 1, 0, 0, 4)
+    tile = layout.add("tile_1x2_snot", 0, 0, 0, 0, 4)
+    graph = ConnectionGraph.from_layout(layout)
+    lateral = [k for k in graph.knob_contacts if k.normal != (0, 0, 1)]
+    assert len(lateral) == 2  # one KnobContact per stud pair
+    assert all(
+        (k.below_id, k.above_id, k.normal)
+        == (carrier.brick_id, tile.brick_id, (0, -1, 0))
+        for k in lateral
+    )
+    assert graph.component_count() == 1
+    assert graph.grounded_ids == {carrier.brick_id}
+    assert not graph.floating_ids()
+    assert analyze(layout).stable
+
+
+@pytest.mark.parametrize("yaw", [0, 90, 180, 270])
+@pytest.mark.parametrize("key", ["brick_1x2_side_studs", "tile_1x2_snot"])
+def test_v2_parts_roundtrip_through_import(key, yaw, tmp_path):
+    layout = Layout(catalog=default_catalog())
+    layout.add(key, 5, 5, 3, yaw, 4)
+    path = tmp_path / "part.ldr"
+    write_model(layout, path)
+    back = layout_from_ldraw(path)
+    assert [(b.part_key, b.x, b.y, b.layer, b.yaw) for b in back] == [
+        (key, 5, 5, 3, yaw)
+    ]
+
+
+@pytest.mark.parametrize("yaw", [0, 90])
+def test_flat_tile_1x2_still_imports_flat(yaw, tmp_path):
+    # 3069b is shared between tile_1x2 and its sideways twin; the flat
+    # orientation must keep decoding as the flat part (decode sets are
+    # disjoint: yaw matrices have middle row (0, 1, 0), the pinned mount
+    # matrices never do).
+    layout = Layout(catalog=default_catalog())
+    layout.add("tile_1x2", 2, 3, 6, yaw, 4)
+    path = tmp_path / "flat.ldr"
+    write_model(layout, path)
+    back = layout_from_ldraw(path)
+    assert [(b.part_key, b.yaw) for b in back] == [("tile_1x2", yaw)]
+
+
+def test_carrier_stud_sweep_is_blocked_from_above():
+    # The carrier's side stud protrudes into the neighbour column during
+    # its vertical insertion: a brick at or above the stud's height in
+    # that column blocks the carrier; one below does not. Latent in
+    # 87087 (one stud) exactly as in 11211 (two).
+    layout = Layout(catalog=default_catalog())
+    carrier = layout.add("brick_1x1_side_stud", 0, 1, 0, 0, 4)  # stud -> (1, 1)...
+    blocker = layout.add("brick_1x1", 1, 1, 3, 0, 4)
+    below = layout.add("plate_1x1", 1, 1, 0, 0, 4)
+    blockers = vertical_blockers(layout)
+    stud = next(
+        c for c in layout.connectors_of(carrier, top=True) if c.direction[2] == 0
+    )
+    target = (stud.cell[0] + stud.direction[0], stud.cell[1] + stud.direction[1])
+    assert target == (1, 1)
+    assert blocker.brick_id in blockers[carrier.brick_id]
+    assert below.brick_id not in blockers[carrier.brick_id]
+
+
+def test_two_stud_carrier_sweeps_both_columns():
+    layout = Layout(catalog=default_catalog())
+    carrier = layout.add("brick_1x2_side_studs", 0, 1, 0, 0, 4)  # studs -> (0,0),(1,0)
+    left = layout.add("brick_1x1", 0, 0, 3, 0, 4)
+    right = layout.add("brick_1x1", 1, 0, 3, 0, 4)
+    blockers = vertical_blockers(layout)
+    assert {left.brick_id, right.brick_id} <= blockers[carrier.brick_id]
