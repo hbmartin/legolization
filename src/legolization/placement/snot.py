@@ -13,6 +13,7 @@ lateral mate like any other contact.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from legolization.grid import EMPTY, merge_colour
@@ -20,7 +21,7 @@ from legolization.placement.carve import covering_donors, refill_tiling
 
 if TYPE_CHECKING:
     from legolization.grid import VoxelGrid
-    from legolization.layout import Layout
+    from legolization.layout import Layout, PlacedBrick
 
 _BRICK_PLATES = 3
 
@@ -104,6 +105,86 @@ def _face_is_open(
     return True
 
 
+@dataclass(frozen=True, slots=True)
+class _MountPlan:
+    """Everything a validated mount needs; computed before any mutation."""
+
+    donors: dict[int, PlacedBrick]
+    bracket_colour: int
+    tiling: list[tuple[str, tuple[int, int, int], int, int]]
+    tile_colour: int
+    yaw: int
+
+
+def _mount_plan(  # noqa: PLR0913 - one site is five scalars plus the layout
+    layout: Layout,
+    grid: VoxelGrid,
+    x: int,
+    y: int,
+    z: int,
+    face: tuple[int, int],
+) -> _MountPlan | None:
+    """Validate one cladding site; None on any failed eligibility guard."""
+    window = {(x, y, z + dz) for dz in range(_BRICK_PLATES)}
+    # Sites are gathered before any mutation; an earlier mount may have
+    # hung its tile into this face's neighbour column (inside corners
+    # share it — hit on suzanne). Re-check occupancy now.
+    target = {(x + face[0], y + face[1], z + dz) for dz in range(_BRICK_PLATES)}
+    if any(layout.brick_at(cell) is not None for cell in target):
+        return None
+    if (donors := covering_donors(layout, window)) is None:
+        return None
+    # Only single-column donors may be carved: cutting a bracket out of a
+    # wall-spanning brick would destroy the wall's horizontal bonding
+    # (and cascade through its own refills — measured, not hypothetical).
+    if any(
+        (cx, cy) != (x, y)
+        for donor in donors.values()
+        for cx, cy, _ in layout.cells_of(donor)
+    ):
+        return None
+    colours = {donor.colour_code for donor in donors.values()}
+    if len(colours) != 1:
+        return None
+    bracket_colour = colours.pop()
+    colour_of = {
+        cell: donor.colour_code
+        for donor in donors.values()
+        for cell in layout.cells_of(donor)
+    }
+    remainder = set(colour_of) - window
+    if (tiling := refill_tiling(layout, remainder, colour_of)) is None:
+        return None
+    return _MountPlan(
+        donors=donors,
+        bracket_colour=bracket_colour,
+        tiling=tiling,
+        tile_colour=_face_colour(grid, x, y, z, fallback=bracket_colour),
+        yaw=_FACE_YAW[face],
+    )
+
+
+def _face_colour(
+    grid: VoxelGrid,
+    x: int,
+    y: int,
+    z: int,
+    *,
+    fallback: int,
+) -> int:
+    """Visible-face colour from the wall voxels, or the carved colour."""
+    gx, gy, gz = grid.shape
+    face_codes = [
+        int(grid.codes[x, y, z + dz])
+        for dz in range(_BRICK_PLATES)
+        if 0 <= x < gx and 0 <= y < gy and z + dz < gz
+    ]
+    tile_colour = merge_colour(*face_codes) if face_codes else None
+    if tile_colour is None or tile_colour < 0:
+        return fallback
+    return tile_colour
+
+
 def _mount(  # noqa: PLR0913 - one site is five scalars plus the layout
     layout: Layout,
     grid: VoxelGrid,
@@ -113,49 +194,11 @@ def _mount(  # noqa: PLR0913 - one site is five scalars plus the layout
     face: tuple[int, int],
 ) -> bool:
     """Carve the wall column, seat the bracket, hang the tile."""
-    window = {(x, y, z + dz) for dz in range(_BRICK_PLATES)}
-    # Sites are gathered before any mutation; an earlier mount may have
-    # hung its tile into this face's neighbour column (inside corners
-    # share it — hit on suzanne). Re-check occupancy now.
-    target = {(x + face[0], y + face[1], z + dz) for dz in range(_BRICK_PLATES)}
-    if any(layout.brick_at(cell) is not None for cell in target):
+    if (plan := _mount_plan(layout, grid, x, y, z, face)) is None:
         return False
-    if (donors := covering_donors(layout, window)) is None:
-        return False
-    # Only single-column donors may be carved: cutting a bracket out of a
-    # wall-spanning brick would destroy the wall's horizontal bonding
-    # (and cascade through its own refills — measured, not hypothetical).
-    if any(
-        (cx, cy) != (x, y)
-        for donor in donors.values()
-        for cx, cy, _ in layout.cells_of(donor)
-    ):
-        return False
-    colours = {donor.colour_code for donor in donors.values()}
-    if len(colours) != 1:
-        return False
-    bracket_colour = colours.pop()
-    colour_of = {
-        cell: donor.colour_code
-        for donor in donors.values()
-        for cell in layout.cells_of(donor)
-    }
-    remainder = set(colour_of) - window
-    if (tiling := refill_tiling(layout, remainder, colour_of)) is None:
-        return False
-    gx, gy, gz = grid.shape
-    face_codes = [
-        int(grid.codes[x, y, z + dz])
-        for dz in range(_BRICK_PLATES)
-        if 0 <= x < gx and 0 <= y < gy and z + dz < gz
-    ]
-    tile_colour = merge_colour(*face_codes) if face_codes else None
-    if tile_colour is None or tile_colour < 0:
-        tile_colour = bracket_colour
-    yaw = _FACE_YAW[face]
-    layout.remove_many(donors)
-    layout.add("brick_1x1_side_stud", x, y, z, yaw, bracket_colour)
-    for part_key, (ax, ay, az), part_yaw, part_colour in tiling:
+    layout.remove_many(plan.donors)
+    layout.add("brick_1x1_side_stud", x, y, z, plan.yaw, plan.bracket_colour)
+    for part_key, (ax, ay, az), part_yaw, part_colour in plan.tiling:
         layout.add(part_key, ax, ay, az, part_yaw, part_colour)
-    layout.add("tile_1x1_snot", x + face[0], y + face[1], z, yaw, tile_colour)
+    layout.add("tile_1x1_snot", x + face[0], y + face[1], z, plan.yaw, plan.tile_colour)
     return True
