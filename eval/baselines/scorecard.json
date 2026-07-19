@@ -1,7 +1,7 @@
 {
   "seed": 0,
   "seeds": null,
-  "generated": "20260719T200601Z",
+  "generated": "20260719T205612Z",
   "models": [
     {
       "model": "cantilever",
@@ -26,7 +26,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 0.171,
+          "seconds": 0.207,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -51,7 +51,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.391,
+          "seconds": 0.443,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -76,7 +76,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.347,
+          "seconds": 0.397,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -101,7 +101,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.445,
+          "seconds": 0.447,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -126,7 +126,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.202,
+          "seconds": 0.244,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -151,7 +151,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 0.181,
+          "seconds": 0.197,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -176,7 +176,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 2.18,
+          "seconds": 2.145,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -223,7 +223,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 0.512,
+          "seconds": 1.092,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -248,7 +248,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.544,
+          "seconds": 1.068,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -273,7 +273,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.512,
+          "seconds": 1.092,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -298,7 +298,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.795,
+          "seconds": 0.784,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -323,7 +323,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.533,
+          "seconds": 1.108,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -348,7 +348,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 1.134,
+          "seconds": 1.114,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -373,7 +373,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 1.61,
+          "seconds": 2.171,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -420,7 +420,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 14.268,
+          "seconds": 14.337,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -445,7 +445,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 9.431,
+          "seconds": 9.272,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -470,7 +470,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 10.138,
+          "seconds": 9.972,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -495,7 +495,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 10.9,
+          "seconds": 10.601,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -520,7 +520,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 8.307,
+          "seconds": 8.154,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -545,7 +545,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 8.612,
+          "seconds": 8.32,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -570,7 +570,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 15.014,
+          "seconds": 15.129,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -617,7 +617,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 2.269,
+          "seconds": 2.233,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -642,7 +642,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.396,
+          "seconds": 0.399,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -667,7 +667,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.256,
+          "seconds": 0.257,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -692,7 +692,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.491,
+          "seconds": 0.489,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -717,7 +717,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.401,
+          "seconds": 0.399,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -742,7 +742,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 0.54,
+          "seconds": 0.537,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -767,7 +767,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 4.443,
+          "seconds": 4.278,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -813,7 +813,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 32.768,
+          "seconds": 32.88,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -838,7 +838,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 33.032,
+          "seconds": 33.275,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -863,7 +863,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 21.103,
+          "seconds": 21.173,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -888,7 +888,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 23.929,
+          "seconds": 23.782,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -913,7 +913,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 22.839,
+          "seconds": 22.829,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -938,7 +938,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 21.423,
+          "seconds": 21.381,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -963,7 +963,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 23.732,
+          "seconds": 23.838,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1009,7 +1009,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 0.055,
+          "seconds": 0.056,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1034,7 +1034,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.082,
+          "seconds": 0.084,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1059,7 +1059,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.079,
+          "seconds": 0.08,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1084,7 +1084,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.289,
+          "seconds": 0.301,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1109,7 +1109,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.098,
+          "seconds": 0.107,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1134,7 +1134,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 0.076,
+          "seconds": 0.077,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1159,7 +1159,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 2.173,
+          "seconds": 2.372,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1205,7 +1205,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 0.045,
+          "seconds": 0.05,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1230,7 +1230,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.062,
+          "seconds": 0.065,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1255,7 +1255,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.052,
+          "seconds": 0.056,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1280,7 +1280,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.078,
+          "seconds": 0.08,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1305,7 +1305,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.116,
+          "seconds": 0.124,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1330,7 +1330,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 0.059,
+          "seconds": 0.063,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1355,7 +1355,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 2.027,
+          "seconds": 2.128,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1402,7 +1402,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 0.796,
+          "seconds": 2.333,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1427,7 +1427,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.704,
+          "seconds": 2.253,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1452,7 +1452,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.67,
+          "seconds": 2.193,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1477,7 +1477,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 1.207,
+          "seconds": 1.277,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1502,7 +1502,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.74,
+          "seconds": 2.265,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1527,7 +1527,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 1.929,
+          "seconds": 2.084,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1552,7 +1552,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 2.723,
+          "seconds": 4.167,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1599,82 +1599,82 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 0.124,
+          "seconds": 0.1,
           "error": null,
           "metrics": {
             "buildable": true,
             "stable": true,
             "component_count": 1,
             "floating_count": 0,
-            "objective_total": 2.2744546783625736,
+            "objective_total": 1.6502951388888885,
             "maximin_feasible": true,
-            "maximin_capacity": 0.7279970833333338,
-            "max_score": 0.5142916666666668,
-            "min_capacity": 0.4759941666666665,
-            "brick_count": 19,
-            "mass_g": 28.86,
+            "maximin_capacity": 0.7380829166666676,
+            "max_score": 0.3986848958333332,
+            "min_capacity": 0.5892888020833335,
+            "brick_count": 16,
+            "mass_g": 28.2,
             "step_count": 8,
-            "cost": 0.06597222222222222,
-            "aesthetics": 0.2,
+            "cost": 0.05555555555555555,
+            "aesthetics": 0.0,
             "colour_error": 0.0,
-            "perpendicularity": 0.10526315789473684,
-            "symmetry": 0.1
+            "perpendicularity": 0.0,
+            "symmetry": 0.0
           }
         },
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.54,
+          "seconds": 0.16,
           "error": null,
           "metrics": {
             "buildable": true,
             "stable": true,
             "component_count": 1,
             "floating_count": 0,
-            "objective_total": 2.2966823361823367,
+            "objective_total": 1.9630936507936516,
             "maximin_feasible": true,
-            "maximin_capacity": 0.49151083333333323,
-            "max_score": 0.4984583333333334,
-            "min_capacity": 0.4915108333333333,
-            "brick_count": 40,
-            "mass_g": 38.65,
-            "step_count": 18,
-            "cost": 0.1388888888888889,
-            "aesthetics": 0.07692307692307693,
+            "maximin_capacity": 0.5155698333333335,
+            "max_score": 0.47390833333333354,
+            "min_capacity": 0.5155698333333332,
+            "brick_count": 16,
+            "mass_g": 28.2,
+            "step_count": 8,
+            "cost": 0.05555555555555555,
+            "aesthetics": 0.0,
             "colour_error": 0.0,
-            "perpendicularity": 0.35384615384615387,
-            "symmetry": 0.14814814814814814
+            "perpendicularity": 0.047619047619047616,
+            "symmetry": 0.0
           }
         },
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.409,
+          "seconds": 0.133,
           "error": null,
           "metrics": {
             "buildable": true,
             "stable": true,
             "component_count": 1,
             "floating_count": 0,
-            "objective_total": 1.76311891996892,
+            "objective_total": 1.177509722222223,
             "maximin_feasible": true,
-            "maximin_capacity": 0.7226805833333333,
-            "max_score": 0.3618291666666667,
-            "min_capacity": 0.6254074166666665,
-            "brick_count": 35,
-            "mass_g": 36.25,
-            "step_count": 16,
-            "cost": 0.12152777777777778,
-            "aesthetics": 0.18181818181818182,
+            "maximin_capacity": 0.8144698333333341,
+            "max_score": 0.28048854166666687,
+            "min_capacity": 0.7051212291666664,
+            "brick_count": 16,
+            "mass_g": 28.2,
+            "step_count": 8,
+            "cost": 0.05555555555555555,
+            "aesthetics": 0.0,
             "colour_error": 0.0,
-            "perpendicularity": 0.28846153846153844,
-            "symmetry": 0.125
+            "perpendicularity": 0.0,
+            "symmetry": 0.0
           }
         },
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.146,
+          "seconds": 0.147,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1699,7 +1699,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.093,
+          "seconds": 0.099,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1724,7 +1724,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 0.456,
+          "seconds": 0.577,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1749,7 +1749,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 2.08,
+          "seconds": 2.203,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1786,17 +1786,17 @@
       "expect_min_buildable": 1,
       "buildable_count": 7,
       "expectation_ok": true,
-      "winner": "beauty",
+      "winner": "fast",
       "buildable": true,
-      "objective_total": 0.4231,
-      "brick_count": 29,
-      "max_score": 0.0086,
-      "maximin_capacity": 0.9772,
+      "objective_total": 0.4002,
+      "brick_count": 33,
+      "max_score": 0.0014,
+      "maximin_capacity": 0.9787,
       "candidates": [
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 1.244,
+          "seconds": 1.248,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1821,57 +1821,57 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.366,
+          "seconds": 0.255,
           "error": null,
           "metrics": {
             "buildable": true,
             "stable": true,
             "component_count": 1,
             "floating_count": 0,
-            "objective_total": 0.45588692118861895,
+            "objective_total": 0.4445233607520749,
             "maximin_feasible": true,
-            "maximin_capacity": 0.9784546937524162,
-            "max_score": 0.0037322476302859855,
-            "min_capacity": 0.9763423973223198,
-            "brick_count": 34,
-            "mass_g": 48.309999999999995,
+            "maximin_capacity": 0.9786769999999999,
+            "max_score": 0.0022396491597846285,
+            "min_capacity": 0.977805143823411,
+            "brick_count": 28,
+            "mass_g": 48.9,
             "step_count": 10,
-            "cost": 0.07296137339055794,
-            "aesthetics": 0.2826086956521739,
+            "cost": 0.060085836909871244,
+            "aesthetics": 0.3333333333333333,
             "colour_error": 0.0,
-            "perpendicularity": 0.7586206896551724,
-            "symmetry": 0.14814814814814817
+            "perpendicularity": 0.7241379310344828,
+            "symmetry": 0.1111111111111111
           }
         },
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.925,
+          "seconds": 0.242,
           "error": null,
           "metrics": {
             "buildable": true,
             "stable": true,
             "component_count": 1,
             "floating_count": 0,
-            "objective_total": 0.5151730804993353,
+            "objective_total": 0.400197306284412,
             "maximin_feasible": true,
-            "maximin_capacity": 0.97952597826087,
-            "max_score": 0.0020838311593577505,
-            "min_capacity": 0.9779578454638294,
-            "brick_count": 65,
-            "mass_g": 60.47,
-            "step_count": 15,
-            "cost": 0.13948497854077252,
-            "aesthetics": 0.3291139240506329,
+            "maximin_capacity": 0.9786769999999999,
+            "max_score": 0.0013574704221653213,
+            "min_capacity": 0.978669678986278,
+            "brick_count": 33,
+            "mass_g": 50.35,
+            "step_count": 10,
+            "cost": 0.07081545064377683,
+            "aesthetics": 0.3076923076923077,
             "colour_error": 0.0,
-            "perpendicularity": 0.5050505050505051,
-            "symmetry": 0.30613275613275615
+            "perpendicularity": 0.42857142857142855,
+            "symmetry": 0.2518518518518518
           }
         },
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.756,
+          "seconds": 0.757,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1896,7 +1896,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.196,
+          "seconds": 0.194,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1946,7 +1946,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 2.468,
+          "seconds": 2.514,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1969,7 +1969,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.4231 (capacity 0.977 N, 29 bricks) among 7 buildable candidate(s)"
+      "reason": "buildable, best objective 0.4002 (capacity 0.979 N, 33 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "sparse-pillars",
@@ -1993,7 +1993,7 @@
         {
           "strategy": "beauty",
           "seed": 0,
-          "seconds": 0.054,
+          "seconds": 0.065,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -2018,7 +2018,7 @@
         {
           "strategy": "bond",
           "seed": 0,
-          "seconds": 0.054,
+          "seconds": 0.058,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -2043,7 +2043,7 @@
         {
           "strategy": "fast",
           "seed": 0,
-          "seconds": 0.036,
+          "seconds": 0.038,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -2068,7 +2068,7 @@
         {
           "strategy": "greedy",
           "seed": 0,
-          "seconds": 0.069,
+          "seconds": 0.076,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -2093,7 +2093,7 @@
         {
           "strategy": "kollsker",
           "seed": 0,
-          "seconds": 0.117,
+          "seconds": 0.13,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -2118,7 +2118,7 @@
         {
           "strategy": "luo",
           "seed": 0,
-          "seconds": 0.046,
+          "seconds": 0.052,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -2143,7 +2143,7 @@
         {
           "strategy": "smga",
           "seed": 0,
-          "seconds": 1.233,
+          "seconds": 1.343,
           "error": null,
           "metrics": {
             "buildable": false,

@@ -67,6 +67,28 @@ full: an MIT Abaqus model generator with a clamping-step trick but
 constant; the five-fixture calibration path is recorded in the notes
 doc for the day an Abaqus seat exists.
 
+### 2026-07-19 — WS-2: structure-preserving bridge synthesis
+
+`slab_problems` extraction + shared `bond_reward` (B0, zero behavior);
+`BridgeSynthesizer` — per-slab exact-cover MILP over the repair ring
+with a hard bridging row (a min-count cover that reproduces the
+fragmenting seam is infeasible) and a crossings+stagger stage 2 — and
+the competing-candidate wiring: the MILP result enters
+`improve_connectivity`'s best-of-k on the same `(components, bricks)`
+key (never preempts; a preempting accept measured +11 bricks on
+mushroom). `PipelineConfig.milp_bridge` / `--no-milp-bridge` ablate.
+
+Proof: two-tower seam bridges as **2 bricks vs the random rewrite's 6
+plates** (pinned test); corpus zero hard regressions with fast's
+wide-arch improving (objective 0.4231 → 0.4002, winner beauty → fast;
+baseline regenerated); mushroom/thin-shell end-to-end unchanged at
+251/386 — interleaved shell fragmentation defeats per-slab covers
+(the ring re-fragments; measured label counts 24 vs 18 mid-build) and
+the random path keeps those. The honest residual: closing the shell
+class needs a cross-slab bond-variable formulation (future work,
+recorded in the drift report's v5 addendum). Wall cost ≈ nil
+(mushroom 3.1 s, thin-shell 6.8 s, unchanged).
+
 ## v4 progress notes
 
 Living log of the v4 program (PR #17 review remediation, residual

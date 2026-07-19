@@ -125,6 +125,10 @@ class LayeredStrategy:
     fail_max: int = 30
     time_budget_s: float | None = None
     progress: Callable[[str], None] | None = None
+    milp_bridge: bool = True
+    """Bridge connectivity repairs with the exact-cover synthesizer
+    first (random rewrite as fallback); False = v4 behaviour, the
+    count_trajectory ablation knob."""
 
     def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
         """Tile every layer problem bottom-up, then repair topology."""
@@ -160,8 +164,19 @@ class LayeredStrategy:
         # bridging resists the count inflation measured in
         # docs/kollsker-drift-report.md. The greedy path keeps the
         # historical single draw (shipped goldens pin its exact bytes).
+        from legolization.placement.layered.bridge import (  # noqa: PLC0415 - cycle guard
+            BridgeSynthesizer,
+        )
+
         improve_connectivity(
-            layout, grid, rng, fail_max=self.fail_max, bridge_draws=BRIDGE_DRAWS
+            layout,
+            grid,
+            rng,
+            fail_max=self.fail_max,
+            bridge_draws=BRIDGE_DRAWS,
+            bridge=BridgeSynthesizer(catalog=self.catalog)
+            if self.milp_bridge
+            else None,
         )
         telemetry.value("place.connected.bricks", len(layout))
         if telemetry.current() is not None:  # graph build only when recording
