@@ -7,9 +7,12 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import pytest
+
+if TYPE_CHECKING:
+    import argparse
 
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "eval_corpus.py"
 
@@ -70,6 +73,22 @@ class _EvaluatorModule(Protocol):
 
     def main(self, argv: list[str] | None = None) -> int:
         """Run the evaluator CLI."""
+        ...
+
+    BASELINE: Path
+    MESH_BASELINE: Path
+    _BASELINE_BY_KIND: dict[str, Path]
+
+    def parse_args(self, argv: list[str] | None) -> argparse.Namespace:
+        """Parse evaluator CLI arguments."""
+        ...
+
+    def baseline_write_path(self, args: argparse.Namespace) -> Path:
+        """Resolve the canonical baseline file a run may write."""
+        ...
+
+    def baseline_rows(self, args: argparse.Namespace) -> list[dict] | None:
+        """Baseline rows to diff against, or None when none exist."""
         ...
 
 
@@ -285,6 +304,8 @@ def test_markdown_rendering(evaluator: _EvaluatorModule) -> None:
         ["--kind", "synthetic", "--strategies", "greedy"],
         ["--kind", "synthetic", "--seed", "1"],
         ["--kind", "synthetic", "--seeds", "0,1"],
+        ["--kind", "mesh", "--models", "suzanne"],
+        ["--kind", "mesh", "--seed", "2"],
     ],
 )
 def test_write_baseline_rejects_noncanonical_scope(
@@ -293,6 +314,47 @@ def test_write_baseline_rejects_noncanonical_scope(
 ) -> None:
     with pytest.raises(SystemExit, match="unfiltered --kind synthetic"):
         evaluator.main(argv=[*scope_args, "--write-baseline"])
+
+
+def test_baseline_paths_route_by_kind(evaluator: _EvaluatorModule) -> None:
+    # Each kind owns one committed baseline file; an explicit --baseline
+    # overrides both the write target and the comparison source.
+    synthetic = evaluator.parse_args(["--kind", "synthetic", "--write-baseline"])
+    mesh = evaluator.parse_args(["--kind", "mesh", "--write-baseline"])
+    explicit = evaluator.parse_args(
+        ["--kind", "mesh", "--write-baseline", "--baseline", "other.json"]
+    )
+    assert evaluator.baseline_write_path(synthetic) == evaluator.BASELINE
+    assert evaluator.baseline_write_path(mesh) == evaluator.MESH_BASELINE
+    assert evaluator.baseline_write_path(explicit).name == "other.json"
+
+
+def testbaseline_rows_merge_both_kinds(
+    evaluator: _EvaluatorModule,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    synthetic = tmp_path / "scorecard.json"
+    mesh = tmp_path / "scorecard-mesh.json"
+    synthetic.write_text(json.dumps({"models": [{"model": "cantilever"}]}))
+    mesh.write_text(json.dumps({"models": [{"model": "suzanne"}]}))
+    monkeypatch.setattr(evaluator, "BASELINE", synthetic)
+    monkeypatch.setattr(evaluator, "MESH_BASELINE", mesh)
+    monkeypatch.setattr(
+        evaluator, "_BASELINE_BY_KIND", {"synthetic": synthetic, "mesh": mesh}
+    )
+    merged = evaluator.baseline_rows(evaluator.parse_args([]))
+    assert merged is not None
+    assert {row["model"] for row in merged} == {"cantilever", "suzanne"}
+    # Explicit --baseline restricts to that one file.
+    only = evaluator.baseline_rows(evaluator.parse_args(["--baseline", str(mesh)]))
+    assert only is not None
+    assert {row["model"] for row in only} == {"suzanne"}
+    # No baseline on disk -> None (comparison skipped).
+    missing = evaluator.baseline_rows(
+        evaluator.parse_args(["--baseline", str(tmp_path / "absent.json")])
+    )
+    assert missing is None
 
 
 def _multi_seed_report(*, objectives: dict[int, float]) -> dict:

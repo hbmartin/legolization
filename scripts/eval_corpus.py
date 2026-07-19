@@ -41,6 +41,8 @@ if TYPE_CHECKING:
 _SCRIPTS = Path(__file__).resolve().parent
 _REPO = _SCRIPTS.parent
 BASELINE = _REPO / "eval" / "baselines" / "scorecard.json"
+MESH_BASELINE = _REPO / "eval" / "baselines" / "scorecard-mesh.json"
+_BASELINE_BY_KIND = {"synthetic": BASELINE, "mesh": MESH_BASELINE}
 RUNS = _REPO / "eval" / "runs"
 
 
@@ -278,7 +280,8 @@ def _seed_list(value: str) -> tuple[int, ...]:
         raise argparse.ArgumentTypeError(msg) from error
 
 
-def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    """Parse the evaluator CLI arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", default=None, metavar="NAME,...")
     parser.add_argument("--traits", default=None, metavar="TRAIT,...")
@@ -289,24 +292,59 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seeds", type=_seed_list, default=None, metavar="N,N,...")
     parser.add_argument("--out", type=Path, default=RUNS)
-    parser.add_argument("--baseline", type=Path, default=BASELINE)
+    parser.add_argument("--baseline", type=Path, default=None)
     parser.add_argument("--write-baseline", action="store_true")
     parser.add_argument("--tolerance", type=float, default=0.05)
     return parser.parse_args(argv)
 
 
 def _validate_baseline_scope(args: argparse.Namespace) -> None:
-    """Require the committed baseline's canonical, reproducible sweep scope."""
+    """Require the committed baselines' canonical, reproducible sweep scope.
+
+    Each corpus kind owns one committed baseline file (synthetic:
+    ``scorecard.json``, mesh: ``scorecard-mesh.json``); a write must be a
+    full-kind, seed-0, unfiltered sweep so the file stays reproducible.
+    """
     filtered = any(
         value is not None
         for value in (args.models, args.traits, args.strategies, args.seeds)
     )
-    if args.write_baseline and (args.kind != "synthetic" or args.seed != 0 or filtered):
+    if args.write_baseline and (
+        args.kind not in _BASELINE_BY_KIND or args.seed != 0 or filtered
+    ):
         msg = (
-            "--write-baseline requires an unfiltered --kind synthetic sweep "
-            "with --seed 0 and no --seeds"
+            "--write-baseline requires an unfiltered --kind synthetic (or mesh) "
+            "sweep with --seed 0 and no --seeds"
         )
         raise SystemExit(msg)
+
+
+def baseline_write_path(args: argparse.Namespace) -> Path:
+    """Resolve the canonical baseline file this run may write."""
+    if args.baseline is not None:
+        return args.baseline
+    return _BASELINE_BY_KIND[args.kind]
+
+
+def baseline_rows(args: argparse.Namespace) -> list[dict] | None:
+    """Baseline rows to diff against, or None when no baseline exists.
+
+    An explicit ``--baseline`` names one file; otherwise every committed
+    per-kind baseline that exists contributes rows (models are keyed by
+    name, so a mixed-kind sweep diffs each model against its own kind).
+    """
+    paths = (
+        [args.baseline]
+        if args.baseline is not None
+        else list(_BASELINE_BY_KIND.values())
+    )
+    rows: list[dict] = []
+    found = False
+    for path in paths:
+        if path.exists():
+            found = True
+            rows.extend(json.loads(path.read_text())["models"])
+    return rows if found else None
 
 
 def _assess_rows(rows: list[dict]) -> tuple[int, list[dict]]:
@@ -331,17 +369,16 @@ def _baseline_regression_status(
     rows: list[dict],
 ) -> int:
     """Compare successful rows with the baseline and return an exit status."""
-    if not args.baseline.exists() or args.write_baseline:
+    if args.write_baseline or (known := baseline_rows(args)) is None:
         return 0
     if args.seeds is not None and len(args.seeds) > 1:
         # An any-seed-buildable run against the seed-0 baseline would mask
         # regressions; spread stats are the multi-seed deliverable instead.
         print("note: multi-seed run; baseline comparison skipped")
         return 0
-    baseline_rows = json.loads(args.baseline.read_text())["models"]
     hard, info = compare_to_baseline(
         rows=rows,
-        baseline_rows=baseline_rows,
+        baseline_rows=known,
         tolerance=args.tolerance,
     )
     for line in info:
@@ -363,9 +400,10 @@ def _write_baseline(
     if exit_code:
         print("baseline not written because the evaluation failed", file=sys.stderr)
         return
-    args.baseline.parent.mkdir(parents=True, exist_ok=True)
-    args.baseline.write_text(json.dumps(payload, indent=2) + "\n")
-    print(f"wrote {args.baseline}")
+    target = baseline_write_path(args)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"wrote {target}")
 
 
 def _sweep(
@@ -407,7 +445,7 @@ def _sweep(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
-    args = _parse_args(argv)
+    args = parse_args(argv)
     _validate_baseline_scope(args)
     corpus = load_corpus_module()
     models = corpus.select_models(corpus.load_manifest(), args.models)
