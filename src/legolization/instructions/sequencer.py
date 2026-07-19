@@ -167,8 +167,17 @@ def plan_instructions(
             blocks[blocker].add(brick_id)
 
     chunks = chunk_bands(layout, config=config, pairs=mirror_pairs(layout))
+    # With subassemblies on, strictness is judged AFTER the rewrite: the
+    # extraction exists to stabilize persistently floating stretches, so
+    # the pre-rewrite sequence must be allowed to carry warnings
+    # (PR #17 review — strict+subassemblies used to raise before the
+    # rewrite could make the plan stable).
+    strict_after_rewrite = config.subassemblies and config.stability_policy == "strict"
+    sequencing_config = (
+        replace(config, stability_policy="warn") if strict_after_rewrite else config
+    )
     ordered_steps, warnings = _sequence(
-        layout, config, chunks, supports, blockers, blocks
+        layout, sequencing_config, chunks, supports, blockers, blocks
     )
     plan = InstructionPlan(
         steps=tuple(ordered_steps),
@@ -181,6 +190,13 @@ def plan_instructions(
         )
 
         plan = extract_subassemblies(layout, plan, config=config)
+        if strict_after_rewrite and any(not step.prefix_stable for step in plan.steps):
+            unstable = [step.index for step in plan.steps if not step.prefix_stable]
+            msg = (
+                f"no stable ordering even with subassemblies "
+                f"(steps {unstable} stay unstable)"
+            )
+            raise InstructionsError(msg)
     if config.rotstep:
         plan = replace(
             plan, steps=tuple(_assign_rotsteps_subaware(layout, list(plan.steps)))
@@ -497,7 +513,7 @@ def _angular_distance(a: float, b: float) -> float:
     return abs((a - b + 180.0) % 360.0 - 180.0)
 
 
-def verify_plan(  # noqa: C901, PLR0912, PLR0915 - three step kinds, one walk
+def verify_plan(
     layout: Layout,
     plan: InstructionPlan,
     *,
@@ -515,100 +531,165 @@ def verify_plan(  # noqa: C901, PLR0912, PLR0915 - three step kinds, one walk
     construction, so no surviving main step can lose a support.
     """
     config = config or InstructionsConfig()
-    violations: list[str] = []
-    order = plan.order
-    if sorted(order) != sorted(layout.bricks):
-        violations.append("plan does not cover every brick exactly once")
-        return violations
-    graph = ConnectionGraph.from_layout(layout)
-    supports: dict[int, set[int]] = {brick_id: set() for brick_id in layout.bricks}
-    for below_id, above_id in graph.support_edges():
-        if below_id != GROUND_ID:
-            supports[above_id].add(below_id)
-    blockers = vertical_blockers(layout)
-    subs = {sub.name: sub for sub in plan.subassemblies}
-    sub_placed: dict[str, set[int]] = {name: set() for name in subs}
-    placed: set[int] = set()
-    # Final-order main prefixes are strictly append-only: warm-start fit.
-    prefix_solver = PrefixSolver.create(layout, config.solver)
-
-    def analyzed(subset: set[int]) -> StabilityResult:
-        return analyze(layout.subset(subset), config.solver)
-
+    if sorted(plan.order) != sorted(layout.bricks):
+        return ["plan does not cover every brick exactly once"]
+    walker = _PlanVerifier.create(layout, plan, config)
     for step in plan.steps:
-        step_set = set(step.brick_ids)
         if step.submodel is not None:
-            sub = subs.get(step.submodel)
-            if sub is None:
-                violations.append(f"step {step.index}: unknown submodel")
-                continue
-            seen = sub_placed[step.submodel]
-            sub_all = set(sub.brick_ids)
-            for brick_id in step.brick_ids:
-                if not (supports[brick_id] & sub_all) <= (seen | step_set):
-                    violations.append(f"step {step.index}: sub support after dependent")
-                if blockers[brick_id] & seen:
-                    violations.append(
-                        f"step {step.index}: sub vertically blocked insert"
-                    )
-            seen |= step_set
-            sub_layout = layout.subset(seen).translated(dz=sub.anchor_layer)
-            result = analyze(sub_layout, config.solver)
-            if result.stable != step.prefix_stable:
-                violations.append(
-                    f"step {step.index}: sub prefix stability mismatch "
-                    f"(expected {step.prefix_stable}, analyzed {result.stable})"
-                )
-            continue
-        if step.attaches is not None:
-            sub = subs.get(step.attaches)
-            if sub is None:
-                violations.append(f"step {step.index}: unknown subassembly")
-                continue
-            unit = set(sub.brick_ids)
-            if sub_placed[step.attaches] != unit:
-                violations.append(
-                    f"step {step.index}: attach before subassembly complete"
-                )
-            if step.brick_ids:
-                violations.append(
-                    f"step {step.index}: attach step must place no bricks"
-                )
-            if any(blockers[bid] & placed for bid in unit):
-                violations.append(f"step {step.index}: attach unit vertically blocked")
-            result = analyzed(placed | unit)
-            floating = {
-                bid
-                for bid, score in result.scores.items()
-                if bid in unit and not score.in_equilibrium
-            }
-            if result.stable != step.prefix_stable:
-                violations.append(
-                    f"step {step.index}: attach stability mismatch "
-                    f"(expected {step.prefix_stable}, analyzed {result.stable})"
-                )
-            if not result.stable and floating == unit:
-                violations.append(
-                    f"step {step.index}: attached subassembly has no seat"
-                )
-            placed |= unit
-            if prefix_solver is not None:
-                prefix_solver.commit(tuple(unit))
-            continue
-        for brick_id in step.brick_ids:
-            if not supports[brick_id] <= placed | step_set:
-                violations.append(f"step {step.index}: support after dependent")
-            if blockers[brick_id] & placed:
-                violations.append(f"step {step.index}: vertically blocked insert")
-        if prefix_solver is not None:
-            result = prefix_solver.probe(step.brick_ids)
-            prefix_solver.commit(step.brick_ids)
+            walker.sub_step(step)
+        elif step.attaches is not None:
+            walker.attach_step(step)
         else:
-            result = analyzed(placed | step_set)
+            walker.main_step(step)
+    walker.finish()
+    return walker.violations
+
+
+@dataclass(slots=True)
+class _PlanVerifier:
+    """One verification walk's shared state; one method per step kind."""
+
+    layout: Layout
+    config: InstructionsConfig
+    supports: dict[int, set[int]]
+    blockers: dict[int, frozenset[int]]
+    subs: dict[str, Subassembly]
+    sub_placed: dict[str, set[int]]
+    placed: set[int]
+    prefix_solver: PrefixSolver | None
+    violations: list[str]
+    attach_counts: dict[str, int]
+
+    @classmethod
+    def create(
+        cls,
+        layout: Layout,
+        plan: InstructionPlan,
+        config: InstructionsConfig,
+    ) -> _PlanVerifier:
+        """Build the walk state for one layout/plan pair."""
+        graph = ConnectionGraph.from_layout(layout)
+        supports: dict[int, set[int]] = {brick_id: set() for brick_id in layout.bricks}
+        for below_id, above_id in graph.support_edges():
+            if below_id != GROUND_ID:
+                supports[above_id].add(below_id)
+        subs = {sub.name: sub for sub in plan.subassemblies}
+        return cls(
+            layout=layout,
+            config=config,
+            supports=supports,
+            blockers=vertical_blockers(layout),
+            subs=subs,
+            sub_placed={name: set() for name in subs},
+            placed=set(),
+            # Final-order main prefixes are strictly append-only: warm fit.
+            prefix_solver=PrefixSolver.create(layout, config.solver),
+            violations=[],
+            attach_counts=dict.fromkeys(subs, 0),
+        )
+
+    def _analyzed(self, subset: set[int]) -> StabilityResult:
+        return analyze(self.layout.subset(subset), self.config.solver)
+
+    def sub_step(self, step: BuildStep) -> None:
+        """Check one sub-build step in the subassembly's grounded frame."""
+        sub = self.subs.get(step.submodel or "")
+        if sub is None:
+            self.violations.append(f"step {step.index}: unknown submodel")
+            return
+        step_set = set(step.brick_ids)
+        seen = self.sub_placed[sub.name]
+        sub_all = set(sub.brick_ids)
+        for brick_id in step.brick_ids:
+            if not (self.supports[brick_id] & sub_all) <= (seen | step_set):
+                self.violations.append(
+                    f"step {step.index}: sub support after dependent"
+                )
+            if self.blockers[brick_id] & seen:
+                self.violations.append(
+                    f"step {step.index}: sub vertically blocked insert"
+                )
+        seen |= step_set
+        sub_layout = self.layout.subset(seen).translated(dz=sub.anchor_layer)
+        result = analyze(sub_layout, self.config.solver)
         if result.stable != step.prefix_stable:
-            violations.append(
+            self.violations.append(
+                f"step {step.index}: sub prefix stability mismatch "
+                f"(expected {step.prefix_stable}, analyzed {result.stable})"
+            )
+
+    def attach_step(self, step: BuildStep) -> None:
+        """Check one attach step as a unit insertion onto the placed world."""
+        sub = self.subs.get(step.attaches or "")
+        if sub is None:
+            self.violations.append(f"step {step.index}: unknown subassembly")
+            return
+        unit = set(sub.brick_ids)
+        self.attach_counts[sub.name] += 1
+        if self.sub_placed[sub.name] != unit:
+            self.violations.append(
+                f"step {step.index}: attach before subassembly complete"
+            )
+        if step.brick_ids:
+            self.violations.append(
+                f"step {step.index}: attach step must place no bricks"
+            )
+        if any(self.blockers[bid] & self.placed for bid in unit):
+            self.violations.append(f"step {step.index}: attach unit vertically blocked")
+        result = self._analyzed(self.placed | unit)
+        floating = {
+            bid
+            for bid, score in result.scores.items()
+            if bid in unit and not score.in_equilibrium
+        }
+        if result.stable != step.prefix_stable:
+            self.violations.append(
+                f"step {step.index}: attach stability mismatch "
+                f"(expected {step.prefix_stable}, analyzed {result.stable})"
+            )
+        if not result.stable and floating == unit:
+            self.violations.append(
+                f"step {step.index}: attached subassembly has no seat"
+            )
+        self.placed |= unit
+        if self.prefix_solver is not None:
+            self.prefix_solver.commit(tuple(unit))
+
+    def finish(self) -> None:
+        """Whole-plan checks after the walk.
+
+        ``plan.order`` counts sub-build bricks, so a plan missing its
+        attach step still "covers" every brick while the emitted world
+        holds only the main model (PR #17 review) — require each
+        declared subassembly to attach exactly once and the final world
+        to equal the layout.
+        """
+        for name, count in sorted(self.attach_counts.items()):
+            if count != 1:
+                self.violations.append(
+                    f"subassembly {name} attached {count} time(s), expected 1"
+                )
+        if self.placed != set(self.layout.bricks):
+            self.violations.append(
+                "final assembly does not place every brick in the layout"
+            )
+
+    def main_step(self, step: BuildStep) -> None:
+        """Check one ordinary step's supports, blockers, and verdict."""
+        step_set = set(step.brick_ids)
+        for brick_id in step.brick_ids:
+            if not self.supports[brick_id] <= self.placed | step_set:
+                self.violations.append(f"step {step.index}: support after dependent")
+            if self.blockers[brick_id] & self.placed:
+                self.violations.append(f"step {step.index}: vertically blocked insert")
+        if self.prefix_solver is not None:
+            result = self.prefix_solver.probe(step.brick_ids)
+            self.prefix_solver.commit(step.brick_ids)
+        else:
+            result = self._analyzed(self.placed | step_set)
+        if result.stable != step.prefix_stable:
+            self.violations.append(
                 f"step {step.index}: prefix stability mismatch "
                 f"(expected {step.prefix_stable}, analyzed {result.stable})"
             )
-        placed |= step_set
-    return violations
+        self.placed |= step_set

@@ -4,6 +4,185 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v4 progress notes
+
+Living log of the v4 program (PR #17 review remediation, residual
+rescue-LP performance + `docs/performance-testing.md`, kollsker
+downstream-drift investigation/report/fixes, SNOT v2). Every landed
+workstream appends a dated entry with measured proof; append-only.
+
+### 2026-07-19 — PR #17 review remediation (12 commits)
+
+All findings from `docs/pr-17-review.md` addressed: the CI lizard
+CCN-18 gate is green again (`verify_plan` 33 → dispatcher +
+`_PlanVerifier`; `_validate_args` 27 → three validators; `_mount` 22 →
+plan/mutate split); the three P1s (positional dataclass compatibility
+restored with a field-order pin test; the 3070b reverse-map collision
+that broke flat-tile import fixed with candidate-list decoding; one
+monotonic deadline over the sequential strategy sweep); the P2s (snot
+clads only faces whose straight slide-in ray reaches outside the model
+— enclosed cavities and pits rejected; sideways cladding excluded from
+generic side contacts — no phantom presses; blocker rays derive extent
+from layout bounds, not a 64-cell cap; strictness judged after the
+subassembly rewrite; every subassembly must attach exactly once and
+the final world must equal the layout; MPD stems case-insensitive;
+kollsker MILP calls guarded, tuning validated finite, deadlines honest
+across both stages; `--profile` rejected where it was silently
+ignored; attach steps are checker metadata, not warnings) and both P3s
+(floating shortcut defers to cross-check mode; finishing spans are
+`phase.finish_surfaces` + nested children). 486 tests at that point,
+all gates green.
+
+### 2026-07-19 — Rescue-LP performance + docs/performance-testing.md
+
+Shipped `docs/performance-testing.md` (tools, schemas, the same-session
+before/after protocol, regression definitions, drift policy, measured
+dead ends), sha-stamped schema-2 CLI profiles sharing
+`telemetry.git_sha()` with the profiling script, two regression pins
+for the user's underneath-decoration constraint (warm grown-base probe
+≡ cold at 1e-9 incl. rollback; the rescue orders a hanging decoration
+before its overhang identically on both engines), and the committed
+optimization: **direct-highspy cold rescue solves**, size-gated at
+`SolverConfig.rescue_direct_min_bricks = 200` so small components keep
+the scipy-exact path the 1e-6/dual-engine tests pin. Shared
+`_lp_arrays()` guarantees both engines solve the byte-identical
+polytope; near-boundary or failed solves fall back under
+`stability.rescue.cold_fallback`.
+
+Proof (same-session sha-stamped profiles, seed 0):
+| model | before | after | migration | notes |
+|---|---|---|---|---|
+| spot@24 | 511.4 s | 490.3 s | 74 of 80 solves → `cold_direct`, 0 fallbacks | result block identical |
+| suzanne@16 | 37.7 s | 31.7 s | 14 solves → direct | result block identical |
+| pyramid | 1.03 s | 1.02 s | untouched (no rescue) | — |
+
+Deviations from plan: the C′ experiment — warm rescue by **bound
+deactivation** on one persistent model — was built dark, measured, and
+**killed by its own criteria**: correctness perfect (walk drift
+~1e-18) but warm re-solves ran ~4× SLOWER than presolved cold solves
+(23 s vs 5.6 s at n≈1000; spot 588 s vs 490 s) because the persistent
+model must keep presolve off for basis reuse while one-shot solves
+presolve the RBE down dramatically. Mechanism reverted; dead end
+recorded in `docs/performance-testing.md` §6 with the same candor as
+the LP-deletion note. The SNOT decline gate on the warm solvers stays
+(documented revisit trigger: when SNOT contact semantics stabilize).
+
+### 2026-07-19 — Kollsker downstream drift: instrumented, explained, fixed
+
+Landed `docs/kollsker-drift-report.md` with the full measured story.
+C1 (behaviour-neutral): telemetry gains a lossless value-gauge channel
+(`record_value`/`values_dict`; spans keep power-of-two buckets), the
+pipeline and layered engine emit per-phase brick/component/stability
+gauges, `PipelineConfig.connectivity_fail_max` threads a clean
+ablation switch, and `scripts/count_trajectory.py` tabulates the
+trajectory (sha-stamped JSON artifacts). C2 (the fix): best-of-k
+acceptance in `improve_connectivity` — `bridge_draws=5` draws per
+bridging step, accept the bridging draw minimizing `(components,
+bricks)` — for the **layered strategies only**; the default of 1 is
+byte-identical to the historical loop and the greedy path keeps it
+(shipped goldens pin exact bytes; measured on the goldens, local
+best-of-k shifts downstream refinement chaotically: heart 12 → 29
+while arch 32 → 23 — not a trade worth breaking pins for).
+
+The verdict overturned the hypothesis: kollsker's tilings are both the
+smallest AND the least fragmented (thin-shell 146 bricks/18 components
+vs bond's 182/26); the entire inflation was `improve_connectivity`'s
+count-blind random-maximal rewrite (+179 on mushroom's 112-brick
+minimum in ONE accepted step), which taxes the best tiling hardest.
+Repair and hollow-restore contributed nothing on the drift models; the
+stage-2 bridging term (fix b) is not indicated and was not built.
+
+Proof (seed 0, determinism double-checked):
+| model | kollsker | bond | fast |
+|---|---|---|---|
+| mushroom | 269 → **251** | 265 → 263 | — |
+| thin-shell | 417 → **386** | 398 → 398 | 370 → 370 |
+
+13-model kollsker-vs-bond: **13 wins/ties, up from 11** — both drift
+losses flipped (mushroom, thin-shell), no previous win or tie
+regressed, pyramid also improved (128 → 126 vs bond's 136 → 129).
+Corpus sweep exit 0, zero hard regressions, three improving notes
+(cantilever 36 → 31, mushroom winner luo → kollsker at 251,
+thin-shell winner greedy → kollsker on objective); baseline
+regenerated per the pre-approval. Residual: `fast` still holds
+thin-shell's outright best (370) — the pass regresses every strategy
+toward the same random-maximal mean; closing that gap needs
+structure-preserving bridge synthesis (report §5 non-recommendations).
+
+### 2026-07-19 — SNOT v2: data-driven catalog, 11211 + sideways 1x2 tile, bonded walls
+
+Four commits. (1) The catalog's two-key SNOT dispatcher became
+role-dispatched data: carriers declare `lateral_studs` +
+`emit_yaw_offset`, claddings declare windows/sockets/`mount_normal` +
+four pinned per-outward `mount_matrices` + `mount_offset_ldu`; 87087
+and 3070b migrated byte-compatibly (pinned-line tests unchanged).
+(2) Emission/import generalized from that data; ambiguous decodes
+report instead of resolving by catalog order; a v1-emitted fixture
+(`tests/data/snot_tower_v1.ldr`) pins cross-version import. (3) New
+parts: `brick_1x2_side_studs` (11211, 0.86 g, studs verified LDraw
+−Z at the same height as 87087 so v1's proven offsets transfer) and
+`tile_1x2_snot` (3069b sideways, analytically derived mount matrices,
+round-trips at every yaw; flat 3069b still decodes flat). Blocking fix
+(latent in 87087): a carrier's protruding studs sweep their neighbour
+columns during vertical insertion. (4) The pass works in paired
+2-column sites with running-bond stagger and single-column fallback;
+the single-column donor guard is replaced by a per-mount **re-bond
+guard** (carve+refill+mount on a copy; accept only if stud-graph
+components and floating count do not increase) plus a **two-tier
+stability rail** in the pipeline: the conservative tier (v1's
+own-column donors) lands under its own checkpoint before the bold
+wall-carving tier, so one destabilizing wall carve can no longer
+revert the whole pass (measured on mushroom: 86 accepted mounts, all
+lost under the old all-or-nothing rail; now the 41 safe mounts stay).
+
+Proof (seed 0; baseline = v1 pass at the pre-v2 commit, same session —
+the v3-era numbers were stale: suzanne's 6 died with the WS-A2
+cavity-reachability fix, not with v2):
+| model | pre-v2 | v2 | split 11211/87087 | stable | comps |
+|---|---|---|---|---|---|
+| two-towers-bridge | 13 | **108** | 49/59 | ✓ | 1 |
+| mushroom | 41 | 41 | 0/41 (bold tier reverted) | ✓ | 1 |
+| thin-shell | 12 | **100** | 35/65 | ✓ | 1 |
+| suzanne@16 | 0 | 1 | 1/0 | ✓ | 1 |
+| letter-t | 0 | **68** | 39/29 | ✓ | 1 |
+| sparse-pillars | 0 | **44** | 12/32 | ✓ | 4 (pre-existing) |
+| pyramid | 0 | 0 | — | ✓ | 1 |
+
+Sequencing verifies CLEAN on the heaviest clad models (two-towers 108
+mounts/39 steps, letter-t 68/22); renders show flush tiles and the
+running-bond stagger. Guard cost: ≤1 s small models, mushroom 3.9 s,
+thin-shell 11 s (per-mount full-graph builds at ~500 bricks — an
+incremental-graph guard is future work if this grows). Deferred with
+reasons: the vertical 1×2 tile can never be plate-aligned (side studs
+at 8z+12 LDU; adjacent-window studs 24 LDU apart vs the tile's 20 LDU
+anti-stud pitch — the 5-plate quantum belongs to a stage-1 orientation
+field), 99781/4070/4733 (half-plate arms, sub-cell depth, blocker
+over-conservatism), true 8-LDU tile depth (the grid cannot express
+8-of-20-LDU horizontal occupancy).
+
+### 2026-07-19 — v4 program end
+
+Full gates green (516 tests; ruff/ty/pyrefly/lizard CCN-18 clean;
+goldens byte-exact; StableLego and dual-engine plan tests untouched).
+Program-end corpus sweep: exit 0 with **zero diffs** against the
+baseline regenerated at the drift fix — SNOT v2 and the blocking
+changes are corpus-neutral. `check_instructions` signatures unchanged:
+heart 7 steps/2 unstable, mushroom 41/17, suzanne@16 60/33, spot@24
+155/80 (the 80 matches the rescue-solve census in the WS-B profile).
+Fresh end-of-program profiles: pyramid 1.5 s / 124 bricks / 21 steps,
+suzanne@16 31.7 s / 365 / 60 (identical to the WS-B after-run), spot@24
+538 s / 996 / 155 — result blocks identical to WS-B; spot's wall delta
+vs the earlier session is cross-session noise the perf doc's protocol
+excludes from regression claims. Version bumped to 0.3.0.
+
+*(Future note — mesh-kind eval baseline: the committed scorecard
+baseline covers synthetics only. Now that v3's sequencing speedups make
+mesh sweeps feasible (suzanne@16 ≈ 30 s), commit a mesh-kind baseline
+via `uv run python scripts/eval_corpus.py --kind mesh --write-baseline`
+after a clean run, per the self-evaluation playbook's "widen baseline
+scope only on a clean run" rule. Not done in v4 — the drift fixes land
+first so the baseline is cut once, not twice.)*
+
 ## v3 progress notes
 
 Living log of the six-item v3 program (sequencer LP performance, MPD
@@ -493,10 +672,19 @@ item on the roadmap; suggested staging:
    axis-aligned; the interesting problem is that a sideways brick occupies
    20-LDU-tall space that is not a whole number of plates (2.5) — sideways
    sections must be planned in 40-LDU (5-plate) vertical quanta, which is a
-   real constraint the placement layer has to own.
+   real constraint the placement layer has to own. *The vertical sideways
+   1×2 tile is proof this stage cannot be faked from stage 2: carrier side
+   studs sit at 8z+12 LDU, so studs in vertically adjacent 3-plate windows
+   are 24 LDU apart while the tile's anti-studs are 20 LDU apart — no
+   course-aligned carrier can ever double-mate it (measured in v4, recorded
+   with the SNOT v2 entry).*
 2. **Catalog additions.** Side-stud parts are the on-ramp before fully
-   sideways bricks: 87087 (1x1 with 1 side stud), 4070 (headlight), 99781
-   (bracket). These keep the grid stud-up while exposing lateral connectors.
+   sideways bricks — *stage 2 advanced in v3/v4: 87087 (1x1, one side
+   stud) ✓ and 11211 (1x2, two side studs) ✓ are catalogued as data-driven
+   carriers with sideways 3070b/3069b claddings; 4070 (headlight,
+   sub-cell stud depth) and 99781 (bracket, half-plate arm offsets)
+   remain — each needs geometry the unit grid cannot yet express.* These
+   keep the grid stud-up while exposing lateral connectors.
 3. **Graph + physics.** Mating logic in `graph.py` currently matches top
    connectors against `cell + (0,0,1)`; generalize to `cell + direction`.
    In the RBE, a sideways knob contact rotates the contact-point pattern and

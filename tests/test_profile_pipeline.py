@@ -28,7 +28,11 @@ def profiler() -> ModuleType:
     return _load_profiler()
 
 
-def test_smoke_heart(profiler, tmp_path, capsys):
+def test_smoke_heart(
+    profiler: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     exit_code = profiler.main([str(_HEART), "--out", str(tmp_path)])
     assert exit_code == 0
     written = list(tmp_path.glob("*.json"))
@@ -44,7 +48,7 @@ def test_smoke_heart(profiler, tmp_path, capsys):
     assert "stability.analyze" in out
 
 
-def test_cprofile_writes_pstats(profiler, tmp_path):
+def test_cprofile_writes_pstats(profiler: ModuleType, tmp_path: Path) -> None:
     exit_code = profiler.main([str(_HEART), "--out", str(tmp_path), "--cprofile"])
     assert exit_code == 0
     pstats_files = list(tmp_path.glob("*.pstats"))
@@ -56,7 +60,7 @@ def test_cprofile_writes_pstats(profiler, tmp_path):
     assert payload["cprofile_path"].endswith(".pstats")
 
 
-def test_git_sha_in_repo_and_bare_dir(profiler, tmp_path):
+def test_git_sha_in_repo_and_bare_dir(profiler: ModuleType, tmp_path: Path) -> None:
     sha = profiler.git_sha()
     assert sha is not None
     assert len(sha) == 40
@@ -64,12 +68,12 @@ def test_git_sha_in_repo_and_bare_dir(profiler, tmp_path):
     assert profiler.git_sha(tmp_path) is None
 
 
-def test_unknown_corpus_name_exits(profiler, tmp_path):
+def test_unknown_corpus_name_exits(profiler: ModuleType, tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="neither an existing input file"):
         profiler.main(["no-such-model", "--out", str(tmp_path)])
 
 
-def test_corpus_synthetic_name_resolves(profiler, tmp_path):
+def test_corpus_synthetic_name_resolves(profiler: ModuleType, tmp_path: Path) -> None:
     exit_code = profiler.main(["letter-t", "--out", str(tmp_path)])
     assert exit_code == 0
     payload = json.loads(next(iter(tmp_path.glob("*.json"))).read_text())

@@ -280,3 +280,77 @@ def test_tiles_and_slopes_flags(tmp_path):
     assert result.stability.stable
     assert result.slopes_added >= 0
     assert result.tiles_added >= 0
+
+
+def test_dataclass_positional_layouts_are_stable():
+    # New defaulted fields must append after the 0.2.0 layout so old
+    # positional callers keep their meaning (PR #17 review).
+    from dataclasses import fields
+
+    from legolization.compare import Candidate
+    from legolization.mesh import MeshOptions
+
+    candidate_names = [f.name for f in fields(Candidate)]
+    assert candidate_names[:5] == ["strategy", "seconds", "result", "metrics", "error"]
+    assert candidate_names[-1] == "seed"
+    assert [f.name for f in fields(MeshOptions)] == [
+        "target_studs",
+        "pitch",
+        "up",
+        "colour_code",
+        "fill",
+        "keep_largest",
+        "colour_mode",
+    ]
+    config_names = [f.name for f in fields(PipelineConfig)]
+    assert config_names[-4:] == [
+        "snot",
+        "milp_layer_time_s",
+        "milp_bond_weight",
+        "connectivity_fail_max",
+    ]
+    assert config_names.index("tiles") + 1 == config_names.index("refine")
+    result_names = [f.name for f in fields(pipeline_module.PipelineResult)]
+    assert result_names[-2:] == ["plan", "snot_added"]
+
+
+def test_connectivity_fail_max_override():
+    from legolization.catalog import default_catalog
+    from legolization.placement.greedy import GreedyStrategy
+    from legolization.placement.layered import BondStrategy
+    from legolization.placement.registry import make_strategy
+
+    default = make_strategy("bond", catalog=default_catalog(), config=PipelineConfig())
+    assert isinstance(default, BondStrategy)
+    assert default.fail_max == 30  # class default preserved when None
+    overridden = make_strategy(
+        "bond",
+        catalog=default_catalog(),
+        config=PipelineConfig(connectivity_fail_max=0),
+    )
+    assert isinstance(overridden, BondStrategy)
+    assert overridden.fail_max == 0
+    greedy = make_strategy(
+        "greedy",
+        catalog=default_catalog(),
+        config=PipelineConfig(connectivity_fail_max=5),
+    )
+    assert isinstance(greedy, GreedyStrategy)
+    assert greedy.fail_max == 5
+
+
+def test_phase_gauges_record_brick_trajectory():
+    from legolization import telemetry
+
+    codes = np.full((4, 4, 3), 4, dtype=np.int16)
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=1)
+    config = PipelineConfig(seed=0, strategy="bond", hollow=False)
+    with telemetry.record() as session:
+        result = run(grid, config)
+    values = session.values_dict()
+    assert values["place.tiled.bricks"], "tiling gauge missing"
+    assert values["pipeline.remerged.bricks"][-1] == result.brick_count
+    assert values["pipeline.remerged.stable"][-1] == 1.0
+    # And none of it fires without recording (behaviour guard covers
+    # placements; this covers the gauges' gating).
+    assert telemetry.current() is None

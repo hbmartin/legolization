@@ -360,15 +360,270 @@
       "key": "brick_1x1_side_stud",
       "ldraw_part": "87087",
       "category": "snot",
+      "snot_role": "carrier",
+      "size_studs": [
+        1,
+        1
+      ],
       "height_plates": 3,
-      "mass_g": 0.64
+      "mass_g": 0.64,
+      "lateral_studs": [
+        {
+          "cell": [
+            0,
+            0,
+            1
+          ],
+          "direction": [
+            1,
+            0,
+            0
+          ]
+        }
+      ],
+      "emit_yaw_offset": 90
     },
     {
       "key": "tile_1x1_snot",
       "ldraw_part": "3070b",
       "category": "snot",
+      "snot_role": "cladding",
+      "window_columns": [
+        [
+          0,
+          0
+        ]
+      ],
       "height_plates": 3,
-      "mass_g": 0.16
+      "mass_g": 0.16,
+      "mount_normal": [
+        -1,
+        0,
+        0
+      ],
+      "sockets": [
+        {
+          "cell": [
+            0,
+            0,
+            1
+          ],
+          "direction": [
+            -1,
+            0,
+            0
+          ]
+        }
+      ],
+      "filled_cells": [
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "mount_matrices": {
+        "1,0": [
+          0,
+          -1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "-1,0": [
+          0,
+          1,
+          0,
+          -1,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "0,1": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -1,
+          0
+        ],
+        "0,-1": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          1,
+          0
+        ]
+      },
+      "mount_offset_ldu": [
+        -2.0,
+        -12.0,
+        0.0
+      ]
+    },
+    {
+      "key": "brick_1x2_side_studs",
+      "ldraw_part": "11211",
+      "category": "snot",
+      "snot_role": "carrier",
+      "size_studs": [
+        1,
+        2
+      ],
+      "height_plates": 3,
+      "mass_g": 0.86,
+      "lateral_studs": [
+        {
+          "cell": [
+            0,
+            0,
+            1
+          ],
+          "direction": [
+            0,
+            -1,
+            0
+          ]
+        },
+        {
+          "cell": [
+            1,
+            0,
+            1
+          ],
+          "direction": [
+            0,
+            -1,
+            0
+          ]
+        }
+      ],
+      "emit_yaw_offset": 0
+    },
+    {
+      "key": "tile_1x2_snot",
+      "ldraw_part": "3069b",
+      "category": "snot",
+      "snot_role": "cladding",
+      "window_columns": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "height_plates": 3,
+      "mass_g": 0.26,
+      "mount_normal": [
+        0,
+        1,
+        0
+      ],
+      "sockets": [
+        {
+          "cell": [
+            0,
+            0,
+            1
+          ],
+          "direction": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "cell": [
+            1,
+            0,
+            1
+          ],
+          "direction": [
+            0,
+            1,
+            0
+          ]
+        }
+      ],
+      "filled_cells": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          1
+        ]
+      ],
+      "mount_matrices": {
+        "0,-1": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          1,
+          0
+        ],
+        "0,1": [
+          -1,
+          0,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          -1,
+          0
+        ],
+        "1,0": [
+          0,
+          -1,
+          0,
+          0,
+          0,
+          -1,
+          1,
+          0,
+          0
+        ],
+        "-1,0": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          -1,
+          -1,
+          0,
+          0
+        ]
+      },
+      "mount_offset_ldu": [
+        -2.0,
+        -12.0,
+        0.0
+      ]
     }
   ]
 }

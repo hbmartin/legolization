@@ -271,3 +271,47 @@ def test_import_cli_rejects_placement_flags(tmp_path):
         with pytest.raises(SystemExit) as excinfo:
             main([str(source), *extra])
         assert excinfo.value.code == 2
+
+
+def test_import_plain_flat_tiles_roundtrip(layout, tmp_path):
+    # tile_1x1 and tile_1x1_snot share LDraw code 3070b; the reverse map
+    # must try both interpretations, not let the sideways twin shadow the
+    # flat tile (this failed with "unsupported orientation" before).
+    from legolization.ldraw_in import layout_from_ldraw
+
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("tile_1x1", 0, 0, 3, 0, 4)
+    layout.add("brick_1x2", 2, 0, 0, 0, 14)
+    layout.add("tile_1x2", 2, 0, 3, 0, 14)
+    path = tmp_path / "tiles.ldr"
+    write_model(layout, path)
+    assert _brick_key(layout_from_ldraw(path)) == _brick_key(layout)
+
+
+def test_import_mixed_snot_and_flat_tiles_roundtrip(layout, tmp_path):
+    from legolization.ldraw_in import layout_from_ldraw
+
+    layout.add("brick_1x1_side_stud", 0, 0, 0, 90, 4)
+    layout.add("tile_1x1_snot", 0, 1, 0, 90, 14)
+    layout.add("brick_1x1", 3, 0, 0, 0, 4)
+    layout.add("tile_1x1", 3, 0, 3, 0, 4)
+    path = tmp_path / "mixed.ldr"
+    write_model(layout, path)
+    assert _brick_key(layout_from_ldraw(path)) == _brick_key(layout)
+
+
+def test_import_tiles_pipeline_roundtrip(tmp_path):
+    import numpy as np
+
+    from legolization.grid import EMPTY, VoxelGrid
+    from legolization.ldraw_in import layout_from_ldraw
+    from legolization.pipeline import PipelineConfig, run
+
+    codes = np.full((4, 4, 3), EMPTY, dtype=np.int16)
+    codes[:, :, :] = 4
+    grid = VoxelGrid.from_array(codes, plates_per_voxel=1)
+    result = run(grid, PipelineConfig(hollow=False, tiles=True, seed=0))
+    assert result.tiles_added > 0
+    path = tmp_path / "capped.ldr"
+    write_model(result.layout, path, plan=result.plan)
+    assert _brick_key(layout_from_ldraw(path)) == _brick_key(result.layout)

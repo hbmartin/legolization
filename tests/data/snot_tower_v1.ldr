@@ -1,0 +1,11 @@
+0 snot_tower_v1
+0 Name: snot_tower_v1.ldr
+0 Author: legolization
+0 !LDRAW_ORG Unofficial_Model
+0 !LICENSE Licensed under GPL-3.0-or-later
+1 4 -18 -12 0 0 1 0 -1 0 0 0 0 1 3070b.dat
+1 4 0 -24 0 0 0 1 0 1 0 -1 0 0 87087.dat
+0 STEP
+1 4 -18 -36 0 0 1 0 -1 0 0 0 0 1 3070b.dat
+1 4 0 -48 0 0 0 1 0 1 0 -1 0 0 87087.dat
+0 STEP

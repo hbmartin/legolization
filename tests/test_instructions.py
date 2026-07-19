@@ -487,3 +487,98 @@ def test_layout_translated_preserves_ids() -> None:
     )
     with pytest.raises(ValueError, match="below ground"):
         top.translated(dz=100)
+
+
+def test_profile_rejected_for_sweep_and_import(tmp_path):
+    from legolization.main import main
+
+    npy = tmp_path / "m.npy"
+    np.save(npy, np.full((2, 2, 2), 4, dtype=np.int16))
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(npy), "--strategy", "all", "--profile", str(tmp_path / "p.json")])
+    assert excinfo.value.code == 2
+
+    source = tmp_path / "m.ldr"
+    source.write_text("0 m\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n")
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(source),
+                "-o",
+                str(tmp_path / "out.ldr"),
+                "--profile",
+                str(tmp_path / "p.json"),
+            ]
+        )
+    assert excinfo.value.code == 2
+
+
+def test_verify_plan_requires_exactly_one_attach():
+    # Removing the attach step used to leave plan.order complete while
+    # the emitted world lost the whole subassembly (PR #17 review).
+    layout = _mini_mushroom()
+    config = InstructionsConfig(rotstep=False, subassemblies=True)
+    plan = plan_instructions(layout, config=config)
+    assert plan.subassemblies
+    without_attach = replace(
+        plan,
+        steps=tuple(s for s in plan.steps if s.attaches is None),
+    )
+    violations = verify_plan(layout, without_attach, config=config)
+    assert any("attached 0 time" in v for v in violations)
+    assert any("does not place every brick" in v for v in violations)
+
+    doubled = replace(
+        plan,
+        steps=(*plan.steps, next(s for s in plan.steps if s.attaches is not None)),
+    )
+    violations = verify_plan(layout, doubled, config=config)
+    assert any("attached 2 time" in v for v in violations)
+
+
+def test_strict_policy_judged_after_subassembly_rewrite():
+    # The mini mushroom is unorderable without subassemblies (strict
+    # raises), but fully stable with them: strict + subassemblies must
+    # succeed by enforcing strictness on the rewritten plan.
+    layout = _mini_mushroom()
+    with pytest.raises(InstructionsError, match="no stable ordering"):
+        plan_instructions(
+            layout,
+            config=InstructionsConfig(rotstep=False, stability_policy="strict"),
+        )
+    plan = plan_instructions(
+        layout,
+        config=InstructionsConfig(
+            rotstep=False, stability_policy="strict", subassemblies=True
+        ),
+    )
+    assert plan.subassemblies
+    assert all(step.prefix_stable for step in plan.steps)
+
+
+def test_strict_with_subassemblies_still_raises_when_unfixable(bad_bridge):
+    layout, _ = bad_bridge  # collapses even fully built
+    with pytest.raises(InstructionsError, match="no stable ordering"):
+        plan_instructions(
+            layout,
+            config=InstructionsConfig(
+                rotstep=False, stability_policy="strict", subassemblies=True
+            ),
+        )
+
+
+def test_cli_profile_payload_is_schema_two(tmp_path):
+    from legolization.main import main
+
+    npy = tmp_path / "m.npy"
+    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
+    profile = tmp_path / "profile.json"
+    out = tmp_path / "m.ldr"
+    assert main([str(npy), "-o", str(out), "--profile", str(profile)]) == 0
+    payload = json.loads(profile.read_text())
+    assert payload["schema"] == 2
+    assert payload["source"] == "cli"
+    sha = payload["git_sha"]
+    assert isinstance(sha, str)
+    assert len(sha) == 40
+    assert payload["spans"]["stability.analyze"]["calls"] >= 1

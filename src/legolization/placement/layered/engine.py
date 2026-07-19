@@ -19,12 +19,14 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
+from legolization import telemetry
 from legolization.catalog import Catalog, Category, default_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.grid import EMPTY, merge_colour
 from legolization.layout import Layout
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import (
+    BRIDGE_DRAWS,
     compact_vertical,
     improve_connectivity,
     place_rect,
@@ -151,8 +153,22 @@ class LayeredStrategy:
                     f"layer {index + 1}/{len(problems)} "
                     f"({100 * done // total}% of cells)"
                 )
+        telemetry.value("place.tiled.bricks", len(layout))
         compact_vertical(layout)
-        improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
+        telemetry.value("place.compacted.bricks", len(layout))
+        # Layered tilings are per-layer minima worth defending: best-of-k
+        # bridging resists the count inflation measured in
+        # docs/kollsker-drift-report.md. The greedy path keeps the
+        # historical single draw (shipped goldens pin its exact bytes).
+        improve_connectivity(
+            layout, grid, rng, fail_max=self.fail_max, bridge_draws=BRIDGE_DRAWS
+        )
+        telemetry.value("place.connected.bricks", len(layout))
+        if telemetry.current() is not None:  # graph build only when recording
+            telemetry.value(
+                "place.connected.components",
+                ConnectionGraph.from_layout(layout).component_count(),
+            )
         return layout
 
     def tile(

@@ -209,13 +209,31 @@ class ConnectionGraph:
 
 
 def _side_contacts(layout: Layout) -> list[SideContact]:
-    """Aggregate shared vertical faces per brick pair per axis direction."""
+    """Aggregate shared vertical faces per brick pair per axis direction.
+
+    Sideways cladding parts (``mount_normal`` set) are excluded on both
+    sides: their occupied cells are a conservative collision prism, not
+    physical volume, and counting those faces gave a mounted tile a
+    phantom press contact on top of its real lateral stud mate (PR #17
+    review). Their only physical connection is the stud.
+    """
+    cladding = {
+        brick.brick_id
+        for brick in layout
+        if layout.part_of(brick).mount_normal is not None
+    }
     faces: dict[tuple[int, int, int, int], list[tuple[float, float, float]]] = {}
     for brick in layout:
+        if brick.brick_id in cladding:
+            continue
         for x, y, z in layout.cells_of(brick):
             for axis, (dx, dy) in enumerate(((1, 0), (0, 1))):
                 neighbour = layout.brick_at((x + dx, y + dy, z))
-                if neighbour is None or neighbour.brick_id == brick.brick_id:
+                if (
+                    neighbour is None
+                    or neighbour.brick_id == brick.brick_id
+                    or neighbour.brick_id in cladding
+                ):
                     continue
                 center = (x + dx / 2, y + dy / 2, z + 0.5)
                 key = (brick.brick_id, neighbour.brick_id, axis, 1)

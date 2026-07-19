@@ -6,7 +6,7 @@ choices and the pipeline dispatch both derive from this table.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from legolization.placement.greedy import GreedyStrategy
 from legolization.placement.layered import (
@@ -51,12 +51,24 @@ def make_strategy(
     return factory(catalog, config)
 
 
+class _FailMaxKwargs(TypedDict, total=False):
+    fail_max: int
+
+
+def _fail_max_override(config: PipelineConfig) -> _FailMaxKwargs:
+    """Build the optional improve_connectivity override kwargs."""
+    if config.connectivity_fail_max is None:
+        return {}
+    return {"fail_max": config.connectivity_fail_max}
+
+
 def _make_greedy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
     return GreedyStrategy(
         catalog=catalog,
         weights=config.weights,
         solver_config=config.solver,
         refine=config.refine,
+        **_fail_max_override(config),
     )
 
 
@@ -67,6 +79,7 @@ def _make_luo(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         colour_mode=config.colour_mode,
         colour_weight=config.colour_weight,
         refine=config.refine,
+        **_fail_max_override(config),
     )
 
 
@@ -77,6 +90,7 @@ def _make_bond(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         solver_config=config.solver,
         time_budget_s=config.time_budget_s,
         progress=config.progress,
+        **_fail_max_override(config),
     )
 
 
@@ -87,6 +101,7 @@ def _make_fast(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         solver_config=config.solver,
         time_budget_s=config.time_budget_s,
         progress=config.progress,
+        **_fail_max_override(config),
     )
 
 
@@ -98,6 +113,7 @@ def _make_smga(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         time_budget_s=config.time_budget_s,
         progress=config.progress,
         config=SmGaConfig(max_generations=config.ga_generations),
+        **_fail_max_override(config),
     )
 
 
@@ -109,6 +125,7 @@ def _make_beauty(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         time_budget_s=config.time_budget_s,
         progress=config.progress,
         beauty=BeautyWeights.preset(config.beauty_preset),
+        **_fail_max_override(config),
     )
 
 
@@ -121,6 +138,7 @@ def _make_kollsker(catalog: Catalog, config: PipelineConfig) -> PlacementStrateg
         progress=config.progress,
         layer_time_s=config.milp_layer_time_s,
         bond_weight=config.milp_bond_weight,
+        **_fail_max_override(config),
     )
 
 

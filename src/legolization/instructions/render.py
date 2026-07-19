@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from legolization.ldraw_out import _submodel_file
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
@@ -254,7 +256,7 @@ def _render_with_subassemblies(  # noqa: PLR0913 - one bag of render state
     stem = model_path.stem
     if "0 FILE" in text:
         for sub in plan.subassemblies:
-            sub_file = f"{stem}-{sub.name}.ldr"
+            sub_file = _submodel_file(stem, sub.name)
             sub_text = _extract_submodel(text, sub_file)
             if sub_text is None:
                 warnings.append(f"submodel {sub_file} not found in the model file")

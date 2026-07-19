@@ -54,6 +54,7 @@ from legolization.stability.constants import (
 )
 from legolization.stability.model import (
     brick_centroid,
+    build_model,
     cavity_pattern,
     force_entries,
 )
@@ -61,6 +62,7 @@ from legolization.stability.solver import (
     BrickScore,
     SolverConfig,
     StabilityResult,
+    _solve_lp_highspy,
     analyze,
 )
 
@@ -300,7 +302,10 @@ class PrefixSolver:
         wanted = frozenset(chunk) - self.present
         subset = frozenset(self.present | wanted)
         floating = _stud_reach_floating(subset, self._grounded, self._stud_adjacent)
-        if floating:
+        # Cross-check mode promises every probe a cold comparison; the
+        # shortcut's synthetic scores would dodge it (PR #17 review), so
+        # it only fires when the mode is off.
+        if floating and not self._config.engine_cross_check:
             with telemetry.span("stability.prefix.floating_shortcut"):
                 self._rollback()
                 return _floating_shortcut(subset, floating)
@@ -796,7 +801,9 @@ class RemovalSolver:
         subset = frozenset(self.scope - set(chunk))
         with telemetry.span("stability.prefix.remove_probe", n=len(subset)):
             floating = _stud_reach_floating(subset, self._grounded, self._stud_adjacent)
-            if floating:
+            # Cross-check mode wants exact scores everywhere: skip the
+            # synthetic-score shortcut and analyze cold (PR #17 review).
+            if floating and not self._config.engine_cross_check:
                 with telemetry.span("stability.prefix.floating_shortcut"):
                     return _floating_shortcut(subset, floating)
             return self._analyze_components(subset)
@@ -812,7 +819,7 @@ class RemovalSolver:
         results = []
         for component in components:
             if (hit := self._component_cache.get(component)) is None:
-                hit = analyze(self._layout.subset(component), self._config)
+                hit = self._cold_component(component)
                 self._component_cache[component] = hit
             results.append(hit)
         if len(results) == 1:
@@ -837,6 +844,46 @@ class RemovalSolver:
             status="optimal",
             objective=objective,
         )
+
+    def _cold_component(self, component: frozenset[int]) -> StabilityResult:
+        """Solve one uncached contact component from scratch.
+
+        Components below ``rescue_direct_min_bricks`` keep the
+        scipy-exact ``analyze`` path (pinned to 1e-6 by the equivalence
+        tests); larger ones — the ~80 grounded-stable rescue solves that
+        dominate spot@24 — go through highspy directly, with the scipy
+        path as the fallback for near-boundary verdicts and any solver
+        failure. Verdict-preserving by construction: only score drift
+        within the accepted alternative-optima class can differ.
+        """
+        sub_layout = self._layout.subset(component)
+        if len(component) < self._config.rescue_direct_min_bricks:
+            return analyze(sub_layout, self._config)
+        try:
+            with telemetry.span("stability.rescue.cold_direct", n=len(component)):
+                direct, near_boundary = _solve_lp_highspy(
+                    build_model(sub_layout), self._config
+                )
+        except Exception:  # noqa: BLE001 - any failure means scipy-exact
+            with telemetry.span("stability.rescue.cold_fallback", n=len(component)):
+                return analyze(sub_layout, self._config)
+        if near_boundary:
+            with telemetry.span("stability.rescue.cold_fallback", n=len(component)):
+                return analyze(sub_layout, self._config)
+        if self._config.engine_cross_check:
+            cold = analyze(sub_layout, self._config)
+            drift = max(
+                (
+                    abs(direct.scores[k].score - cold.scores[k].score)
+                    for k in cold.scores
+                ),
+                default=0.0,
+            )
+            if direct.stable != cold.stable or drift > 1e-6:
+                with telemetry.span("stability.rescue.cross_check_mismatch"):
+                    pass
+            return cold
+        return direct
 
     def _components(self, subset: frozenset[int]) -> list[frozenset[int]]:
         remaining = set(subset)

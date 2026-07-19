@@ -56,9 +56,6 @@ class PipelineConfig:
     ``"smooth"`` (or legacy ``True``) adds slopes outside the shape."""
 
     tiles: bool = False
-    snot: bool = False
-    """Clad tall flat wall faces with sideways tiles on 87087 brackets."""
-
     refine: bool = True
     seed: int = 0
     plates_per_voxel: int = 3
@@ -71,8 +68,6 @@ class PipelineConfig:
     dither: bool = False
     time_budget_s: float | None = None
     ga_generations: int = 200
-    milp_layer_time_s: float = 10.0
-    milp_bond_weight: float = 1.0
     beauty_preset: Literal["balanced", "stability", "aesthetics", "efficiency"] = (
         "balanced"
     )
@@ -83,6 +78,18 @@ class PipelineConfig:
     mesh: MeshOptions = field(default_factory=MeshOptions)
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
+
+    # Fields below are appended after the 0.2.0 layout so positional
+    # callers keep their meaning (PR #17 review); add new fields at the
+    # end only.
+    snot: bool = False
+    """Clad tall flat wall faces with sideways tiles on 87087 brackets."""
+
+    milp_layer_time_s: float = 10.0
+    milp_bond_weight: float = 1.0
+    connectivity_fail_max: int | None = None
+    """Override every strategy's improve_connectivity fail_max (None =
+    keep each class default; 0 disables the pass — drift diagnostics)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,8 +107,11 @@ class PipelineResult:
     floating_count: int
     slopes_added: int = 0
     tiles_added: int = 0
-    snot_added: int = 0
     plan: InstructionPlan | None = None
+
+    # Appended after the 0.2.0 layout for positional compatibility
+    # (PR #17 review); add new fields at the end only.
+    snot_added: int = 0
 
     @property
     def step_count(self) -> int:
@@ -144,6 +154,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
             working = _ignore_interior(working)
 
     layout, stability = _place_and_repair(working, catalog, config, rng)
+    _phase_gauge("pipeline.placed", layout, stability)
     if config.hollow:
         with telemetry.span("phase.hollow_restore"):
             rounds = 0
@@ -164,6 +175,8 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
                 working = restored
                 layout, stability = _place_and_repair(working, catalog, config, rng)
                 rounds += 1
+                telemetry.value("pipeline.hollow_restore.round", rounds)
+                _phase_gauge("pipeline.restored", layout, stability)
 
     with telemetry.span("phase.remerge"):
         if final_remerge(
@@ -175,8 +188,9 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         ):
             stability = analyze(layout, config.solver)
         resolve_ignore_colours(layout)
+        _phase_gauge("pipeline.remerged", layout, stability)
 
-    with telemetry.span("phase.slopes"):
+    with telemetry.span("phase.finish_surfaces"):
         stability, slopes_added, tiles_added, snot_added = _finish_surfaces(
             layout, working, stability, config
         )
@@ -226,7 +240,8 @@ def _finish_surfaces(
             if slope_mode == "preserve" and stability.stable
             else None
         )
-        slopes_added = apply_slopes(layout, working, mode=slope_mode)
+        with telemetry.span("finish.slopes"):
+            slopes_added = apply_slopes(layout, working, mode=slope_mode)
         if slopes_added:
             stability = analyze(layout, config.solver)
             if guard is not None and not stability.stable:
@@ -239,22 +254,77 @@ def _finish_surfaces(
                     )
     snot_added = 0
     if config.snot:
-        guard = (layout.copy(), stability) if stability.stable else None
-        snot_added = apply_snot(layout, working)
-        if snot_added:
-            stability = analyze(layout, config.solver)
-            if guard is not None and not stability.stable:
-                layout.replace_with(guard[0])
-                stability = guard[1]
-                snot_added = 0
-                if config.progress is not None:
-                    config.progress(
-                        "snot: cladding pass would break stability; reverted"
-                    )
-    tiles_added = apply_tiles(layout) if config.tiles else 0
+        with telemetry.span("finish.snot"):
+            snot_added, stability = _snot_tiers(layout, working, config, stability)
+    with telemetry.span("finish.tiles"):
+        tiles_added = apply_tiles(layout) if config.tiles else 0
     if tiles_added:
         stability = analyze(layout, config.solver)
     return stability, slopes_added, tiles_added, snot_added
+
+
+def _snot_tiers(
+    layout: Layout,
+    working: VoxelGrid,
+    config: PipelineConfig,
+    stability: StabilityResult,
+) -> tuple[int, StabilityResult]:
+    """Run the cladding pass in two stability-checkpointed tiers.
+
+    Tier one mounts only sites whose donors live inside their own
+    columns (v1's conservative carve — never weakens wall bonding) and
+    is reverted wholesale if it breaks stability. Tier two re-runs the
+    pass with wall-spanning donors allowed; already-clad windows fail
+    their plans, so only the bolder mounts are new. If those break
+    stability the layout retreats to the tier-one checkpoint instead of
+    losing every mount — one bad wall carve must not cost the safe
+    cladding (measured on mushroom: 86 accepted mounts, all reverted).
+    """
+    guard = (layout.copy(), stability) if stability.stable else None
+    snot_added = apply_snot(layout, working, spanning_donors=False)
+    if snot_added:
+        stability = analyze(layout, config.solver)
+        if guard is not None and not stability.stable:
+            layout.replace_with(guard[0])
+            stability = guard[1]
+            snot_added = 0
+            if config.progress is not None:
+                config.progress("snot: cladding pass would break stability; reverted")
+    checkpoint = (layout.copy(), stability) if stability.stable else None
+    bold_added = apply_snot(layout, working, spanning_donors=True)
+    if bold_added:
+        stability = analyze(layout, config.solver)
+        if checkpoint is not None and not stability.stable:
+            layout.replace_with(checkpoint[0])
+            stability = checkpoint[1]
+            if config.progress is not None:
+                config.progress(
+                    "snot: wall-carving tier would break stability; "
+                    "kept the conservative tier"
+                )
+        else:
+            snot_added += bold_added
+    return snot_added, stability
+
+
+def _phase_gauge(
+    name: str,
+    layout: Layout,
+    stability: StabilityResult,
+) -> None:
+    """Exact per-phase readings for the count-trajectory diagnostics.
+
+    Free when not recording; the component count builds a graph, so all
+    readings are gated on an active session.
+    """
+    if telemetry.current() is None:
+        return
+    telemetry.value(f"{name}.bricks", len(layout))
+    telemetry.value(f"{name}.stable", 1.0 if stability.stable else 0.0)
+    telemetry.value(
+        f"{name}.components",
+        ConnectionGraph.from_layout(layout).component_count(),
+    )
 
 
 def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:
@@ -403,6 +473,7 @@ def _place_and_repair(
                 config=config.repair_config,
             )
             stability = analyze(layout, config.solver)
+            _phase_gauge("pipeline.repaired", layout, stability)
     return layout, stability
 
 

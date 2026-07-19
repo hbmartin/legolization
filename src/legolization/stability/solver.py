@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 import cvxpy as cp
+import highspy
 import numpy as np
 from scipy import sparse
 from scipy.optimize import linprog
@@ -79,6 +80,12 @@ class SolverConfig:
     engine: Literal["scipy", "highspy"] = "highspy"
     engine_cross_check: bool = False
     boundary_margin: float = 0.02
+
+    # Appended fields only (positional compatibility).
+    rescue_direct_min_bricks: int = 200
+    """Rescue components at or above this size cold-solve through
+    highspy directly (drops the scipy wrapper overhead); smaller ones
+    keep the scipy-exact path that the 1e-6 equivalence tests pin."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,8 +155,14 @@ def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
         return _solve_lp_body(model, config)
 
 
-def _solve_lp_body(model: StabilityModel, config: SolverConfig) -> StabilityResult:
-    """Run the body of :func:`_solve_lp` without its telemetry span."""
+def _lp_arrays(
+    model: StabilityModel,
+) -> tuple[np.ndarray, sparse.csr_matrix, np.ndarray, int]:
+    """Assemble the L1 system's ``(cost, A_ub, b_ub, force_count)``.
+
+    Shared by the scipy path and the direct-highspy rescue path so both
+    engines solve the byte-identical polytope.
+    """
     rows, force_count = model.a_matrix.shape
     dmax_bricks = [bid for bid, cols in model.bottom_drag_cols.items() if cols.size]
     dmax_index = {bid: force_count + rows + i for i, bid in enumerate(dmax_bricks)}
@@ -186,6 +199,12 @@ def _solve_lp_body(model: StabilityModel, config: SolverConfig) -> StabilityResu
 
     a_ub = sparse.vstack(blocks, format="csr")
     b_ub = np.concatenate(rhs)
+    return cost, a_ub, b_ub, force_count
+
+
+def _solve_lp_body(model: StabilityModel, config: SolverConfig) -> StabilityResult:
+    """Run the body of :func:`_solve_lp` without its telemetry span."""
+    cost, a_ub, b_ub, force_count = _lp_arrays(model)
     result = None
     with telemetry.span("stability.lp.linprog", n=model.brick_count):
         for method, options in _LP_ATTEMPTS:
@@ -210,6 +229,93 @@ def _solve_lp_body(model: StabilityModel, config: SolverConfig) -> StabilityResu
         "optimal" if result.status == 0 else str(result.message),
         float(result.fun),
     )
+
+
+def _solve_lp_highspy(
+    model: StabilityModel,
+    config: SolverConfig,
+) -> tuple[StabilityResult, bool]:
+    """One-shot direct-HiGHS solve of the same arrays the scipy path uses.
+
+    Kills scipy's per-call wrapper overhead on large cold solves. The
+    attempt chain mirrors ``_LP_ATTEMPTS`` (default presolve → presolve
+    off → IPM). Returns ``(result, near_boundary)`` — callers re-solve
+    through the scipy-exact path when the verdict sits near the
+    stability threshold. Raises ``RuntimeError`` when no attempt reaches
+    optimality.
+    """
+    cost, a_ub, b_ub, force_count = _lp_arrays(model)
+    rows, cols = a_ub.shape
+    csc = a_ub.tocsc()
+    lp = highspy.HighsLp()
+    lp.num_col_ = cols
+    lp.num_row_ = rows
+    lp.col_cost_ = cost
+    lp.col_lower_ = np.zeros(cols)
+    lp.col_upper_ = np.full(cols, np.inf)
+    lp.row_lower_ = np.full(rows, -np.inf)
+    lp.row_upper_ = b_ub
+    lp.a_matrix_.format_ = highspy.MatrixFormat.kColwise
+    lp.a_matrix_.start_ = csc.indptr
+    lp.a_matrix_.index_ = csc.indices
+    lp.a_matrix_.value_ = csc.data
+    solver = highspy.Highs()
+    solver.setOptionValue("output_flag", False)  # noqa: FBT003 - pybind API
+    solver.setOptionValue("threads", 1)
+    attempts = (("choose", "simplex"), ("off", "simplex"), ("choose", "ipm"))
+    optimal = False
+    for presolve, method in attempts:
+        solver.setOptionValue("presolve", presolve)
+        solver.setOptionValue("solver", method)
+        solver.passModel(lp)
+        solver.run()
+        if solver.getModelStatus() == highspy.HighsModelStatus.kOptimal:
+            optimal = True
+            break
+    if not optimal:
+        msg = f"direct HiGHS solve failed: {solver.getModelStatus()}"
+        raise RuntimeError(msg)
+    values = np.asarray(solver.getSolution().col_value)
+    result = _score(
+        model,
+        config,
+        values[:force_count],
+        "optimal",
+        float(solver.getInfo().objective_function_value),
+    )
+    return result, _near_boundary(model, config, values, force_count)
+
+
+def _near_boundary(
+    model: StabilityModel,
+    config: SolverConfig,
+    values: np.ndarray,
+    force_count: int,
+) -> bool:
+    """Whether any brick's verdict sits inside the cold-re-solve band.
+
+    Same thresholds as ``PrefixSolver._extract``: drag within
+    ``(1 ± boundary_margin)·T``, or any t-residual within a decade of
+    its tolerance.
+    """
+    margin = config.boundary_margin
+    low = (1.0 - margin) * T_CAPACITY_N
+    high = (1.0 + margin) * T_CAPACITY_N
+    tolerances = (config.tol_force,) * 3 + (config.tol_torque,) * 2
+    for i, brick_id in enumerate(model.brick_ids):
+        drag_cols = model.bottom_drag_cols[brick_id]
+        drag_max = float(values[drag_cols].max()) if drag_cols.size else 0.0
+        if low <= drag_max <= high:
+            return True
+        t_vals = values[
+            force_count + ROWS_PER_BRICK * i : force_count + ROWS_PER_BRICK * (i + 1)
+        ]
+        if any(
+            tol / 10.0 < v < tol * 10.0
+            for v, tol in zip(t_vals, tolerances, strict=True)
+        ):
+            return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)

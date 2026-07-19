@@ -51,30 +51,75 @@ def vertical_blockers(layout: Layout) -> dict[int, frozenset[int]]:
             if brick_id not in lateral:
                 blockers[brick_id] |= above - {brick_id}
             above.add(brick_id)
+    for brick in layout:
+        if brick.brick_id not in lateral:
+            blockers[brick.brick_id] |= _stud_sweep_blockers(layout, brick, columns)
     for brick_id, brick in lateral.items():
         blockers[brick_id] = _outward_ray_blockers(layout, brick)
     return {brick_id: frozenset(ids) for brick_id, ids in blockers.items()}
 
 
+def _stud_sweep_blockers(
+    layout: Layout,
+    brick: PlacedBrick,
+    columns: dict[tuple[int, int], list[tuple[int, int]]],
+) -> set[int]:
+    """Bricks swept by a carrier's protruding side studs on the way down.
+
+    A carrier is still inserted vertically, but its side stud protrudes
+    into the neighbour column and sweeps it from above: anything
+    occupying that column at or above the stud's final height blocks the
+    insertion (conservative full-cell model, same as the collision
+    grid). Ordinary bricks have no lateral top connectors and pay one
+    generator pass; bottom-up sequencing already satisfies the
+    constraint, it only bites when steps are reordered.
+    """
+    found: set[int] = set()
+    for conn in layout.connectors_of(brick, top=True):
+        if conn.direction[2] == 0:  # lateral studs only
+            target = (
+                conn.cell[0] + conn.direction[0],
+                conn.cell[1] + conn.direction[1],
+            )
+            found.update(
+                occupant
+                for z, occupant in columns.get(target, [])
+                if z >= conn.cell[2] and occupant != brick.brick_id
+            )
+    return found
+
+
 def _outward_ray_blockers(layout: Layout, brick: PlacedBrick) -> set[int]:
-    """Bricks on the sideways part's outward slide-in path."""
+    """Bricks on the sideways part's outward slide-in path.
+
+    The ray extent derives from the layout's occupied bounds — a fixed
+    scan cap silently approved impossible insertions on models wider
+    than the cap (PR #17 review).
+    """
     sockets = [
         conn
         for conn in layout.connectors_of(brick, top=False)
         if conn.direction[2] == 0
     ]
+    if not sockets or not layout.occupancy:
+        return set()
+    xs = [x for x, _, _ in layout.occupancy]
+    ys = [y for _, y, _ in layout.occupancy]
+    bounds = (min(xs), max(xs), min(ys), max(ys))
     found: set[int] = set()
-    max_reach = 64  # far beyond any model extent
     for conn in sockets:
         ox, oy = -conn.direction[0], -conn.direction[1]
         for cell in layout.cells_of(brick):
             x, y, z = cell
-            for step in range(1, max_reach):
-                other = layout.brick_at((x + ox * step, y + oy * step, z))
-                if other is None:
-                    continue
-                if other.brick_id != brick.brick_id:
+            step = 1
+            while True:
+                px, py = x + ox * step, y + oy * step
+                if px < bounds[0] or px > bounds[1] or py < bounds[2] or py > bounds[3]:
+                    break
+                other = layout.brick_at((px, py, z))
+                if other is not None and other.brick_id != brick.brick_id:
                     found.add(other.brick_id)
+                step += 1
     return found
 
 

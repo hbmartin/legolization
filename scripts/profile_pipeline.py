@@ -47,30 +47,10 @@ if TYPE_CHECKING:
 _SCRIPTS = Path(__file__).resolve().parent
 _REPO = _SCRIPTS.parent
 PROFILES = _REPO / "eval" / "profiles"
-_SHA_LENGTH = 40
 
 
-def git_sha(repo: Path = _REPO) -> str | None:
-    """Read the current commit sha from .git without spawning a process."""
-    try:
-        content = (repo / ".git" / "HEAD").read_text().strip()
-    except OSError:
-        return None
-    if not content.startswith("ref:"):
-        return content if len(content) == _SHA_LENGTH else None
-    ref = content.removeprefix("ref:").strip()
-    try:
-        return (repo / ".git" / ref).read_text().strip()
-    except OSError:
-        pass
-    try:
-        packed = (repo / ".git" / "packed-refs").read_text()
-    except OSError:
-        return None
-    for line in packed.splitlines():
-        if not line.startswith("#") and line.endswith(ref):
-            return line.split()[0]
-    return None
+git_sha = telemetry.git_sha
+"""Shared with the CLI --profile writer (legolization.telemetry)."""
 
 
 def _resolve_grid(

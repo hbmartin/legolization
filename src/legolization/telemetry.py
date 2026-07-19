@@ -23,6 +23,7 @@ import time
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
@@ -33,47 +34,73 @@ _NOOP: AbstractContextManager[None] = nullcontext()
 
 
 @dataclass(slots=True)
+class _Bucket:
+    """Calls and wall seconds of one power-of-two size bucket."""
+
+    calls: int = 0
+    seconds: float = 0.0
+
+
+@dataclass(slots=True)
 class SpanStats:
     """Accumulated calls and wall seconds for one span name."""
 
     calls: int = 0
     seconds: float = 0.0
-    buckets: dict[int, list[float]] = field(default_factory=dict)
+    buckets: dict[int, _Bucket] = field(default_factory=dict)
 
     def add(self, seconds: float, n: int | None) -> None:
         """Fold one finished call into the totals."""
         self.calls += 1
         self.seconds += seconds
         if n is not None:
-            bucket = 1 << max(n - 1, 0).bit_length()
-            entry = self.buckets.setdefault(bucket, [0, 0.0])
-            entry[0] += 1
-            entry[1] += seconds
+            bucket = self.buckets.setdefault(1 << max(n - 1, 0).bit_length(), _Bucket())
+            bucket.calls += 1
+            bucket.seconds += seconds
 
 
 @dataclass(slots=True)
 class Telemetry:
-    """One recording session's span accumulators."""
+    """One recording session's span accumulators and exact-value gauges."""
 
     spans: dict[str, SpanStats] = field(default_factory=dict)
+    values: dict[str, list[float]] = field(default_factory=dict)
 
     def add(self, name: str, seconds: float, n: int | None = None) -> None:
         """Record one finished call of ``name``."""
         self.spans.setdefault(name, SpanStats()).add(seconds, n)
 
+    def record_value(self, name: str, value: float) -> None:
+        """Append one exact gauge reading.
+
+        Spans bucket ``n`` by powers of two; phase-boundary quantities
+        like brick counts need this lossless channel.
+        """
+        self.values.setdefault(name, []).append(value)
+
     def to_dict(self) -> dict[str, object]:
-        """JSON-safe view: ``{name: {calls, seconds, buckets}}``."""
+        """JSON-safe span view: ``{name: {calls, seconds, buckets}}``.
+
+        Bucket entries stay ``[calls, seconds]`` pairs — the profile JSON
+        schema is unchanged by the typed internal representation. Gauge
+        readings live in :meth:`values_dict`, a separate channel, so
+        span consumers never meet a shape they do not expect.
+        """
         return {
             name: {
                 "calls": stats.calls,
                 "seconds": round(stats.seconds, 6),
                 "buckets": {
-                    str(bucket): [int(entry[0]), round(entry[1], 6)]
-                    for bucket, entry in sorted(stats.buckets.items())
+                    str(size): [bucket.calls, round(bucket.seconds, 6)]
+                    for size, bucket in sorted(stats.buckets.items())
                 },
             }
             for name, stats in sorted(self.spans.items())
         }
+
+    def values_dict(self) -> dict[str, list[float]]:
+        """JSON-safe gauge view: ``{name: [reading, ...]}`` in order."""
+        return {name: list(entries) for name, entries in sorted(self.values.items())}
 
 
 class _Span:
@@ -100,6 +127,39 @@ class _Span:
         )
 
 
+_SHA_LENGTH = 40
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def git_sha(repo: Path | None = None) -> str | None:
+    """Read the current commit sha from ``.git`` without spawning a process.
+
+    Profile artifacts stamp this so before/after comparisons are pinned
+    to code states; both profile writers (the script and the CLI
+    ``--profile``) share it.
+    """
+    root = repo if repo is not None else _REPO_ROOT
+    try:
+        content = (root / ".git" / "HEAD").read_text().strip()
+    except OSError:
+        return None
+    if not content.startswith("ref:"):
+        return content if len(content) == _SHA_LENGTH else None
+    ref = content.removeprefix("ref:").strip()
+    try:
+        return (root / ".git" / ref).read_text().strip()
+    except OSError:
+        pass
+    try:
+        packed = (root / ".git" / "packed-refs").read_text()
+    except OSError:
+        return None
+    for line in packed.splitlines():
+        if not line.startswith("#") and line.endswith(ref):
+            return line.split()[0]
+    return None
+
+
 def current() -> Telemetry | None:
     """Return the active recording session, or None when disabled."""
     return _ACTIVE.get(None)
@@ -122,3 +182,10 @@ def span(name: str, n: int | None = None) -> AbstractContextManager[object]:
     if telemetry is None:
         return _NOOP
     return _Span(telemetry, name, n)
+
+
+def value(name: str, reading: float) -> None:
+    """Record one exact gauge reading; a no-op when not recording."""
+    telemetry = _ACTIVE.get(None)
+    if telemetry is not None:
+        telemetry.record_value(name, reading)

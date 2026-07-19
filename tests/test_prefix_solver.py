@@ -243,3 +243,102 @@ def test_warm_fail_falls_back_cold(monkeypatch: pytest.MonkeyPatch):
     cold = analyze(layout.subset([ids[0]]), _WARM)
     assert result.stable == cold.stable
     assert "stability.prefix.warm_fail" in session.spans
+
+
+def _hanging_decoration_layout() -> tuple[Layout, int, int]:
+    """Two towers, a bridge, and a decorative piece hanging BELOW it.
+
+    The decoration's only connection is its top studs into the bridge's
+    bottom sockets — the class of piece the user's models add underneath
+    (vertically below) existing structure.
+    """
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    layout.add("brick_2x2", 4, 0, 0, 0, 4)
+    layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    layout.add("brick_2x2", 4, 0, 3, 0, 4)
+    bridge = layout.add("brick_1x6", 0, 0, 6, 0, 4)
+    decoration = layout.add("brick_1x1", 2, 0, 3, 0, 14)  # hangs under it
+    return layout, bridge.brick_id, decoration.brick_id
+
+
+def test_probe_brick_below_matches_cold():
+    # Probing a chunk whose brick seats BELOW an already-present brick
+    # grows the present brick's bottom-drag rows (the grown-base
+    # plumbing); the warm result must match cold exactly, including
+    # after a rollback of the grown state.
+    layout, bridge, decoration = _hanging_decoration_layout()
+    towers = sorted(set(layout.bricks) - {bridge, decoration})
+    solver = _warm_prefix(layout)
+    solver.probe(tuple(towers))
+    solver.commit(tuple(towers))
+    solver.probe((bridge,))
+    solver.commit((bridge,))
+
+    warm = solver.probe((decoration,))
+    cold = analyze(layout, _WARM)
+    assert warm.stable == cold.stable
+    assert _score_drift(warm, cold) < 1e-9
+
+    # Reject the decoration (rollback trims the grown drag columns),
+    # probe it again: identical to a fresh solver's answer.
+    solver.probe((decoration,))
+    again = solver.probe((decoration,))
+    fresh = _warm_prefix(layout)
+    fresh.probe(tuple(towers))
+    fresh.commit(tuple(towers))
+    fresh.probe((bridge,))
+    fresh.commit((bridge,))
+    fresh_probe = fresh.probe((decoration,))
+    assert _score_drift(again, fresh_probe) < 1e-12
+
+
+_DIRECT = SolverConfig(engine="highspy", rescue_direct_min_bricks=1)
+
+
+def test_direct_rescue_solve_matches_cold():
+    # With the size gate forced open, every uncached component solves
+    # through highspy directly; verdicts must match the scipy path with
+    # only alternative-optima-class drift.
+    layout, ids = _tower_layout()
+    scope = frozenset(ids)
+    direct = RemovalSolver.create(layout, scope, _DIRECT)
+    assert direct is not None
+    cold = RemovalSolver.create(layout, scope, _WARM)
+    assert cold is not None
+    for chunk in ((), (ids[4],), (ids[3], ids[4])):
+        a = direct.probe_without(chunk)
+        b = cold.probe_without(chunk)
+        assert a.stable == b.stable
+        assert abs(a.objective - b.objective) <= 1e-6 + 1e-3 * abs(b.objective)
+
+
+def test_direct_rescue_failure_falls_back_to_scipy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.stability.prefix as prefix_mod
+
+    def failing(*args: object, **kwargs: object) -> object:
+        msg = "direct solve exploded"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(prefix_mod, "_solve_lp_highspy", failing)
+    layout, ids = _tower_layout()
+    solver = RemovalSolver.create(layout, frozenset(ids), _DIRECT)
+    assert solver is not None
+    with telemetry.record() as session:
+        result = solver.probe_without(())
+    cold = analyze(layout, _WARM)
+    assert result.stable == cold.stable
+    assert session.spans["stability.rescue.cold_fallback"].calls >= 1
+
+
+def test_direct_rescue_gate_keeps_small_models_scipy_exact():
+    # Default gate (200 bricks): heart-sized components never take the
+    # direct path, protecting the 1e-6 equivalence and plan-bytes pins.
+    layout, ids = _tower_layout()
+    solver = RemovalSolver.create(layout, frozenset(ids), _WARM)
+    assert solver is not None
+    with telemetry.record() as session:
+        solver.probe_without(())
+    assert "stability.rescue.cold_direct" not in session.spans
