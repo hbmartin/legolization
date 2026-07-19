@@ -26,6 +26,7 @@ from legolization.grid import EMPTY, merge_colour
 from legolization.layout import Layout
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import (
+    BRIDGE_DRAWS,
     compact_vertical,
     improve_connectivity,
     place_rect,
@@ -155,7 +156,13 @@ class LayeredStrategy:
         telemetry.value("place.tiled.bricks", len(layout))
         compact_vertical(layout)
         telemetry.value("place.compacted.bricks", len(layout))
-        improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
+        # Layered tilings are per-layer minima worth defending: best-of-k
+        # bridging resists the count inflation measured in
+        # docs/kollsker-drift-report.md. The greedy path keeps the
+        # historical single draw (shipped goldens pin its exact bytes).
+        improve_connectivity(
+            layout, grid, rng, fail_max=self.fail_max, bridge_draws=BRIDGE_DRAWS
+        )
         telemetry.value("place.connected.bricks", len(layout))
         if telemetry.current() is not None:  # graph build only when recording
             telemetry.value(

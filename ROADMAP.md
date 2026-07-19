@@ -67,6 +67,48 @@ recorded in `docs/performance-testing.md` §6 with the same candor as
 the LP-deletion note. The SNOT decline gate on the warm solvers stays
 (documented revisit trigger: when SNOT contact semantics stabilize).
 
+### 2026-07-19 — Kollsker downstream drift: instrumented, explained, fixed
+
+Landed `docs/kollsker-drift-report.md` with the full measured story.
+C1 (behaviour-neutral): telemetry gains a lossless value-gauge channel
+(`record_value`/`values_dict`; spans keep power-of-two buckets), the
+pipeline and layered engine emit per-phase brick/component/stability
+gauges, `PipelineConfig.connectivity_fail_max` threads a clean
+ablation switch, and `scripts/count_trajectory.py` tabulates the
+trajectory (sha-stamped JSON artifacts). C2 (the fix): best-of-k
+acceptance in `improve_connectivity` — `bridge_draws=5` draws per
+bridging step, accept the bridging draw minimizing `(components,
+bricks)` — for the **layered strategies only**; the default of 1 is
+byte-identical to the historical loop and the greedy path keeps it
+(shipped goldens pin exact bytes; measured on the goldens, local
+best-of-k shifts downstream refinement chaotically: heart 12 → 29
+while arch 32 → 23 — not a trade worth breaking pins for).
+
+The verdict overturned the hypothesis: kollsker's tilings are both the
+smallest AND the least fragmented (thin-shell 146 bricks/18 components
+vs bond's 182/26); the entire inflation was `improve_connectivity`'s
+count-blind random-maximal rewrite (+179 on mushroom's 112-brick
+minimum in ONE accepted step), which taxes the best tiling hardest.
+Repair and hollow-restore contributed nothing on the drift models; the
+stage-2 bridging term (fix b) is not indicated and was not built.
+
+Proof (seed 0, determinism double-checked):
+| model | kollsker | bond | fast |
+|---|---|---|---|
+| mushroom | 269 → **251** | 265 → 263 | — |
+| thin-shell | 417 → **386** | 398 → 398 | 370 → 370 |
+
+13-model kollsker-vs-bond: **13 wins/ties, up from 11** — both drift
+losses flipped (mushroom, thin-shell), no previous win or tie
+regressed, pyramid also improved (128 → 126 vs bond's 136 → 129).
+Corpus sweep exit 0, zero hard regressions, three improving notes
+(cantilever 36 → 31, mushroom winner luo → kollsker at 251,
+thin-shell winner greedy → kollsker on objective); baseline
+regenerated per the pre-approval. Residual: `fast` still holds
+thin-shell's outright best (370) — the pass regresses every strategy
+toward the same random-maximal mean; closing that gap needs
+structure-preserving bridge synthesis (report §5 non-recommendations).
+
 *(Future note — mesh-kind eval baseline: the committed scorecard
 baseline covers synthetics only. Now that v3's sequencing speedups make
 mesh sweeps feasible (suzanne@16 ≈ 30 s), commit a mesh-kind baseline

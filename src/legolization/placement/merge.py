@@ -37,6 +37,7 @@ ColourMode = Literal["hard", "soft"]
 
 _MERGEABLE = (Category.BRICK, Category.PLATE)
 _RING_GROWTH = 10  # failures per extra reconfiguration ring (Luo's N)
+BRIDGE_DRAWS = 5  # best-of-k candidates per bridging step (layered strategies)
 _FALLBACK_COLOUR = 71  # light bluish gray, for IGNORE bricks with no neighbour
 
 
@@ -286,6 +287,7 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     fail_max: int = 30,
     colour_mode: ColourMode = "hard",
     colour_weight: float = 1.0,
+    bridge_draws: int = 1,
 ) -> int:
     """Split-remerge around component borders until single-component.
 
@@ -294,34 +296,55 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     remerging the atoms across the seam can. Accepts a candidate only when
     the component count strictly drops (Luo's Algorithm 5). Returns the
     final component count.
+
+    ``bridge_draws > 1`` enables best-of-k acceptance: a random-maximal
+    region rewrite is the count-inflation hotspot (measured on mushroom:
+    one accepted rewrite added +179 bricks to a 112-brick minimum tiling),
+    so among the draws that bridge components, keep the one with the
+    fewest components, then fewest bricks. The bridging guarantee is
+    unchanged (any bridging draw is still accepted), and the default of 1
+    is byte-identical to the historical single-draw loop — the greedy
+    path stays on it because its shipped goldens pin exact bytes, and
+    local best-of-k choices shift downstream refinement chaotically
+    (measured: heart 12 -> 29 bricks).
     """
     components = ConnectionGraph.from_layout(layout).component_count()
     failures = 0
     while components > 1 and failures < fail_max:
-        with telemetry.span("connectivity.attempt"):
-            seeds = component_border(layout)
-            if not seeds:
-                break
-            region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
-            candidate = layout.copy()
-            atom_ids = split_to_atoms(candidate, region, grid)
-            maximal_random_merge(
-                candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
-            )
-            # Reclaim bricks from whatever 1x1 plates the merge left
-            # behind — after the merge, so the phase pre-commit can't
-            # block seam bridging.
-            if compact_columns(candidate, atom_ids):
+        seeds = component_border(layout)
+        if not seeds:
+            break
+        region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
+        best: Layout | None = None
+        best_key: tuple[int, int] | None = None
+        for _ in range(bridge_draws):
+            with telemetry.span("connectivity.attempt"):
+                candidate = layout.copy()
+                atom_ids = split_to_atoms(candidate, region, grid)
                 maximal_random_merge(
                     candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
                 )
-            candidate_components = ConnectionGraph.from_layout(
-                candidate
-            ).component_count()
-        if candidate_components < components:
+                # Reclaim bricks from whatever 1x1 plates the merge left
+                # behind — after the merge, so the phase pre-commit
+                # can't block seam bridging.
+                if compact_columns(candidate, atom_ids):
+                    maximal_random_merge(
+                        candidate,
+                        rng,
+                        colour_mode=colour_mode,
+                        colour_weight=colour_weight,
+                    )
+                candidate_components = ConnectionGraph.from_layout(
+                    candidate
+                ).component_count()
+            if candidate_components < components:
+                key = (candidate_components, len(candidate))
+                if best_key is None or key < best_key:
+                    best, best_key = candidate, key
+        if best is not None and best_key is not None:
             with telemetry.span("connectivity.accept"):
-                layout.replace_with(candidate)
-                components = candidate_components
+                layout.replace_with(best)
+                components = best_key[0]
                 failures = 0
                 telemetry.value("connectivity.bricks", len(layout))
                 telemetry.value("connectivity.components", components)

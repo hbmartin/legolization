@@ -651,3 +651,32 @@ def test_smooth_mode_is_the_legacy_default():
     assert apply_slopes(layout, grid) == 1  # same behaviour as before
     (brick,) = list(layout)
     assert brick.part_key == "slope_45_2x1"
+
+
+def test_improve_connectivity_best_of_k_bridges_leaner():
+    # Two 2-wide towers touch along x=1|2 but share no studs: two
+    # components only a cross-seam remerge can join. Best-of-k draws must
+    # still bridge, keep the exact cover, and never end with more bricks
+    # than the single-draw acceptance from the same seed — at each step
+    # the 5-draw pool contains the single draw as its first candidate.
+    def build() -> tuple[Layout, VoxelGrid]:
+        codes = np.full((4, 1, 6), 4, dtype=np.int16)
+        grid = VoxelGrid(codes=codes)
+        layout = Layout(catalog=default_catalog())
+        for x in (0, 2):
+            for level in (0, 1):
+                layout.add("brick_1x2", x, 0, 3 * level, 0, 4)
+        assert ConnectionGraph.from_layout(layout).component_count() == 2
+        return layout, grid
+
+    single, grid = build()
+    assert improve_connectivity(single, grid, np.random.default_rng(7)) == 1
+
+    best_of_k, grid = build()
+    final = improve_connectivity(
+        best_of_k, grid, np.random.default_rng(7), bridge_draws=5
+    )
+    assert final == 1
+    assert not ConnectionGraph.from_layout(best_of_k).floating_ids()
+    _assert_exact_cover(best_of_k, grid)
+    assert len(best_of_k) <= len(single)

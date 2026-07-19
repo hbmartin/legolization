@@ -154,9 +154,19 @@ def main(argv: list[str] | None = None) -> int:
         "trajectory": [row._asdict() for row in rows],
         "values": values,
     }
+    variant = "".join(
+        tag
+        for tag, active in (
+            ("-solid", args.solid),
+            ("-norepair", args.no_repair),
+            (f"-fm{args.fail_max}", args.fail_max is not None),
+        )
+        if active
+    )
     args.out.mkdir(parents=True, exist_ok=True)
     out_path = (
-        args.out / f"{payload['generated']}-{name}-{args.strategy}-trajectory.json"
+        args.out
+        / f"{payload['generated']}-{name}-{args.strategy}{variant}-trajectory.json"
     )
     out_path.write_text(json.dumps(payload, indent=2) + "\n")
 
