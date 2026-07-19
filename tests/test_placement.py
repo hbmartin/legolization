@@ -536,3 +536,118 @@ def test_evaluate_reports_terms():
     assert 0 < report.cost <= 1
     assert report.colour_error == 0.0
     assert report.total >= 0
+
+
+# --- shape-preserving slopes ---
+
+
+def _preserve_fixture(
+    codes: np.ndarray,
+    adds: list[tuple],
+) -> tuple[VoxelGrid, Layout]:
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    for entry in adds:
+        layout.add(*entry)
+    return grid, layout
+
+
+def _filled(layout: Layout) -> list[tuple[int, int, int]]:
+    return sorted(c for b in layout for c in layout.filled_cells_of(b))
+
+
+def test_preserve_swaps_45_profile_without_changing_fill():
+    codes = np.full((2, 1, 3), EMPTY, dtype=np.int16)
+    codes[0, 0, :] = 4
+    codes[1, 0, 0] = 4
+    grid, layout = _preserve_fixture(
+        codes, [("brick_1x1", 0, 0, 0, 0, 4), ("plate_1x1", 1, 0, 0, 0, 4)]
+    )
+    before = _filled(layout)
+    assert apply_slopes(layout, grid, mode="preserve") == 1
+    assert [b.part_key for b in layout] == ["slope_45_2x1"]
+    assert _filled(layout) == before  # zero material added or removed
+
+
+def test_preserve_prefers_larger_slopes():
+    # Stud column plus a 2-cell tread run: the 33-degree 3x1 must win over
+    # a 45-degree 2x1 matching at an earlier scan position.
+    codes = np.full((3, 1, 3), EMPTY, dtype=np.int16)
+    codes[0, 0, :] = 4
+    codes[1, 0, 0] = 4
+    codes[2, 0, 0] = 4
+    grid, layout = _preserve_fixture(
+        codes,
+        [
+            ("brick_1x1", 0, 0, 0, 0, 4),
+            ("plate_1x1", 1, 0, 0, 0, 4),
+            ("plate_1x1", 2, 0, 0, 0, 4),
+        ],
+    )
+    assert apply_slopes(layout, grid, mode="preserve") == 1
+    assert [b.part_key for b in layout] == ["slope_33_3x1"]
+
+
+def test_preserve_places_wide_2x2_slope():
+    codes = np.full((2, 2, 3), EMPTY, dtype=np.int16)
+    codes[0, :, :] = 4
+    codes[1, :, 0] = 4
+    grid, layout = _preserve_fixture(
+        codes,
+        [
+            ("brick_1x2", 0, 0, 0, 90, 4),
+            ("plate_1x1", 1, 0, 0, 0, 4),
+            ("plate_1x1", 1, 1, 0, 0, 4),
+        ],
+    )
+    assert apply_slopes(layout, grid, mode="preserve") == 1
+    assert [b.part_key for b in layout] == ["slope_45_2x2"]
+
+
+def test_preserve_carves_and_refills_overlapping_donors():
+    # The tread donor sticks one cell out of the slope profile: it is
+    # carved, the slope placed, and the leftover cell refilled — the
+    # filled-cell set survives untouched.
+    codes = np.full((2, 2, 3), EMPTY, dtype=np.int16)
+    codes[0, 0, :] = 4
+    codes[1, 0, 0] = 4
+    codes[1, 1, 0] = 4
+    grid, layout = _preserve_fixture(
+        codes, [("brick_1x1", 0, 0, 0, 0, 4), ("plate_1x2", 1, 0, 0, 90, 4)]
+    )
+    before = _filled(layout)
+    assert apply_slopes(layout, grid, mode="preserve") == 1
+    parts = sorted(b.part_key for b in layout)
+    assert parts == ["plate_1x1", "slope_45_2x1"]
+    assert _filled(layout) == before
+
+
+def test_preserve_rejects_bad_candidates():
+    # Void cell still inside the shape (a full brick step): no swap.
+    codes = np.full((2, 1, 3), EMPTY, dtype=np.int16)
+    codes[0, 0, :] = 4
+    codes[1, 0, :] = 4
+    grid, layout = _preserve_fixture(
+        codes, [("brick_1x1", 0, 0, 0, 0, 4), ("brick_1x1", 1, 0, 0, 0, 4)]
+    )
+    assert apply_slopes(layout, grid, mode="preserve") == 0
+
+    # Donor colours differ: no swap.
+    codes = np.full((2, 1, 3), EMPTY, dtype=np.int16)
+    codes[0, 0, :] = 4
+    codes[1, 0, 0] = 4
+    grid, layout = _preserve_fixture(
+        codes, [("brick_1x1", 0, 0, 0, 0, 4), ("plate_1x1", 1, 0, 0, 0, 14)]
+    )
+    assert apply_slopes(layout, grid, mode="preserve") == 0
+
+
+def test_smooth_mode_is_the_legacy_default():
+    codes = np.full((1, 3, 3), EMPTY, dtype=np.int16)
+    codes[0, 0, :] = 4
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    assert apply_slopes(layout, grid) == 1  # same behaviour as before
+    (brick,) = list(layout)
+    assert brick.part_key == "slope_45_2x1"

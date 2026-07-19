@@ -17,9 +17,13 @@ solver stack — no Gurobi required.
   codes or RGB(A) voxels — colours are quantized to the nearest solid LDraw
   colour, with optional Floyd-Steinberg dithering for gradients).
 - **Placement**: covers every voxel with bricks and plates at true heights
-  (plate = 8 LDU, brick = 24 LDU) using one of six strategies; tiles and 45°
-  slopes are opt-in finishing passes (`--tiles`, `--slopes` — the catalogued
-  33° slope and 2x2 slope are not yet placed by any pass):
+  (plate = 8 LDU, brick = 24 LDU) using one of six strategies; tiles and
+  slopes are opt-in finishing passes (`--tiles`, `--slopes`). Slope fitting
+  places all three catalogued slopes (45° 2x1/2x2, 33° 3x1): `--slopes`
+  (= `--slopes preserve`) swaps bricks whose cells exactly match a slope's
+  own profile inside the shape — no material added or removed — while
+  `--slopes smooth` is the legacy pass that fills staircase steps with
+  slopes *outside* the shape:
   - `greedy` (default): largest-first bottom-up fill with Kollsker's
     remainder-lookahead h(r) and distance-decayed stretcher-bond scoring,
     then delete-and-rebuild reinforcement around the weakest bricks.
@@ -94,6 +98,7 @@ uv run legolization model.vox --strategy bond --bom parts.json
 uv run legolization model.vox --instructions booklet.pdf   # rendered booklet
 uv run legolization model.npy --strategy luo --solid --seed 7
 uv run legolization model.vox --slopes --tiles      # surface finishing passes
+uv run legolization model.vox --slopes smooth       # legacy add-outside slopes
 uv run legolization model.vox -o out.mpd --subassemblies  # separately built units
 uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
 uv run legolization model.vox --milp                # cross-check the exact LP

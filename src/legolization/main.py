@@ -176,8 +176,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--slopes",
-        action="store_true",
-        help="smooth staircase surfaces with 45-degree slope bricks",
+        nargs="?",
+        const="preserve",
+        choices=("preserve", "smooth"),
+        default=None,
+        help=(
+            "fit slope bricks onto staircase surfaces: 'preserve' (default) "
+            "swaps exact in-shape matches without adding material; 'smooth' "
+            "adds slopes outside the shape"
+        ),
     )
     parser.add_argument(
         "--tiles",
@@ -421,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
     config = PipelineConfig(
         strategy=args.strategy,
         hollow=not args.solid,
-        slopes=args.slopes,
+        slopes=args.slopes or False,
         tiles=args.tiles,
         refine=not args.no_refine,
         repair=not args.no_repair,

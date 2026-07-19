@@ -29,7 +29,7 @@ from legolization.mesh import MESH_SUFFIXES, MeshOptions, mesh_to_grid
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.repair import RepairConfig, repair_stability
-from legolization.placement.slopes import apply_slopes, apply_tiles
+from legolization.placement.slopes import SlopeMode, apply_slopes, apply_tiles
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -50,7 +50,10 @@ class PipelineConfig:
     hollow: bool = True
     hollow_rounds: int = 5
     hollow_restore_radius: int = 2
-    slopes: bool = False
+    slopes: bool | SlopeMode = False
+    """``"preserve"`` swaps exact in-shape profile matches (adds nothing);
+    ``"smooth"`` (or legacy ``True``) adds slopes outside the shape."""
+
     tiles: bool = False
     refine: bool = True
     seed: int = 0
@@ -165,10 +168,9 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         resolve_ignore_colours(layout)
 
     with telemetry.span("phase.slopes"):
-        slopes_added = apply_slopes(layout, working) if config.slopes else 0
-        tiles_added = apply_tiles(layout) if config.tiles else 0
-        if slopes_added or tiles_added:
-            stability = analyze(layout, config.solver)
+        stability, slopes_added, tiles_added = _finish_surfaces(
+            layout, working, stability, config
+        )
 
     plan: InstructionPlan | None = None
     if config.instructions.mode == "smart":
@@ -193,6 +195,42 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         tiles_added=tiles_added,
         plan=plan,
     )
+
+
+def _finish_surfaces(
+    layout: Layout,
+    working: VoxelGrid,
+    stability: StabilityResult,
+    config: PipelineConfig,
+) -> tuple[StabilityResult, int, int]:
+    """Run the opt-in slope and tile finishing passes; re-analyze if used."""
+    slope_mode: SlopeMode | None = (
+        "smooth" if config.slopes is True else config.slopes or None
+    )
+    slopes_added = 0
+    if slope_mode is not None:
+        # Preserve mode must never trade stability for looks: carving
+        # donors fragments load paths, so keep a snapshot to revert to.
+        guard = (
+            (layout.copy(), stability)
+            if slope_mode == "preserve" and stability.stable
+            else None
+        )
+        slopes_added = apply_slopes(layout, working, mode=slope_mode)
+        if slopes_added:
+            stability = analyze(layout, config.solver)
+            if guard is not None and not stability.stable:
+                layout.replace_with(guard[0])
+                stability = guard[1]
+                slopes_added = 0
+                if config.progress is not None:
+                    config.progress(
+                        "slopes: preserve pass would break stability; reverted"
+                    )
+    tiles_added = apply_tiles(layout) if config.tiles else 0
+    if tiles_added:
+        stability = analyze(layout, config.solver)
+    return stability, slopes_added, tiles_added
 
 
 def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:

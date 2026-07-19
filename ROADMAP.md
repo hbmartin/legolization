@@ -102,6 +102,62 @@ the same final geometry; it was the *intermediate* orders that were
 unstable). Old roadmap "Deferred: MPD subassembly submodels" marked
 DONE.
 
+### 2026-07-19 — Item 3: shape-preserving slopes
+
+Shipped preserve-mode slope fitting: `--slopes` (= `--slopes preserve`)
+matches each catalogued slope's own `filled_cells` profile — stud
+columns at full height plus 1-plate toes — against cells inside the
+target shape (sloped-void cells must be *outside* it), carves out the
+same-colour donor bricks covering the profile, places the slope, and
+MILP-refills any donor cells beyond the profile (exact cover, colours
+inherited per cell from the carved donors; the tiling is computed
+before any mutation so a failed candidate costs nothing). Zero
+material added or removed — the filled-cell set is asserted identical
+on every proof run. All three catalogued slopes now place (45° 2x1
+`3040b`, 45° 2x2 `3039`, 33° 3x1 `4286` — the latter two had never
+been placed by any pass), swept largest profile first. The legacy
+add-outside pass is `--slopes smooth`; `PipelineConfig.slopes=True`
+still means smooth for API back-compat.
+
+Two safety rails, both measured in: the carve is capped at 4 freed
+cells per swap (on suzanne@16, caps 0/2/4/6/8 place 2/10/29/44/51
+slopes and the structure collapses at 8 — fragmenting load-bearing
+bricks into weak stacks), and the pipeline snapshots the layout before
+the pass and reverts wholesale if the RBE verdict flips stable →
+unstable, so preserve mode can never trade stability for looks.
+
+Proof (seed 0; "fill-identical" = union of filled cells unchanged):
+| model | bricks | slopes placed | fill-identical | stable |
+|---|---|---|---|---|
+| suzanne@16 | 331 → 330 | 29 | yes | yes → yes (worst 0.137) |
+| teapot@16 | 270 → 270 | 10 | yes | yes → yes |
+| homer@16 | 190 → 190 | 0 (guard reverted) | yes | yes → yes |
+| heart.vox | 12 → 12 | 0 (no sites) | yes | yes → yes |
+| pyramid.npy | 124 → 124 | 0 (no sites) | yes | yes → yes |
+
+On homer even the cap-4 carve trips the RBE verdict, the snapshot
+guard reverts the whole pass, and the model ships exactly as the
+baseline — the guard is load-bearing, not theoretical.
+
+Voxel models quantized at 3 plates/voxel (heart, pyramid) have no
+1-plate treads, so preserve mode correctly never fires there — the
+profile only exists on plate-resolution surfaces, i.e. mesh imports.
+Renders confirm visibly smoother ramps on suzanne's brow, nose, and
+chin. Off by default: goldens and corpus baseline untouched (428
+tests).
+
+Deviations from plan: the plan's expectation that pyramid-style
+brick-step models would gain slopes was wrong — their sloped-void
+cells are *inside* the shape, which shape preservation must reject;
+the win lives on mesh surfaces instead. The carve-and-refill
+extension (planned as a follow-up) shipped in v1 because measurement
+demanded it: exact-donor matching alone fired on only 2 of 82
+shape-valid sites on suzanne (0 of 68 on teapot) — merged bricks
+almost always span the profile boundary. Unguarded carving at a large
+cap breaks stability (suzanne/teapot/homer all flip unstable at cap
+24); the cap-4 + snapshot-revert combination is what ships. Old
+roadmap "Slopes" section marked DONE.
+
 ## Where things stand
 
 Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and
