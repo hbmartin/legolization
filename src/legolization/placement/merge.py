@@ -14,6 +14,7 @@ the refinement strategies.
 from __future__ import annotations
 
 import math
+import time
 from collections import deque
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
@@ -288,6 +289,7 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     colour_mode: ColourMode = "hard",
     colour_weight: float = 1.0,
     bridge_draws: int = 1,
+    deadline: float | None = None,
 ) -> int:
     """Split-remerge around component borders until single-component.
 
@@ -296,6 +298,11 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     remerging the atoms across the seam can. Accepts a candidate only when
     the component count strictly drops (Luo's Algorithm 5). Returns the
     final component count.
+
+    ``deadline`` (monotonic seconds) is checked before every iteration
+    and every draw: the pass was historically outside the strategies'
+    cooperative budget, and best-of-k multiplied that unbudgeted tail
+    (PR #18 review).
 
     ``bridge_draws > 1`` enables best-of-k acceptance: a random-maximal
     region rewrite is the count-inflation hotspot (measured on mushroom:
@@ -311,6 +318,8 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     components = ConnectionGraph.from_layout(layout).component_count()
     failures = 0
     while components > 1 and failures < fail_max:
+        if deadline is not None and time.monotonic() >= deadline:
+            break  # the cooperative budget is spent; stop bridging
         seeds = component_border(layout)
         if not seeds:
             break
@@ -318,6 +327,8 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
         best: Layout | None = None
         best_key: tuple[int, int] | None = None
         for _ in range(bridge_draws):
+            if deadline is not None and time.monotonic() >= deadline:
+                break
             with telemetry.span("connectivity.attempt"):
                 candidate = layout.copy()
                 atom_ids = split_to_atoms(candidate, region, grid)

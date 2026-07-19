@@ -680,3 +680,28 @@ def test_improve_connectivity_best_of_k_bridges_leaner():
     assert not ConnectionGraph.from_layout(best_of_k).floating_ids()
     _assert_exact_cover(best_of_k, grid)
     assert len(best_of_k) <= len(single)
+
+
+def test_improve_connectivity_honours_expired_deadline():
+    # PR #18 P2: the pass ran unbudgeted after the strategy deadline;
+    # an already-expired deadline must produce zero draws.
+    import time
+
+    from legolization import telemetry
+
+    codes = np.full((2, 1, 6), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    for x in (0, 1):
+        for level in (0, 1):
+            layout.add("brick_1x1", x, 0, 3 * level, 0, 4)
+    with telemetry.record() as session:
+        final = improve_connectivity(
+            layout,
+            grid,
+            np.random.default_rng(0),
+            bridge_draws=5,
+            deadline=time.monotonic() - 1.0,
+        )
+    assert final == 2  # nothing bridged
+    assert "connectivity.attempt" not in session.spans

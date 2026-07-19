@@ -161,7 +161,12 @@ class LayeredStrategy:
         # docs/kollsker-drift-report.md. The greedy path keeps the
         # historical single draw (shipped goldens pin its exact bytes).
         improve_connectivity(
-            layout, grid, rng, fail_max=self.fail_max, bridge_draws=BRIDGE_DRAWS
+            layout,
+            grid,
+            rng,
+            fail_max=self.fail_max,
+            bridge_draws=BRIDGE_DRAWS,
+            deadline=deadline,
         )
         telemetry.value("place.connected.bricks", len(layout))
         if telemetry.current() is not None:  # graph build only when recording
