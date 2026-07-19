@@ -198,6 +198,55 @@ natively-generated plan" held exactly (table above) — brick ids differ
 between import order and placement order, yet the sequencer's
 tiebreaks land on the same plan shape.
 
+### 2026-07-19 — Item 5: per-layer Kollsker MILP (`--strategy kollsker`)
+
+Shipped `placement/layered/kollsker.py`: the paper's exact
+set-partitioning model (eqs. 1-3) solved per 4-connected component of
+each layer problem — the tractable scope; the whole-model MILP is
+exponential and the paper's own matheuristic re-optimizes regions the
+same way (eqs. 26-39). Two-stage lexicographic solve: stage 1
+minimizes part count (N*), stage 2 pins Σx = N* and maximizes a
+perimeter-normalized stagger reward (+`seam_priority` per straddled
+below-seam, −0.5·priority per border-aligned one) with a 1e-6 rank
+tiebreak for determinism. `h3` lookahead deliberately dropped — it
+guides sequential commitment, which the simultaneous cover subsumes.
+Fallback to the constructive bond pass per component on candidate
+blowup (>20k), solver failure, or timeout (`layer_time_s`, default
+10 s, deadline-aware). Registered as `kollsker` → CLI, `--strategy
+all` sweeps, and eval tooling pick it up automatically;
+`PipelineConfig.milp_layer_time_s` / `milp_bond_weight` tune it.
+
+Proof (seed 0, end-to-end pipeline, layer-steps mode):
+| model | bond | kollsker | | model | bond | kollsker |
+|---|---|---|---|---|---|---|
+| cantilever | 62 | **36** | | thin-shell | 398 | 417 |
+| staircase-overhang | 42 | **16** | | mushroom | 265 | 269 |
+| wide-arch | 41 | **28** | | sparse-pillars | 20 | 20 |
+| letter-h | 26 | **18** | | letter-t | 14 | **13** |
+| topple-arm | 14 | **8** | | arch | 14 | **13** |
+| two-towers-bridge | 81 | **75** | | pyramid | 136 | **128** |
+| letter-h-bicolour | 28 | **22** | | | | |
+
+11 of 13 better or equal, up to 2.6× fewer bricks; stability verdicts
+identical to bond on every model. Tests pin the per-layer optimality
+claim exactly: brute-force DFS minimum matched on small shapes,
+never-worse-than-bond on seeded random layers, stage-2 border
+avoidance on a two-course wall, fallback and determinism. Runtime
+bounded and small (≤ 8.6 s on the largest synthetic).
+
+Corpus scorecard: zero hard regressions, all 11 manifest expectations
+PASS, and kollsker immediately *wins* cantilever outright in the
+all-strategies sweep (objective 0.6245 → 0.5555 vs the old beauty
+winner).
+
+Deviations from plan: end-to-end brick counts on mushroom (+4) and
+thin-shell (+19) came out slightly worse than bond — the per-layer
+bound is structural, but remerge/repair/hollow-restore interact with
+the different layer seams downstream, exactly the drift the plan said
+to report empirically. `test_compare`'s hardcoded strategy counts now
+derive from `strategy_names()`. The committed synthetic baseline was
+regenerated in this commit to include the seventh strategy.
+
 ## Where things stand
 
 Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and

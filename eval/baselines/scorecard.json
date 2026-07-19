@@ -1,6 +1,7 @@
 {
   "seed": 0,
-  "generated": "20260718T162400Z",
+  "seeds": null,
+  "generated": "20260719T021016Z",
   "models": [
     {
       "model": "cantilever",
@@ -13,18 +14,19 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
-      "winner": "beauty",
+      "winner": "kollsker",
       "buildable": true,
-      "objective_total": 0.6245,
-      "brick_count": 34,
-      "max_score": 0.0492,
-      "maximin_capacity": 0.9318,
+      "objective_total": 0.5555,
+      "brick_count": 36,
+      "max_score": 0.0484,
+      "maximin_capacity": 0.9326,
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 0.248,
+          "seed": 0,
+          "seconds": 0.153,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -48,7 +50,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.581,
+          "seed": 0,
+          "seconds": 0.429,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -72,7 +75,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.439,
+          "seed": 0,
+          "seconds": 0.364,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -96,7 +100,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.556,
+          "seed": 0,
+          "seconds": 0.47,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -119,8 +124,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.224,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 0.5554815737349071,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.9326137333333334,
+            "max_score": 0.048353333333333325,
+            "min_capacity": 0.9326137333333333,
+            "brick_count": 36,
+            "mass_g": 35.019999999999996,
+            "step_count": 10,
+            "cost": 0.125,
+            "aesthetics": 0.16,
+            "colour_error": 0.0,
+            "perpendicularity": 0.5238095238095238,
+            "symmetry": 0.10446343779677113
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 0.258,
+          "seed": 0,
+          "seconds": 0.176,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -144,7 +175,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 2.464,
+          "seed": 0,
+          "seconds": 2.334,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -167,7 +199,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.6245 (capacity 0.932 N, 34 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.5555 (capacity 0.933 N, 36 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "topple-arm",
@@ -190,7 +222,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 0.243,
+          "seed": 0,
+          "seconds": 0.234,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -214,7 +247,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.274,
+          "seed": 0,
+          "seconds": 0.259,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -238,7 +272,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.248,
+          "seed": 0,
+          "seconds": 0.238,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -262,7 +297,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.885,
+          "seed": 0,
+          "seconds": 0.866,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -285,8 +321,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.252,
+          "error": null,
+          "metrics": {
+            "buildable": false,
+            "stable": false,
+            "component_count": 2,
+            "floating_count": 2,
+            "objective_total": 4.555555555555555,
+            "maximin_feasible": false,
+            "maximin_capacity": 0.0,
+            "max_score": 1.0,
+            "min_capacity": 0.98,
+            "brick_count": 8,
+            "mass_g": 13.36,
+            "step_count": 6,
+            "cost": 0.05555555555555555,
+            "aesthetics": 0.5,
+            "colour_error": 0.0,
+            "perpendicularity": 1.0,
+            "symmetry": 0.0
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 1.202,
+          "seed": 0,
+          "seconds": 1.176,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -310,7 +372,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 1.519,
+          "seed": 0,
+          "seconds": 1.478,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -345,7 +408,7 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
       "winner": "luo",
       "buildable": true,
@@ -356,7 +419,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 34.15,
+          "seed": 0,
+          "seconds": 17.038,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -380,7 +444,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 25.602,
+          "seed": 0,
+          "seconds": 11.315,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -404,7 +469,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 34.611,
+          "seed": 0,
+          "seconds": 11.272,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -428,7 +494,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 28.007,
+          "seed": 0,
+          "seconds": 10.703,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -451,8 +518,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 9.877,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 0.9719426799865415,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.9699248142907583,
+            "max_score": 0.06664632646609082,
+            "min_capacity": 0.914686600063231,
+            "brick_count": 269,
+            "mass_g": 142.57999999999998,
+            "step_count": 39,
+            "cost": 0.3036117381489842,
+            "aesthetics": 0.38839285714285715,
+            "colour_error": 0.0,
+            "perpendicularity": 0.4232558139534884,
+            "symmetry": 0.40694101565357327
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 30.057,
+          "seed": 0,
+          "seconds": 8.379,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -476,7 +569,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 34.897,
+          "seed": 0,
+          "seconds": 12.661,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -499,7 +593,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.7951 (capacity 0.975 N, 262 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.7951 (capacity 0.975 N, 262 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "two-towers-bridge",
@@ -511,7 +605,7 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
       "winner": "fast",
       "buildable": true,
@@ -522,7 +616,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 2.916,
+          "seed": 0,
+          "seconds": 2.47,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -546,7 +641,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.618,
+          "seed": 0,
+          "seconds": 0.396,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -570,7 +666,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.429,
+          "seed": 0,
+          "seconds": 0.257,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -594,7 +691,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.702,
+          "seed": 0,
+          "seconds": 0.511,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -617,8 +715,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.381,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 0.295372574266096,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.9784583692641867,
+            "max_score": 0.0036319271215456105,
+            "min_capacity": 0.9764407114208853,
+            "brick_count": 75,
+            "mass_g": 73.5,
+            "step_count": 11,
+            "cost": 0.1254180602006689,
+            "aesthetics": 0.10975609756097561,
+            "colour_error": 0.0,
+            "perpendicularity": 0.33653846153846156,
+            "symmetry": 0.06565656565656565
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 0.834,
+          "seed": 0,
+          "seconds": 0.536,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -642,7 +766,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 5.648,
+          "seed": 0,
+          "seconds": 4.886,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -665,7 +790,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.1998 (capacity 0.978 N, 77 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.1998 (capacity 0.978 N, 77 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "thin-shell",
@@ -676,7 +801,7 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
       "winner": "greedy",
       "buildable": true,
@@ -687,7 +812,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 93.385,
+          "seed": 0,
+          "seconds": 33.571,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -711,7 +837,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 59.649,
+          "seed": 0,
+          "seconds": 31.318,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -735,7 +862,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 57.504,
+          "seed": 0,
+          "seconds": 20.501,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -759,7 +887,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 60.891,
+          "seed": 0,
+          "seconds": 23.789,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -782,8 +911,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 25.973,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 0.8873197005997192,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.9725030000000003,
+            "max_score": 0.017615409223468142,
+            "min_capacity": 0.9627368989610012,
+            "brick_count": 417,
+            "mass_g": 200.49,
+            "step_count": 65,
+            "cost": 0.3492462311557789,
+            "aesthetics": 0.3581081081081081,
+            "colour_error": 0.0,
+            "perpendicularity": 0.5631868131868132,
+            "symmetry": 0.5910443007972419
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 66.877,
+          "seed": 0,
+          "seconds": 22.043,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -807,7 +962,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 66.649,
+          "seed": 0,
+          "seconds": 28.091,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -830,7 +986,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.8272 (capacity 0.977 N, 378 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.8272 (capacity 0.977 N, 378 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "letter-t",
@@ -841,7 +997,7 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
       "winner": "bond",
       "buildable": true,
@@ -852,7 +1008,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 0.075,
+          "seed": 0,
+          "seconds": 0.057,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -876,7 +1033,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.109,
+          "seed": 0,
+          "seconds": 0.085,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -900,7 +1058,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.114,
+          "seed": 0,
+          "seconds": 0.082,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -924,7 +1083,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.333,
+          "seed": 0,
+          "seconds": 0.306,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -947,8 +1107,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.102,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 0.2938123456790123,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.9790962222222225,
+            "max_score": 0.0009222222222222223,
+            "min_capacity": 0.9790962222222223,
+            "brick_count": 13,
+            "mass_g": 29.5,
+            "step_count": 10,
+            "cost": 0.040123456790123455,
+            "aesthetics": 0.0,
+            "colour_error": 0.0,
+            "perpendicularity": 1.0,
+            "symmetry": 0.0
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 0.101,
+          "seed": 0,
+          "seconds": 0.077,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -972,7 +1158,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 2.58,
+          "seed": 0,
+          "seconds": 2.531,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -995,7 +1182,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.2635 (capacity 0.979 N, 14 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.2635 (capacity 0.979 N, 14 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "letter-h",
@@ -1006,7 +1193,7 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
       "winner": "fast",
       "buildable": true,
@@ -1017,7 +1204,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 0.116,
+          "seed": 0,
+          "seconds": 0.048,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1041,7 +1229,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.133,
+          "seed": 0,
+          "seconds": 0.066,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1065,7 +1254,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.117,
+          "seed": 0,
+          "seconds": 0.056,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1089,7 +1279,33 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.159,
+          "seed": 0,
+          "seconds": 0.088,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 0.3125,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.98,
+            "max_score": 0.0,
+            "min_capacity": 0.98,
+            "brick_count": 18,
+            "mass_g": 27.0,
+            "step_count": 10,
+            "cost": 0.0625,
+            "aesthetics": 0.0,
+            "colour_error": 0.0,
+            "perpendicularity": 1.0,
+            "symmetry": 0.0
+          }
+        },
+        {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.123,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1113,7 +1329,8 @@
         },
         {
           "strategy": "luo",
-          "seconds": 0.122,
+          "seed": 0,
+          "seconds": 0.064,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1137,7 +1354,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 2.509,
+          "seed": 0,
+          "seconds": 2.328,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1160,7 +1378,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.0729 (capacity 0.980 N, 21 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.0729 (capacity 0.980 N, 21 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "letter-h-bicolour",
@@ -1183,7 +1401,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 0.497,
+          "seed": 0,
+          "seconds": 0.444,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1207,7 +1426,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.375,
+          "seed": 0,
+          "seconds": 0.324,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1231,7 +1451,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.343,
+          "seed": 0,
+          "seconds": 0.296,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1255,7 +1476,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 1.459,
+          "seed": 0,
+          "seconds": 1.358,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1278,8 +1500,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.369,
+          "error": null,
+          "metrics": {
+            "buildable": false,
+            "stable": false,
+            "component_count": 3,
+            "floating_count": 2,
+            "objective_total": 4.576388888888889,
+            "maximin_feasible": false,
+            "maximin_capacity": 0.0,
+            "max_score": 1.0,
+            "min_capacity": 0.98,
+            "brick_count": 22,
+            "mass_g": 27.32,
+            "step_count": 10,
+            "cost": 0.0763888888888889,
+            "aesthetics": 0.5,
+            "colour_error": 0.0,
+            "perpendicularity": 1.0,
+            "symmetry": 0.0
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 2.181,
+          "seed": 0,
+          "seconds": 2.075,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1303,7 +1551,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 2.794,
+          "seed": 0,
+          "seconds": 2.562,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1338,7 +1587,7 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
       "winner": "luo",
       "buildable": true,
@@ -1349,7 +1598,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 0.133,
+          "seed": 0,
+          "seconds": 0.116,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1373,7 +1623,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.638,
+          "seed": 0,
+          "seconds": 0.584,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1397,7 +1648,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.192,
+          "seed": 0,
+          "seconds": 0.184,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1421,7 +1673,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.168,
+          "seed": 0,
+          "seconds": 0.146,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1444,8 +1697,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.093,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 1.957855555555556,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.5139365000000002,
+            "max_score": 0.4755750000000001,
+            "min_capacity": 0.5139364999999999,
+            "brick_count": 16,
+            "mass_g": 28.2,
+            "step_count": 8,
+            "cost": 0.05555555555555555,
+            "aesthetics": 0.0,
+            "colour_error": 0.0,
+            "perpendicularity": 0.0,
+            "symmetry": 0.0
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 0.514,
+          "seed": 0,
+          "seconds": 0.472,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1469,7 +1748,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 2.458,
+          "seed": 0,
+          "seconds": 2.386,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1492,7 +1772,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.7253 (capacity 0.920 N, 41 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.7253 (capacity 0.920 N, 41 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "wide-arch",
@@ -1504,7 +1784,7 @@
       ],
       "status": "ok",
       "expect_min_buildable": 1,
-      "buildable_count": 6,
+      "buildable_count": 7,
       "expectation_ok": true,
       "winner": "beauty",
       "buildable": true,
@@ -1515,7 +1795,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 1.466,
+          "seed": 0,
+          "seconds": 1.375,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1539,7 +1820,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.496,
+          "seed": 0,
+          "seconds": 0.405,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1563,7 +1845,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.65,
+          "seed": 0,
+          "seconds": 0.599,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1587,7 +1870,8 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.811,
+          "seed": 0,
+          "seconds": 0.727,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1610,8 +1894,34 @@
           }
         },
         {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.192,
+          "error": null,
+          "metrics": {
+            "buildable": true,
+            "stable": true,
+            "component_count": 1,
+            "floating_count": 0,
+            "objective_total": 0.44431358711284075,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.9786769999999999,
+            "max_score": 0.002187205749976081,
+            "min_capacity": 0.9778565383650234,
+            "brick_count": 28,
+            "mass_g": 48.9,
+            "step_count": 10,
+            "cost": 0.060085836909871244,
+            "aesthetics": 0.3333333333333333,
+            "colour_error": 0.0,
+            "perpendicularity": 0.7241379310344828,
+            "symmetry": 0.1111111111111111
+          }
+        },
+        {
           "strategy": "luo",
-          "seconds": 0.414,
+          "seed": 0,
+          "seconds": 0.328,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1635,7 +1945,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 3.008,
+          "seed": 0,
+          "seconds": 2.791,
           "error": null,
           "metrics": {
             "buildable": true,
@@ -1658,7 +1969,7 @@
           }
         }
       ],
-      "reason": "buildable, best objective 0.4178 (capacity 0.977 N, 29 bricks) among 6 buildable candidate(s)"
+      "reason": "buildable, best objective 0.4178 (capacity 0.977 N, 29 bricks) among 7 buildable candidate(s)"
     },
     {
       "model": "sparse-pillars",
@@ -1681,7 +1992,8 @@
       "candidates": [
         {
           "strategy": "beauty",
-          "seconds": 0.074,
+          "seed": 0,
+          "seconds": 0.058,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1705,7 +2017,8 @@
         },
         {
           "strategy": "bond",
-          "seconds": 0.072,
+          "seed": 0,
+          "seconds": 0.055,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1729,7 +2042,8 @@
         },
         {
           "strategy": "fast",
-          "seconds": 0.053,
+          "seed": 0,
+          "seconds": 0.037,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1753,7 +2067,33 @@
         },
         {
           "strategy": "greedy",
-          "seconds": 0.092,
+          "seed": 0,
+          "seconds": 0.075,
+          "error": null,
+          "metrics": {
+            "buildable": false,
+            "stable": true,
+            "component_count": 4,
+            "floating_count": 0,
+            "objective_total": 0.08333333333333333,
+            "maximin_feasible": true,
+            "maximin_capacity": 0.98,
+            "max_score": 0.0,
+            "min_capacity": 0.98,
+            "brick_count": 20,
+            "mass_g": 23.0,
+            "step_count": 5,
+            "cost": 0.08333333333333333,
+            "aesthetics": 0.0,
+            "colour_error": 0.0,
+            "perpendicularity": 0.0,
+            "symmetry": 0.0
+          }
+        },
+        {
+          "strategy": "kollsker",
+          "seed": 0,
+          "seconds": 0.12,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1777,7 +2117,8 @@
         },
         {
           "strategy": "luo",
-          "seconds": 0.062,
+          "seed": 0,
+          "seconds": 0.047,
           "error": null,
           "metrics": {
             "buildable": false,
@@ -1801,7 +2142,8 @@
         },
         {
           "strategy": "smga",
-          "seconds": 1.504,
+          "seed": 0,
+          "seconds": 1.436,
           "error": null,
           "metrics": {
             "buildable": false,

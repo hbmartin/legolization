@@ -67,6 +67,8 @@ class PipelineConfig:
     dither: bool = False
     time_budget_s: float | None = None
     ga_generations: int = 200
+    milp_layer_time_s: float = 10.0
+    milp_bond_weight: float = 1.0
     beauty_preset: Literal["balanced", "stability", "aesthetics", "efficiency"] = (
         "balanced"
     )

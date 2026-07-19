@@ -26,6 +26,7 @@ from legolization.grid import EMPTY, VoxelGrid
 from legolization.main import main
 from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import ObjectiveWeights
+from legolization.placement.registry import strategy_names
 from legolization.stability import SolverConfig
 
 # --- helpers -------------------------------------------------------------
@@ -454,7 +455,7 @@ def test_cli_sweep_end_to_end(
     assert code == 0
     assert out.exists()
     payload = json.loads(report_path.read_text())
-    assert len(payload["candidates"]) == 6
+    assert len(payload["candidates"]) == len(strategy_names())
     names = {c["strategy"] for c in payload["candidates"]}
     assert payload["winner"] in names
     assert payload["buildable"] is True
@@ -523,7 +524,7 @@ def test_cli_sweep_multi_seed_end_to_end(
     assert code == 0
     payload = json.loads(report_path.read_text())
     assert payload["seeds"] == [0, 1]
-    assert len(payload["candidates"]) == 12
+    assert len(payload["candidates"]) == 2 * len(strategy_names())
     assert {c["seed"] for c in payload["candidates"]} == {0, 1}
     assert payload["winner_seed"] in (0, 1)
     succeeded = [c for c in payload["candidates"] if c["error"] is None]
@@ -616,7 +617,7 @@ def test_full_sweep_selects_buildable_winner() -> None:
         codes[lo:hi, lo:hi, z] = 4
     grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
     candidates = run_all(grid, PipelineConfig(seed=0, time_budget_s=10.0), jobs=0)
-    assert len(candidates) == 6
+    assert len(candidates) == len(strategy_names())
     winner = select_best(candidates).winner
     assert winner is not None
     assert winner.metrics is not None

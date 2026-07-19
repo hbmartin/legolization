@@ -17,7 +17,7 @@ solver stack — no Gurobi required.
   codes or RGB(A) voxels — colours are quantized to the nearest solid LDraw
   colour, with optional Floyd-Steinberg dithering for gradients).
 - **Placement**: covers every voxel with bricks and plates at true heights
-  (plate = 8 LDU, brick = 24 LDU) using one of six strategies; tiles and
+  (plate = 8 LDU, brick = 24 LDU) using one of seven strategies; tiles and
   slopes are opt-in finishing passes (`--tiles`, `--slopes`). Slope fitting
   places all three catalogued slopes (45° 2x1/2x2, 33° 3x1): `--slopes`
   (= `--slopes preserve`) swaps bricks whose cells exactly match a slope's
@@ -39,6 +39,10 @@ solver stack — no Gurobi required.
   - `beauty`: Min et al.'s objective-driven tiling with symmetry/balance,
     stability-priority, and big-brick terms (`--beauty-preset
     {balanced,stability,aesthetics,efficiency}`).
+  - `kollsker`: Kollsker & Malaguti's exact set-partitioning MILP, solved
+    per 4-connected component of each layer — stage 1 minimizes the part
+    count, stage 2 maximizes stagger quality at that optimum; falls back
+    to `bond` per component on timeout.
 - **Physics**: every layout is scored by the RBE — gravity, support, press,
   drag/pull friction (capacity T = 0.98 N per contact point), knob presses,
   and torque-capable side presses at shared-face extremes (side-supported

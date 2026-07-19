@@ -3,6 +3,7 @@
 from legolization.placement.layered.beauty import BeautyStrategy, BeautyWeights
 from legolization.placement.layered.bond import BondStrategy
 from legolization.placement.layered.fast import FastStrategy
+from legolization.placement.layered.kollsker import KollskerStrategy
 from legolization.placement.layered.smga import SmGaConfig, SmGaStrategy
 
 __all__ = [
@@ -10,6 +11,7 @@ __all__ = [
     "BeautyWeights",
     "BondStrategy",
     "FastStrategy",
+    "KollskerStrategy",
     "SmGaConfig",
     "SmGaStrategy",
 ]
