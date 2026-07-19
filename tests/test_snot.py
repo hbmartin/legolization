@@ -178,14 +178,35 @@ def test_tile_blockers_follow_the_outward_ray():
 # --- the pass ---
 
 
-def test_pass_skips_bonded_walls():
+def test_pass_clads_bonded_walls():
+    # v1 refused to carve wall-spanning donors outright; v2 carves them
+    # under the per-mount re-bond guard instead. On a free-standing
+    # 1x4 wall the guard accepts three mounts — an end-face bracket and
+    # an 11211 pair on the ground course, a staggered single on the next
+    # (running bond) — and rejects every mount that would sever the
+    # wall: side-by-side SNOT columns share no studs, so cladding both
+    # courses of one column always splits a 1-deep wall.
     layout = Layout(catalog=default_catalog())
     layout.add("brick_1x4", 0, 0, 0, 0, 4)
     layout.add("brick_1x4", 0, 0, 3, 0, 4)
     codes = np.full((4, 1, 6), EMPTY, dtype=np.int16)
     codes[:, :, :] = 4
-    assert apply_snot(layout, VoxelGrid(codes=codes)) == 0
-    assert sorted(b.part_key for b in layout) == ["brick_1x4", "brick_1x4"]
+    assert apply_snot(layout, VoxelGrid(codes=codes)) == 3
+    placed = sorted((b.part_key, b.x, b.y, b.layer) for b in layout)
+    assert placed == [
+        ("brick_1x1", 1, 0, 0),
+        ("brick_1x1_side_stud", 0, 0, 0),  # end face, course 0
+        ("brick_1x1_side_stud", 3, 0, 3),  # staggered course 1
+        ("brick_1x2_side_studs", 2, 0, 0),
+        ("brick_1x3", 0, 0, 3),
+        ("tile_1x1_snot", -1, 0, 0),
+        ("tile_1x1_snot", 3, -1, 3),
+        ("tile_1x2_snot", 2, -1, 0),
+    ]
+    graph = ConnectionGraph.from_layout(layout)
+    assert graph.component_count() == 1
+    assert not graph.floating_ids()
+    assert analyze(layout).stable
 
 
 def test_pass_respects_min_run():
