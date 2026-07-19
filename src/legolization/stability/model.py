@@ -287,7 +287,7 @@ def knob_pattern(
     return FOUR_POINT_OFFSETS if interior else THREE_POINT_OFFSETS
 
 
-def build_model(
+def build_model(  # noqa: PLR0913 - physics switches are keyword-only plumbing
     layout: Layout,
     graph: ConnectionGraph | None = None,
     *,
@@ -400,7 +400,7 @@ class _PatternSource:
         return pattern
 
 
-def _build_model_body(
+def _build_model_body(  # noqa: PLR0913 - mirrors build_model's switches
     layout: Layout,
     graph: ConnectionGraph | None,
     *,
