@@ -23,6 +23,7 @@ import time
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
@@ -109,6 +110,39 @@ class _Span:
             time.perf_counter() - self._started,
             self._n,
         )
+
+
+_SHA_LENGTH = 40
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def git_sha(repo: Path | None = None) -> str | None:
+    """Read the current commit sha from ``.git`` without spawning a process.
+
+    Profile artifacts stamp this so before/after comparisons are pinned
+    to code states; both profile writers (the script and the CLI
+    ``--profile``) share it.
+    """
+    root = repo if repo is not None else _REPO_ROOT
+    try:
+        content = (root / ".git" / "HEAD").read_text().strip()
+    except OSError:
+        return None
+    if not content.startswith("ref:"):
+        return content if len(content) == _SHA_LENGTH else None
+    ref = content.removeprefix("ref:").strip()
+    try:
+        return (root / ".git" / ref).read_text().strip()
+    except OSError:
+        pass
+    try:
+        packed = (root / ".git" / "packed-refs").read_text()
+    except OSError:
+        return None
+    for line in packed.splitlines():
+        if not line.startswith("#") and line.endswith(ref):
+            return line.split()[0]
+    return None
 
 
 def current() -> Telemetry | None:

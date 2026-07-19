@@ -653,9 +653,16 @@ def _write_profile(
     result: PipelineResult,
     total_seconds: float,
 ) -> None:
-    """Dump a run's telemetry spans plus metadata to ``args.profile``."""
+    """Dump a run's telemetry spans plus metadata to ``args.profile``.
+
+    Schema 2 adds ``git_sha`` and ``source`` so CLI profiles pin their
+    code state like the profiling script's artifacts do; see
+    ``docs/performance-testing.md`` for the comparison rules.
+    """
     payload = {
-        "schema": 1,
+        "schema": 2,
+        "source": "cli",
+        "git_sha": telemetry.git_sha(),
         "input": str(args.input),
         "strategy": args.strategy,
         "seed": args.seed,

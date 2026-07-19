@@ -565,3 +565,20 @@ def test_strict_with_subassemblies_still_raises_when_unfixable(bad_bridge):
                 rotstep=False, stability_policy="strict", subassemblies=True
             ),
         )
+
+
+def test_cli_profile_payload_is_schema_two(tmp_path):
+    from legolization.main import main
+
+    npy = tmp_path / "m.npy"
+    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
+    profile = tmp_path / "profile.json"
+    out = tmp_path / "m.ldr"
+    assert main([str(npy), "-o", str(out), "--profile", str(profile)]) == 0
+    payload = json.loads(profile.read_text())
+    assert payload["schema"] == 2
+    assert payload["source"] == "cli"
+    sha = payload["git_sha"]
+    assert isinstance(sha, str)
+    assert len(sha) == 40
+    assert payload["spans"]["stability.analyze"]["calls"] >= 1
