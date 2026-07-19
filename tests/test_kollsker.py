@@ -291,11 +291,11 @@ def test_expired_deadline_skips_enumeration(
     import legolization.placement.layered.kollsker as kollsker_mod
 
     calls = {"enumerate": 0}
-    real_enumerate = kollsker_mod.enumerate_layer_rects
 
     def counting_enumerate(*args: object, **kwargs: object) -> object:
         calls["enumerate"] += 1
-        return real_enumerate(*args, **kwargs)  # type: ignore[arg-type]
+        msg = "enumeration must not run under an expired deadline"
+        raise AssertionError(msg)
 
     monkeypatch.setattr(kollsker_mod, "enumerate_layer_rects", counting_enumerate)
     catalog = default_catalog()
