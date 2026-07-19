@@ -20,7 +20,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from legolization import telemetry
-from legolization.catalog import Catalog, Category, default_catalog
+from legolization.catalog import Catalog, Category, Cell, default_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.grid import EMPTY, merge_colour
 from legolization.layout import Layout
@@ -34,7 +34,7 @@ from legolization.placement.merge import (
 from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
     import numpy as np
 
@@ -191,25 +191,39 @@ def slab_decompose(grid: VoxelGrid) -> list[LayerProblem]:
     per-layer plate problems. Problems are ordered bottom-up.
     """
     nx, ny, nz = grid.shape
+    cell_colours = {
+        (x, y, z): int(grid.codes[x, y, z])
+        for x in range(nx)
+        for y in range(ny)
+        for z in range(nz)
+        if grid.codes[x, y, z] != EMPTY
+    }
+    return slab_problems(cell_colours)
+
+
+def slab_problems(cell_colours: Mapping[Cell, int]) -> list[LayerProblem]:
+    """Split filled cells into brick problems (3-plate slabs) + plate problems.
+
+    The policy behind :func:`slab_decompose`, usable on any cell set —
+    connectivity-repair rings re-tile through the same decomposition the
+    strategies place with. Cells absent from the mapping are EMPTY.
+    """
+    by_slab: dict[int, dict[Column, dict[int, int]]] = {}
+    for (x, y, z), code in cell_colours.items():
+        slab = z - z % _BRICK_PLATES
+        by_slab.setdefault(slab, {}).setdefault((x, y), {})[z] = code
     problems: list[LayerProblem] = []
-    for slab_base in range(0, nz, _BRICK_PLATES):
+    for slab_base in sorted(by_slab):
         brick_columns: dict[Column, int] = {}
         plate_columns: dict[int, dict[Column, int]] = {}
-        for x in range(nx):
-            for y in range(ny):
-                layers = range(slab_base, min(slab_base + _BRICK_PLATES, nz))
-                codes = [int(grid.codes[x, y, z]) for z in layers]
-                colour = (
-                    merge_colour(*codes)
-                    if len(codes) == _BRICK_PLATES and EMPTY not in codes
-                    else None
-                )
-                if colour is not None:
-                    brick_columns[(x, y)] = colour
-                    continue
-                for z, code in zip(layers, codes, strict=True):
-                    if code != EMPTY:
-                        plate_columns.setdefault(z, {})[(x, y)] = code
+        for column, cells in sorted(by_slab[slab_base].items()):
+            codes = [cells[z] for z in sorted(cells)]
+            colour = merge_colour(*codes) if len(codes) == _BRICK_PLATES else None
+            if colour is not None:
+                brick_columns[column] = colour
+                continue
+            for z in sorted(cells):
+                plate_columns.setdefault(z, {})[column] = cells[z]
         if brick_columns:
             problems.append(
                 LayerProblem(
@@ -283,10 +297,11 @@ def _seams_of(
 def _seam_priorities(
     layout: Layout,
     seams: dict[tuple[Column, int], tuple[int, int]],
+    graph: ConnectionGraph | None = None,
 ) -> dict[tuple[Column, int], float]:
     if not seams:
         return {}
-    graph = ConnectionGraph.from_layout(layout)
+    graph = graph or ConnectionGraph.from_layout(layout)
     components = graph.brick_components()
     supporters: dict[int, set[int]] = {}
     for below_id, above_id in graph.support_edges():
