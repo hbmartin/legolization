@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
+from legolization import telemetry
 from legolization.catalog import Catalog, Category, default_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.grid import EMPTY, merge_colour
@@ -151,8 +152,16 @@ class LayeredStrategy:
                     f"layer {index + 1}/{len(problems)} "
                     f"({100 * done // total}% of cells)"
                 )
+        telemetry.value("place.tiled.bricks", len(layout))
         compact_vertical(layout)
+        telemetry.value("place.compacted.bricks", len(layout))
         improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
+        telemetry.value("place.connected.bricks", len(layout))
+        if telemetry.current() is not None:  # graph build only when recording
+            telemetry.value(
+                "place.connected.components",
+                ConnectionGraph.from_layout(layout).component_count(),
+            )
         return layout
 
     def tile(

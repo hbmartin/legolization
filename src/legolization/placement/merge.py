@@ -18,6 +18,7 @@ from collections import deque
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
+from legolization import telemetry
 from legolization.catalog import Category
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, IGNORE, merge_colour
@@ -297,26 +298,33 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     components = ConnectionGraph.from_layout(layout).component_count()
     failures = 0
     while components > 1 and failures < fail_max:
-        seeds = component_border(layout)
-        if not seeds:
-            break
-        region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
-        candidate = layout.copy()
-        atom_ids = split_to_atoms(candidate, region, grid)
-        maximal_random_merge(
-            candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
-        )
-        # Reclaim bricks from whatever 1x1 plates the merge left behind —
-        # after the merge, so the phase pre-commit can't block seam bridging.
-        if compact_columns(candidate, atom_ids):
+        with telemetry.span("connectivity.attempt"):
+            seeds = component_border(layout)
+            if not seeds:
+                break
+            region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
+            candidate = layout.copy()
+            atom_ids = split_to_atoms(candidate, region, grid)
             maximal_random_merge(
                 candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
             )
-        candidate_components = ConnectionGraph.from_layout(candidate).component_count()
+            # Reclaim bricks from whatever 1x1 plates the merge left
+            # behind — after the merge, so the phase pre-commit can't
+            # block seam bridging.
+            if compact_columns(candidate, atom_ids):
+                maximal_random_merge(
+                    candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
+                )
+            candidate_components = ConnectionGraph.from_layout(
+                candidate
+            ).component_count()
         if candidate_components < components:
-            layout.replace_with(candidate)
-            components = candidate_components
-            failures = 0
+            with telemetry.span("connectivity.accept"):
+                layout.replace_with(candidate)
+                components = candidate_components
+                failures = 0
+                telemetry.value("connectivity.bricks", len(layout))
+                telemetry.value("connectivity.components", components)
         else:
             failures += 1
     return components

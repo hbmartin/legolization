@@ -87,6 +87,9 @@ class PipelineConfig:
 
     milp_layer_time_s: float = 10.0
     milp_bond_weight: float = 1.0
+    connectivity_fail_max: int | None = None
+    """Override every strategy's improve_connectivity fail_max (None =
+    keep each class default; 0 disables the pass — drift diagnostics)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +154,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
             working = _ignore_interior(working)
 
     layout, stability = _place_and_repair(working, catalog, config, rng)
+    _phase_gauge("pipeline.placed", layout, stability)
     if config.hollow:
         with telemetry.span("phase.hollow_restore"):
             rounds = 0
@@ -171,6 +175,8 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
                 working = restored
                 layout, stability = _place_and_repair(working, catalog, config, rng)
                 rounds += 1
+                telemetry.value("pipeline.hollow_restore.round", rounds)
+                _phase_gauge("pipeline.restored", layout, stability)
 
     with telemetry.span("phase.remerge"):
         if final_remerge(
@@ -182,6 +188,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         ):
             stability = analyze(layout, config.solver)
         resolve_ignore_colours(layout)
+        _phase_gauge("pipeline.remerged", layout, stability)
 
     with telemetry.span("phase.finish_surfaces"):
         stability, slopes_added, tiles_added, snot_added = _finish_surfaces(
@@ -265,6 +272,26 @@ def _finish_surfaces(
     if tiles_added:
         stability = analyze(layout, config.solver)
     return stability, slopes_added, tiles_added, snot_added
+
+
+def _phase_gauge(
+    name: str,
+    layout: Layout,
+    stability: StabilityResult,
+) -> None:
+    """Exact per-phase readings for the count-trajectory diagnostics.
+
+    Free when not recording; the component count builds a graph, so all
+    readings are gated on an active session.
+    """
+    if telemetry.current() is None:
+        return
+    telemetry.value(f"{name}.bricks", len(layout))
+    telemetry.value(f"{name}.stable", 1.0 if stability.stable else 0.0)
+    telemetry.value(
+        f"{name}.components",
+        ConnectionGraph.from_layout(layout).component_count(),
+    )
 
 
 def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:
@@ -413,6 +440,7 @@ def _place_and_repair(
                 config=config.repair_config,
             )
             stability = analyze(layout, config.solver)
+            _phase_gauge("pipeline.repaired", layout, stability)
     return layout, stability
 
 

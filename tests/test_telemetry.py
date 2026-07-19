@@ -108,3 +108,26 @@ def test_recording_never_changes_behaviour() -> None:
     )
     assert "phase.place" in session.spans
     assert "phase.sequencing" in session.spans
+
+
+def test_value_gauge_is_noop_when_disabled() -> None:
+    telemetry.value("anything", 42.0)  # must not raise or leak
+    assert telemetry.current() is None
+
+
+def test_value_gauge_accumulates_in_order() -> None:
+    with telemetry.record() as session:
+        telemetry.value("g", 3.0)
+        telemetry.value("g", 1.0)
+        telemetry.value("other", 7.5)
+    assert session.values_dict() == {"g": [3.0, 1.0], "other": [7.5]}
+    assert "values" not in session.to_dict()  # span schema untouched
+
+
+def test_value_gauge_sessions_are_independent() -> None:
+    with telemetry.record() as first:
+        telemetry.value("x", 1.0)
+    with telemetry.record() as second:
+        pass
+    assert first.values == {"x": [1.0]}
+    assert second.values == {}
