@@ -87,13 +87,6 @@ class SolverConfig:
     highspy directly (drops the scipy wrapper overhead); smaller ones
     keep the scipy-exact path that the 1e-6 equivalence tests pin."""
 
-    rescue_warm: bool = False
-    """Experimental: warm-start the disassembly rescue's shrinking walk
-    by BOUND DEACTIVATION on one persistent HiGHS model (fix removed
-    bricks' columns to zero, relax their rows) instead of per-state cold
-    solves. Basis dimensions never change, so dual simplex hot-starts.
-    Off until the kill criteria in docs/performance-testing.md pass."""
-
 
 @dataclass(frozen=True, slots=True)
 class BrickScore:
