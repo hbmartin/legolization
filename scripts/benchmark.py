@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from legolization.grid import EMPTY, VoxelGrid
-from legolization.pipeline import PipelineConfig, run
+from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import evaluate
 from legolization.placement.registry import strategy_names
 
@@ -48,6 +48,14 @@ def _sphere_grid(radius: int) -> VoxelGrid:
     return VoxelGrid.from_array(codes, plates_per_voxel=3)
 
 
+def _placed_grid(result: PipelineResult) -> VoxelGrid:
+    """Narrow the optional grid; run() always keeps its voxel grid."""
+    if result.grid is None:
+        msg = "pipeline result lost its voxel grid"
+        raise RuntimeError(msg)
+    return result.grid
+
+
 def benchmark(seed: int) -> list[dict]:
     """Run all strategies over all example grids."""
     rows: list[dict] = []
@@ -58,7 +66,7 @@ def benchmark(seed: int) -> list[dict]:
                 started = time.perf_counter()
                 result = run(grid, config)
                 elapsed = time.perf_counter() - started
-                report = evaluate(result.layout, result.grid, config.weights)
+                report = evaluate(result.layout, _placed_grid(result), config.weights)
                 rows.append(
                     {
                         "model": model_name,

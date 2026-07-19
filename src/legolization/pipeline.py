@@ -85,7 +85,9 @@ class PipelineResult:
 
     layout: Layout
     stability: StabilityResult
-    grid: VoxelGrid
+    grid: VoxelGrid | None
+    """The voxel grid the layout was placed from; None for imported models."""
+
     brick_count: int
     mass_g: float
     component_count: int

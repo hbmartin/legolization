@@ -80,6 +80,13 @@ solver stack — no Gurobi required.
   [pyldraw3](https://pypi.org/project/pyldraw3/). Open it in
   [LDView](https://tcobbs.github.io/ldview/) or
   [BrickLink Studio](https://www.bricklink.com/v3/studio/download.page).
+- **LDraw input**: an existing `.ldr`/`.mpd` model can be the input too —
+  placement is skipped and the model's own bricks are analyzed and
+  sequenced into instructions (`legolization model.ldr -o out.ldr
+  --instructions booklet.pdf`). Import is strict: every part must be in
+  the catalog, axis-aligned, on the stud/plate grid, and in the solid
+  palette; all problems are reported together. MPD submodels are
+  flattened through their world transforms.
 
 ## Setup
 
@@ -104,6 +111,8 @@ uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
 uv run legolization model.vox --milp                # cross-check the exact LP
 uv run legolization model.npy --strategy all --jobs 4 --report report.json
 uv run legolization model.obj --up y --target-studs 24   # mesh input (M6)
+uv run legolization model.ldr -o out.ldr --instructions b.pdf  # LDraw input
+
 ```
 
 Mesh inputs (`.obj`/`.stl`/`.ply`) are voxelized directly at plate

@@ -8,10 +8,13 @@ import math
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from legolization import telemetry
 from legolization.compare import Candidate, SelectionReport, run_all, select_best
-from legolization.instructions.sequencer import InstructionsConfig
+from legolization.graph import ConnectionGraph
+from legolization.instructions.sequencer import InstructionsConfig, plan_instructions
+from legolization.ldraw_in import LdrawImportError, layout_from_ldraw
 from legolization.ldraw_out import write_model
 from legolization.mesh import DEFAULT_MESH_COLOUR, MESH_SUFFIXES, MeshOptions
 from legolization.pipeline import (
@@ -23,7 +26,12 @@ from legolization.pipeline import (
 )
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.registry import strategy_names
-from legolization.stability.solver import SolverConfig
+from legolization.stability.solver import SolverConfig, analyze
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+LDRAW_SUFFIXES = {".ldr", ".mpd"}
 
 
 def _non_negative_int(value: str) -> int:
@@ -388,6 +396,8 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             parser.error("--instructions requires --steps smart")
         if args.instructions.suffix.lower() not in {".html", ".pdf"}:
             parser.error("--instructions must end in .html or .pdf")
+    if args.input.suffix.lower() in LDRAW_SUFFIXES:
+        _validate_ldraw_args(parser, args)
     mesh_input = args.input.suffix.lower() in MESH_SUFFIXES
     mesh_flags = (
         args.target_studs is not None
@@ -425,6 +435,8 @@ def main(argv: list[str] | None = None) -> int:
         if sys.stderr.isatty()
         else None
     )
+    if args.input.suffix.lower() in LDRAW_SUFFIXES:
+        return _run_import(args, output=output, progress=progress)
     config = PipelineConfig(
         strategy=args.strategy,
         hollow=not args.solid,
@@ -498,6 +510,92 @@ def main(argv: list[str] | None = None) -> int:
                 bom_path=args.bom,
                 instructions_path=args.instructions,
             )
+    except (ValueError, OSError, RuntimeError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    return _print_result(result, output, instructions_path=args.instructions)
+
+
+def _validate_ldraw_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> None:
+    """Reject flags that presume placement when the input is a brick model."""
+    if args.strategy != "greedy":
+        parser.error(
+            "--strategy does not apply to .ldr/.mpd inputs (import skips placement)"
+        )
+    placement_flags = (
+        args.solid
+        or args.slopes is not None
+        or args.tiles
+        or args.no_refine
+        or args.no_repair
+        or args.milp
+        or args.plates_per_voxel is not None
+        or args.aspect_correct
+        or args.dither
+    )
+    if placement_flags:
+        parser.error(
+            "placement/voxelization flags do not apply to .ldr/.mpd "
+            "inputs (the model's bricks are imported as-is)"
+        )
+    if args.output is None:
+        parser.error(
+            ".ldr/.mpd input needs an explicit -o/--output "
+            "(the default would overwrite the input)"
+        )
+
+
+def _run_import(
+    args: argparse.Namespace,
+    *,
+    output: Path,
+    progress: Callable[[str], None] | None,
+) -> int:
+    """Instructions for an existing LDraw model: import, analyze, sequence.
+
+    Placement never runs — the model's own bricks are the layout. Strict
+    import: any part outside the catalog is an error.
+    """
+    solver = SolverConfig()
+    try:
+        layout = layout_from_ldraw(args.input)
+    except (LdrawImportError, OSError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    stability = analyze(layout, solver)
+    plan = None
+    if args.steps == "smart":
+        plan = plan_instructions(
+            layout,
+            config=InstructionsConfig(
+                target_step_size=args.step_size,
+                rotstep=not args.no_rotstep,
+                subassemblies=args.subassemblies,
+                solver=solver,
+            ),
+        )
+    graph = ConnectionGraph.from_layout(layout)
+    result = PipelineResult(
+        layout=layout,
+        stability=stability,
+        grid=None,
+        brick_count=len(layout),
+        mass_g=layout.total_mass_g(),
+        component_count=graph.component_count(),
+        floating_count=len(graph.floating_ids()),
+        plan=plan,
+    )
+    try:
+        write_outputs(
+            result,
+            output,
+            bom_path=args.bom,
+            instructions_path=args.instructions,
+            progress=progress,
+        )
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

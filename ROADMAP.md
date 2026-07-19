@@ -158,6 +158,46 @@ cap breaks stability (suzanne/teapot/homer all flip unstable at cap
 24); the cap-4 + snapshot-revert combination is what ships. Old
 roadmap "Slopes" section marked DONE.
 
+### 2026-07-19 — Item 6: LDraw model import (strict)
+
+Shipped `ldraw_in.layout_from_ldraw`: an existing `.ldr`/`.mpd` model
+becomes a `Layout` — the exact inverse of `ldraw_out.piece_for`'s
+transform (yaw decoded from the four canonical rotation matrices,
+`layer = -Y/8 - height`, x/y from position minus the rotated-footprint
+centroid and un-rotated slope `origin_offset`). MPD submodels flatten
+through `iter_occurrences`' composed world transforms (`iter_pieces`
+yields local frames — measured, not assumed). Strict by decision: any
+part outside the catalog, non-yaw rotation, off-grid position,
+out-of-palette colour, collision, or below-ground brick errors; ALL
+problems are aggregated into one `LdrawImportError` so a user sees the
+model's full distance to importable. CLI: `.ldr`/`.mpd` input skips
+placement entirely — import, analyze, sequence, emit (`legolization
+model.ldr -o out.ldr --instructions b.pdf`); placement/voxel/mesh
+flags and a defaulted output (which would overwrite the input) are
+argparse errors. `PipelineResult.grid` became optional (imported
+models have no voxel grid); `write_outputs` is reused unchanged.
+
+Proof (seed 0):
+| example | round-trip | steps (native → imported) | unstable | violations |
+|---|---|---|---|---|
+| heart.ldr | exact | 7 → 7 | 2 → 2 | 0 |
+| pyramid.ldr | exact | 21 → 21 | 2 → 2 | 0 |
+| arch.ldr | exact | 8 → 8 | 1 → 1 | 0 |
+
+"Round-trip exact" = import → write → re-import brick-multiset
+equality with nothing dropped (byte-identity is not the bar — shipped
+examples are emitted in plan-step order with ROTSTEPs, a bare
+re-emission rasters by layer). Slope parts round-trip at all four yaws
+(origin-offset inversion); a subassembly `.mpd` flattens back to the
+exact source layout. Live CLI run: heart.ldr → booklet + BOM, exit 0.
+A hand-built pathological file reports all five problem kinds in one
+error. 436 tests; goldens untouched.
+
+Deviations from plan: none. The planned "identical plan_quality to the
+natively-generated plan" held exactly (table above) — brick ids differ
+between import order and placement order, yet the sequencer's
+tiebreaks land on the same plan shape.
+
 ## Where things stand
 
 Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and

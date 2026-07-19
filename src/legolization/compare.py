@@ -128,6 +128,9 @@ def candidate_metrics(
     solver_config: SolverConfig,
 ) -> CandidateMetrics:
     """Score one pipeline result into flat comparable numbers."""
+    if result.grid is None:
+        msg = "candidate metrics need a placed result (imported models have no grid)"
+        raise ValueError(msg)
     report = evaluate(
         result.layout,
         result.grid,
