@@ -18,7 +18,7 @@ import math
 from pathlib import PurePath
 from typing import TYPE_CHECKING
 
-from ldraw.geometry import Identity, Vector, XAxis, YAxis, ZAxis
+from ldraw.geometry import Identity, Matrix, Vector, YAxis
 from ldraw.pieces import Piece
 
 if TYPE_CHECKING:
@@ -32,23 +32,20 @@ if TYPE_CHECKING:
 STUD_LDU = 20.0
 PLATE_LDU = 8.0
 
-# Sideways tile: rotation putting the smooth face along each outward grid
-# direction (probed against pyldraw3's rotation sign convention).
-_TILE_ROTATIONS = {
-    (1, 0): (90, ZAxis),
-    (-1, 0): (-90, ZAxis),
-    (0, 1): (-90, XAxis),
-    (0, -1): (90, XAxis),
-}
-
 _HEADER_LICENSE = "0 !LICENSE Licensed under GPL-3.0-or-later"
 
 
 def piece_for(layout: Layout, brick: PlacedBrick) -> Piece:
-    """Build the pyldraw3 piece for one placed brick."""
+    """Build the pyldraw3 piece for one placed brick.
+
+    Claddings (sideways facade parts) have their own origin convention;
+    everything else — including carriers, whose bodies are ordinary
+    bricks with a data-driven extra emission yaw — takes the standard
+    footprint-centroid path.
+    """
     part = layout.part_of(brick)
-    if part.category.value == "snot":
-        return _snot_piece(brick, part)
+    if part.mount_normal is not None:
+        return _cladding_piece(layout, brick, part)
     columns = [
         (brick.x + rx, brick.y + ry) for rx, ry in _rotated_footprint(layout, brick)
     ]
@@ -61,7 +58,8 @@ def piece_for(layout: Layout, brick: PlacedBrick) -> Piece:
         -PLATE_LDU * (brick.layer + part.height_plates) + offset_y,
         STUD_LDU * center_y + rotated_oz,
     )
-    matrix = Identity().rotate(brick.yaw, YAxis) if brick.yaw else Identity()
+    emit_yaw = (brick.yaw + part.emit_yaw_offset) % 360
+    matrix = Identity().rotate(emit_yaw, YAxis) if emit_yaw else Identity()
     return Piece(
         colour=brick.colour_code,
         position=position,
@@ -75,35 +73,39 @@ def _fmt(value: float) -> str:
     return f"{value:g}"
 
 
-def _snot_piece(brick: PlacedBrick, part: Part) -> Piece:
-    """Emit a sideways (SNOT) part.
+def _cladding_piece(layout: Layout, brick: PlacedBrick, part: Part) -> Piece:
+    """Emit a sideways facade part hanging its smooth face outward.
 
-    The bracket (87087) is a normal 1x1 column whose physical side stud
-    points along LDraw -Z at identity; +90 about Y lands it on the
-    modelled local ``+x``, composed with the placement yaw. The sideways
-    tile hangs its smooth face outward: origin at the outer surface
-    centre, body extending the 8 LDU back toward the wall face.
+    Outward is the yaw-rotated negation of the part's socket direction;
+    the emission rotation for that direction is pinned catalog data
+    (``mount_matrices``). The origin sits at the clad columns' centroid
+    shifted by ``mount_offset_ldu`` along ``(outward, vertical,
+    transverse)`` — vertical measured from the window's bottom plate,
+    transverse being outward rotated 90° counterclockwise.
     """
     from legolization.catalog import rotate_offset  # noqa: PLC0415 - cycle guard
 
-    if part.mount_normal is None:  # the side-stud bracket
-        matrix = Identity().rotate((brick.yaw + 90) % 360, YAxis)
-        position = Vector(
-            STUD_LDU * brick.x,
-            -PLATE_LDU * (brick.layer + part.height_plates),
-            STUD_LDU * brick.y,
-        )
-    else:  # the sideways tile: outward = -socket direction, yaw-rotated
-        ox, oy, _ = rotate_offset(
-            (-part.mount_normal[0], -part.mount_normal[1], 0), brick.yaw
-        )
-        degrees, axis = _TILE_ROTATIONS[(ox, oy)]
-        matrix = Identity().rotate(degrees, axis)
-        position = Vector(
-            STUD_LDU * brick.x - 2.0 * ox,
-            -PLATE_LDU * brick.layer - 12.0,
-            STUD_LDU * brick.y - 2.0 * oy,
-        )
+    if (normal := part.mount_normal) is None:  # dispatched on mount_normal
+        msg = f"{part.key} is not a cladding"
+        raise ValueError(msg)
+    ox, oy, _ = rotate_offset((-normal[0], -normal[1], 0), brick.yaw)
+    rows = part.mount_matrix((ox, oy))
+    if rows is None:
+        msg = f"{part.key} pins no mount matrix for outward {(ox, oy)}"
+        raise ValueError(msg)
+    matrix = Matrix(rows=[list(rows[0:3]), list(rows[3:6]), list(rows[6:9])])
+    columns = [
+        (brick.x + rx, brick.y + ry) for rx, ry in _rotated_footprint(layout, brick)
+    ]
+    center_x = sum(c[0] for c in columns) / len(columns)
+    center_y = sum(c[1] for c in columns) / len(columns)
+    offset_out, offset_up, offset_across = part.mount_offset_ldu
+    across_x, across_y = -oy, ox
+    position = Vector(
+        STUD_LDU * center_x + offset_out * ox + offset_across * across_x,
+        -PLATE_LDU * brick.layer + offset_up,
+        STUD_LDU * center_y + offset_out * oy + offset_across * across_y,
+    )
     return Piece(
         colour=brick.colour_code,
         position=position,

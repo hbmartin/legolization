@@ -326,3 +326,22 @@ def test_mpd_stem_is_case_insensitive(tmp_path):
     ]
     assert reference_lines
     assert all(line.endswith("MODEL-sub-1.ldr") for line in reference_lines)
+
+
+def test_v1_emitted_file_imports_identically():
+    # tests/data/snot_tower_v1.ldr was written by the v1 (pre-data-driven)
+    # emission path; the generalized importer must decode it to the same
+    # layout the v1 importer produced. Guards emission and import from
+    # drifting together while the pinned bytes stay green.
+    from pathlib import Path
+
+    imported = layout_from_ldraw(Path(__file__).parent / "data" / "snot_tower_v1.ldr")
+    placements = sorted(
+        (b.part_key, b.x, b.y, b.layer, b.yaw, b.colour_code) for b in imported
+    )
+    assert placements == [
+        ("brick_1x1_side_stud", 0, 0, 0, 180, 4),
+        ("brick_1x1_side_stud", 0, 0, 3, 180, 4),
+        ("tile_1x1_snot", -1, 0, 0, 180, 4),
+        ("tile_1x1_snot", -1, 0, 3, 180, 4),
+    ]
