@@ -342,11 +342,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--subassemblies",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
             "extract persistently floating clusters as separately built "
             "subassemblies with attach steps (write .mpd output to get "
-            "submodel FILE sections; .ldr flattens them)"
+            "submodel FILE sections; .ldr flattens them); on by default "
+            "since v5 — --no-subassemblies restores the flat plan"
         ),
     )
     parser.add_argument(
@@ -422,6 +424,8 @@ def _validate_instructions_args(
 ) -> None:
     """Instruction outputs need smart steps and a booklet suffix."""
     if args.subassemblies and args.steps == "layer":
+        # Only an EXPLICIT --subassemblies conflicts; the default (None ->
+        # on) is quietly inert for layer plans, which never sequence.
         parser.error("--subassemblies requires --steps smart")
     if args.instructions is not None:
         if args.steps == "layer":
@@ -499,7 +503,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.steps,
             target_step_size=args.step_size,
             rotstep=not args.no_rotstep,
-            subassemblies=args.subassemblies,
+            subassemblies=args.subassemblies is not False,
         ),
         mesh=MeshOptions(
             target_studs=(args.target_studs if args.target_studs is not None else 32),
@@ -617,7 +621,7 @@ def _run_import(
             config=InstructionsConfig(
                 target_step_size=args.step_size,
                 rotstep=not args.no_rotstep,
-                subassemblies=args.subassemblies,
+                subassemblies=args.subassemblies is not False,
                 solver=solver,
             ),
         )
