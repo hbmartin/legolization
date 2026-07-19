@@ -60,8 +60,7 @@ def _qualifying_sites(
                 if any(layout.brick_at(cell) is None for cell in window):
                     continue
                 for face in _FACE_YAW:
-                    nx, ny = x + face[0], y + face[1]
-                    if _face_is_open(layout, grid, nx, ny, z):
+                    if _slide_path_clear(layout, grid, x, y, z, face):
                         sites.setdefault((x, y, face), []).append(z)
     chosen: list[tuple[int, int, int, tuple[int, int]]] = []
     for (x, y, face), zs in sites.items():
@@ -85,23 +84,38 @@ def _runs(zs: list[int], *, min_run: int) -> list[list[int]]:
     return runs
 
 
-def _face_is_open(
+def _slide_path_clear(  # noqa: PLR0913 - one site is five scalars plus the layout
     layout: Layout,
     grid: VoxelGrid,
-    nx: int,
-    ny: int,
+    x: int,
+    y: int,
     z: int,
+    face: tuple[int, int],
 ) -> bool:
-    """Whether the neighbour window is outside the shape and unoccupied."""
+    """Whether a tile can slide onto this face from outside the model.
+
+    A sideways tile approaches along its stud axis, so the straight ray
+    from the wall face outward must be free all the way out of the grid
+    at every window plate. This rejects enclosed cavities and open pits
+    alike (v1 clad EMPTY cavity faces the builder could never reach —
+    PR #17 review) and matches ``_outward_ray_blockers``' insertion
+    model. Cladding parts already hung on the ray do not block it: the
+    sequencer orders inner tiles before outer ones via those blockers.
+    """
     gx, gy, gz = grid.shape
     for dz in range(_BRICK_PLATES):
         cz = z + dz
-        inside = 0 <= nx < gx and 0 <= ny < gy and 0 <= cz < gz
-        # IGNORE cells are interior shape fill — never clad toward them.
-        if inside and grid.codes[nx, ny, cz] != EMPTY:
-            return False
-        if layout.brick_at((nx, ny, cz)) is not None:
-            return False
+        step = 1
+        while True:
+            px, py = x + face[0] * step, y + face[1] * step
+            if not (0 <= px < gx and 0 <= py < gy):
+                break  # reached open space outside the grid
+            if cz < gz and grid.codes[px, py, cz] != EMPTY:
+                return False  # the shape itself blocks the approach
+            occupant = layout.brick_at((px, py, cz))
+            if occupant is not None and (layout.part_of(occupant).mount_normal is None):
+                return False  # a structural brick blocks the approach
+            step += 1
     return True
 
 

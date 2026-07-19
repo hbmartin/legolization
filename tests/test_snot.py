@@ -238,3 +238,42 @@ def test_perpendicular_faces_sharing_a_corner_column_do_not_collide():
     assert mounted >= 2
     cells = list(layout.occupancy)
     assert len(cells) == len(set(cells))  # no double occupancy
+
+
+def test_outward_ray_blockers_reach_beyond_64_studs():
+    # A wall 70 studs out is still on the slide-in path; the old fixed
+    # 64-cell scan cap approved the impossible insertion (PR #17 review).
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
+    tile = layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
+    far_wall = layout.add("brick_1x1", 70, 0, 0, 0, 4)
+    blockers = vertical_blockers(layout)
+    assert far_wall.brick_id in blockers[tile.brick_id]
+
+
+def test_pass_never_clads_enclosed_cavities():
+    # A hollow shell authored with an EMPTY cavity: v1 mounted tiles
+    # inside it while the exterior stayed bare (PR #17 review). Only
+    # boundary-connected empty space may be clad into.
+    import numpy as np
+
+    from legolization.grid import EMPTY, VoxelGrid
+    from legolization.placement.snot import apply_snot
+
+    # 3x3 footprint, 2-course shell of 1x1 columns around an empty core.
+    codes = np.full((3, 3, 6), EMPTY, dtype=np.int16)
+    layout = Layout(catalog=default_catalog())
+    for x in range(3):
+        for y in range(3):
+            if (x, y) == (1, 1):
+                continue  # enclosed cavity column
+            codes[x, y, :] = 4
+            for z in (0, 3):
+                layout.add("brick_1x1", x, y, z, 0, 4)
+    grid = VoxelGrid(codes=codes)
+    mounted = apply_snot(layout, grid)
+    assert mounted > 0  # exterior faces are clad...
+    assert layout.brick_at((1, 1, 0)) is None  # ...the cavity stays empty
+    for brick in layout:
+        if brick.part_key == "tile_1x1_snot":
+            assert (brick.x, brick.y) != (1, 1)
