@@ -100,3 +100,19 @@ def test_bridge_requires_component_drop(catalog):
     codes = np.full((4, 1, 3), 4, dtype=np.int16)
     synth = BridgeSynthesizer(catalog=catalog)
     assert synth(layout, set(layout.bricks), VoxelGrid(codes=codes)) is None
+
+
+def test_bridge_expired_budget_skips_enumeration(catalog, monkeypatch):
+    # PR #18 review (v5 scope): candidate enumeration ran before the
+    # budget check, same flaw as kollsker's — an exhausted budget must
+    # not pay for enumeration on any slab component.
+    import legolization.placement.layered.bridge as bridge_mod
+
+    def failing_enumerate(*args: object, **kwargs: object) -> object:
+        msg = "enumeration must not run under an expired budget"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(bridge_mod, "enumerate_layer_rects", failing_enumerate)
+    layout, grid = _towers()
+    synth = BridgeSynthesizer(catalog=catalog, slab_time_s=1e-9, total_time_s=1e-9)
+    assert synth(layout, set(layout.bricks), grid) is None

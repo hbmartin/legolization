@@ -113,21 +113,10 @@ def unsupported_ratio(grid: VoxelGrid | None) -> float | None:
     """
     if grid is None or grid.filled_count == 0:
         return None
-    from legolization.grid import EMPTY  # noqa: PLC0415 - scripts stay lean
-
-    codes = grid.codes
-    filled = 0
-    unsupported = 0
-    nx, ny, nz = grid.shape
-    for x in range(nx):
-        for y in range(ny):
-            for z in range(nz):
-                if codes[x, y, z] == EMPTY:
-                    continue
-                filled += 1
-                if z > 0 and codes[x, y, z - 1] == EMPTY:
-                    unsupported += 1
-    return round(unsupported / filled, 4)
+    filled = grid.filled_mask
+    # z=0 rests on the ground and never counts, matching the definition.
+    unsupported = filled[:, :, 1:] & ~filled[:, :, :-1]
+    return round(int(unsupported.sum()) / int(filled.sum()), 4)
 
 
 def build_row(

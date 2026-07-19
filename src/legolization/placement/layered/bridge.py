@@ -169,9 +169,13 @@ class BridgeSynthesizer:
         deadline: float,
     ) -> list[Rect2D] | None:
         """Two-stage lexicographic MILP with a hard bridging floor."""
+        if self._budget(deadline) is None:
+            return None  # budget already spent: don't pay for enumeration
         rects = enumerate_layer_rects(problem, component, self.catalog)
         if not rects or len(rects) > self.candidate_limit:
             return None
+        # Recheck: enumeration itself may have consumed the remainder
+        # (PR #18 review — same flaw as kollsker's, fixed the same way).
         if (stage1_limit := self._budget(deadline)) is None:
             return None
         started = time.monotonic()
