@@ -15,6 +15,7 @@ layer, which doubles as buildable stud-up instructions.
 from __future__ import annotations
 
 import math
+from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 from ldraw.geometry import Identity, Vector, XAxis, YAxis, ZAxis
@@ -128,7 +129,11 @@ def model_lines(
     ROTSTEP as a comment still step correctly). ``submodels`` switches
     attach steps to submodel reference lines (``.mpd`` emission).
     """
-    stem = name.removesuffix(".ldr").removesuffix(".mpd")
+    # PurePath.stem is case-insensitive about the suffix; the previous
+    # literal removesuffix left "MODEL.MPD" intact, so the root's
+    # submodel references and the FILE sections disagreed (PR #17
+    # review) and viewers lost the subassemblies.
+    stem = PurePath(name).stem
     yield f"0 {stem}"
     yield f"0 Name: {name}"
     yield "0 Author: legolization"

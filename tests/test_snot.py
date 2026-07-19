@@ -277,3 +277,52 @@ def test_pass_never_clads_enclosed_cavities():
     for brick in layout:
         if brick.part_key == "tile_1x1_snot":
             assert (brick.x, brick.y) != (1, 1)
+
+
+def test_cladding_creates_no_phantom_side_contacts():
+    # The tile's occupied cells are a conservative collision prism, not
+    # physical volume: its only physical connection is the lateral stud
+    # (PR #17 review — the prism used to add a generic side contact
+    # alongside the knob mate, shifting the drag numbers).
+    layout = Layout(catalog=default_catalog())
+    bracket = layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
+    tile = layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
+    graph = ConnectionGraph.from_layout(layout)
+    assert not any(
+        {contact.a_id, contact.b_id} & {tile.brick_id}
+        for contact in graph.side_contacts
+    )
+    lateral = [k for k in graph.knob_contacts if k.normal != (0, 0, 1)]
+    assert len(lateral) == 1
+    assert lateral[0].below_id == bracket.brick_id
+
+
+def test_mpd_stem_is_case_insensitive(tmp_path):
+    # MODEL.MPD used to reference MODEL.MPD-sub-1.ldr while defining
+    # 0 FILE MODEL-sub-1.ldr, losing the subassembly in viewers.
+
+    from legolization.instructions import InstructionsConfig, plan_instructions
+    from legolization.ldraw_out import write_model
+
+    layout = Layout(catalog=default_catalog())
+    for level in (0, 3, 6):
+        layout.add("brick_2x2", 3, 3, level, 0, 15)
+    layout.add("brick_2x2", 1, 3, 9, 0, 4)
+    layout.add("brick_2x2", 3, 3, 9, 0, 4)
+    layout.add("brick_2x2", 2, 3, 12, 0, 4)
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert plan.subassemblies
+    path = tmp_path / "MODEL.MPD"
+    write_model(layout, path, plan=plan)
+    text = path.read_text()
+    assert "0 FILE MODEL-sub-1.ldr" in text
+    assert "MODEL.MPD-sub-1" not in text
+    reference_lines = [
+        line
+        for line in text.splitlines()
+        if line.startswith("1 16") and line.endswith(".ldr")
+    ]
+    assert reference_lines
+    assert all(line.endswith("MODEL-sub-1.ldr") for line in reference_lines)

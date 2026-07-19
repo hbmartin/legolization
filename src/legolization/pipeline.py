@@ -183,7 +183,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
             stability = analyze(layout, config.solver)
         resolve_ignore_colours(layout)
 
-    with telemetry.span("phase.slopes"):
+    with telemetry.span("phase.finish_surfaces"):
         stability, slopes_added, tiles_added, snot_added = _finish_surfaces(
             layout, working, stability, config
         )
@@ -233,7 +233,8 @@ def _finish_surfaces(
             if slope_mode == "preserve" and stability.stable
             else None
         )
-        slopes_added = apply_slopes(layout, working, mode=slope_mode)
+        with telemetry.span("finish.slopes"):
+            slopes_added = apply_slopes(layout, working, mode=slope_mode)
         if slopes_added:
             stability = analyze(layout, config.solver)
             if guard is not None and not stability.stable:
@@ -247,7 +248,8 @@ def _finish_surfaces(
     snot_added = 0
     if config.snot:
         guard = (layout.copy(), stability) if stability.stable else None
-        snot_added = apply_snot(layout, working)
+        with telemetry.span("finish.snot"):
+            snot_added = apply_snot(layout, working)
         if snot_added:
             stability = analyze(layout, config.solver)
             if guard is not None and not stability.stable:
@@ -258,7 +260,8 @@ def _finish_surfaces(
                     config.progress(
                         "snot: cladding pass would break stability; reverted"
                     )
-    tiles_added = apply_tiles(layout) if config.tiles else 0
+    with telemetry.span("finish.tiles"):
+        tiles_added = apply_tiles(layout) if config.tiles else 0
     if tiles_added:
         stability = analyze(layout, config.solver)
     return stability, slopes_added, tiles_added, snot_added

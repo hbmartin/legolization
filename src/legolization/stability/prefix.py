@@ -300,7 +300,10 @@ class PrefixSolver:
         wanted = frozenset(chunk) - self.present
         subset = frozenset(self.present | wanted)
         floating = _stud_reach_floating(subset, self._grounded, self._stud_adjacent)
-        if floating:
+        # Cross-check mode promises every probe a cold comparison; the
+        # shortcut's synthetic scores would dodge it (PR #17 review), so
+        # it only fires when the mode is off.
+        if floating and not self._config.engine_cross_check:
             with telemetry.span("stability.prefix.floating_shortcut"):
                 self._rollback()
                 return _floating_shortcut(subset, floating)
@@ -796,7 +799,9 @@ class RemovalSolver:
         subset = frozenset(self.scope - set(chunk))
         with telemetry.span("stability.prefix.remove_probe", n=len(subset)):
             floating = _stud_reach_floating(subset, self._grounded, self._stud_adjacent)
-            if floating:
+            # Cross-check mode wants exact scores everywhere: skip the
+            # synthetic-score shortcut and analyze cold (PR #17 review).
+            if floating and not self._config.engine_cross_check:
                 with telemetry.span("stability.prefix.floating_shortcut"):
                     return _floating_shortcut(subset, floating)
             return self._analyze_components(subset)
