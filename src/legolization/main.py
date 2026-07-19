@@ -387,6 +387,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     """Reject invalid flag combinations in milliseconds, not after a run."""
+    _validate_sweep_args(parser, args)
+    _validate_instructions_args(parser, args)
+    if args.input.suffix.lower() in LDRAW_SUFFIXES:
+        _validate_ldraw_args(parser, args)
+    _validate_input_kind_args(parser, args)
+
+
+def _validate_sweep_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> None:
+    """Sweep-only flags demand --strategy all; profiling forbids it."""
     if args.strategy != "all" and (
         args.jobs != 0
         or args.timeout is not None
@@ -402,6 +414,13 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             "--profile requires a single strategy "
             "(telemetry does not cross sweep workers)"
         )
+
+
+def _validate_instructions_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> None:
+    """Instruction outputs need smart steps and a booklet suffix."""
     if args.subassemblies and args.steps == "layer":
         parser.error("--subassemblies requires --steps smart")
     if args.instructions is not None:
@@ -409,8 +428,13 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             parser.error("--instructions requires --steps smart")
         if args.instructions.suffix.lower() not in {".html", ".pdf"}:
             parser.error("--instructions must end in .html or .pdf")
-    if args.input.suffix.lower() in LDRAW_SUFFIXES:
-        _validate_ldraw_args(parser, args)
+
+
+def _validate_input_kind_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> None:
+    """Mesh flags need mesh inputs; voxel flags forbid them."""
     mesh_input = args.input.suffix.lower() in MESH_SUFFIXES
     mesh_flags = (
         args.target_studs is not None
