@@ -464,3 +464,34 @@ def test_rotate_pattern_moves_only_the_triangle():
         (-ox, -oy) for ox, oy in THREE_POINT_OFFSETS
     }
     assert rotate_pattern(THREE_POINT_OFFSETS, 0) == THREE_POINT_OFFSETS
+
+
+# --- table mode (ground_pull=False) and external loads ---
+
+
+def test_table_mode_lets_top_heavy_column_tip(layout):
+    # The exact structure the baseplate pin keeps stable becomes a
+    # tipping verdict when the ground can push but not pull.
+    layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    layout.add("brick_1x6", 0, 0, 3, 0, 4)
+    for level in range(3):
+        layout.add("brick_1x1", 5, 0, 6 + 3 * level, 0, 4)
+    assert analyze(layout).stable
+    assert not analyze(layout, SolverConfig(ground_pull=False)).stable
+
+
+def test_extra_mass_overloads_a_stable_cantilever(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    beam = layout.add("brick_1x4", 0, 0, 3, 0, 4)
+    assert analyze(layout).stable
+    loaded = analyze(layout, extra_masses={beam.brick_id: 1.0})
+    assert not loaded.stable
+    assert beam.brick_id in loaded.unstable_ids
+
+
+def test_extra_mass_zero_is_identity(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    beam = layout.add("brick_1x4", 0, 0, 3, 0, 4)
+    plain = analyze(layout)
+    zero = analyze(layout, extra_masses={beam.brick_id: 0.0})
+    assert zero.max_score == pytest.approx(plain.max_score, rel=1e-9)

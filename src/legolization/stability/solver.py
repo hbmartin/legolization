@@ -108,6 +108,12 @@ class SolverConfig:
     regardless of orientation; rotating it makes 90-degree-rotated
     structures score identically to their unrotated twins."""
 
+    ground_pull: bool = True
+    """Whether layer-0 contacts can pull down (StableLego
+    baseplate-style studs). False models bricks resting loose on a
+    table: the ground pushes but never pulls, so top-heavy structures
+    may tip."""
+
 
 @dataclass(frozen=True, slots=True)
 class BrickScore:
@@ -145,8 +151,14 @@ def analyze(
     layout: Layout,
     config: SolverConfig | None = None,
     graph: ConnectionGraph | None = None,
+    *,
+    extra_masses: dict[int, float] | None = None,
 ) -> StabilityResult:
-    """Build and solve the RBE for a layout."""
+    """Build and solve the RBE for a layout.
+
+    ``extra_masses`` adds per-brick external load in kilograms at each
+    brick's centroid (insertion presses, payloads); keys are brick ids.
+    """
     if not len(layout):
         return StabilityResult(stable=True)
     config = config or SolverConfig()
@@ -157,6 +169,8 @@ def analyze(
             torque_z=config.torque_z,
             paper_knob_rule=config.paper_knob_rule,
             rotate_contact_pattern=config.rotate_contact_pattern,
+            ground_pull=config.ground_pull,
+            extra_masses=extra_masses,
         )
         return solve_model(model, config)
 

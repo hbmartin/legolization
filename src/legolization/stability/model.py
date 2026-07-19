@@ -294,8 +294,17 @@ def build_model(
     torque_z: bool = False,
     paper_knob_rule: bool = False,
     rotate_contact_pattern: bool = False,
+    ground_pull: bool = True,
+    extra_masses: dict[int, float] | None = None,
 ) -> StabilityModel:
-    """Build the sparse equilibrium system for a layout."""
+    """Build the sparse equilibrium system for a layout.
+
+    ``ground_pull=False`` models bricks resting loose on a table: the
+    baseplate can push but never pull, so top-heavy structures may tip.
+    ``extra_masses`` adds per-brick external load in kilograms at the
+    brick's centroid (torque-free, like gravity) — the hook for
+    insertion-press and payload analyses.
+    """
     with telemetry.span("stability.build_model", n=len(layout)):
         return _build_model_body(
             layout,
@@ -303,6 +312,8 @@ def build_model(
             torque_z=torque_z,
             paper_knob_rule=paper_knob_rule,
             rotate_contact_pattern=rotate_contact_pattern,
+            ground_pull=ground_pull,
+            extra_masses=extra_masses,
         )
 
 
@@ -396,6 +407,8 @@ def _build_model_body(
     torque_z: bool = False,
     paper_knob_rule: bool = False,
     rotate_contact_pattern: bool = False,
+    ground_pull: bool = True,
+    extra_masses: dict[int, float] | None = None,
 ) -> StabilityModel:
     """Run the body of :func:`build_model` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
@@ -421,9 +434,12 @@ def _build_model_body(
             position = (knob.x + ox, knob.y + oy, z_plane)
             normal_col = asm.new_var()
             drag_col = asm.new_var()
-            # Upper brick: support up, drag down.
+            # Upper brick: support up, drag down. A pull-free ground
+            # (loose-on-a-table mode) keeps the drag variable but gives
+            # it no force entries — same indices, zero at any optimum.
             asm.add_force(knob.above_id, normal_col, up, position)
-            asm.add_force(knob.above_id, drag_col, down, position)
+            if ground_pull or knob.below_id != GROUND_ID:
+                asm.add_force(knob.above_id, drag_col, down, position)
             if knob.below_id != GROUND_ID:
                 # Lower brick reactions: press down, pull up.
                 asm.add_force(knob.below_id, normal_col, down, position)
@@ -448,9 +464,11 @@ def _build_model_body(
         _add_side_contact(asm, side)
 
     rpb = asm.rows_per_brick
+    extra = extra_masses or {}
     b_vector = np.zeros(rpb * len(asm.brick_ids))
     for brick_id in asm.brick_ids:
         mass_kg = layout.part_of(layout.bricks[brick_id]).mass_g / 1000.0
+        mass_kg += extra.get(brick_id, 0.0)
         b_vector[rpb * asm.index[brick_id] + _FZ] = -mass_kg * GRAVITY
 
     a_matrix = coo_matrix(

@@ -566,7 +566,12 @@ class PrefixSolver:
         for ox, oy in pattern:
             position = (x + ox, y + oy, z_plane)
             loads_normal: list[_Load] = [(above, _UP, position)]
-            loads_drag: list[_Load] = [(above, _DOWN, position)]
+            loads_drag: list[_Load] = []
+            # Mirrors the batch assembler's pull-free ground: the drag
+            # column exists but carries no entries when the baseplate
+            # cannot pull.
+            if self._config.ground_pull or below != GROUND_ID:
+                loads_drag.append((above, _DOWN, position))
             if below != GROUND_ID:
                 loads_normal.append((below, _DOWN, position))
                 loads_drag.append((below, _UP, position))
