@@ -1,7 +1,8 @@
 """Assemble the Rigid-Block-Equilibrium force/torque system from a layout.
 
 Per brick there are five equilibrium rows (fx, fy, fz, τx, τy — no yaw
-torque, following StableLego). Per mated knob there are 3 or 4 contact
+torque, following StableLego; an optional sixth yaw-torque row τz sits
+behind ``torque_z``). Per mated knob there are 3 or 4 contact
 points (pattern picked by the cavity side: 1xX cavities pinch studs at four
 points, wider cavities at three), each carrying a shared **normal** variable
 (support on the upper brick = press on the lower) and a shared **drag**
@@ -27,7 +28,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 
 from legolization import telemetry
-from legolization.graph import GROUND_ID, ConnectionGraph, KnobContact
+from legolization.graph import GROUND_ID, ConnectionGraph, KnobContact, SideContact
 from legolization.stability.constants import (
     FOUR_POINT_OFFSETS,
     GRAVITY,
@@ -42,6 +43,12 @@ if TYPE_CHECKING:
 
 ROWS_PER_BRICK = 5
 _FX, _FY, _FZ, _TX, _TY = range(ROWS_PER_BRICK)
+_TZ = 5
+
+
+def rows_per_brick(*, torque_z: bool) -> int:
+    """Residual rows per brick: 5 following StableLego, 6 with yaw torque."""
+    return 6 if torque_z else ROWS_PER_BRICK
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +71,7 @@ class StabilityModel:
     contact_points: tuple[ContactPoint, ...]
     bottom_drag_cols: dict[int, np.ndarray]
     var_count: int
+    rows_per_brick: int = ROWS_PER_BRICK
 
     @property
     def brick_count(self) -> int:
@@ -81,9 +89,9 @@ class StabilityModel:
         return np.asarray([p.normal_col for p in self.contact_points], dtype=np.int64)
 
     def rows_of(self, brick_id: int) -> slice:
-        """Return the five residual rows of a brick."""
+        """Return the residual rows of a brick."""
         index = self.brick_ids.index(brick_id)
-        return slice(ROWS_PER_BRICK * index, ROWS_PER_BRICK * (index + 1))
+        return slice(self.rows_per_brick * index, self.rows_per_brick * (index + 1))
 
 
 def brick_centroid(layout: Layout, brick_id: int) -> tuple[float, float, float]:
@@ -99,37 +107,42 @@ def force_entries(
     centroid: tuple[float, float, float],
     position: tuple[float, float, float],
     direction: tuple[float, float, float],
+    *,
+    torque_z: bool = False,
 ) -> tuple[tuple[int, float], ...]:
     """Nonzero (row-offset, coefficient) pairs for one applied force.
 
     ``position`` is in grid units (stud, stud, plate); levers are taken
     about ``centroid`` and converted to meters. Shared by the batch
     assembler and the incremental prefix solver so both engines compute
-    identical float expressions.
+    identical float expressions. With ``torque_z`` the yaw-torque
+    coefficient joins as a sixth row (vertical forces never load it:
+    their yaw lever is identically zero).
     """
     cx, cy, cz = centroid
     rx = (position[0] - cx) * KNOB_PITCH_M
     ry = (position[1] - cy) * KNOB_PITCH_M
     rz = (position[2] - cz) * PLATE_HEIGHT_M
     fx, fy, fz = direction
-    return tuple(
-        (row_offset, coeff)
-        for row_offset, coeff in (
-            (_FX, fx),
-            (_FY, fy),
-            (_FZ, fz),
-            (_TX, ry * fz - rz * fy),
-            (_TY, rz * fx - rx * fz),
-        )
-        if coeff
-    )
+    entries = [
+        (_FX, fx),
+        (_FY, fy),
+        (_FZ, fz),
+        (_TX, ry * fz - rz * fy),
+        (_TY, rz * fx - rx * fz),
+    ]
+    if torque_z:
+        entries.append((_TZ, rx * fy - ry * fx))
+    return tuple((row_offset, coeff) for row_offset, coeff in entries if coeff)
 
 
 class _Assembler:
     """Accumulates sparse triplets for the equilibrium system."""
 
-    def __init__(self, layout: Layout) -> None:
+    def __init__(self, layout: Layout, *, torque_z: bool = False) -> None:
         self.layout = layout
+        self.torque_z = torque_z
+        self.rows_per_brick = rows_per_brick(torque_z=torque_z)
         self.brick_ids = tuple(sorted(layout.bricks))
         self.index = {bid: i for i, bid in enumerate(self.brick_ids)}
         self.rows: list[int] = []
@@ -152,9 +165,9 @@ class _Assembler:
         position: tuple[float, float, float],
     ) -> None:
         """Add ``F = magnitude·direction`` at ``position`` to a brick's rows."""
-        base = ROWS_PER_BRICK * self.index[brick_id]
+        base = self.rows_per_brick * self.index[brick_id]
         for row_offset, coeff in force_entries(
-            self.centroids[brick_id], position, direction
+            self.centroids[brick_id], position, direction, torque_z=self.torque_z
         ):
             self.rows.append(base + row_offset)
             self.cols.append(col)
@@ -227,7 +240,11 @@ def _add_lateral_knob(
 
 
 def cavity_pattern(layout: Layout, brick_id: int) -> tuple[tuple[float, float], ...]:
-    """Contact-point offsets for a brick's bottom cavities (by min width)."""
+    """Contact-point offsets for a brick's bottom cavities (by min width).
+
+    The StableLego *release* rule: 1-wide cavities pinch at four points,
+    everything wider at three — uniform per brick.
+    """
     footprint = layout.part_of(layout.bricks[brick_id]).footprint
     xs = [dx for dx, _ in footprint]
     ys = [dy for _, dy in footprint]
@@ -235,41 +252,194 @@ def cavity_pattern(layout: Layout, brick_id: int) -> tuple[tuple[float, float], 
     return FOUR_POINT_OFFSETS if min_dim == 1 else THREE_POINT_OFFSETS
 
 
-def build_model(
+def footprint_columns(
+    layout: Layout,
+    brick_id: int,
+) -> tuple[frozenset[tuple[int, int]], int]:
+    """Return a brick's world footprint columns and min footprint dimension."""
+    columns = frozenset((x, y) for x, y, _ in layout.cells_of(layout.bricks[brick_id]))
+    xs = [x for x, _ in columns]
+    ys = [y for _, y in columns]
+    min_dim = min(max(xs) - min(xs) + 1, max(ys) - min(ys) + 1)
+    return columns, min_dim
+
+
+def knob_pattern(
+    columns: frozenset[tuple[int, int]],
+    min_dim: int,
+    column: tuple[int, int],
+) -> tuple[tuple[float, float], ...]:
+    """Per-knob contact offsets under the StableLego *paper* rule.
+
+    1xX cavities pinch at four points; 2xX at three; on QxX bodies with
+    Q ≥ 3 the edge connections take three points and the interior ones
+    four. Inert for the shipped catalog (no part has min dimension ≥ 3)
+    but exact for any future wide part.
+    """
+    if min_dim == 1:
+        return FOUR_POINT_OFFSETS
+    if min_dim == 2:
+        return THREE_POINT_OFFSETS
+    x, y = column
+    interior = all(
+        (x + dx, y + dy) in columns for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+    )
+    return FOUR_POINT_OFFSETS if interior else THREE_POINT_OFFSETS
+
+
+def build_model(  # noqa: PLR0913 - physics switches are keyword-only plumbing
     layout: Layout,
     graph: ConnectionGraph | None = None,
+    *,
+    torque_z: bool = False,
+    paper_knob_rule: bool = False,
+    rotate_contact_pattern: bool = False,
+    ground_pull: bool = True,
+    extra_masses: dict[int, float] | None = None,
 ) -> StabilityModel:
-    """Build the sparse equilibrium system for a layout."""
+    """Build the sparse equilibrium system for a layout.
+
+    ``ground_pull=False`` models bricks resting loose on a table: the
+    baseplate can push but never pull, so top-heavy structures may tip.
+    ``extra_masses`` adds per-brick external load in kilograms at the
+    brick's centroid (torque-free, like gravity) — the hook for
+    insertion-press and payload analyses.
+    """
     with telemetry.span("stability.build_model", n=len(layout)):
-        return _build_model_body(layout, graph)
+        return _build_model_body(
+            layout,
+            graph,
+            torque_z=torque_z,
+            paper_knob_rule=paper_knob_rule,
+            rotate_contact_pattern=rotate_contact_pattern,
+            ground_pull=ground_pull,
+            extra_masses=extra_masses,
+        )
 
 
-def _build_model_body(
+def _add_side_contact(asm: _Assembler, side: SideContact) -> None:
+    """Press generators for one laterally touching brick pair.
+
+    Presses act at the shared faces' extreme points. Without the yaw
+    torque row a horizontal force's torque coefficient is linear in z
+    alone, so the two vertical extremes span every achievable
+    force/torque combination (Luo corner-point-equivalent for the
+    modeled axes). With yaw torque the coefficient is also linear in
+    the transverse coordinate, and a nonnegative distribution over the
+    face rectangle reaches exactly the cone of its four (transverse,
+    vertical) corners — so the four corner generators span the six-row
+    system the same way.
+    """
+    unit = (1.0, 0.0, 0.0) if side.axis == 0 else (0.0, 1.0, 0.0)
+    away = (-unit[0] * side.direction, -unit[1] * side.direction, 0.0)
+    toward = (unit[0] * side.direction, unit[1] * side.direction, 0.0)
+    cx, cy, _ = side.centroid
+    for z_edge in (float(side.z_lo), float(side.z_hi + 1)):
+        if asm.torque_z:
+            spots = [side.t_lo, side.t_hi]
+        else:
+            spots = [cy if side.axis == 0 else cx]
+        for t_coord in spots:
+            col = asm.new_var()
+            position = (
+                (cx, t_coord, z_edge) if side.axis == 0 else (t_coord, cy, z_edge)
+            )
+            asm.add_force(side.a_id, col, away, position)
+            asm.add_force(side.b_id, col, toward, position)
+
+
+def rotate_pattern(
+    pattern: tuple[tuple[float, float], ...],
+    yaw: int,
+) -> tuple[tuple[float, float], ...]:
+    """Rotate contact offsets by a brick's yaw (multiples of 90 degrees).
+
+    The FOUR_POINT diamond is rotation-invariant as a set; only the
+    asymmetric THREE_POINT triangle (apex fixed at -x in the release)
+    actually moves.
+    """
+    match yaw % 360:
+        case 0:
+            return pattern
+        case 90:
+            return tuple((-oy, ox) for ox, oy in pattern)
+        case 180:
+            return tuple((-ox, -oy) for ox, oy in pattern)
+        case _:
+            return tuple((oy, -ox) for ox, oy in pattern)
+
+
+class _PatternSource:
+    """Per-knob contact-pattern lookup under either knob rule."""
+
+    def __init__(
+        self,
+        layout: Layout,
+        *,
+        paper_knob_rule: bool,
+        rotate_contact_pattern: bool = False,
+    ) -> None:
+        self._layout = layout
+        self._paper = paper_knob_rule
+        self._rotate = rotate_contact_pattern
+        self._footprints: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
+
+    def for_knob(self, knob: KnobContact) -> tuple[tuple[float, float], ...]:
+        """Contact offsets for the cavity gripping this knob."""
+        if not self._paper:
+            pattern = cavity_pattern(self._layout, knob.above_id)
+        else:
+            if knob.above_id not in self._footprints:
+                self._footprints[knob.above_id] = footprint_columns(
+                    self._layout, knob.above_id
+                )
+            columns, min_dim = self._footprints[knob.above_id]
+            pattern = knob_pattern(columns, min_dim, (knob.x, knob.y))
+        if self._rotate:
+            pattern = rotate_pattern(pattern, self._layout.bricks[knob.above_id].yaw)
+        return pattern
+
+
+def _build_model_body(  # noqa: PLR0913 - mirrors build_model's switches
     layout: Layout,
     graph: ConnectionGraph | None,
+    *,
+    torque_z: bool = False,
+    paper_knob_rule: bool = False,
+    rotate_contact_pattern: bool = False,
+    ground_pull: bool = True,
+    extra_masses: dict[int, float] | None = None,
 ) -> StabilityModel:
     """Run the body of :func:`build_model` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
-    asm = _Assembler(layout)
+    asm = _Assembler(layout, torque_z=torque_z)
     contact_points: list[ContactPoint] = []
     bottom_drag_cols: dict[int, list[int]] = {bid: [] for bid in asm.brick_ids}
 
     up: tuple[float, float, float] = (0.0, 0.0, 1.0)
     down: tuple[float, float, float] = (0.0, 0.0, -1.0)
 
+    patterns = _PatternSource(
+        layout,
+        paper_knob_rule=paper_knob_rule,
+        rotate_contact_pattern=rotate_contact_pattern,
+    )
     for knob in graph.knob_contacts:
         if knob.normal != (0, 0, 1):
             _add_lateral_knob(asm, knob, contact_points, bottom_drag_cols)
             continue
-        pattern = cavity_pattern(layout, knob.above_id)
+        pattern = patterns.for_knob(knob)
         z_plane = float(knob.interface_layer)
         for ox, oy in pattern:
             position = (knob.x + ox, knob.y + oy, z_plane)
             normal_col = asm.new_var()
             drag_col = asm.new_var()
-            # Upper brick: support up, drag down.
+            # Upper brick: support up, drag down. A pull-free ground
+            # (loose-on-a-table mode) keeps the drag variable but gives
+            # it no force entries — same indices, zero at any optimum.
             asm.add_force(knob.above_id, normal_col, up, position)
-            asm.add_force(knob.above_id, drag_col, down, position)
+            if ground_pull or knob.below_id != GROUND_ID:
+                asm.add_force(knob.above_id, drag_col, down, position)
             if knob.below_id != GROUND_ID:
                 # Lower brick reactions: press down, pull up.
                 asm.add_force(knob.below_id, normal_col, down, position)
@@ -291,29 +461,19 @@ def _build_model_body(
                 asm.add_force(knob.below_id, col, (-ux, -uy, 0.0), knob_center)
 
     for side in graph.side_contacts:
-        unit = (1.0, 0.0, 0.0) if side.axis == 0 else (0.0, 1.0, 0.0)
-        away = (-unit[0] * side.direction, -unit[1] * side.direction, 0.0)
-        toward = (unit[0] * side.direction, unit[1] * side.direction, 0.0)
-        # Two presses at the shared face's vertical extremes: with the yaw
-        # torque row dropped, a horizontal force's torque coefficient is
-        # linear in z, so these two generators span every force/torque
-        # combination achievable by any distribution over the shared faces
-        # (Luo corner-point-equivalent for the modeled axes).
-        cx, cy, _ = side.centroid
-        for z_edge in (float(side.z_lo), float(side.z_hi + 1)):
-            col = asm.new_var()
-            position = (cx, cy, z_edge)
-            asm.add_force(side.a_id, col, away, position)
-            asm.add_force(side.b_id, col, toward, position)
+        _add_side_contact(asm, side)
 
-    b_vector = np.zeros(ROWS_PER_BRICK * len(asm.brick_ids))
+    rpb = asm.rows_per_brick
+    extra = extra_masses or {}
+    b_vector = np.zeros(rpb * len(asm.brick_ids))
     for brick_id in asm.brick_ids:
         mass_kg = layout.part_of(layout.bricks[brick_id]).mass_g / 1000.0
-        b_vector[ROWS_PER_BRICK * asm.index[brick_id] + _FZ] = -mass_kg * GRAVITY
+        mass_kg += extra.get(brick_id, 0.0)
+        b_vector[rpb * asm.index[brick_id] + _FZ] = -mass_kg * GRAVITY
 
     a_matrix = coo_matrix(
         (asm.data, (asm.rows, asm.cols)),
-        shape=(ROWS_PER_BRICK * len(asm.brick_ids), max(asm.var_count, 1)),
+        shape=(rpb * len(asm.brick_ids), max(asm.var_count, 1)),
     ).tocsr()
     return StabilityModel(
         brick_ids=asm.brick_ids,
@@ -325,4 +485,5 @@ def _build_model_body(
             for bid, cols in bottom_drag_cols.items()
         },
         var_count=max(asm.var_count, 1),
+        rows_per_brick=rpb,
     )

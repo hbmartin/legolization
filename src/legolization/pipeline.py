@@ -91,6 +91,11 @@ class PipelineConfig:
     """Override every strategy's improve_connectivity fail_max (None =
     keep each class default; 0 disables the pass — drift diagnostics)."""
 
+    milp_bridge: bool = True
+    """Layered strategies bridge connectivity repairs with the
+    exact-cover synthesizer before falling back to random draws; False
+    restores the v4 random-only path (ablation knob)."""
+
 
 @dataclass(frozen=True, slots=True)
 class PipelineResult:

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from legolization.grid import VoxelGrid
     from legolization.layout import PlacedBrick
     from legolization.placement.base import ObjectiveWeights
+    from legolization.placement.layered.bridge import BridgeFn
     from legolization.stability.solver import SolverConfig
 
 ColourMode = Literal["hard", "soft"]
@@ -290,6 +291,7 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     colour_weight: float = 1.0,
     bridge_draws: int = 1,
     deadline: float | None = None,
+    bridge: BridgeFn | None = None,
 ) -> int:
     """Split-remerge around component borders until single-component.
 
@@ -299,10 +301,16 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     the component count strictly drops (Luo's Algorithm 5). Returns the
     final component count.
 
-    ``deadline`` (monotonic seconds) is checked before every iteration
-    and every draw: the pass was historically outside the strategies'
-    cooperative budget, and best-of-k multiplied that unbudgeted tail
-    (PR #18 review).
+    ``deadline`` (monotonic seconds) is checked before every iteration,
+    every draw, and the bridge call: the pass was historically outside
+    the strategies' cooperative budget, and best-of-k multiplied that
+    unbudgeted tail (PR #18 review).
+
+    ``bridge`` (a ``BridgeSynthesizer``) is tried first each iteration:
+    a deterministic MILP re-tiling of the ring that consumes no rng —
+    accepted outright when it reduces components, with the random draws
+    below as the fallback, so the rng stream matches ``bridge=None``
+    whenever the synthesizer declines.
 
     ``bridge_draws > 1`` enables best-of-k acceptance: a random-maximal
     region rewrite is the count-inflation hotspot (measured on mushroom:
@@ -327,7 +335,24 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
         if not seeds:
             break
         region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
-        best, best_key = _best_bridging_draw(
+        best: Layout | None = None
+        best_key: tuple[int, int] | None = None
+        if bridge is not None and (deadline is None or time.monotonic() < deadline):
+            # The MILP candidate competes on the same (components, len)
+            # key as the random draws instead of preempting them: on
+            # phase-broken rings the absolute-slab re-tiling can lose to
+            # compact_columns' re-phasing (measured on mushroom: a
+            # preempting accept cost +11 bricks end-to-end), and the
+            # comparison keeps whichever bridge is leaner.
+            with telemetry.span("connectivity.bridge_milp"):
+                synthesized = bridge(layout, region, grid)
+            if synthesized is not None:
+                best = synthesized
+                best_key = (
+                    ConnectionGraph.from_layout(synthesized).component_count(),
+                    len(synthesized),
+                )
+        draw, draw_key = _best_bridging_draw(
             layout,
             grid,
             rng,
@@ -338,6 +363,8 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
             bridge_draws=bridge_draws,
             deadline=deadline,
         )
+        if draw_key is not None and (best_key is None or draw_key < best_key):
+            best, best_key = draw, draw_key
         if best is not None and best_key is not None:
             with telemetry.span("connectivity.accept"):
                 layout.replace_with(best)

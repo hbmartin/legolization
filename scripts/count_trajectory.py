@@ -145,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--solid", action="store_true")
     parser.add_argument("--no-repair", action="store_true")
     parser.add_argument("--fail-max", type=_non_negative_int, default=None, metavar="N")
+    parser.add_argument("--no-milp-bridge", action="store_true")
     parser.add_argument("--target-studs", type=_positive_int, default=32, metavar="N")
     parser.add_argument("--out", type=Path, default=_REPO / "eval" / "profiles")
     args = parser.parse_args(argv)
@@ -156,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         hollow=not args.solid,
         repair=not args.no_repair,
         connectivity_fail_max=args.fail_max,
+        milp_bridge=not args.no_milp_bridge,
         instructions=InstructionsConfig(mode="layer"),
         mesh=MeshOptions(target_studs=args.target_studs),
     )
@@ -203,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
             ("-solid", args.solid),
             ("-norepair", args.no_repair),
             (f"-fm{args.fail_max}", args.fail_max is not None),
+            ("-nobridge", args.no_milp_bridge),
         )
         if active
     )

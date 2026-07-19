@@ -32,7 +32,7 @@ from scipy.optimize import linprog
 
 from legolization import telemetry
 from legolization.stability.constants import ALPHA, BETA, T_CAPACITY_N
-from legolization.stability.model import ROWS_PER_BRICK, StabilityModel, build_model
+from legolization.stability.model import StabilityModel, build_model
 
 if TYPE_CHECKING:
     from legolization.graph import ConnectionGraph
@@ -87,6 +87,36 @@ class SolverConfig:
     highspy directly (drops the scipy wrapper overhead); smaller ones
     keep the scipy-exact path that the 1e-6 equivalence tests pin."""
 
+    torque_z: bool = False
+    """Model the yaw torque row (τz) as a sixth residual per brick.
+
+    StableLego (paper and release) drops it; enabling it makes
+    horizontal knob presses meaningful for twist loads and switches side
+    contacts to four corner generators. Default follows the v5 A/B
+    verdict."""
+
+    paper_knob_rule: bool = False
+    """Per-knob contact points per the StableLego *paper* (edge knobs 3,
+    interior knobs 4 on min-dimension-3+ bodies) instead of the
+    release's uniform per-brick rule. Inert for the shipped catalog —
+    no part has min footprint dimension >= 3."""
+
+    rotate_contact_pattern: bool = True
+    """Rotate the contact-point pattern with the gripping brick's yaw.
+
+    The release keeps the asymmetric three-point triangle axis-aligned
+    regardless of orientation, scoring the same structure differently
+    when built rotated 90 degrees (measured: 36% on a single-knob
+    cantilever); rotating restores exact rotation invariance. Flipped
+    on by the v5 A/B (all StableLego fixture verdicts reproduce, zero
+    corpus verdict flips, no cost). False = release parity."""
+
+    ground_pull: bool = True
+    """Whether layer-0 contacts can pull down (StableLego
+    baseplate-style studs). False models bricks resting loose on a
+    table: the ground pushes but never pulls, so top-heavy structures
+    may tip."""
+
 
 @dataclass(frozen=True, slots=True)
 class BrickScore:
@@ -124,12 +154,28 @@ def analyze(
     layout: Layout,
     config: SolverConfig | None = None,
     graph: ConnectionGraph | None = None,
+    *,
+    extra_masses: dict[int, float] | None = None,
 ) -> StabilityResult:
-    """Build and solve the RBE for a layout."""
+    """Build and solve the RBE for a layout.
+
+    ``extra_masses`` adds per-brick external load in kilograms at each
+    brick's centroid (insertion presses, payloads); keys are brick ids.
+    """
     if not len(layout):
         return StabilityResult(stable=True)
+    config = config or SolverConfig()
     with telemetry.span("stability.analyze", n=len(layout)):
-        return solve_model(build_model(layout, graph), config or SolverConfig())
+        model = build_model(
+            layout,
+            graph,
+            torque_z=config.torque_z,
+            paper_knob_rule=config.paper_knob_rule,
+            rotate_contact_pattern=config.rotate_contact_pattern,
+            ground_pull=config.ground_pull,
+            extra_masses=extra_masses,
+        )
+        return solve_model(model, config)
 
 
 def solve_model(
@@ -301,15 +347,14 @@ def _near_boundary(
     margin = config.boundary_margin
     low = (1.0 - margin) * T_CAPACITY_N
     high = (1.0 + margin) * T_CAPACITY_N
-    tolerances = (config.tol_force,) * 3 + (config.tol_torque,) * 2
+    rpb = model.rows_per_brick
+    tolerances = (config.tol_force,) * 3 + (config.tol_torque,) * (rpb - 3)
     for i, brick_id in enumerate(model.brick_ids):
         drag_cols = model.bottom_drag_cols[brick_id]
         drag_max = float(values[drag_cols].max()) if drag_cols.size else 0.0
         if low <= drag_max <= high:
             return True
-        t_vals = values[
-            force_count + ROWS_PER_BRICK * i : force_count + ROWS_PER_BRICK * (i + 1)
-        ]
+        t_vals = values[force_count + rpb * i : force_count + rpb * (i + 1)]
         if any(
             tol / 10.0 < v < tol * 10.0
             for v, tol in zip(t_vals, tolerances, strict=True)
@@ -456,7 +501,8 @@ def _score(
     residual = model.a_matrix @ force_values + model.b_vector
     scores: dict[int, BrickScore] = {}
     for i, brick_id in enumerate(model.brick_ids):
-        rows = residual[ROWS_PER_BRICK * i : ROWS_PER_BRICK * (i + 1)]
+        rpb = model.rows_per_brick
+        rows = residual[rpb * i : rpb * (i + 1)]
         force_ok = bool(np.all(np.abs(rows[:3]) <= config.tol_force))
         torque_ok = bool(np.all(np.abs(rows[3:]) <= config.tol_torque))
         cols = model.bottom_drag_cols[brick_id]

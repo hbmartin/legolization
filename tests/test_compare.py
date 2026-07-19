@@ -472,20 +472,32 @@ def test_cli_sweep_flags_require_strategy_all(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # --jobs/--timeout/--seeds now also serve single-strategy restart
+    # races (v5); only the sweep-reporting flags stay sweep-only.
     with pytest.raises(SystemExit) as excinfo:
-        main([str(tmp_path / "x.npy"), "--jobs", "2"])
+        main([str(tmp_path / "x.npy"), "--report", str(tmp_path / "r.json")])
     assert excinfo.value.code == 2
     assert "--strategy all" in capsys.readouterr().err
 
 
-def test_cli_seeds_require_strategy_all(
+def test_cli_restarts_rejects_nonpositive(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as excinfo:
-        main([str(tmp_path / "x.npy"), "--seeds", "0,1"])
+        main([str(tmp_path / "x.npy"), "--restarts", "0"])
     assert excinfo.value.code == 2
-    assert "--strategy all" in capsys.readouterr().err
+    assert "--restarts" in capsys.readouterr().err
+
+
+def test_cli_profile_requires_single_seed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(tmp_path / "x.npy"), "--profile", str(tmp_path / "p.json")])
+    assert excinfo.value.code == 2
+    assert "--restarts 1" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("value", ["", "a,b", "0,,1"])

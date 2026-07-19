@@ -365,3 +365,73 @@ def test_evaluate_reports_new_terms_and_zero_weights_reproduce_old_total():
         + weights.aesthetics * old_style.aesthetics
         + weights.colour * old_style.colour_error
     )
+
+
+# --- grounded-at-band-time (support-aware placement) ---
+
+
+def test_grounded_below_distinguishes_floating_supports():
+    from legolization.placement.layered.engine import LayerProblem, build_context
+
+    layout = Layout(catalog=default_catalog())
+    grounded = layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    floater = layout.add("brick_1x2", 4, 0, 3, 0, 4)  # no stud path down
+    problem = LayerProblem(
+        layer=6,
+        height_plates=3,
+        columns=frozenset({(0, 0), (4, 0)}),
+        colour_of={(0, 0): 4, (4, 0): 4},
+    )
+    # Give the problem supports directly below each column.
+    layout.add("brick_1x2", 0, 0, 3, 0, 4)
+    context = build_context(layout, problem)
+    del grounded, floater
+    assert context.grounded_below is not None
+    assert (0, 0) in context.grounded_below  # stacked on the grounded brick
+    assert (4, 0) not in context.grounded_below  # sits on the floater
+
+
+def test_grounding_gain_counts_anchored_columns():
+    from legolization.placement.layered.engine import (
+        LayerContext,
+        Rect2D,
+        grounding_gain,
+    )
+
+    below = LayerContext(
+        support_of={(0, 0): 1, (1, 0): 2, (2, 0): 2},
+        gap_columns=frozenset(),
+        seams={},
+        seam_priority={},
+        long_axis_of={},
+        stackable_footprints={},
+        grounded_below=frozenset({(0, 0)}),
+    )
+    spanning = Rect2D(x0=0, y0=0, x1=2, y1=0, colour=4)
+    floating_only = Rect2D(x0=1, y0=0, x1=2, y1=0, colour=4)
+    assert grounding_gain(spanning, below) == 2  # anchors both floaters
+    assert grounding_gain(floating_only, below) == 0  # nothing grounded covered
+    unsignalled = LayerContext(
+        support_of=below.support_of,
+        gap_columns=frozenset(),
+        seams={},
+        seam_priority={},
+        long_axis_of={},
+        stackable_footprints={},
+    )
+    assert grounding_gain(spanning, unsignalled) == 0
+
+
+def test_kollsker_ground_weight_never_changes_counts():
+    from legolization.placement.layered.kollsker import KollskerStrategy
+
+    codes = np.full((6, 2, 6), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    counts = {}
+    for weight in (0.0, 2.0):
+        strategy = KollskerStrategy(ground_weight=weight)
+        layout = strategy.place(grid, rng=np.random.default_rng(3))
+        counts[weight] = len(layout)
+    # Stage 2 pins the count at N*: grounding only re-spends the
+    # equal-count freedom.
+    assert counts[0.0] == counts[2.0]

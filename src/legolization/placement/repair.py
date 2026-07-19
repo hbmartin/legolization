@@ -109,7 +109,7 @@ def _localize(
     config: RepairConfig,
 ) -> LinkReport:
     if config.localizer == "qp":
-        report = localize_instability(layout)
+        report = localize_instability(layout, config=solver_config)
         if report.status == "optimal" and (report.stable or report.links):
             return report
     return _rbe_report(layout, solver_config)

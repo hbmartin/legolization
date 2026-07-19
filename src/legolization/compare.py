@@ -31,6 +31,7 @@ from dataclasses import asdict, dataclass, replace
 from multiprocessing import get_context
 from typing import TYPE_CHECKING
 
+from legolization.instructions.sequencer import InstructionsConfig
 from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import ObjectiveWeights, evaluate
 from legolization.placement.registry import strategy_names
@@ -212,6 +213,43 @@ def select_best(candidates: Sequence[Candidate]) -> SelectionReport:
             f"objective {metrics.objective_total:.4f}"
         )
     return SelectionReport(winner=winner, reason=reason, candidates=ordered)
+
+
+def restart_race(  # noqa: PLR0913 - mirrors run_all's dispatch knobs
+    grid: VoxelGrid,
+    config: PipelineConfig,
+    *,
+    seeds: Sequence[int],
+    jobs: int = 0,
+    timeout_s: float | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> tuple[int, SelectionReport]:
+    """Race ``config.strategy`` across seeds; return the winning seed.
+
+    The race disables instruction sequencing (``mode="layer"``) so only
+    placement and physics are paid per seed — the caller re-runs the
+    winner once with full outputs, which is deterministic. When no seed
+    is buildable the least-bad winner's seed is returned (diagnosis
+    semantics, same as sweeps); with no winner at all the first seed is
+    returned so the caller's full run surfaces the real error.
+    """
+    race = replace(
+        config,
+        instructions=InstructionsConfig(mode="layer"),
+        progress=None,
+    )
+    candidates = run_all(
+        grid,
+        race,
+        names=(config.strategy,),
+        seeds=tuple(seeds),
+        jobs=jobs,
+        timeout_s=timeout_s,
+        progress=progress,
+    )
+    report = select_best(candidates)
+    winner_seed = report.winner.seed if report.winner is not None else seeds[0]
+    return winner_seed, report
 
 
 def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
