@@ -65,6 +65,12 @@ class SideContact:
     centroid: tuple[float, float, float]
     z_lo: int
     z_hi: int
+    t_lo: float = 0.0
+    t_hi: float = 0.0
+    """Transverse extent of the shared faces (face-center min/max along
+    the horizontal axis perpendicular to ``axis``, grid units) — the
+    yaw-torque model presses at the four (transverse, vertical) corners
+    so side forces can carry every modelled torque axis."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +249,7 @@ def _side_contacts(layout: Layout) -> list[SideContact]:
         arr = np.asarray(centers)
         cx, cy, cz = arr.mean(axis=0)
         layers = arr[:, 2] - 0.5  # face centers sit at cell z + 0.5
+        transverse = arr[:, 1 - axis]
         contacts.append(
             SideContact(
                 a_id=a_id,
@@ -253,6 +260,8 @@ def _side_contacts(layout: Layout) -> list[SideContact]:
                 centroid=(float(cx), float(cy), float(cz)),
                 z_lo=int(layers.min()),
                 z_hi=int(layers.max()),
+                t_lo=float(transverse.min()),
+                t_hi=float(transverse.max()),
             )
         )
     return contacts

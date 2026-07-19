@@ -342,3 +342,19 @@ def test_direct_rescue_gate_keeps_small_models_scipy_exact():
     with telemetry.record() as session:
         solver.probe_without(())
     assert "stability.rescue.cold_direct" not in session.spans
+
+
+def test_dual_engine_agrees_with_torque_z():
+    # The warm engine must mirror the six-row physics exactly: same
+    # plans, same verdicts, on the shipped examples with torque_z on.
+    for name in ("pyramid.npy", "heart.vox"):
+        config = PipelineConfig(seed=0)
+        path = _EXAMPLES / name
+        layout = run(load_grid(path, config), config).layout
+        plans = {}
+        for engine in ("scipy", "highspy"):
+            icfg = InstructionsConfig(solver=SolverConfig(engine=engine, torque_z=True))
+            plans[engine] = plan_instructions(layout, config=icfg)
+        a, b = plans["scipy"], plans["highspy"]
+        assert [s.brick_ids for s in a.steps] == [s.brick_ids for s in b.steps]
+        assert [s.prefix_stable for s in a.steps] == [s.prefix_stable for s in b.steps]

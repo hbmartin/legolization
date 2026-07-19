@@ -160,3 +160,27 @@ weights (`ObjectiveWeights`) worth reporting.
   (299 solves, ~4.9 s each at n≈1000), sequencing owns the wall clock,
   and model construction is <1% — optimize solve count/warm-starts, not
   caching.
+
+## 10. Standing cadence (v5)
+
+The loop in §5 is not a one-off; run it on this cadence and log each
+outcome as a dated line in ROADMAP.md's "self-eval log" (append-only)
+so drift stays visible:
+
+- **After every placement/physics/sequencing change**: §5 steps 1-6 on
+  the synthetic corpus; §5 step 7's baseline/golden ritual only for
+  intentional moves.
+- **Each session that touches output quality**: render the flagship set
+  (heart, mushroom, suzanne@16, one SNOT wall model) via `render-ldraw`
+  against the §4 checklists; `compare-strategies` on the worst corpus
+  row; ratchet `expect_min_buildable` when reality improves — that
+  ratchet is the point.
+- **Periodically (roughly monthly, or before a release)**: full mesh
+  sweep in background (`eval_corpus --kind mesh`; write the baseline on
+  a clean run — see docs/v5-pending-measurements.md until the first cut
+  lands); `--seeds 0,1,2` seed_spread on seed-variance-trait models;
+  re-run the physics A/B harness if any SolverConfig default moved;
+  `check_instructions --insertion-check` on the flagship set.
+- **Every new capability adds a corpus model that stresses it** (the v5
+  additions still owed: a twist-load synthetic for `torque_z`, a
+  press-fragile tower for the insertion audit).

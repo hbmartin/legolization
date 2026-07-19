@@ -258,7 +258,7 @@ def test_cli_smart_steps_and_bom(tmp_path, capsys):
     np.save(npy, codes)
     out = tmp_path / "box.ldr"
     bom_path = tmp_path / "box-bom.json"
-    code = main([str(npy), "-o", str(out), "--bom", str(bom_path)])
+    code = main(["--restarts", "1", str(npy), "-o", str(out), "--bom", str(bom_path)])
     captured = capsys.readouterr()
     assert code == 0
     assert "steps:" in captured.out
@@ -275,7 +275,7 @@ def test_cli_layer_steps_keep_legacy_output(tmp_path):
     np.save(npy, codes)
     smart = tmp_path / "smart.ldr"
     layer = tmp_path / "layer.ldr"
-    assert main([str(npy), "-o", str(smart)]) == 0
+    assert main(["--restarts", "1", str(npy), "-o", str(smart)]) == 0
     assert main([str(npy), "-o", str(layer), "--steps", "layer"]) == 0
     assert "ROTSTEP" not in layer.read_text()
     # The legacy path steps once per plate layer.
@@ -393,7 +393,9 @@ def _mini_mushroom() -> Layout:
 
 def test_subassembly_extraction_on_mini_mushroom() -> None:
     layout = _mini_mushroom()
-    base = plan_instructions(layout, config=InstructionsConfig(rotstep=False))
+    base = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=False)
+    )
     base_unstable = sum(1 for s in base.steps if not s.prefix_stable)
     assert base_unstable > 0
     config = InstructionsConfig(rotstep=False, subassemblies=True)
@@ -415,12 +417,20 @@ def test_subassembly_extraction_on_mini_mushroom() -> None:
     assert verify_plan(layout, plan, config=config) == []
 
 
-def test_subassemblies_off_is_todays_plan() -> None:
+def test_subassemblies_opt_out_gives_a_flat_plan() -> None:
+    # Default-on since v5 (measured: three corpus models go fully clean);
+    # explicit False restores the flat single-sequence plan.
     layout = _mini_mushroom()
-    config = InstructionsConfig(rotstep=False)
+    config = InstructionsConfig(rotstep=False, subassemblies=False)
     plain = plan_instructions(layout, config=config)
     assert plain.subassemblies == ()
     assert all(s.submodel is None and s.attaches is None for s in plain.steps)
+
+
+def test_subassemblies_default_on() -> None:
+    layout = _mini_mushroom()
+    plan = plan_instructions(layout, config=InstructionsConfig(rotstep=False))
+    assert plan.subassemblies
 
 
 def test_min_sub_bricks_gate() -> None:
@@ -544,7 +554,9 @@ def test_strict_policy_judged_after_subassembly_rewrite():
     with pytest.raises(InstructionsError, match="no stable ordering"):
         plan_instructions(
             layout,
-            config=InstructionsConfig(rotstep=False, stability_policy="strict"),
+            config=InstructionsConfig(
+                rotstep=False, stability_policy="strict", subassemblies=False
+            ),
         )
     plan = plan_instructions(
         layout,
@@ -574,7 +586,10 @@ def test_cli_profile_payload_is_schema_two(tmp_path):
     np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
     profile = tmp_path / "profile.json"
     out = tmp_path / "m.ldr"
-    assert main([str(npy), "-o", str(out), "--profile", str(profile)]) == 0
+    assert (
+        main(["--restarts", "1", str(npy), "-o", str(out), "--profile", str(profile)])
+        == 0
+    )
     payload = json.loads(profile.read_text())
     assert payload["schema"] == 2
     assert payload["source"] == "cli"

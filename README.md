@@ -151,11 +151,15 @@ parallel sweep while also becoming the cooperative time budget for strategies
 that support one. Workers already running at the deadline cannot be terminated
 and may continue after the sweep returns.
 
-The CLI reports brick count, mass, step count, and the physics verdict:
+The CLI races a few seeds by default (`--restarts`, default 3: placement
+and physics run per seed in parallel, then the best layout is re-run once
+with full instruction sequencing — `--restarts 1` restores single-seed
+runs) and reports brick count, mass, step count, and the physics verdict:
 
 ```text
+restart race: seeds 0..2 -> seed 2
 wrote heart.ldr
-  bricks: 12   mass: 17.7 g   steps: 7   slopes: 0   tiles: 0
+  bricks: 12   mass: 17.9 g   steps: 8   slopes: 0   tiles: 0
   stability: STABLE (worst score 0.001, min capacity 0.979 N)
 ```
 

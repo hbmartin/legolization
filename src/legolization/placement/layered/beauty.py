@@ -35,6 +35,7 @@ from legolization.placement.layered.engine import (
     LayeredStrategy,
     LayerProblem,
     Rect2D,
+    grounding_gain,
     random_fill,
     rects_covering,
 )
@@ -79,6 +80,10 @@ class BeautyStrategy(LayeredStrategy):
         default_factory=lambda: BeautyWeights.preset("balanced")
     )
     beam_width: int = 512
+    w_g: float = 0.25
+    """Cost per covered ungrounded-support column the rect fails to
+    anchor (positive-only, so the best-first prune stays sound); 0.0
+    restores pre-v5 behaviour."""
 
     def tile(
         self,
@@ -180,6 +185,15 @@ class BeautyStrategy(LayeredStrategy):
         weights = self.beauty
         cost = weights.w_h * (_A_MAX - rect.area) / (_A_MAX - 1)
         columns = rect.columns()
+        if below.grounded_below is not None:
+            ungrounded_covered = sum(
+                1
+                for column in columns
+                if column in below.support_of and column not in below.grounded_below
+            )
+            cost += (
+                self.w_g * (ungrounded_covered - grounding_gain(rect, below)) / _A_MAX
+            )
         exact_stack = below.stackable_footprints.get(columns)
         incompatible_exact_stack = (
             exact_stack is not None and merge_colour(rect.colour, exact_stack) is None

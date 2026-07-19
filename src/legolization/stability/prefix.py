@@ -56,7 +56,11 @@ from legolization.stability.model import (
     brick_centroid,
     build_model,
     cavity_pattern,
+    footprint_columns,
     force_entries,
+    knob_pattern,
+    rotate_pattern,
+    rows_per_brick,
 )
 from legolization.stability.solver import (
     BrickScore,
@@ -71,8 +75,6 @@ if TYPE_CHECKING:
 
 import highspy
 
-_ROWS_PER_BRICK = 5
-_BLOCK_ROWS = 2 * _ROWS_PER_BRICK  # 5 upper + 5 lower residual rows
 _FZ = 2
 _INF = math.inf
 _UP = (0.0, 0.0, 1.0)
@@ -193,6 +195,8 @@ class PrefixSolver:
     def __init__(self, layout: Layout, config: SolverConfig) -> None:
         self._layout = layout
         self._config = config
+        self._rpb = rows_per_brick(torque_z=config.torque_z)
+        self._block_rows = 2 * self._rpb  # upper + lower residual rows
         self._h = highspy.Highs()
         self._h.setOptionValue("output_flag", False)  # noqa: FBT003 - pybind
         self._h.setOptionValue("presolve", "off")
@@ -208,6 +212,8 @@ class PrefixSolver:
         self._centroid: dict[int, tuple[float, float, float]] = {}
         self._mass_kg: dict[int, float] = {}
         self._pattern: dict[int, tuple[tuple[float, float], ...]] = {}
+        self._footprint: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
+        self._yaw: dict[int, int] = {}
         for brick in layout:
             bid = brick.brick_id
             tops = tuple(c.cell for c in layout.connectors_of(brick, top=True))
@@ -223,21 +229,12 @@ class PrefixSolver:
             for cell in cells:
                 self._cell_owner[cell] = bid
             self._centroid[bid] = brick_centroid(layout, bid)
+            self._yaw[bid] = brick.yaw
             self._mass_kg[bid] = layout.part_of(brick).mass_g / 1000.0
             self._pattern[bid] = cavity_pattern(layout, bid)
-        # Stud-only reachability data for the LP-free floating shortcut.
-        self._grounded = frozenset(
-            bid
-            for bid, bottoms in self._bottom_conns.items()
-            if any(cell[2] == 0 for cell in bottoms)
-        )
-        self._stud_adjacent: dict[int, set[int]] = {bid: set() for bid in layout.bricks}
-        for cell, bid in self._stud_at.items():
-            x, y, z = cell
-            mate = self._socket_at.get((x, y, z + 1))
-            if mate is not None and mate != bid:
-                self._stud_adjacent[bid].add(mate)
-                self._stud_adjacent[mate].add(bid)
+            if config.paper_knob_rule:
+                self._footprint[bid] = footprint_columns(layout, bid)
+        self._build_reachability(layout)
         # Canonical append-order index state.
         self.present: set[int] = set()
         self._row_base: dict[int, int] = {}
@@ -417,8 +414,8 @@ class PrefixSolver:
         for bid in ordered:
             base = self._row_base[bid]
             self._t_cols[bid] = batch.first_col + len(batch)
-            for i in range(_ROWS_PER_BRICK):
-                batch.add(1.0, [(base + i, -1.0), (base + _ROWS_PER_BRICK + i, -1.0)])
+            for i in range(self._rpb):
+                batch.add(1.0, [(base + i, -1.0), (base + self._rpb + i, -1.0)])
         for bid in ordered:
             if self._bottom_drag.get(bid) and bid not in self._dmax_col:
                 self._dmax_col[bid] = batch.add(ALPHA, [])
@@ -446,12 +443,12 @@ class PrefixSolver:
         row_upper: list[float] = []
         for bid in ordered:
             self._row_base[bid] = self._row_count
-            self._row_count += _BLOCK_ROWS
+            self._row_count += self._block_rows
             gravity_b = -self._mass_kg[bid] * GRAVITY
-            for i in range(_ROWS_PER_BRICK):  # upper: A F - t <= -b
+            for i in range(self._rpb):  # upper: A F - t <= -b
                 row_lower.append(-_INF)
                 row_upper.append(-gravity_b if i == _FZ else 0.0)
-            for i in range(_ROWS_PER_BRICK):  # lower: -A F - t <= +b
+            for i in range(self._rpb):  # lower: -A F - t <= +b
                 row_lower.append(-_INF)
                 row_upper.append(gravity_b if i == _FZ else 0.0)
         if row_lower:
@@ -478,6 +475,21 @@ class PrefixSolver:
         )
         self._row_count += len(drag_links)
 
+    def _build_reachability(self, layout: Layout) -> None:
+        """Stud-only reachability data for the LP-free floating shortcut."""
+        self._grounded = frozenset(
+            bid
+            for bid, bottoms in self._bottom_conns.items()
+            if any(cell[2] == 0 for cell in bottoms)
+        )
+        self._stud_adjacent = {bid: set() for bid in layout.bricks}
+        for cell, bid in self._stud_at.items():
+            x, y, z = cell
+            mate = self._socket_at.get((x, y, z + 1))
+            if mate is not None and mate != bid:
+                self._stud_adjacent[bid].add(mate)
+                self._stud_adjacent[mate].add(bid)
+
     def _force_col(
         self,
         batch: _ColumnBatch,
@@ -488,10 +500,13 @@ class PrefixSolver:
         for bid, direction, position in loads:
             base = self._row_base[bid]
             for offset, coeff in force_entries(
-                self._centroid[bid], position, direction
+                self._centroid[bid],
+                position,
+                direction,
+                torque_z=self._config.torque_z,
             ):
                 entries.append((base + offset, coeff))
-                entries.append((base + _ROWS_PER_BRICK + offset, -coeff))
+                entries.append((base + self._rpb + offset, -coeff))
         return batch.add(cost, entries)
 
     def _discover_knobs(
@@ -541,10 +556,22 @@ class PrefixSolver:
         drag_links: list[tuple[int, int]],
         appendage: _Appendage,
     ) -> None:
-        for ox, oy in self._pattern[above]:
+        if self._config.paper_knob_rule:
+            columns, min_dim = self._footprint[above]
+            pattern = knob_pattern(columns, min_dim, (x, y))
+        else:
+            pattern = self._pattern[above]
+        if self._config.rotate_contact_pattern:
+            pattern = rotate_pattern(pattern, self._yaw[above])
+        for ox, oy in pattern:
             position = (x + ox, y + oy, z_plane)
             loads_normal: list[_Load] = [(above, _UP, position)]
-            loads_drag: list[_Load] = [(above, _DOWN, position)]
+            loads_drag: list[_Load] = []
+            # Mirrors the batch assembler's pull-free ground: the drag
+            # column exists but carries no entries when the baseplate
+            # cannot pull.
+            if self._config.ground_pull or below != GROUND_ID:
+                loads_drag.append((above, _DOWN, position))
             if below != GROUND_ID:
                 loads_normal.append((below, _DOWN, position))
                 loads_drag.append((below, _UP, position))
@@ -590,16 +617,38 @@ class PrefixSolver:
                             (x - dx + dx / 2, y - dy + dy / 2, z + 0.5)
                         )
         for (a_id, b_id, axis), centers in sorted(faces.items()):
-            n = len(centers)
-            cx = sum(c[0] for c in centers) / n
-            cy = sum(c[1] for c in centers) / n
-            layers = [c[2] - 0.5 for c in centers]
-            z_lo, z_hi = int(min(layers)), int(max(layers))
-            unit = (1.0, 0.0, 0.0) if axis == 0 else (0.0, 1.0, 0.0)
-            away = (-unit[0], -unit[1], 0.0)
-            toward = (unit[0], unit[1], 0.0)
-            for z_edge in (float(z_lo), float(z_hi + 1)):
-                position = (cx, cy, z_edge)
+            self._emit_side_presses(batch, a_id, b_id, axis, centers)
+
+    def _emit_side_presses(
+        self,
+        batch: _ColumnBatch,
+        a_id: int,
+        b_id: int,
+        axis: int,
+        centers: list[tuple[float, float, float]],
+    ) -> None:
+        """Press generators for one shared-face pair.
+
+        Mirrors model.py's side-press generators: two vertical extremes
+        without yaw torque, four (transverse, vertical) corners with it
+        (same spanning argument).
+        """
+        n = len(centers)
+        cx = sum(c[0] for c in centers) / n
+        cy = sum(c[1] for c in centers) / n
+        layers = [c[2] - 0.5 for c in centers]
+        z_lo, z_hi = int(min(layers)), int(max(layers))
+        transverse = [c[1 - axis] for c in centers]
+        unit = (1.0, 0.0, 0.0) if axis == 0 else (0.0, 1.0, 0.0)
+        away = (-unit[0], -unit[1], 0.0)
+        toward = (unit[0], unit[1], 0.0)
+        for z_edge in (float(z_lo), float(z_hi + 1)):
+            if self._config.torque_z:
+                spots = [min(transverse), max(transverse)]
+            else:
+                spots = [cy if axis == 0 else cx]
+            for t_coord in spots:
+                position = (cx, t_coord, z_edge) if axis == 0 else (t_coord, cy, z_edge)
                 self._force_col(
                     batch,
                     0.0,
@@ -636,7 +685,7 @@ class PrefixSolver:
         scores: dict[int, BrickScore] = {}
         for bid in subset:
             t0 = self._t_cols[bid]
-            t_vals = value[t0 : t0 + _ROWS_PER_BRICK]
+            t_vals = value[t0 : t0 + self._rpb]
             force_ok = all(v <= config.tol_force for v in t_vals[:3])
             torque_ok = all(v <= config.tol_torque for v in t_vals[3:])
             drags = self._bottom_drag.get(bid)

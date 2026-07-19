@@ -193,6 +193,31 @@ byte-exact.
 | thin-shell | bond | 398 | 398 | 0 |
 | thin-shell | fast | 370 | 370 | 0 |
 
+### v5 addendum: MILP bridge synthesis (the §5.4 recommendation, built)
+
+`BridgeSynthesizer` (placement/layered/bridge.py) re-tiles the repair
+ring through the same absolute-slab decomposition the strategies place
+with: per-slab exact-cover MILP, stage 1 minimum count subject to a
+hard bridging row (≥1 chosen rect must touch two components — the
+seam-reproduction trap is infeasible by construction), stage 2 pins
+the count and maximizes crossings plus the shared stagger reward. Its
+candidate **competes** in `improve_connectivity`'s best-of-k on the
+same `(components, bricks)` key — never preempts (a preempting accept
+measured +11 bricks on mushroom because the absolute-slab re-tiling
+cannot re-phase plate columns).
+
+Measured: on clean straight seams it is optimal — the two-tower
+fixture bridges as two 1x4 **bricks** where the random rewrite needs
+six 1x4 **plates**; corpus: fast's wide-arch improved (objective
+0.4231 → 0.4002, taking the model). On interleaved shell fragmentation
+(mushroom 23 components, thin-shell 18) per-slab covers with forced
+crossings cannot stitch the stack — the assembled ring re-fragments
+(measured mid-build label counts up to 24 vs 18) and the synthesizer's
+own component guard declines; the random path still handles those, so
+mushroom 251 / thin-shell 386 are unchanged. Closing the shell class
+needs a cross-slab formulation with explicit bond variables —
+recorded as future work, not attempted in v5.
+
 Kollsker now finishes ahead of bond on both drift models
 (251 < 263, 386 < 398); its `improve_connectivity` inflation dropped
 from +179 to +155 (mushroom) and +295 to +280 (thin-shell), with

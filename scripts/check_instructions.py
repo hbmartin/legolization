@@ -36,6 +36,7 @@ from legolization.instructions.sequencer import (
 from legolization.ldraw_out import write_model
 from legolization.mesh import MeshOptions
 from legolization.pipeline import PipelineConfig, PipelineResult, load_grid, run
+from legolization.stability.solver import analyze
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -48,6 +49,8 @@ def check_steps(
     result_layout: Layout,
     plan: InstructionPlan,
     max_step_size: int,
+    *,
+    insertion_mass_kg: float | None = None,
 ) -> list[dict]:
     """Audit each step's after-state; returns one JSON-safe row per step.
 
@@ -87,6 +90,18 @@ def check_steps(
             flags.append("unstable-prefix")
         if len(step.brick_ids) > max_step_size:
             flags.append("oversized")
+        if (
+            insertion_mass_kg is not None
+            and step.prefix_stable
+            and step.brick_ids
+            and not analyze(
+                audit_layout,
+                extra_masses=dict.fromkeys(step.brick_ids, insertion_mass_kg),
+            ).stable
+        ):
+            # Statically fine, but pressing the new bricks home would
+            # collapse the prefix (Liu et al. 2024, virtual-brick model).
+            flags.append("insertion-fragile")
         rows.append(
             {
                 "index": step.index,
@@ -140,7 +155,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strategy", default="greedy")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--step-size", type=int, default=7)
-    parser.add_argument("--subassemblies", action="store_true")
+    parser.add_argument(
+        "--subassemblies", action=argparse.BooleanOptionalAction, default=None
+    )
+    parser.add_argument(
+        "--insertion-check",
+        action="store_true",
+        help=(
+            "re-analyze each prefix with a press mass on the just-placed "
+            "chunk (Liu et al. 2024's virtual-brick insertion model); "
+            "statically-stable-but-press-fragile steps gain the "
+            "insertion-fragile flag"
+        ),
+    )
+    parser.add_argument("--insertion-mass-kg", type=float, default=1.0, metavar="KG")
     parser.add_argument("--json", dest="json_path", default=None, metavar="PATH")
     parser.add_argument("--render-dir", type=Path, default=None, metavar="DIR")
     parser.add_argument("--target-studs", type=int, default=32, metavar="N")
@@ -155,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         instructions=InstructionsConfig(
             target_step_size=args.step_size,
-            subassemblies=args.subassemblies,
+            subassemblies=args.subassemblies is not False,
         ),
         mesh=MeshOptions(target_studs=args.target_studs, up=args.up),
         progress=progress,
@@ -173,7 +201,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     violations = verify_plan(result.layout, result.plan, config=instructions_config)
     quality = plan_quality(result.plan)
-    steps = check_steps(result.layout, result.plan, instructions_config.max_step_size)
+    steps = check_steps(
+        result.layout,
+        result.plan,
+        instructions_config.max_step_size,
+        insertion_mass_kg=args.insertion_mass_kg if args.insertion_check else None,
+    )
     warnings = list(result.plan.warnings)
     if args.render_dir is not None:
         warnings.extend(_dump_step_images(result, args.render_dir, progress))

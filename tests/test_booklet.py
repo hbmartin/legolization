@@ -262,3 +262,21 @@ def test_subassembly_badges_and_attach_callouts() -> None:
     assert f"attach subassembly {sub.name}" in document
     assert f"Requires subassembly {sub.name}" in document
     assert document.count('<section class="step"') == len(plan.steps)
+
+
+def test_support_warnings_aggregate_consecutive_runs():
+    from legolization.instructions.booklet import _aggregate_support_warnings
+
+    warnings = (
+        "step 3: prefix unstable (score 1.00); support the overhang by hand",
+        "step 4: prefix unstable (score 1.00); support the overhang by hand",
+        "step 5: prefix unstable (score 1.00); support the overhang by hand",
+        "sequencer deadlocked; remaining steps follow band order",
+        "step 9: prefix unstable (score 1.00); support the overhang by hand",
+    )
+    aggregated = _aggregate_support_warnings(warnings)
+    assert aggregated == (
+        "steps 3-5: temporary support needed while building (3 unstable prefixes)",
+        "sequencer deadlocked; remaining steps follow band order",
+        "step 9: temporary support needed while building (unstable prefix)",
+    )

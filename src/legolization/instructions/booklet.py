@@ -105,7 +105,7 @@ def build_booklet(
 ) -> Booklet:
     """Paginate a plan into a booklet; image presence never changes layout."""
     config = config or BookletConfig()
-    warnings = plan.warnings + images.warnings
+    warnings = _aggregate_support_warnings(plan.warnings) + images.warnings
     entries = tuple(
         StepEntry(
             step=step,
@@ -134,6 +134,51 @@ def build_booklet(
         ),
         warnings=warnings,
     )
+
+
+def _aggregate_support_warnings(warnings: tuple[str, ...]) -> tuple[str, ...]:
+    """Collapse consecutive unstable-prefix warnings into one callout.
+
+    Seventeen "support the overhang by hand" lines for one cap section
+    read as noise; a builder needs "steps 8-16 need temporary support"
+    once. Non-consecutive or unrelated warnings pass through untouched;
+    ``plan.warnings`` itself is never rewritten (programmatic consumers
+    keep the per-step detail).
+    """
+    aggregated: list[str] = []
+    run: list[int] = []
+
+    def flush() -> None:
+        if not run:
+            return
+        if len(run) == 1:
+            aggregated.append(
+                f"step {run[0]}: temporary support needed while building "
+                "(unstable prefix)"
+            )
+        else:
+            aggregated.append(
+                f"steps {run[0]}-{run[-1]}: temporary support needed while "
+                f"building ({len(run)} unstable prefixes)"
+            )
+        run.clear()
+
+    for warning in warnings:
+        step: int | None = None
+        if warning.startswith("step ") and "prefix unstable" in warning:
+            head = warning.removeprefix("step ").split(":", 1)[0]
+            if head.isdigit():
+                step = int(head)
+        if step is not None and (not run or step == run[-1] + 1):
+            run.append(step)
+            continue
+        flush()
+        if step is not None:
+            run.append(step)
+        else:
+            aggregated.append(warning)
+    flush()
+    return tuple(aggregated)
 
 
 def validate_booklet_path(path: Path) -> None:

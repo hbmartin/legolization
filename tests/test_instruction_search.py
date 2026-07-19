@@ -31,7 +31,11 @@ def hollow_pyramid() -> tuple[Layout, InstructionPlan]:
     Its hollow shell has genuinely unorderable overhang steps, so the
     greedy pass degrades and the disassembly rescue plans the remainder.
     """
-    config = PipelineConfig(seed=0)
+    # Explicit opt-out: these tests pin the pre-extraction rescue
+    # machinery (default subassemblies would rewrite the warned steps).
+    config = PipelineConfig(
+        seed=0, instructions=InstructionsConfig(subassemblies=False)
+    )
     result = run(load_grid(_EXAMPLES / "pyramid.npy", config), config)
     assert result.plan is not None
     return result.layout, result.plan
@@ -59,7 +63,7 @@ def test_full_disassembly_covers_all_chunks_stably() -> None:
     # Solid ground row + a second storey: every forward prefix is stable,
     # so a full-layout disassembly must find an all-stable order.
     layout = _two_storey_layout()
-    config = InstructionsConfig(target_step_size=4, rotstep=False)
+    config = InstructionsConfig(subassemblies=False, target_step_size=4, rotstep=False)
     chunks, supports, blockers = _sequencing_inputs(layout, config)
     verdicts = disassembly_order(
         layout,
@@ -99,7 +103,7 @@ def test_rescue_is_deterministic(
     hollow_pyramid: tuple[Layout, InstructionPlan],
 ) -> None:
     layout, plan = hollow_pyramid
-    again = plan_instructions(layout, config=InstructionsConfig())
+    again = plan_instructions(layout, config=InstructionsConfig(subassemblies=False))
     assert [step.brick_ids for step in again.steps] == [
         step.brick_ids for step in plan.steps
     ]
@@ -109,7 +113,9 @@ def test_rescue_never_beats_band_fallback_on_unstable_steps(
     hollow_pyramid: tuple[Layout, InstructionPlan],
 ) -> None:
     layout, rescue_plan = hollow_pyramid
-    band_plan = plan_instructions(layout, config=InstructionsConfig(fallback="band"))
+    band_plan = plan_instructions(
+        layout, config=InstructionsConfig(subassemblies=False, fallback="band")
+    )
     assert verify_plan(layout, band_plan) == []
     assert (
         plan_quality(rescue_plan).unstable_steps
@@ -122,14 +128,19 @@ def test_strict_mode_raises_through_the_rescue(
 ) -> None:
     layout, _ = hollow_pyramid
     with pytest.raises(InstructionsError, match="no stable ordering"):
-        plan_instructions(layout, config=InstructionsConfig(stability_policy="strict"))
+        plan_instructions(
+            layout,
+            config=InstructionsConfig(subassemblies=False, stability_policy="strict"),
+        )
 
 
 def test_band_fallback_still_warns_per_step(
     hollow_pyramid: tuple[Layout, InstructionPlan],
 ) -> None:
     layout, _ = hollow_pyramid
-    plan = plan_instructions(layout, config=InstructionsConfig(fallback="band"))
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(subassemblies=False, fallback="band")
+    )
     assert any("prefix unstable" in warning for warning in plan.warnings)
     assert any(not step.prefix_stable for step in plan.steps)
 
@@ -139,7 +150,9 @@ def test_configs_share_the_greedy_happy_path(
 ) -> None:
     # Until the first degradation, rescue and band configs agree exactly.
     layout, rescue_plan = hollow_pyramid
-    band_plan = plan_instructions(layout, config=InstructionsConfig(fallback="band"))
+    band_plan = plan_instructions(
+        layout, config=InstructionsConfig(subassemblies=False, fallback="band")
+    )
     first_unstable = next(
         index for index, step in enumerate(rescue_plan.steps) if not step.prefix_stable
     )
@@ -169,7 +182,9 @@ def _two_storey_layout() -> Layout:
 
 def test_beam_search_verifies_and_is_deterministic() -> None:
     layout = _two_storey_layout()
-    config = InstructionsConfig(search="beam", target_step_size=4, rotstep=False)
+    config = InstructionsConfig(
+        subassemblies=False, search="beam", target_step_size=4, rotstep=False
+    )
     plan = plan_instructions(layout, config=config)
     assert verify_plan(layout, plan, config=config) == []
     assert sorted(plan.order) == sorted(layout.bricks)
@@ -184,7 +199,7 @@ def test_beam_never_does_worse_than_greedy_rescue(
     hollow_pyramid: tuple[Layout, InstructionPlan],
 ) -> None:
     layout, rescue_plan = hollow_pyramid
-    config = InstructionsConfig(search="beam")
+    config = InstructionsConfig(subassemblies=False, search="beam")
     beam_plan = plan_instructions(layout, config=config)
     assert verify_plan(layout, beam_plan, config=config) == []
     assert sorted(beam_plan.order) == sorted(layout.bricks)
@@ -214,7 +229,11 @@ def test_beam_respects_the_lp_budget(
     monkeypatch.setattr(search_module, "analyze", counting_analyze)
     budget = 3
     config = InstructionsConfig(
-        search="beam", target_step_size=4, rotstep=False, lp_budget=budget
+        subassemblies=False,
+        search="beam",
+        target_step_size=4,
+        rotstep=False,
+        lp_budget=budget,
     )
     plan = plan_instructions(layout, config=config)
     assert verify_plan(layout, plan, config=config) == []
@@ -230,7 +249,9 @@ def test_beam_strict_mode_raises_on_unorderable_models(
     with pytest.raises(InstructionsError, match="no stable ordering"):
         plan_instructions(
             layout,
-            config=InstructionsConfig(search="beam", stability_policy="strict"),
+            config=InstructionsConfig(
+                subassemblies=False, search="beam", stability_policy="strict"
+            ),
         )
 
 
@@ -250,6 +271,7 @@ def test_band_deadlock_honours_strict_policy(
         plan_instructions(
             layout,
             config=InstructionsConfig(
+                subassemblies=False,
                 fallback="band",
                 stability_policy="strict",
             ),
@@ -258,7 +280,7 @@ def test_band_deadlock_honours_strict_policy(
 
 def test_instructions_config_rejects_nonpositive_beam_width() -> None:
     with pytest.raises(ValueError, match="beam_width must be positive"):
-        InstructionsConfig(beam_width=0)
+        InstructionsConfig(subassemblies=False, beam_width=0)
 
 
 def test_rescue_orders_underneath_decoration_before_support() -> None:
@@ -280,7 +302,9 @@ def test_rescue_orders_underneath_decoration_before_support() -> None:
 
     orders = {}
     for engine in ("scipy", "highspy"):
-        config = InstructionsConfig(rotstep=False, solver=SolverConfig(engine=engine))
+        config = InstructionsConfig(
+            subassemblies=False, rotstep=False, solver=SolverConfig(engine=engine)
+        )
         plan = plan_instructions(layout, config=config)
         assert verify_plan(layout, plan, config=config) == []
         order = plan.order

@@ -73,7 +73,7 @@ class InstructionsConfig:
     search: Literal["greedy", "beam"] = "greedy"
     beam_states: int = 3
     lp_budget: int | None = None  # beam mode; None = 8 x chunk count
-    subassemblies: bool = False
+    subassemblies: bool = True
     min_sub_bricks: int = 3
     max_subassemblies: int = 6
 

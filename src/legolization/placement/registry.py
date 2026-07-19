@@ -90,6 +90,7 @@ def _make_bond(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         solver_config=config.solver,
         time_budget_s=config.time_budget_s,
         progress=config.progress,
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -101,6 +102,7 @@ def _make_fast(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         solver_config=config.solver,
         time_budget_s=config.time_budget_s,
         progress=config.progress,
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -113,6 +115,7 @@ def _make_smga(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         time_budget_s=config.time_budget_s,
         progress=config.progress,
         config=SmGaConfig(max_generations=config.ga_generations),
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -125,6 +128,7 @@ def _make_beauty(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         time_budget_s=config.time_budget_s,
         progress=config.progress,
         beauty=BeautyWeights.preset(config.beauty_preset),
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -138,6 +142,7 @@ def _make_kollsker(catalog: Catalog, config: PipelineConfig) -> PlacementStrateg
         progress=config.progress,
         layer_time_s=config.milp_layer_time_s,
         bond_weight=config.milp_bond_weight,
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 

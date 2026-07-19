@@ -20,7 +20,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from legolization import telemetry
-from legolization.catalog import Catalog, Category, default_catalog
+from legolization.catalog import Catalog, Category, Cell, default_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.grid import EMPTY, merge_colour
 from legolization.layout import Layout
@@ -34,7 +34,7 @@ from legolization.placement.merge import (
 from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
     import numpy as np
 
@@ -113,6 +113,10 @@ class LayerContext:
     seam_priority: dict[tuple[Column, int], float]
     long_axis_of: dict[int, int | None]
     stackable_footprints: dict[frozenset[Column], int]
+    grounded_below: frozenset[Column] | None = None
+    """Columns whose support brick has a stud path to ground in the
+    partial layout at band time (GROUND_ID counts). None = signal not
+    computed — every consumer must treat that as "no information"."""
 
 
 @dataclass(slots=True)
@@ -125,6 +129,10 @@ class LayeredStrategy:
     fail_max: int = 30
     time_budget_s: float | None = None
     progress: Callable[[str], None] | None = None
+    milp_bridge: bool = True
+    """Bridge connectivity repairs with the exact-cover synthesizer
+    first (random rewrite as fallback); False = v4 behaviour, the
+    count_trajectory ablation knob."""
 
     def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
         """Tile every layer problem bottom-up, then repair topology."""
@@ -160,8 +168,19 @@ class LayeredStrategy:
         # bridging resists the count inflation measured in
         # docs/kollsker-drift-report.md. The greedy path keeps the
         # historical single draw (shipped goldens pin its exact bytes).
+        from legolization.placement.layered.bridge import (  # noqa: PLC0415 - cycle guard
+            BridgeSynthesizer,
+        )
+
         improve_connectivity(
-            layout, grid, rng, fail_max=self.fail_max, bridge_draws=BRIDGE_DRAWS
+            layout,
+            grid,
+            rng,
+            fail_max=self.fail_max,
+            bridge_draws=BRIDGE_DRAWS,
+            bridge=BridgeSynthesizer(catalog=self.catalog)
+            if self.milp_bridge
+            else None,
         )
         telemetry.value("place.connected.bricks", len(layout))
         if telemetry.current() is not None:  # graph build only when recording
@@ -191,25 +210,39 @@ def slab_decompose(grid: VoxelGrid) -> list[LayerProblem]:
     per-layer plate problems. Problems are ordered bottom-up.
     """
     nx, ny, nz = grid.shape
+    cell_colours = {
+        (x, y, z): int(grid.codes[x, y, z])
+        for x in range(nx)
+        for y in range(ny)
+        for z in range(nz)
+        if grid.codes[x, y, z] != EMPTY
+    }
+    return slab_problems(cell_colours)
+
+
+def slab_problems(cell_colours: Mapping[Cell, int]) -> list[LayerProblem]:
+    """Split filled cells into brick problems (3-plate slabs) + plate problems.
+
+    The policy behind :func:`slab_decompose`, usable on any cell set —
+    connectivity-repair rings re-tile through the same decomposition the
+    strategies place with. Cells absent from the mapping are EMPTY.
+    """
+    by_slab: dict[int, dict[Column, dict[int, int]]] = {}
+    for (x, y, z), code in cell_colours.items():
+        slab = z - z % _BRICK_PLATES
+        by_slab.setdefault(slab, {}).setdefault((x, y), {})[z] = code
     problems: list[LayerProblem] = []
-    for slab_base in range(0, nz, _BRICK_PLATES):
+    for slab_base in sorted(by_slab):
         brick_columns: dict[Column, int] = {}
         plate_columns: dict[int, dict[Column, int]] = {}
-        for x in range(nx):
-            for y in range(ny):
-                layers = range(slab_base, min(slab_base + _BRICK_PLATES, nz))
-                codes = [int(grid.codes[x, y, z]) for z in layers]
-                colour = (
-                    merge_colour(*codes)
-                    if len(codes) == _BRICK_PLATES and EMPTY not in codes
-                    else None
-                )
-                if colour is not None:
-                    brick_columns[(x, y)] = colour
-                    continue
-                for z, code in zip(layers, codes, strict=True):
-                    if code != EMPTY:
-                        plate_columns.setdefault(z, {})[(x, y)] = code
+        for column, cells in sorted(by_slab[slab_base].items()):
+            codes = [cells[z] for z in sorted(cells)]
+            colour = merge_colour(*codes) if len(codes) == _BRICK_PLATES else None
+            if colour is not None:
+                brick_columns[column] = colour
+                continue
+            for z in sorted(cells):
+                plate_columns.setdefault(z, {})[column] = cells[z]
         if brick_columns:
             problems.append(
                 LayerProblem(
@@ -255,13 +288,21 @@ def build_context(layout: Layout, problem: LayerProblem) -> LayerContext:
         for brick_id in set(support_of.values())
         if brick_id != GROUND_ID
     }
+    graph = ConnectionGraph.from_layout(layout) if layout.bricks else None
+    floating = graph.floating_ids() if graph is not None else frozenset()
+    grounded_below = frozenset(
+        column
+        for column, support in support_of.items()
+        if support == GROUND_ID or support not in floating
+    )
     return LayerContext(
         support_of=support_of,
         gap_columns=frozenset(gaps),
         seams=seams,
-        seam_priority=_seam_priorities(layout, seams),
+        seam_priority=_seam_priorities(layout, seams, graph),
         long_axis_of=long_axis_of,
         stackable_footprints=_stackable_footprints(layout, problem),
+        grounded_below=grounded_below,
     )
 
 
@@ -283,10 +324,11 @@ def _seams_of(
 def _seam_priorities(
     layout: Layout,
     seams: dict[tuple[Column, int], tuple[int, int]],
+    graph: ConnectionGraph | None = None,
 ) -> dict[tuple[Column, int], float]:
     if not seams:
         return {}
-    graph = ConnectionGraph.from_layout(layout)
+    graph = graph or ConnectionGraph.from_layout(layout)
     components = graph.brick_components()
     supporters: dict[int, set[int]] = {}
     for below_id, above_id in graph.support_edges():
@@ -300,6 +342,28 @@ def _seam_priorities(
         else:
             priorities[key] = 0.5
     return priorities
+
+
+def grounding_gain(rect: Rect2D, below: LayerContext) -> int:
+    """Ungrounded-support columns this rect stud-anchors to ground.
+
+    Zero when the signal is absent or the rect covers no grounded-below
+    column; otherwise the count of covered columns whose support exists
+    but has no stud path to ground yet — the mushroom cap-ring case: a
+    rect spanning from the stem-supported columns onto the floating
+    ring grounds the ring at band time. Gap columns never count
+    (nothing to stud onto), but may lie between the anchor and the
+    floating columns.
+    """
+    grounded = below.grounded_below
+    if grounded is None:
+        return 0
+    covered = rect.columns()
+    if not any(column in grounded for column in covered if column in below.support_of):
+        return 0
+    return sum(
+        1 for column in covered if column in below.support_of and column not in grounded
+    )
 
 
 def rect_dims(catalog: Catalog, height_plates: int) -> tuple[tuple[int, int], ...]:

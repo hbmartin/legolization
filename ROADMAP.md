@@ -4,6 +4,170 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v5 progress notes
+
+Living log of the v5 program (physics fidelity, structure-preserving
+bridge synthesis, unstable-step reduction, always-k seed restarts,
+continuous self-eval). Every landed workstream appends a dated entry
+with measured proof; append-only.
+
+### 2026-07-19 — WS-0: per-kind eval baselines
+
+`eval_corpus` now owns one committed baseline file per corpus kind
+(synthetic `scorecard.json`, mesh `scorecard-mesh.json`);
+`--write-baseline --kind mesh` is legal (seed-0, unfiltered), and
+comparisons merge every committed per-kind file so mixed sweeps diff
+each model against its own kind. Deviation from plan: the intended
+*pre*-physics mesh reference run was killed externally mid-sweep, so
+the mesh baseline's first cut is post-flip (single cut — arguably
+cleaner; the pre-flip synthetic baseline plus the A/B table carry the
+before-physics record).
+
+### 2026-07-19 — WS-1: physics fidelity (P1–P6)
+
+Four switches, all mirrored in both engines (batch `model.py` + warm
+`prefix.py`; dual-engine plan equality pinned with `torque_z` on), plus
+`docs/physics-fidelity-notes.md`:
+
+- **`torque_z`** — sixth (yaw) residual row; side contacts move from
+  two vertical-extreme press generators to four (transverse, vertical)
+  corners with the spanning re-derivation in the code
+  (`SideContact.t_lo/t_hi` carries the extent).
+- **`paper_knob_rule`** — the paper's per-knob edge-3/interior-4 rule;
+  **provably inert for the shipped catalog** (no part has min footprint
+  dimension ≥ 3; pinned by a custom-catalog 3×3 test).
+- **`rotate_contact_pattern`** — contact patterns turn with the
+  gripping brick's yaw. The release's axis-aligned triangle scores the
+  same structure differently built rotated 90° (measured 0.0792 vs
+  0.1080 — 36%).
+- **`ground_pull=False`** (table mode) + `analyze(extra_masses=...)`
+  (per-brick kg at the centroid) — the enablers for loose-on-table
+  verdicts and Liu-style insertion-press audits.
+
+A/B verdict (analysis-level: identical layouts, physics switched; 9
+StableLego fixtures + 77 corpus layout×strategy rows):
+
+| config | fixture verdicts | corpus verdict flips | score deltas | LP cost |
+|---|---|---|---|---|
+| rotate_contact_pattern | 9/9 reproduce | 0 | both directions (orientation fix) | none |
+| torque_z | 9/9 reproduce | 0 | mostly up on lateral chains (thin-shell kollsker 0.0047→0.0259) | **+49%** (4.5→6.8 s at ~380 bricks) |
+| paper_knob_rule | 9/9 reproduce | 0 | exactly zero | none |
+
+**Default flips: `rotate_contact_pattern=True` only.** It is a pure
+fidelity win with zero cost and zero verdict churn — example goldens
+stayed byte-identical through the flip. `torque_z` stays opt-in: it
+changed no measurable verdict while taxing every LP ~1.5×; it becomes
+the natural companion of external lateral loads (insertion checks,
+payloads) rather than a default. `paper_knob_rule` stays off (inert;
+release parity). The links QP now threads the physics config
+(`localize_instability(config=...)`) so repair judges with the same
+physics as the verdicts. BrickFEM (engrXiv 10.31224/2898) read in
+full: an MIT Abaqus model generator with a clamping-step trick but
+**no published clutch numbers** — T = 0.98 N stays the best-sourced
+constant; the five-fixture calibration path is recorded in the notes
+doc for the day an Abaqus seat exists.
+
+### 2026-07-19 — WS-2: structure-preserving bridge synthesis
+
+`slab_problems` extraction + shared `bond_reward` (B0, zero behavior);
+`BridgeSynthesizer` — per-slab exact-cover MILP over the repair ring
+with a hard bridging row (a min-count cover that reproduces the
+fragmenting seam is infeasible) and a crossings+stagger stage 2 — and
+the competing-candidate wiring: the MILP result enters
+`improve_connectivity`'s best-of-k on the same `(components, bricks)`
+key (never preempts; a preempting accept measured +11 bricks on
+mushroom). `PipelineConfig.milp_bridge` / `--no-milp-bridge` ablate.
+
+Proof: two-tower seam bridges as **2 bricks vs the random rewrite's 6
+plates** (pinned test); corpus zero hard regressions with fast's
+wide-arch improving (objective 0.4231 → 0.4002, winner beauty → fast;
+baseline regenerated); mushroom/thin-shell end-to-end unchanged at
+251/386 — interleaved shell fragmentation defeats per-slab covers
+(the ring re-fragments; measured label counts 24 vs 18 mid-build) and
+the random path keeps those. The honest residual: closing the shell
+class needs a cross-slab bond-variable formulation (future work,
+recorded in the drift report's v5 addendum). Wall cost ≈ nil
+(mushroom 3.1 s, thin-shell 6.8 s, unchanged).
+
+### 2026-07-19 — WS-3: unstable-step reduction (U1–U3)
+
+**U1 — subassemblies default-on** (pre-approved on evidence; seed 0,
+post-physics-flip): mushroom 17 → **0** unstable steps (max prefix
+score 1.00 → 0.10), wide-arch 2 → **0**, cantilever 1 → **0**, heart
+2 → 1, suzanne@16 33 → 21; the spot cell is pending
+(docs/v5-pending-measurements.md). CLI grows
+--subassemblies/--no-subassemblies with a None sentinel (explicit-only
+conflict with --steps layer); example goldens regenerated (counts
+unchanged 124/32/12); booklets collapse consecutive unstable-prefix
+warnings into one "steps N–M need temporary support" callout.
+
+**U2 — insertion-robustness audit** (Liu et al. 2024 virtual-brick,
+arXiv:2408.10162 §IV-D, via the P4 extra_masses hook):
+`check_instructions --insertion-check` re-analyzes each statically
+stable prefix under a press mass (default 1 kg) on the just-placed
+chunk; press-collapsing steps flag `insertion-fragile`. Measured:
+cantilever flags 4/16 steps, mushroom 19/52 — on plans with ZERO
+static instability. Default off (an audit, not a gate). Scorecard rows
+gain `unsupported_ratio` (Liu's Cs difficulty stat).
+
+**U3 — support-aware placement**: `LayerContext.grounded_below`
+(stud-path-to-ground at band time, from the now-shared per-problem
+graph) + `grounding_gain`; consumers kollsker stage-2
+(`ground_weight=2.0`, counts provably pinned at N*), beauty
+(`w_g=0.25`, positive-only), fast (retry key gains an unanchored
+term, `w_g=0.2`); every 0.0 opt-out restores pre-v5 bit-for-bit.
+Measured on mushroom: **fast 6 → 0 unstable with subassemblies**
+(flat 24 → 16), beauty flat 20 → 19, kollsker unchanged — its cap
+ring overhangs empty cells (gap columns: nothing to anchor through at
+band time; the signal's documented limit). Corpus zero hard
+regressions; greedy untouched; goldens byte-exact.
+
+### 2026-07-19 — WS-4: always-k seed restarts
+
+Single-strategy CLI runs now race `--restarts` seeds by default
+(3: seed..seed+2) through `compare.restart_race` — placement and
+physics per seed in parallel workers with instruction sequencing
+disabled, then one deterministic full re-run of the winner — so the
+expensive sequencing pass is paid exactly once. `--seeds` overrides
+with an explicit list, `--restarts 1` restores pre-v5 behaviour,
+`--jobs`/`--timeout` now also govern races, `--profile` demands
+`--restarts 1` (telemetry cannot cross workers), and
+`--report`/`--keep-candidates` stay sweep-only. The goldens mirror the
+policy: `test_examples_regression` races the same seeds the CLI does.
+
+Measured wins at the defaults: **arch 32 → 15 bricks** (seed 1 wins the
+race), heart re-seeds to seed 2 (12 bricks, better objective), pyramid
+keeps seed 0. Variance evidence: thin-shell's per-seed best spans
+**287–386 bricks across seeds 0–2** (`seed_spread`), exactly the tail
+the race harvests. Shipped examples and README sample output
+regenerated; race wall ≈ the slowest seed's placement (parallel) plus
+one sequencing run. Library `run()`/`run_file` APIs unchanged — the
+race is CLI-level policy; eval harnesses pin their own seeds and are
+unaffected.
+
+### 2026-07-19 — v5 program end
+
+Full gates green (547 tests; ruff/ty/pyrefly/lizard CCN-18 clean).
+Final synthetic sweep: 11/11 PASS, zero diffs vs the WS-2 baseline.
+Fresh profiles (seed 0): pyramid 1.1 s / 124 bricks / 23 steps;
+suzanne@16 41.8 s / 365 / 77 — up from v4's 31.7 s/60 steps because
+default subassembly extraction sequences more, smaller steps (the U1
+trade: 21 fewer unstable steps for ~10 s on this model). spot@24's
+program-end profile and the mesh baseline cut remain in
+docs/v5-pending-measurements.md (long runs deferred by user call).
+Version 0.4.0.
+
+## Self-eval log
+
+Dated outcomes of the standing cadence (`docs/self-evaluation-playbook.md`
+§10); append-only.
+
+- 2026-07-19 — v5 program-end sweep: synthetic corpus 11/11 PASS, zero
+  hard regressions vs the WS-2 baseline; mushroom worst-row check via
+  check_instructions (kollsker 8 unstable with subassemblies — the
+  gap-column limit recorded in WS-3); insertion audit flags cantilever
+  4/16, mushroom 19/52 press-fragile steps as the next quality target.
+
 ## v4 progress notes
 
 Living log of the v4 program (PR #17 review remediation, residual
