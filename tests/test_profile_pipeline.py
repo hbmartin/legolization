@@ -1,5 +1,6 @@
 """Profiling script tests."""
 
+import hashlib
 import importlib.util
 import json
 import pstats
@@ -40,6 +41,13 @@ def test_smoke_heart(
     payload = json.loads(written[0].read_text())
     assert payload["schema"] == 1
     assert payload["run"]["model"] == "heart"
+    # File inputs: CLI mesh flags are the effective identity, and the
+    # input bytes are pinned (PR #18 review).
+    assert payload["run"]["input_source"] == "file"
+    assert payload["run"]["target_studs"] == 32
+    assert (
+        payload["run"]["input_hash"] == hashlib.sha256(_HEART.read_bytes()).hexdigest()
+    )
     assert payload["result"]["brick_count"] > 0
     assert payload["total_seconds"] > 0
     assert payload["spans"]["stability.analyze"]["calls"] >= 1
@@ -74,8 +82,16 @@ def test_unknown_corpus_name_exits(profiler: ModuleType, tmp_path: Path) -> None
 
 
 def test_corpus_synthetic_name_resolves(profiler: ModuleType, tmp_path: Path) -> None:
-    exit_code = profiler.main(["letter-t", "--out", str(tmp_path)])
+    # --target-studs 64 must NOT leak into the identity: corpus names
+    # resolve from the manifest, synthetics have no mesh options at all
+    # (PR #18 review: the payload recorded the ignored CLI flag).
+    exit_code = profiler.main(
+        ["letter-t", "--out", str(tmp_path), "--target-studs", "64"]
+    )
     assert exit_code == 0
     payload = json.loads(next(iter(tmp_path.glob("*.json"))).read_text())
     assert payload["run"]["model"] == "letter-t"
+    assert payload["run"]["input_source"] == "synthetic"
+    assert payload["run"]["input_hash"] == "generator:letter_t"
+    assert payload["run"]["target_studs"] is None
     assert payload["result"]["brick_count"] > 0

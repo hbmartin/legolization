@@ -39,6 +39,7 @@ class _FakeModel:
     target_studs: int | None = None
     up: str | None = None
     generator: str | None = "cantilever"
+    largest_component_only: bool = False
     abs_path: Path = field(default=Path("/nonexistent"))
 
 
@@ -533,3 +534,21 @@ def test_smoke_sweep_two_models(
     runs = list((tmp_path / "runs").iterdir())
     assert len(runs) == 1
     assert (runs[0] / "scorecard.md").exists()
+
+
+def test_model_mesh_options_reports_manifest_resolution(
+    evaluator: _EvaluatorModule,
+) -> None:
+    # PR #18 review: profile identity must stamp the values a corpus run
+    # actually used — manifest values for meshes, None for synthetics.
+    from legolization.mesh import MeshOptions
+
+    explicit = _FakeModel(
+        kind="mesh", target_studs=48, up="y", largest_component_only=True
+    )
+    assert evaluator.model_mesh_options(explicit) == MeshOptions(
+        target_studs=48, up="y", keep_largest=True
+    )
+    defaulted = evaluator.model_mesh_options(_FakeModel(kind="mesh"))
+    assert defaulted == MeshOptions(target_studs=32, up="z", keep_largest=False)
+    assert evaluator.model_mesh_options(_FakeModel()) is None

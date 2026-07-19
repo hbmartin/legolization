@@ -77,23 +77,30 @@ def load_corpus_module() -> ModuleType:
     return module
 
 
+def model_mesh_options(model: CorpusModelLike) -> MeshOptions | None:
+    """Effective mesh options a manifest model resolves with (None = synthetic).
+
+    Single source of the manifest-default fallbacks so profile artifacts
+    can stamp the values a corpus run ACTUALLY used (PR #18 review: the
+    payload recorded the CLI flag, which corpus names ignore).
+    """
+    if model.kind == "synthetic":
+        return None
+    return MeshOptions(
+        target_studs=model.target_studs or 32,
+        up=model.up or "z",
+        keep_largest=model.largest_component_only,
+    )
+
+
 def model_grid(corpus: ModuleType, model: CorpusModelLike) -> VoxelGrid | None:
     """Materialize a manifest model as a grid (None = mesh not on disk)."""
-    match model.kind:
-        case "synthetic":
-            codes = corpus.GENERATORS[model.generator]()
-            return VoxelGrid.from_array(codes, plates_per_voxel=model.plates_per_voxel)
-        case _:
-            if not model.abs_path.exists():
-                return None
-            return mesh_to_grid(
-                model.abs_path,
-                options=MeshOptions(
-                    target_studs=model.target_studs or 32,
-                    up=model.up or "z",
-                    keep_largest=model.largest_component_only,
-                ),
-            )
+    if (options := model_mesh_options(model)) is None:
+        codes = corpus.GENERATORS[model.generator]()
+        return VoxelGrid.from_array(codes, plates_per_voxel=model.plates_per_voxel)
+    if not model.abs_path.exists():
+        return None
+    return mesh_to_grid(model.abs_path, options=options)
 
 
 def build_row(

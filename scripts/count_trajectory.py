@@ -143,7 +143,8 @@ def main(argv: list[str] | None = None) -> int:
         instructions=InstructionsConfig(mode="layer"),
         mesh=MeshOptions(target_studs=args.target_studs),
     )
-    name, input_used, grid = profiler._resolve_grid(args.model, config)  # noqa: SLF001
+    resolved = profiler._resolve_grid(args.model, config)  # noqa: SLF001
+    name, grid = resolved.name, resolved.grid
 
     started = time.perf_counter()
     with telemetry.record() as session:
@@ -159,8 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         "generated": datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%dT%H%M%SZ"),
         "git_sha": telemetry.git_sha(),
         "run": {
-            "model": name,
-            "input": input_used,
+            **resolved.run_identity(),
             "strategy": args.strategy,
             "seed": args.seed,
             "hollow": config.hollow,
