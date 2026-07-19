@@ -59,6 +59,7 @@ from legolization.stability.model import (
     footprint_columns,
     force_entries,
     knob_pattern,
+    rotate_pattern,
     rows_per_brick,
 )
 from legolization.stability.solver import (
@@ -212,6 +213,7 @@ class PrefixSolver:
         self._mass_kg: dict[int, float] = {}
         self._pattern: dict[int, tuple[tuple[float, float], ...]] = {}
         self._footprint: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
+        self._yaw: dict[int, int] = {}
         for brick in layout:
             bid = brick.brick_id
             tops = tuple(c.cell for c in layout.connectors_of(brick, top=True))
@@ -227,6 +229,7 @@ class PrefixSolver:
             for cell in cells:
                 self._cell_owner[cell] = bid
             self._centroid[bid] = brick_centroid(layout, bid)
+            self._yaw[bid] = brick.yaw
             self._mass_kg[bid] = layout.part_of(brick).mass_g / 1000.0
             self._pattern[bid] = cavity_pattern(layout, bid)
             if config.paper_knob_rule:
@@ -558,6 +561,8 @@ class PrefixSolver:
             pattern = knob_pattern(columns, min_dim, (x, y))
         else:
             pattern = self._pattern[above]
+        if self._config.rotate_contact_pattern:
+            pattern = rotate_pattern(pattern, self._yaw[above])
         for ox, oy in pattern:
             position = (x + ox, y + oy, z_plane)
             loads_normal: list[_Load] = [(above, _UP, position)]

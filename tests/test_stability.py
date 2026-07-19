@@ -419,3 +419,48 @@ def test_paper_knob_rule_inert_for_shipped_catalog(layout):
     paper = build_model(layout, paper_knob_rule=True)
     assert paper.var_count == release.var_count
     assert paper.a_matrix.shape == release.a_matrix.shape
+
+
+# --- yaw-rotated contact patterns ---
+
+
+def _single_knob_cantilever(*, rotated: bool) -> Layout:
+    # A 2x4 hanging off a 1x1 tower by one stud: the three-point
+    # triangle's orientation binds (single knob, no cross-knob spread).
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    if rotated:
+        layout.add("brick_2x4", 1, 0, 3, 90, 4)
+    else:
+        layout.add("brick_2x4", 0, 0, 3, 0, 4)
+    return layout
+
+
+def test_release_triangle_is_rotation_variant():
+    # The StableLego release keeps the triangle axis-aligned: the same
+    # physical structure scores differently built rotated 90 degrees
+    # (measured 0.0792 vs 0.1080 — a real verdict distortion).
+    plain = analyze(_single_knob_cantilever(rotated=False)).max_score
+    turned = analyze(_single_knob_cantilever(rotated=True)).max_score
+    assert plain != pytest.approx(turned, rel=1e-6)
+
+
+def test_rotate_contact_pattern_restores_rotation_invariance():
+    config = SolverConfig(rotate_contact_pattern=True)
+    plain = analyze(_single_knob_cantilever(rotated=False), config).max_score
+    turned = analyze(_single_knob_cantilever(rotated=True), config).max_score
+    assert plain == pytest.approx(turned, rel=1e-9)
+
+
+def test_rotate_pattern_moves_only_the_triangle():
+    from legolization.stability.constants import (
+        FOUR_POINT_OFFSETS,
+        THREE_POINT_OFFSETS,
+    )
+    from legolization.stability.model import rotate_pattern
+
+    assert set(rotate_pattern(FOUR_POINT_OFFSETS, 90)) == set(FOUR_POINT_OFFSETS)
+    assert set(rotate_pattern(THREE_POINT_OFFSETS, 180)) == {
+        (-ox, -oy) for ox, oy in THREE_POINT_OFFSETS
+    }
+    assert rotate_pattern(THREE_POINT_OFFSETS, 0) == THREE_POINT_OFFSETS

@@ -101,6 +101,13 @@ class SolverConfig:
     release's uniform per-brick rule. Inert for the shipped catalog —
     no part has min footprint dimension >= 3."""
 
+    rotate_contact_pattern: bool = False
+    """Rotate the contact-point pattern with the gripping brick's yaw.
+
+    The release keeps the asymmetric three-point triangle axis-aligned
+    regardless of orientation; rotating it makes 90-degree-rotated
+    structures score identically to their unrotated twins."""
+
 
 @dataclass(frozen=True, slots=True)
 class BrickScore:
@@ -149,6 +156,7 @@ def analyze(
             graph,
             torque_z=config.torque_z,
             paper_knob_rule=config.paper_knob_rule,
+            rotate_contact_pattern=config.rotate_contact_pattern,
         )
         return solve_model(model, config)
 

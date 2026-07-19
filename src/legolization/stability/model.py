@@ -293,11 +293,16 @@ def build_model(
     *,
     torque_z: bool = False,
     paper_knob_rule: bool = False,
+    rotate_contact_pattern: bool = False,
 ) -> StabilityModel:
     """Build the sparse equilibrium system for a layout."""
     with telemetry.span("stability.build_model", n=len(layout)):
         return _build_model_body(
-            layout, graph, torque_z=torque_z, paper_knob_rule=paper_knob_rule
+            layout,
+            graph,
+            torque_z=torque_z,
+            paper_knob_rule=paper_knob_rule,
+            rotate_contact_pattern=rotate_contact_pattern,
         )
 
 
@@ -332,24 +337,56 @@ def _add_side_contact(asm: _Assembler, side: SideContact) -> None:
             asm.add_force(side.b_id, col, toward, position)
 
 
+def rotate_pattern(
+    pattern: tuple[tuple[float, float], ...],
+    yaw: int,
+) -> tuple[tuple[float, float], ...]:
+    """Rotate contact offsets by a brick's yaw (multiples of 90 degrees).
+
+    The FOUR_POINT diamond is rotation-invariant as a set; only the
+    asymmetric THREE_POINT triangle (apex fixed at -x in the release)
+    actually moves.
+    """
+    match yaw % 360:
+        case 0:
+            return pattern
+        case 90:
+            return tuple((-oy, ox) for ox, oy in pattern)
+        case 180:
+            return tuple((-ox, -oy) for ox, oy in pattern)
+        case _:
+            return tuple((oy, -ox) for ox, oy in pattern)
+
+
 class _PatternSource:
     """Per-knob contact-pattern lookup under either knob rule."""
 
-    def __init__(self, layout: Layout, *, paper_knob_rule: bool) -> None:
+    def __init__(
+        self,
+        layout: Layout,
+        *,
+        paper_knob_rule: bool,
+        rotate_contact_pattern: bool = False,
+    ) -> None:
         self._layout = layout
         self._paper = paper_knob_rule
+        self._rotate = rotate_contact_pattern
         self._footprints: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
 
     def for_knob(self, knob: KnobContact) -> tuple[tuple[float, float], ...]:
         """Contact offsets for the cavity gripping this knob."""
         if not self._paper:
-            return cavity_pattern(self._layout, knob.above_id)
-        if knob.above_id not in self._footprints:
-            self._footprints[knob.above_id] = footprint_columns(
-                self._layout, knob.above_id
-            )
-        columns, min_dim = self._footprints[knob.above_id]
-        return knob_pattern(columns, min_dim, (knob.x, knob.y))
+            pattern = cavity_pattern(self._layout, knob.above_id)
+        else:
+            if knob.above_id not in self._footprints:
+                self._footprints[knob.above_id] = footprint_columns(
+                    self._layout, knob.above_id
+                )
+            columns, min_dim = self._footprints[knob.above_id]
+            pattern = knob_pattern(columns, min_dim, (knob.x, knob.y))
+        if self._rotate:
+            pattern = rotate_pattern(pattern, self._layout.bricks[knob.above_id].yaw)
+        return pattern
 
 
 def _build_model_body(
@@ -358,6 +395,7 @@ def _build_model_body(
     *,
     torque_z: bool = False,
     paper_knob_rule: bool = False,
+    rotate_contact_pattern: bool = False,
 ) -> StabilityModel:
     """Run the body of :func:`build_model` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
@@ -368,7 +406,11 @@ def _build_model_body(
     up: tuple[float, float, float] = (0.0, 0.0, 1.0)
     down: tuple[float, float, float] = (0.0, 0.0, -1.0)
 
-    patterns = _PatternSource(layout, paper_knob_rule=paper_knob_rule)
+    patterns = _PatternSource(
+        layout,
+        paper_knob_rule=paper_knob_rule,
+        rotate_contact_pattern=rotate_contact_pattern,
+    )
     for knob in graph.knob_contacts:
         if knob.normal != (0, 0, 1):
             _add_lateral_knob(asm, knob, contact_points, bottom_drag_cols)
