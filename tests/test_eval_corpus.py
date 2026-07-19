@@ -329,7 +329,7 @@ def test_baseline_paths_route_by_kind(evaluator: _EvaluatorModule) -> None:
     assert evaluator.baseline_write_path(explicit).name == "other.json"
 
 
-def testbaseline_rows_merge_both_kinds(
+def test_baseline_rows_merge_both_kinds(
     evaluator: _EvaluatorModule,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
