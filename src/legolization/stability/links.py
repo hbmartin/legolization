@@ -25,7 +25,7 @@ from legolization.stability.constants import (
     KNOB_PITCH_M,
     T_CAPACITY_N,
 )
-from legolization.stability.model import ROWS_PER_BRICK, StabilityModel, build_model
+from legolization.stability.model import StabilityModel, build_model
 
 if TYPE_CHECKING:
     from legolization.layout import Layout
@@ -86,7 +86,7 @@ def _localize_body(
     data: list[float] = []
     for link_col, side in enumerate(graph.side_contacts):
         for brick_id, sign in ((side.a_id, 1.0), (side.b_id, -1.0)):
-            base = ROWS_PER_BRICK * index[brick_id]
+            base = model.rows_per_brick * index[brick_id]
             cx, cy, _ = centroids[brick_id]
             rx = (side.centroid[0] - cx) * KNOB_PITCH_M
             ry = (side.centroid[1] - cy) * KNOB_PITCH_M

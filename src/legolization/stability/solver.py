@@ -32,7 +32,7 @@ from scipy.optimize import linprog
 
 from legolization import telemetry
 from legolization.stability.constants import ALPHA, BETA, T_CAPACITY_N
-from legolization.stability.model import ROWS_PER_BRICK, StabilityModel, build_model
+from legolization.stability.model import StabilityModel, build_model
 
 if TYPE_CHECKING:
     from legolization.graph import ConnectionGraph
@@ -87,6 +87,14 @@ class SolverConfig:
     highspy directly (drops the scipy wrapper overhead); smaller ones
     keep the scipy-exact path that the 1e-6 equivalence tests pin."""
 
+    torque_z: bool = False
+    """Model the yaw torque row (τz) as a sixth residual per brick.
+
+    StableLego (paper and release) drops it; enabling it makes
+    horizontal knob presses meaningful for twist loads and switches side
+    contacts to four corner generators. Default follows the v5 A/B
+    verdict."""
+
 
 @dataclass(frozen=True, slots=True)
 class BrickScore:
@@ -128,8 +136,10 @@ def analyze(
     """Build and solve the RBE for a layout."""
     if not len(layout):
         return StabilityResult(stable=True)
+    config = config or SolverConfig()
     with telemetry.span("stability.analyze", n=len(layout)):
-        return solve_model(build_model(layout, graph), config or SolverConfig())
+        model = build_model(layout, graph, torque_z=config.torque_z)
+        return solve_model(model, config)
 
 
 def solve_model(
@@ -301,15 +311,14 @@ def _near_boundary(
     margin = config.boundary_margin
     low = (1.0 - margin) * T_CAPACITY_N
     high = (1.0 + margin) * T_CAPACITY_N
-    tolerances = (config.tol_force,) * 3 + (config.tol_torque,) * 2
+    rpb = model.rows_per_brick
+    tolerances = (config.tol_force,) * 3 + (config.tol_torque,) * (rpb - 3)
     for i, brick_id in enumerate(model.brick_ids):
         drag_cols = model.bottom_drag_cols[brick_id]
         drag_max = float(values[drag_cols].max()) if drag_cols.size else 0.0
         if low <= drag_max <= high:
             return True
-        t_vals = values[
-            force_count + ROWS_PER_BRICK * i : force_count + ROWS_PER_BRICK * (i + 1)
-        ]
+        t_vals = values[force_count + rpb * i : force_count + rpb * (i + 1)]
         if any(
             tol / 10.0 < v < tol * 10.0
             for v, tol in zip(t_vals, tolerances, strict=True)
@@ -456,7 +465,8 @@ def _score(
     residual = model.a_matrix @ force_values + model.b_vector
     scores: dict[int, BrickScore] = {}
     for i, brick_id in enumerate(model.brick_ids):
-        rows = residual[ROWS_PER_BRICK * i : ROWS_PER_BRICK * (i + 1)]
+        rpb = model.rows_per_brick
+        rows = residual[rpb * i : rpb * (i + 1)]
         force_ok = bool(np.all(np.abs(rows[:3]) <= config.tol_force))
         torque_ok = bool(np.all(np.abs(rows[3:]) <= config.tol_torque))
         cols = model.bottom_drag_cols[brick_id]

@@ -7,6 +7,7 @@ from scipy.optimize import OptimizeResult
 
 import legolization.stability.solver as solver_module
 from legolization.catalog import default_catalog
+from legolization.graph import ConnectionGraph
 from legolization.layout import Layout
 from legolization.stability import (
     T_CAPACITY_N,
@@ -320,3 +321,51 @@ def test_ground_pull_keeps_tipping_column_stable(layout):
     result = analyze(layout)
     assert result.stable
     assert result.scores[base.brick_id].drag_max > 1e-3
+
+
+# --- yaw torque (torque_z) ---
+
+
+def test_torque_z_adds_sixth_row_per_brick(layout):
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    layout.add("brick_2x4", 0, 0, 3, 0, 4)
+    model = build_model(layout, torque_z=True)
+    assert model.rows_per_brick == 6
+    assert model.a_matrix.shape[0] == 12
+    # Contact-variable census is unchanged: the row grows, not the vars.
+    knobs = 16
+    assert model.var_count == knobs * 3 * 2 + knobs * 4
+
+
+def test_torque_z_side_contacts_use_four_corner_generators(layout):
+    layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    layout.add("brick_1x2", 0, 1, 0, 0, 4)
+    model = build_model(layout, torque_z=True)
+    # Same knob census as the 5-row pin, but the side pair now carries
+    # 4 corner presses (2 vertical extremes x 2 transverse extremes)
+    # so lateral load can express yaw torque.
+    knobs = 4
+    assert model.var_count == knobs * 4 * 2 + knobs * 4 + 4
+
+
+def test_torque_z_preserves_untwisted_verdicts(layout):
+    # Gravity never loads the yaw row (its lever is identically zero),
+    # so verdicts and scores on gravity-only classics must match the
+    # 5-row physics exactly.
+    layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    beam = layout.add("brick_1x2", 1, 0, 3, 0, 4)
+    del beam
+    base = analyze(layout, SolverConfig())
+    yaw = analyze(layout, SolverConfig(torque_z=True))
+    assert yaw.stable == base.stable
+    assert yaw.max_score == pytest.approx(base.max_score, rel=1e-6)
+
+
+def test_side_contact_transverse_extent_recorded(layout):
+    # A 1x4 beside a 1x4: shared faces along y have centers at x 0..3.
+    layout.add("brick_1x4", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 1, 0, 0, 4)
+    graph = ConnectionGraph.from_layout(layout)
+    (side,) = graph.side_contacts
+    assert side.axis == 1
+    assert (side.t_lo, side.t_hi) == (0.0, 3.0)
