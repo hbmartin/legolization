@@ -89,6 +89,39 @@ class needs a cross-slab bond-variable formulation (future work,
 recorded in the drift report's v5 addendum). Wall cost ≈ nil
 (mushroom 3.1 s, thin-shell 6.8 s, unchanged).
 
+### 2026-07-19 — WS-3: unstable-step reduction (U1–U3)
+
+**U1 — subassemblies default-on** (pre-approved on evidence; seed 0,
+post-physics-flip): mushroom 17 → **0** unstable steps (max prefix
+score 1.00 → 0.10), wide-arch 2 → **0**, cantilever 1 → **0**, heart
+2 → 1, suzanne@16 33 → 21; the spot cell is pending
+(docs/v5-pending-measurements.md). CLI grows
+--subassemblies/--no-subassemblies with a None sentinel (explicit-only
+conflict with --steps layer); example goldens regenerated (counts
+unchanged 124/32/12); booklets collapse consecutive unstable-prefix
+warnings into one "steps N–M need temporary support" callout.
+
+**U2 — insertion-robustness audit** (Liu et al. 2024 virtual-brick,
+arXiv:2408.10162 §IV-D, via the P4 extra_masses hook):
+`check_instructions --insertion-check` re-analyzes each statically
+stable prefix under a press mass (default 1 kg) on the just-placed
+chunk; press-collapsing steps flag `insertion-fragile`. Measured:
+cantilever flags 4/16 steps, mushroom 19/52 — on plans with ZERO
+static instability. Default off (an audit, not a gate). Scorecard rows
+gain `unsupported_ratio` (Liu's Cs difficulty stat).
+
+**U3 — support-aware placement**: `LayerContext.grounded_below`
+(stud-path-to-ground at band time, from the now-shared per-problem
+graph) + `grounding_gain`; consumers kollsker stage-2
+(`ground_weight=2.0`, counts provably pinned at N*), beauty
+(`w_g=0.25`, positive-only), fast (retry key gains an unanchored
+term, `w_g=0.2`); every 0.0 opt-out restores pre-v5 bit-for-bit.
+Measured on mushroom: **fast 6 → 0 unstable with subassemblies**
+(flat 24 → 16), beauty flat 20 → 19, kollsker unchanged — its cap
+ring overhangs empty cells (gap columns: nothing to anchor through at
+band time; the signal's documented limit). Corpus zero hard
+regressions; greedy untouched; goldens byte-exact.
+
 ## v4 progress notes
 
 Living log of the v4 program (PR #17 review remediation, residual
