@@ -4,6 +4,77 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v4 progress notes
+
+Living log of the v4 program (PR #17 review remediation, residual
+rescue-LP performance + `docs/performance-testing.md`, kollsker
+downstream-drift investigation/report/fixes, SNOT v2). Every landed
+workstream appends a dated entry with measured proof; append-only.
+
+### 2026-07-19 — PR #17 review remediation (12 commits)
+
+All findings from `docs/pr-17-review.md` addressed: the CI lizard
+CCN-18 gate is green again (`verify_plan` 33 → dispatcher +
+`_PlanVerifier`; `_validate_args` 27 → three validators; `_mount` 22 →
+plan/mutate split); the three P1s (positional dataclass compatibility
+restored with a field-order pin test; the 3070b reverse-map collision
+that broke flat-tile import fixed with candidate-list decoding; one
+monotonic deadline over the sequential strategy sweep); the P2s (snot
+clads only faces whose straight slide-in ray reaches outside the model
+— enclosed cavities and pits rejected; sideways cladding excluded from
+generic side contacts — no phantom presses; blocker rays derive extent
+from layout bounds, not a 64-cell cap; strictness judged after the
+subassembly rewrite; every subassembly must attach exactly once and
+the final world must equal the layout; MPD stems case-insensitive;
+kollsker MILP calls guarded, tuning validated finite, deadlines honest
+across both stages; `--profile` rejected where it was silently
+ignored; attach steps are checker metadata, not warnings) and both P3s
+(floating shortcut defers to cross-check mode; finishing spans are
+`phase.finish_surfaces` + nested children). 486 tests at that point,
+all gates green.
+
+### 2026-07-19 — Rescue-LP performance + docs/performance-testing.md
+
+Shipped `docs/performance-testing.md` (tools, schemas, the same-session
+before/after protocol, regression definitions, drift policy, measured
+dead ends), sha-stamped schema-2 CLI profiles sharing
+`telemetry.git_sha()` with the profiling script, two regression pins
+for the user's underneath-decoration constraint (warm grown-base probe
+≡ cold at 1e-9 incl. rollback; the rescue orders a hanging decoration
+before its overhang identically on both engines), and the committed
+optimization: **direct-highspy cold rescue solves**, size-gated at
+`SolverConfig.rescue_direct_min_bricks = 200` so small components keep
+the scipy-exact path the 1e-6/dual-engine tests pin. Shared
+`_lp_arrays()` guarantees both engines solve the byte-identical
+polytope; near-boundary or failed solves fall back under
+`stability.rescue.cold_fallback`.
+
+Proof (same-session sha-stamped profiles, seed 0):
+| model | before | after | migration | notes |
+|---|---|---|---|---|
+| spot@24 | 511.4 s | 490.3 s | 74 of 80 solves → `cold_direct`, 0 fallbacks | result block identical |
+| suzanne@16 | 37.7 s | 31.7 s | 14 solves → direct | result block identical |
+| pyramid | 1.03 s | 1.02 s | untouched (no rescue) | — |
+
+Deviations from plan: the C′ experiment — warm rescue by **bound
+deactivation** on one persistent model — was built dark, measured, and
+**killed by its own criteria**: correctness perfect (walk drift
+~1e-18) but warm re-solves ran ~4× SLOWER than presolved cold solves
+(23 s vs 5.6 s at n≈1000; spot 588 s vs 490 s) because the persistent
+model must keep presolve off for basis reuse while one-shot solves
+presolve the RBE down dramatically. Mechanism reverted; dead end
+recorded in `docs/performance-testing.md` §6 with the same candor as
+the LP-deletion note. The SNOT decline gate on the warm solvers stays
+(documented revisit trigger: when SNOT contact semantics stabilize).
+
+*(Future note — mesh-kind eval baseline: the committed scorecard
+baseline covers synthetics only. Now that v3's sequencing speedups make
+mesh sweeps feasible (suzanne@16 ≈ 30 s), commit a mesh-kind baseline
+via `uv run python scripts/eval_corpus.py --kind mesh --write-baseline`
+after a clean run, per the self-evaluation playbook's "widen baseline
+scope only on a clean run" rule. Not done in v4 — the drift fixes land
+first so the baseline is cut once, not twice.)*
+
 ## v3 progress notes
 
 Living log of the six-item v3 program (sequencer LP performance, MPD

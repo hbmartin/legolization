@@ -134,6 +134,19 @@ falls back to the legacy chain.
   discards enough basis that re-solves are effectively cold (measured
   49-63 warm fails, no speedup). The rescue's win came from the
   floating shortcut + component-verdict caching instead.
+- **Bound-deactivation warm rescue** (v4, mechanism built, measured,
+  reverted): keep one persistent model of the rescue scope and "remove"
+  chunks by fixing their columns to zero and relaxing their rows —
+  basis dimensions preserved, dual simplex hot-starts, textbook
+  branch-and-bound pattern. Correctness was perfect (tower-walk drift
+  ~1e-18, clean fallback on the one warm_fail), but the economics
+  lose: the persistent model cannot presolve (basis reuse forbids it),
+  while one-shot cold solves presolve the RBE down dramatically.
+  Measured on spot@24: warm re-solves ~23 s each vs ~5.6 s cold-direct
+  at n≈1000, plus a 45 s scope build; totals 588 s warm vs 490 s cold
+  (suzanne 46 s vs 32 s). **Presolve beats basis reuse on this LP
+  family** — any future warm-rescue idea must beat the presolved cold
+  solve, not the unpresolved one.
 - **Candidate pruning in `_choose_removal`**: the dominant
   grounded-stable rescue state already costs exactly one LP (first
   stable candidate short-circuits); there is no fan-out to prune.
