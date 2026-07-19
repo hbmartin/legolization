@@ -657,10 +657,19 @@ item on the roadmap; suggested staging:
    axis-aligned; the interesting problem is that a sideways brick occupies
    20-LDU-tall space that is not a whole number of plates (2.5) — sideways
    sections must be planned in 40-LDU (5-plate) vertical quanta, which is a
-   real constraint the placement layer has to own.
+   real constraint the placement layer has to own. *The vertical sideways
+   1×2 tile is proof this stage cannot be faked from stage 2: carrier side
+   studs sit at 8z+12 LDU, so studs in vertically adjacent 3-plate windows
+   are 24 LDU apart while the tile's anti-studs are 20 LDU apart — no
+   course-aligned carrier can ever double-mate it (measured in v4, recorded
+   with the SNOT v2 entry).*
 2. **Catalog additions.** Side-stud parts are the on-ramp before fully
-   sideways bricks: 87087 (1x1 with 1 side stud), 4070 (headlight), 99781
-   (bracket). These keep the grid stud-up while exposing lateral connectors.
+   sideways bricks — *stage 2 advanced in v3/v4: 87087 (1x1, one side
+   stud) ✓ and 11211 (1x2, two side studs) ✓ are catalogued as data-driven
+   carriers with sideways 3070b/3069b claddings; 4070 (headlight,
+   sub-cell stud depth) and 99781 (bracket, half-plate arm offsets)
+   remain — each needs geometry the unit grid cannot yet express.* These
+   keep the grid stud-up while exposing lateral connectors.
 3. **Graph + physics.** Mating logic in `graph.py` currently matches top
    connectors against `cell + (0,0,1)`; generalize to `cell + direction`.
    In the RBE, a sideways knob contact rotates the contact-point pattern and
