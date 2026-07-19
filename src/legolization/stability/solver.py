@@ -101,12 +101,15 @@ class SolverConfig:
     release's uniform per-brick rule. Inert for the shipped catalog —
     no part has min footprint dimension >= 3."""
 
-    rotate_contact_pattern: bool = False
+    rotate_contact_pattern: bool = True
     """Rotate the contact-point pattern with the gripping brick's yaw.
 
     The release keeps the asymmetric three-point triangle axis-aligned
-    regardless of orientation; rotating it makes 90-degree-rotated
-    structures score identically to their unrotated twins."""
+    regardless of orientation, scoring the same structure differently
+    when built rotated 90 degrees (measured: 36% on a single-knob
+    cantilever); rotating restores exact rotation invariance. Flipped
+    on by the v5 A/B (all StableLego fixture verdicts reproduce, zero
+    corpus verdict flips, no cost). False = release parity."""
 
     ground_pull: bool = True
     """Whether layer-0 contacts can pull down (StableLego

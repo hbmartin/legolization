@@ -4,6 +4,69 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v5 progress notes
+
+Living log of the v5 program (physics fidelity, structure-preserving
+bridge synthesis, unstable-step reduction, always-k seed restarts,
+continuous self-eval). Every landed workstream appends a dated entry
+with measured proof; append-only.
+
+### 2026-07-19 — WS-0: per-kind eval baselines
+
+`eval_corpus` now owns one committed baseline file per corpus kind
+(synthetic `scorecard.json`, mesh `scorecard-mesh.json`);
+`--write-baseline --kind mesh` is legal (seed-0, unfiltered), and
+comparisons merge every committed per-kind file so mixed sweeps diff
+each model against its own kind. Deviation from plan: the intended
+*pre*-physics mesh reference run was killed externally mid-sweep, so
+the mesh baseline's first cut is post-flip (single cut — arguably
+cleaner; the pre-flip synthetic baseline plus the A/B table carry the
+before-physics record).
+
+### 2026-07-19 — WS-1: physics fidelity (P1–P6)
+
+Four switches, all mirrored in both engines (batch `model.py` + warm
+`prefix.py`; dual-engine plan equality pinned with `torque_z` on), plus
+`docs/physics-fidelity-notes.md`:
+
+- **`torque_z`** — sixth (yaw) residual row; side contacts move from
+  two vertical-extreme press generators to four (transverse, vertical)
+  corners with the spanning re-derivation in the code
+  (`SideContact.t_lo/t_hi` carries the extent).
+- **`paper_knob_rule`** — the paper's per-knob edge-3/interior-4 rule;
+  **provably inert for the shipped catalog** (no part has min footprint
+  dimension ≥ 3; pinned by a custom-catalog 3×3 test).
+- **`rotate_contact_pattern`** — contact patterns turn with the
+  gripping brick's yaw. The release's axis-aligned triangle scores the
+  same structure differently built rotated 90° (measured 0.0792 vs
+  0.1080 — 36%).
+- **`ground_pull=False`** (table mode) + `analyze(extra_masses=...)`
+  (per-brick kg at the centroid) — the enablers for loose-on-table
+  verdicts and Liu-style insertion-press audits.
+
+A/B verdict (analysis-level: identical layouts, physics switched; 9
+StableLego fixtures + 77 corpus layout×strategy rows):
+
+| config | fixture verdicts | corpus verdict flips | score deltas | LP cost |
+|---|---|---|---|---|
+| rotate_contact_pattern | 9/9 reproduce | 0 | both directions (orientation fix) | none |
+| torque_z | 9/9 reproduce | 0 | mostly up on lateral chains (thin-shell kollsker 0.0047→0.0259) | **+49%** (4.5→6.8 s at ~380 bricks) |
+| paper_knob_rule | 9/9 reproduce | 0 | exactly zero | none |
+
+**Default flips: `rotate_contact_pattern=True` only.** It is a pure
+fidelity win with zero cost and zero verdict churn — example goldens
+stayed byte-identical through the flip. `torque_z` stays opt-in: it
+changed no measurable verdict while taxing every LP ~1.5×; it becomes
+the natural companion of external lateral loads (insertion checks,
+payloads) rather than a default. `paper_knob_rule` stays off (inert;
+release parity). The links QP now threads the physics config
+(`localize_instability(config=...)`) so repair judges with the same
+physics as the verdicts. BrickFEM (engrXiv 10.31224/2898) read in
+full: an MIT Abaqus model generator with a clamping-step trick but
+**no published clutch numbers** — T = 0.98 N stays the best-sourced
+constant; the five-fixture calibration path is recorded in the notes
+doc for the day an Abaqus seat exists.
+
 ## v4 progress notes
 
 Living log of the v4 program (PR #17 review remediation, residual

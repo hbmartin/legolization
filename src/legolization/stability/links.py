@@ -26,6 +26,7 @@ from legolization.stability.constants import (
     T_CAPACITY_N,
 )
 from legolization.stability.model import StabilityModel, build_model
+from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
     from legolization.layout import Layout
@@ -61,21 +62,31 @@ class LinkReport:
 def localize_instability(
     layout: Layout,
     graph: ConnectionGraph | None = None,
+    config: SolverConfig | None = None,
 ) -> LinkReport:
     """Solve the artificial-link QP; infeasible = unpatchable collapse."""
     if not len(layout):
         return LinkReport(q=0.0, links=(), status="optimal")
     with telemetry.span("stability.links", n=len(layout)):
-        return _localize_body(layout, graph)
+        return _localize_body(layout, graph, config or SolverConfig())
 
 
 def _localize_body(
     layout: Layout,
     graph: ConnectionGraph | None,
+    config: SolverConfig,
 ) -> LinkReport:
     """Run the body of :func:`localize_instability` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
-    model = build_model(layout, graph)
+    # The QP must judge with the same physics the verdicts use.
+    model = build_model(
+        layout,
+        graph,
+        torque_z=config.torque_z,
+        paper_knob_rule=config.paper_knob_rule,
+        rotate_contact_pattern=config.rotate_contact_pattern,
+        ground_pull=config.ground_pull,
+    )
     if not graph.side_contacts:
         return _no_link_verdict(model)
 

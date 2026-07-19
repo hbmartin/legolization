@@ -439,16 +439,18 @@ def _single_knob_cantilever(*, rotated: bool) -> Layout:
 def test_release_triangle_is_rotation_variant():
     # The StableLego release keeps the triangle axis-aligned: the same
     # physical structure scores differently built rotated 90 degrees
-    # (measured 0.0792 vs 0.1080 — a real verdict distortion).
-    plain = analyze(_single_knob_cantilever(rotated=False)).max_score
-    turned = analyze(_single_knob_cantilever(rotated=True)).max_score
+    # (measured 0.0792 vs 0.1080 — a real verdict distortion). Release
+    # parity is opt-in since the v5 flip.
+    config = SolverConfig(rotate_contact_pattern=False)
+    plain = analyze(_single_knob_cantilever(rotated=False), config).max_score
+    turned = analyze(_single_knob_cantilever(rotated=True), config).max_score
     assert plain != pytest.approx(turned, rel=1e-6)
 
 
 def test_rotate_contact_pattern_restores_rotation_invariance():
-    config = SolverConfig(rotate_contact_pattern=True)
-    plain = analyze(_single_knob_cantilever(rotated=False), config).max_score
-    turned = analyze(_single_knob_cantilever(rotated=True), config).max_score
+    # The default physics since the v5 flip.
+    plain = analyze(_single_knob_cantilever(rotated=False)).max_score
+    turned = analyze(_single_knob_cantilever(rotated=True)).max_score
     assert plain == pytest.approx(turned, rel=1e-9)
 
 
