@@ -11,6 +11,8 @@ from typing import Protocol, cast
 
 import pytest
 
+from legolization.mesh import MeshOptions
+
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "eval_corpus.py"
 
 
@@ -45,6 +47,10 @@ class _FakeModel:
 
 class _EvaluatorModule(Protocol):
     """Typed surface of the dynamically loaded evaluator script."""
+
+    def model_mesh_options(self, model: _FakeModel) -> MeshOptions | None:
+        """Return the effective mesh options a manifest model resolves with."""
+        ...
 
     def build_row(
         self,
@@ -541,8 +547,6 @@ def test_model_mesh_options_reports_manifest_resolution(
 ) -> None:
     # PR #18 review: profile identity must stamp the values a corpus run
     # actually used — manifest values for meshes, None for synthetics.
-    from legolization.mesh import MeshOptions
-
     explicit = _FakeModel(
         kind="mesh", target_studs=48, up="y", largest_component_only=True
     )
