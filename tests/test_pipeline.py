@@ -290,12 +290,10 @@ def test_dataclass_positional_layouts_are_stable():
     from legolization.compare import Candidate
     from legolization.mesh import MeshOptions
 
-    def names(cls: type) -> list[str]:
-        return [f.name for f in fields(cls)]
-
-    assert names(Candidate)[:5] == ["strategy", "seconds", "result", "metrics", "error"]
-    assert names(Candidate)[-1] == "seed"
-    assert names(MeshOptions) == [
+    candidate_names = [f.name for f in fields(Candidate)]
+    assert candidate_names[:5] == ["strategy", "seconds", "result", "metrics", "error"]
+    assert candidate_names[-1] == "seed"
+    assert [f.name for f in fields(MeshOptions)] == [
         "target_studs",
         "pitch",
         "up",
@@ -304,8 +302,8 @@ def test_dataclass_positional_layouts_are_stable():
         "keep_largest",
         "colour_mode",
     ]
-    config_names = names(PipelineConfig)
+    config_names = [f.name for f in fields(PipelineConfig)]
     assert config_names[-3:] == ["snot", "milp_layer_time_s", "milp_bond_weight"]
     assert config_names.index("tiles") + 1 == config_names.index("refine")
-    result_names = names(pipeline_module.PipelineResult)
+    result_names = [f.name for f in fields(pipeline_module.PipelineResult)]
     assert result_names[-2:] == ["plan", "snot_added"]

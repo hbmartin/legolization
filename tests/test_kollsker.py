@@ -219,3 +219,62 @@ def test_stage_two_deadline_recomputed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(captured) == 2
     assert captured[0] == pytest.approx(10.0)  # full remaining budget
     assert captured[1] == pytest.approx(4.0)  # recomputed after stage 1
+
+
+def test_milp_exception_falls_back_to_bond(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A crashing solver must become the bond fallback, not a failed
+    # candidate (PR #17 review).
+    import legolization.placement.layered.kollsker as kollsker_mod
+
+    def crashing_milp(*args: object, **kwargs: object) -> object:
+        msg = "HiGHS crashed"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(kollsker_mod, "milp", crashing_milp)
+    catalog = default_catalog()
+    problem = _layer_problem({(x, y) for x in range(4) for y in range(2)})
+    layout = Layout(catalog=catalog)
+    context = build_context(layout, problem)
+    rects = KollskerStrategy(catalog=catalog).tile(
+        problem, context, rng=np.random.default_rng(0), deadline=None
+    )
+    assert {c for r in rects for c in r.columns()} == problem.columns
+
+
+def test_non_finite_tuning_rejected() -> None:
+    with pytest.raises(ValueError, match="bond_weight"):
+        KollskerStrategy(catalog=default_catalog(), bond_weight=float("nan"))
+    with pytest.raises(ValueError, match="layer_time_s"):
+        KollskerStrategy(catalog=default_catalog(), layer_time_s=float("inf"))
+    with pytest.raises(ValueError, match="layer_time_s"):
+        KollskerStrategy(catalog=default_catalog(), layer_time_s=0.0)
+
+
+def test_expired_deadline_skips_the_milp_entirely(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.placement.layered.kollsker as kollsker_mod
+
+    calls = {"milp": 0}
+
+    def counting_milp(*args: object, **kwargs: object) -> object:
+        calls["milp"] += 1
+        msg = "must not be called"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(kollsker_mod, "milp", counting_milp)
+    monkeypatch.setattr(kollsker_mod.time, "monotonic", lambda: 1000.0)
+    catalog = default_catalog()
+    problem = _layer_problem({(x, y) for x in range(3) for y in range(2)})
+    layout = Layout(catalog=catalog)
+    context = build_context(layout, problem)
+    rects = KollskerStrategy(catalog=catalog).tile(
+        problem,
+        context,
+        rng=np.random.default_rng(0),
+        deadline=999.0,  # already in the past
+    )
+    assert calls["milp"] == 0  # straight to the bond fallback
+    assert {c for r in rects for c in r.columns()} == problem.columns

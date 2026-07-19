@@ -19,12 +19,13 @@ falls back to that bond pass at component granularity.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from scipy.optimize import Bounds, LinearConstraint, milp
+from scipy.optimize import Bounds, LinearConstraint, OptimizeResult, milp
 from scipy.sparse import coo_matrix
 
 from legolization.placement.layered.bond import BondStrategy
@@ -40,6 +41,15 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 _RANK_EPS = 1e-6  # deterministic tiebreak among equal-reward covers
+_MIN_SOLVE_S = 0.05  # below this, skip the MILP rather than floor it
+
+
+def _guarded_milp(**kwargs: Any) -> OptimizeResult | None:  # noqa: ANN401 - scipy passthrough
+    """Run scipy ``milp``; solver failures become the None fallback path."""
+    try:
+        return milp(**kwargs)
+    except (ValueError, RuntimeError, ArithmeticError):
+        return None
 
 
 @dataclass(slots=True)
@@ -49,6 +59,15 @@ class KollskerStrategy(BondStrategy):
     layer_time_s: float = 10.0
     bond_weight: float = 1.0
     candidate_limit: int = 20_000
+
+    def __post_init__(self) -> None:
+        """Reject non-finite or negative tuning before any solve runs."""
+        if not math.isfinite(self.layer_time_s) or self.layer_time_s <= 0:
+            msg = f"layer_time_s must be finite and positive, got {self.layer_time_s}"
+            raise ValueError(msg)
+        if not math.isfinite(self.bond_weight) or self.bond_weight < 0:
+            msg = f"bond_weight must be finite and non-negative, got {self.bond_weight}"
+            raise ValueError(msg)
 
     def tile(
         self,
@@ -75,11 +94,25 @@ class KollskerStrategy(BondStrategy):
             rects.extend(solved)
         return rects
 
-    def _time_limit(self, deadline: float | None) -> float:
-        """Per-solve budget from the layer cap and the remaining deadline."""
-        if deadline is None:
-            return self.layer_time_s
-        return min(self.layer_time_s, max(deadline - time.monotonic(), 0.1))
+    def _time_limit(
+        self,
+        deadline: float | None,
+        *,
+        spent: float = 0.0,
+    ) -> float | None:
+        """Remaining per-solve budget, or None when it is exhausted.
+
+        ``spent`` charges stage 1's wall time against the same
+        ``layer_time_s`` allowance so one component can never spend twice
+        the layer cap; an expired deadline skips the solve entirely
+        instead of flooring it (PR #17 review).
+        """
+        budget = self.layer_time_s - spent
+        if deadline is not None:
+            budget = min(budget, deadline - time.monotonic())
+        if budget < _MIN_SOLVE_S:
+            return None
+        return budget
 
     def _solve_component(
         self,
@@ -92,32 +125,45 @@ class KollskerStrategy(BondStrategy):
         candidates = enumerate_layer_rects(problem, component, self.catalog)
         if not candidates or len(candidates) > self.candidate_limit:
             return None
+        if (stage1_limit := self._time_limit(deadline)) is None:
+            return None  # deadline already spent: straight to the fallback
+        started = time.monotonic()
         cover = _cover_matrix(component, candidates)
         ones = np.ones(len(candidates))
-        stage1 = milp(
+        stage1 = _guarded_milp(
             c=ones,
             constraints=LinearConstraint(cover, lb=1.0, ub=1.0),
             integrality=ones,
             bounds=Bounds(0, 1),
-            options={"time_limit": self._time_limit(deadline)},
+            options={"time_limit": stage1_limit},
         )
-        if not stage1.success or stage1.x is None:
+        if stage1 is None or not stage1.success or stage1.x is None:
             return None
         n_star = float(np.round(stage1.fun))
         rewards = np.array([self._bond_reward(rect, below) for rect in candidates])
         rank = _RANK_EPS * np.arange(len(candidates))
-        stage2 = milp(
-            c=-self.bond_weight * rewards + rank,
-            constraints=[
-                LinearConstraint(cover, lb=1.0, ub=1.0),
-                LinearConstraint(np.ones((1, len(candidates))), n_star, n_star),
-            ],
-            integrality=ones,
-            bounds=Bounds(0, 1),
-            # Recomputed: stage 1 may have consumed most of the budget.
-            options={"time_limit": self._time_limit(deadline)},
+        # Recomputed: stage 1 may have consumed most of the budget; when
+        # nothing is left the minimum-count stage-1 cover stands.
+        stage2_limit = self._time_limit(deadline, spent=time.monotonic() - started)
+        stage2 = (
+            None
+            if stage2_limit is None
+            else _guarded_milp(
+                c=-self.bond_weight * rewards + rank,
+                constraints=[
+                    LinearConstraint(cover, lb=1.0, ub=1.0),
+                    LinearConstraint(np.ones((1, len(candidates))), n_star, n_star),
+                ],
+                integrality=ones,
+                bounds=Bounds(0, 1),
+                options={"time_limit": stage2_limit},
+            )
         )
-        chosen = stage2 if stage2.success and stage2.x is not None else stage1
+        chosen = (
+            stage2
+            if stage2 is not None and stage2.success and stage2.x is not None
+            else stage1
+        )
         return [
             rect
             for value, rect in zip(chosen.x, candidates, strict=True)
