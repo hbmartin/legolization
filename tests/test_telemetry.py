@@ -170,3 +170,17 @@ def test_git_sha_resolves_linked_worktrees(tmp_path: Path) -> None:
     # Packed refs still resolve through commondir.
     subprocess.run(["git", "-C", str(repo), "pack-refs", "--all"], check=True, env=env)
     assert git_sha(worktree) == main_sha
+
+
+def test_bucket_legacy_sequence_interface() -> None:
+    # Buckets were [calls, seconds] lists before the typed dataclass;
+    # index/len/iter must keep that contract (PR #18 review).
+    with telemetry.record() as session, telemetry.span("s", n=7):
+        pass
+    bucket = session.spans["s"].buckets[8]
+    assert bucket[0] == 1
+    assert bucket[1] == bucket.seconds
+    assert len(bucket) == 2
+    calls, seconds = bucket
+    assert (calls, seconds) == (bucket.calls, bucket.seconds)
+    assert list(bucket) == [bucket.calls, bucket.seconds]

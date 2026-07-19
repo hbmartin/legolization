@@ -35,10 +35,25 @@ _NOOP: AbstractContextManager[None] = nullcontext()
 
 @dataclass(slots=True)
 class _Bucket:
-    """Calls and wall seconds of one power-of-two size bucket."""
+    """Calls and wall seconds of one power-of-two size bucket.
+
+    Buckets were plain ``[calls, seconds]`` lists before the typed
+    representation; the sequence protocol keeps callers written against
+    that shape — ``buckets[8][0]``, unpacking — working unchanged
+    (PR #18 review).
+    """
 
     calls: int = 0
     seconds: float = 0.0
+
+    def __getitem__(self, index: int) -> int | float:
+        return (self.calls, self.seconds)[index]
+
+    def __len__(self) -> int:
+        return 2
+
+    def __iter__(self) -> Iterator[int | float]:
+        return iter((self.calls, self.seconds))
 
 
 @dataclass(slots=True)
