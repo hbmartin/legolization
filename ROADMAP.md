@@ -160,6 +160,21 @@ field), 99781/4070/4733 (half-plate arms, sub-cell depth, blocker
 over-conservatism), true 8-LDU tile depth (the grid cannot express
 8-of-20-LDU horizontal occupancy).
 
+### 2026-07-19 — v4 program end
+
+Full gates green (516 tests; ruff/ty/pyrefly/lizard CCN-18 clean;
+goldens byte-exact; StableLego and dual-engine plan tests untouched).
+Program-end corpus sweep: exit 0 with **zero diffs** against the
+baseline regenerated at the drift fix — SNOT v2 and the blocking
+changes are corpus-neutral. `check_instructions` signatures unchanged:
+heart 7 steps/2 unstable, mushroom 41/17, suzanne@16 60/33, spot@24
+155/80 (the 80 matches the rescue-solve census in the WS-B profile).
+Fresh end-of-program profiles: pyramid 1.5 s / 124 bricks / 21 steps,
+suzanne@16 31.7 s / 365 / 60 (identical to the WS-B after-run), spot@24
+538 s / 996 / 155 — result blocks identical to WS-B; spot's wall delta
+vs the earlier session is cross-session noise the perf doc's protocol
+excludes from regression claims. Version bumped to 0.3.0.
+
 *(Future note — mesh-kind eval baseline: the committed scorecard
 baseline covers synthetics only. Now that v3's sequencing speedups make
 mesh sweeps feasible (suzanne@16 ≈ 30 s), commit a mesh-kind baseline
