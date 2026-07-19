@@ -68,44 +68,75 @@ def layout_from_ldraw(path: Path, *, catalog: Catalog | None = None) -> Layout:
     an error; all problems are reported together.
     """
     catalog = catalog or default_catalog()
-    reverse = {part.ldraw_part: part.key for part in catalog.parts.values()}
+    # Several catalog parts can share one LDraw code (a flat tile and its
+    # sideways-mounted twin both emit 3070b), so the reverse map carries
+    # every candidate in catalog order and the decode disambiguates: a
+    # flat part only accepts yaw matrices (middle row (0, 1, 0)), a
+    # sideways part only its mount matrices (middle row never (0, 1, 0)).
+    reverse: dict[str, list[str]] = {}
+    for part in catalog.parts.values():
+        reverse.setdefault(part.ldraw_part, []).append(part.key)
     layout = Layout(catalog=catalog)
     problems: list[str] = []
     # iter_occurrences composes MPD submodel transforms into world frame;
     # iter_pieces would yield submodel pieces in their local frames.
     for index, occurrence in enumerate(read_model(path).iter_occurrences(), start=1):
         prefix = f"piece {index} ({occurrence.part_code})"
-        if (part_key := reverse.get(str(occurrence.part_code))) is None:
+        if (candidates := reverse.get(str(occurrence.part_code))) is None:
             problems.append(f"{prefix}: part not in the catalog")
             continue
-        part = catalog.parts[part_key]
         if (colour := _decode_colour(occurrence.colour)) is None:
             problems.append(f"{prefix}: colour is not in the solid palette")
             continue
-        if part.category is Category.SNOT:
-            placed = _decode_snot(part, occurrence)
-            if placed is None:
-                problems.append(
-                    f"{prefix}: sideways part in an unsupported orientation"
-                )
-                continue
-            x, y, layer, yaw = placed
-        else:
-            if (yaw := _decode_yaw(occurrence.matrix)) is None:
-                problems.append(f"{prefix}: rotation is not a yaw multiple of 90°")
-                continue
-            placement = _decode_position(part, occurrence.position, yaw)
-            if placement is None:
-                problems.append(f"{prefix}: position is off the stud/plate grid")
-                continue
-            x, y, layer = placement
+        matched = _match_candidates(catalog, candidates, occurrence)
+        if isinstance(matched, str):
+            problems.append(f"{prefix}: {matched}")
+            continue
+        matched_key, (x, y, layer, yaw) = matched
         try:
-            layout.add(part_key, x, y, layer, yaw, colour)
+            layout.add(matched_key, x, y, layer, yaw, colour)
         except CollisionError as error:
             problems.append(f"{prefix}: {error}")
     if problems:
         raise LdrawImportError(problems)
     return layout
+
+
+def _match_candidates(
+    catalog: Catalog,
+    candidates: list[str],
+    occurrence: ModelOccurrence,
+) -> tuple[str, tuple[int, int, int, int]] | str:
+    """Try each candidate part in catalog order; first clean decode wins."""
+    reasons: list[str] = []
+    for part_key in candidates:
+        decoded = _decode_occurrence(catalog.parts[part_key], occurrence)
+        if isinstance(decoded, str):
+            reasons.append(decoded)
+        else:
+            return (part_key, decoded)
+    if len(candidates) == 1:
+        return reasons[0]
+    detail = "; ".join(
+        f"{key}: {reason}" for key, reason in zip(candidates, reasons, strict=True)
+    )
+    return f"no candidate part fits ({detail})"
+
+
+def _decode_occurrence(
+    part: Part,
+    occurrence: ModelOccurrence,
+) -> tuple[int, int, int, int] | str:
+    """Decode one occurrence as ``part``: placement, or the failure reason."""
+    if part.category is Category.SNOT:
+        if (snot := _decode_snot(part, occurrence)) is None:
+            return "sideways part in an unsupported orientation"
+        return snot
+    if (yaw := _decode_yaw(occurrence.matrix)) is None:
+        return "rotation is not a yaw multiple of 90°"
+    if (placement := _decode_position(part, occurrence.position, yaw)) is None:
+        return "position is off the stud/plate grid"
+    return (*placement, yaw)
 
 
 def _decode_snot(
