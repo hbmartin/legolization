@@ -143,27 +143,68 @@ _SHA_LENGTH = 40
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+def _git_dirs(root: Path) -> tuple[Path, Path] | None:
+    """Resolve (git_dir, common_dir) for a checkout, following worktrees.
+
+    In a linked ``git worktree``, ``.git`` is a FILE containing a
+    ``gitdir:`` indirection to a per-worktree directory whose
+    ``commondir`` file points back at the shared object store where
+    refs and packed-refs live (PR #18 review: the directory assumption
+    returned None in every worktree, stripping artifacts of their
+    code-state identity).
+    """
+    dot_git = root / ".git"
+    if dot_git.is_dir():
+        git_dir = dot_git
+    else:
+        try:
+            content = dot_git.read_text().strip()
+        except OSError:
+            return None
+        if not content.startswith("gitdir:"):
+            return None
+        target = Path(content.removeprefix("gitdir:").strip())
+        git_dir = target if target.is_absolute() else (root / target).resolve()
+    common_dir = git_dir
+    try:
+        common = (git_dir / "commondir").read_text().strip()
+    except OSError:
+        pass
+    else:
+        target = Path(common)
+        common_dir = target if target.is_absolute() else (git_dir / target).resolve()
+    return git_dir, common_dir
+
+
 def git_sha(repo: Path | None = None) -> str | None:
     """Read the current commit sha from ``.git`` without spawning a process.
 
     Profile artifacts stamp this so before/after comparisons are pinned
     to code states; both profile writers (the script and the CLI
-    ``--profile``) share it.
+    ``--profile``) share it. Linked worktrees resolve through their
+    ``gitdir:``/``commondir`` indirections.
     """
     root = repo if repo is not None else _REPO_ROOT
+    if (dirs := _git_dirs(root)) is None:
+        return None
+    git_dir, common_dir = dirs
     try:
-        content = (root / ".git" / "HEAD").read_text().strip()
+        content = (git_dir / "HEAD").read_text().strip()
     except OSError:
         return None
     if not content.startswith("ref:"):
         return content if len(content) == _SHA_LENGTH else None
-    ref = content.removeprefix("ref:").strip()
+    return _resolve_ref(content.removeprefix("ref:").strip(), git_dir, common_dir)
+
+
+def _resolve_ref(ref: str, git_dir: Path, common_dir: Path) -> str | None:
+    for base in (common_dir, git_dir):
+        try:
+            return (base / ref).read_text().strip()
+        except OSError:
+            continue
     try:
-        return (root / ".git" / ref).read_text().strip()
-    except OSError:
-        pass
-    try:
-        packed = (root / ".git" / "packed-refs").read_text()
+        packed = (common_dir / "packed-refs").read_text()
     except OSError:
         return None
     for line in packed.splitlines():
