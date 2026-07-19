@@ -36,6 +36,22 @@ from legolization import telemetry
 from legolization.instructions.sequencer import InstructionsConfig
 from legolization.mesh import MeshOptions
 from legolization.pipeline import PipelineConfig, run
+from legolization.placement.registry import strategy_names
+
+
+def _positive_int(text: str) -> int:
+    if (value := int(text)) < 1:
+        msg = f"must be >= 1, got {value}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
+def _non_negative_int(text: str) -> int:
+    if (value := int(text)) < 0:
+        msg = f"must be >= 0, got {value}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -124,12 +140,12 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model")
-    parser.add_argument("--strategy", default="kollsker")
+    parser.add_argument("--strategy", default="kollsker", choices=strategy_names())
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--solid", action="store_true")
     parser.add_argument("--no-repair", action="store_true")
-    parser.add_argument("--fail-max", type=int, default=None, metavar="N")
-    parser.add_argument("--target-studs", type=int, default=32, metavar="N")
+    parser.add_argument("--fail-max", type=_non_negative_int, default=None, metavar="N")
+    parser.add_argument("--target-studs", type=_positive_int, default=32, metavar="N")
     parser.add_argument("--out", type=Path, default=_REPO / "eval" / "profiles")
     args = parser.parse_args(argv)
 

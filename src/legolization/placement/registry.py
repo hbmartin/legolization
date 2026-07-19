@@ -56,9 +56,18 @@ class _FailMaxKwargs(TypedDict, total=False):
 
 
 def _fail_max_override(config: PipelineConfig) -> _FailMaxKwargs:
-    """Build the optional improve_connectivity override kwargs."""
+    """Build the optional improve_connectivity override kwargs.
+
+    Validation lives here rather than on the frozen PipelineConfig:
+    every strategy factory funnels through this override, so a negative
+    cap fails at construction instead of silently disabling the
+    connectivity pass (PR #18 review).
+    """
     if config.connectivity_fail_max is None:
         return {}
+    if config.connectivity_fail_max < 0:
+        msg = f"connectivity_fail_max must be >= 0, got {config.connectivity_fail_max}"
+        raise ValueError(msg)
     return {"fail_max": config.connectivity_fail_max}
 
 

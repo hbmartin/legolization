@@ -682,6 +682,17 @@ def test_improve_connectivity_best_of_k_bridges_leaner():
     assert len(best_of_k) <= len(single)
 
 
+def test_improve_connectivity_rejects_nonpositive_draws():
+    # PR #18 P3: bridge_draws <= 0 silently skipped every draw while the
+    # failure loop still spun; reject it at the boundary.
+    codes = np.full((1, 1, 3), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    with pytest.raises(ValueError, match="bridge_draws"):
+        improve_connectivity(layout, grid, np.random.default_rng(0), bridge_draws=0)
+
+
 def test_improve_connectivity_honours_expired_deadline():
     # PR #18 P2: the pass ran unbudgeted after the strategy deadline;
     # an already-expired deadline must produce zero draws.

@@ -315,6 +315,9 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     local best-of-k choices shift downstream refinement chaotically
     (measured: heart 12 -> 29 bricks).
     """
+    if bridge_draws < 1:
+        msg = f"bridge_draws must be >= 1, got {bridge_draws}"
+        raise ValueError(msg)
     components = ConnectionGraph.from_layout(layout).component_count()
     failures = 0
     while components > 1 and failures < fail_max:
@@ -324,34 +327,17 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
         if not seeds:
             break
         region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
-        best: Layout | None = None
-        best_key: tuple[int, int] | None = None
-        for _ in range(bridge_draws):
-            if deadline is not None and time.monotonic() >= deadline:
-                break
-            with telemetry.span("connectivity.attempt"):
-                candidate = layout.copy()
-                atom_ids = split_to_atoms(candidate, region, grid)
-                maximal_random_merge(
-                    candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
-                )
-                # Reclaim bricks from whatever 1x1 plates the merge left
-                # behind — after the merge, so the phase pre-commit
-                # can't block seam bridging.
-                if compact_columns(candidate, atom_ids):
-                    maximal_random_merge(
-                        candidate,
-                        rng,
-                        colour_mode=colour_mode,
-                        colour_weight=colour_weight,
-                    )
-                candidate_components = ConnectionGraph.from_layout(
-                    candidate
-                ).component_count()
-            if candidate_components < components:
-                key = (candidate_components, len(candidate))
-                if best_key is None or key < best_key:
-                    best, best_key = candidate, key
+        best, best_key = _best_bridging_draw(
+            layout,
+            grid,
+            rng,
+            region=region,
+            components=components,
+            colour_mode=colour_mode,
+            colour_weight=colour_weight,
+            bridge_draws=bridge_draws,
+            deadline=deadline,
+        )
         if best is not None and best_key is not None:
             with telemetry.span("connectivity.accept"):
                 layout.replace_with(best)
@@ -362,6 +348,50 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
         else:
             failures += 1
     return components
+
+
+def _best_bridging_draw(  # noqa: PLR0913 - threads improve_connectivity's knobs
+    layout: Layout,
+    grid: VoxelGrid,
+    rng: np.random.Generator,
+    *,
+    region: set[int],
+    components: int,
+    colour_mode: ColourMode,
+    colour_weight: float,
+    bridge_draws: int,
+    deadline: float | None,
+) -> tuple[Layout | None, tuple[int, int] | None]:
+    """Best (components, bricks) candidate among the bridging draws."""
+    best: Layout | None = None
+    best_key: tuple[int, int] | None = None
+    for _ in range(bridge_draws):
+        if deadline is not None and time.monotonic() >= deadline:
+            break
+        with telemetry.span("connectivity.attempt"):
+            candidate = layout.copy()
+            atom_ids = split_to_atoms(candidate, region, grid)
+            maximal_random_merge(
+                candidate, rng, colour_mode=colour_mode, colour_weight=colour_weight
+            )
+            # Reclaim bricks from whatever 1x1 plates the merge left
+            # behind — after the merge, so the phase pre-commit
+            # can't block seam bridging.
+            if compact_columns(candidate, atom_ids):
+                maximal_random_merge(
+                    candidate,
+                    rng,
+                    colour_mode=colour_mode,
+                    colour_weight=colour_weight,
+                )
+            candidate_components = ConnectionGraph.from_layout(
+                candidate
+            ).component_count()
+        if candidate_components < components:
+            key = (candidate_components, len(candidate))
+            if best_key is None or key < best_key:
+                best, best_key = candidate, key
+    return best, best_key
 
 
 def component_border(layout: Layout) -> set[int]:

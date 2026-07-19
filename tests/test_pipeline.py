@@ -337,6 +337,15 @@ def test_connectivity_fail_max_override():
     )
     assert isinstance(greedy, GreedyStrategy)
     assert greedy.fail_max == 5
+    # PR #18 P3: a negative cap silently disabled the pass; it now
+    # fails at strategy construction (PipelineConfig is frozen+slots,
+    # so the funnel validates).
+    with pytest.raises(ValueError, match="connectivity_fail_max"):
+        make_strategy(
+            "bond",
+            catalog=default_catalog(),
+            config=PipelineConfig(connectivity_fail_max=-1),
+        )
 
 
 def test_phase_gauges_record_brick_trajectory():

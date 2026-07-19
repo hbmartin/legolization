@@ -111,3 +111,16 @@ def test_rows_follow_emission_order(script: ModuleType) -> None:
     restored = next(row for row in rows if row.phase == "hollow-restore round")
     assert restored.stable is True
     assert restored.components == 1
+
+
+def test_cli_rejects_invalid_inputs(script: ModuleType) -> None:
+    # PR #18 P3: an unknown strategy or nonsensical numeric flag ran a
+    # whole pipeline before failing (or never failed); argparse now
+    # rejects them up front.
+    for argv in (
+        ["heart", "--strategy", "no-such-strategy"],
+        ["heart", "--target-studs", "0"],
+        ["heart", "--fail-max", "-1"],
+    ):
+        with pytest.raises(SystemExit):
+            script.main(argv)
