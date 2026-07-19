@@ -59,6 +59,15 @@ class SolverConfig:
     ``drag_big_m``/``normal_big_m`` are artificial force ceilings for the
     MILP's big-M complementarity switches only — they have no counterpart
     in the papers and never constrain the (exact) LP mode.
+
+    ``engine`` selects the sequencer/verify prefix-solve engine only:
+    ``"highspy"`` uses the warm-started incremental
+    :class:`legolization.stability.prefix.PrefixSolver`; ``"scipy"`` keeps
+    every solve on this module's cold path. ``engine_cross_check`` makes
+    every warm probe also cold-solve and return the cold result while
+    recording drift (debug/CI). ``boundary_margin`` is the relative band
+    around the stability threshold within which warm verdicts are
+    discarded in favour of a cold solve.
     """
 
     mode: Literal["lp", "milp"] = "lp"
@@ -67,6 +76,9 @@ class SolverConfig:
     tol_torque: float = 1e-7
     drag_big_m: float = 10.0 * T_CAPACITY_N
     normal_big_m: float = 100.0
+    engine: Literal["scipy", "highspy"] = "highspy"
+    engine_cross_check: bool = False
+    boundary_margin: float = 0.02
 
 
 @dataclass(frozen=True, slots=True)

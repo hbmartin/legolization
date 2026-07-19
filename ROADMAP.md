@@ -11,11 +11,45 @@ subassemblies, shape-preserving slopes, SNOT finishing pass, per-layer
 Kollsker MILP, LDraw model import). Every landed item appends a dated
 entry here with its measured proof numbers; entries are append-only.
 
-*(No items landed yet. Program plan approved 2026-07-18; evidence base:
-the profiling campaign on PR #16 — 99% of large-model runtime is cold
-HiGHS LP solves in sequencing, ~2 per step, superlinear per-solve cost —
-and `docs/unstable-prefix-report.md` — the floating-until-later-band
-step class is unorderable without subassemblies.)*
+*(Program plan approved 2026-07-18; evidence base: the profiling
+campaign on PR #16 — 99% of large-model runtime is cold HiGHS LP solves
+in sequencing, ~2 per step, superlinear per-solve cost — and
+`docs/unstable-prefix-report.md` — the floating-until-later-band step
+class is unorderable without subassemblies.)*
+
+### 2026-07-19 — Item 1: sequencer LP performance
+
+Shipped `stability/prefix.py` behind `SolverConfig.engine` (default
+`"highspy"`; `"scipy"` preserves the legacy path bit-for-bit): a
+warm-started incremental `PrefixSolver` for the greedy loop (probe =
+append rows/cols + re-solve from the retained basis, ~20-90 simplex
+iterations per step instead of a full cold solve; commit of the probed
+chunk is free), an LP-free **floating shortcut** (a prefix with a
+stud-unreachable brick is unstable by definition — verdict + 1.0 score
+without any solve), and a component-decomposed `RemovalSolver` for the
+disassembly rescue (per-contact-component verdict cache; the RBE is
+block-diagonal across uncoupled components).
+
+Proof (same sha-pinned inputs as the PR #16 campaign, seed 0):
+| model | before | after | speedup | notes |
+|---|---|---|---|---|
+| pyramid.npy | 1.26 s | 0.99 s | 1.3x | clean greedy path |
+| suzanne @16 | 81.3 s | 30.3 s | 2.7x | 72 of 104 solves shortcut |
+| spot @24 | 1465.5 s | 468.6 s | **3.1x** | 215 of 287 rescue probes LP-free |
+
+Byte-exact goldens unchanged with the new default (dual-engine plan/byte
+equality pinned by tests on every shipped example); synthetic corpus
+scorecard row-for-row identical to the committed baseline; 408 tests.
+
+Deviations from plan: LP-deletion warm starts for the rescue do NOT pay
+(HiGHS discards too much basis on deletion — measured, not assumed);
+the rescue's win came from the floating shortcut + component
+decomposition instead. Byte-identity across engines is guaranteed for
+plans that never enter the rescue (includes all goldens); rescued plans
+are verdict-equivalent (equal unstable counts, `verify_plan` clean) with
+solver-tolerance-level score drift on degenerate optima — the same drift
+class scipy exhibits across its own versions. Remaining headroom: 80
+cold LPs on grounded-stable rescue states at n≈1000.
 
 ## Where things stand
 

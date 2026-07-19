@@ -344,8 +344,30 @@ def test_happy_path_runs_one_lp_per_step(
         return real_analyze(target, config, graph)
 
     monkeypatch.setattr(sequencer_module, "analyze", counting_analyze)
-    config = InstructionsConfig(target_step_size=3, max_step_size=3, rotstep=False)
+    config = InstructionsConfig(
+        target_step_size=3,
+        max_step_size=3,
+        rotstep=False,
+        solver=SolverConfig(engine="scipy"),
+    )
     plan = plan_instructions(layout, config=config)
     # Ground-band chunks are all stable: the early exit takes the first
     # candidate every time, so the spatial ordering costs no extra LPs.
     assert calls["count"] == len(plan.steps) == 3
+
+
+def test_happy_path_runs_one_probe_per_step_warm() -> None:
+    from legolization import telemetry
+
+    layout, *_ = _three_islands()
+    config = InstructionsConfig(
+        target_step_size=3,
+        max_step_size=3,
+        rotstep=False,
+        solver=SolverConfig(engine="highspy"),
+    )
+    with telemetry.record() as session:
+        plan = plan_instructions(layout, config=config)
+    probes = session.spans.get("stability.prefix.probe")
+    assert probes is not None
+    assert probes.calls == len(plan.steps) == 3

@@ -40,6 +40,7 @@ from legolization.instructions.search import (
     beam_order,
     disassembly_order,
 )
+from legolization.stability.prefix import PrefixSolver, RemovalSolver
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -149,7 +150,7 @@ def plan_instructions(
     )
 
 
-def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing state
+def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequencing state
     layout: Layout,
     config: InstructionsConfig,
     chunks: list[tuple[int, tuple[int, ...]]],
@@ -162,6 +163,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
     steps: list[BuildStep] = []
     warnings: list[str] = []
     cache: dict[frozenset[int], StabilityResult] = {}
+    warm_keys: set[frozenset[int]] = set()
+    prefix_solver: PrefixSolver | None = None
     centroids = [chunk_centroid(layout, chunk) for _, chunk in chunks]
     previous_centroid: tuple[float, float] | None = None
 
@@ -190,8 +193,21 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
     def analyze_prefix(chunk: tuple[int, ...]) -> StabilityResult:
         key = frozenset(placed | set(chunk))
         if (hit := cache.get(key)) is None:
-            cache[key] = hit = analyze(layout.subset(key), config.solver)
+            if prefix_solver is not None:
+                hit = prefix_solver.probe(chunk)
+                warm_keys.add(key)
+            else:
+                hit = analyze(layout.subset(key), config.solver)
+            cache[key] = hit
         return hit
+
+    def disable_warm_engine() -> None:
+        """Rescue/beam/band paths float-order scores: legacy numbers only."""
+        nonlocal prefix_solver
+        prefix_solver = None
+        for key in warm_keys:
+            cache.pop(key, None)
+        warm_keys.clear()
 
     def emit_verdicts(verdicts: list[ChunkVerdict]) -> None:
         for verdict in verdicts:
@@ -210,7 +226,21 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
             emit(verdict.chunk, stable=verdict.stable, score=verdict.max_score)
 
     def rescue() -> None:
-        """Re-plan the whole remainder by assembly-by-disassembly."""
+        """Re-plan the whole remainder by assembly-by-disassembly.
+
+        The rescue goes warm through a :class:`RemovalSolver` when the
+        highspy engine is on. Its scores can differ in degenerate float
+        ties from the scipy engine's, so byte-identity across engines is
+        guaranteed only for plans that never enter the rescue (which
+        includes all shipped goldens); rescued plans are validated by
+        ``verify_plan``/plan-quality equivalence instead.
+        """
+        nonlocal prefix_solver
+        prefix_solver = None  # the forward base can no longer advance
+        scope = frozenset(placed).union(
+            *(set(chunks[position][1]) for position in pending), frozenset()
+        )
+        remover = RemovalSolver.create(layout, scope, config.solver)
         emit_verdicts(
             disassembly_order(
                 layout,
@@ -220,6 +250,7 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
                 blockers=blockers,
                 config=config,
                 cache=cache,
+                remover=remover,
             )
         )
 
@@ -237,6 +268,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
         )
         return steps, warnings
 
+    prefix_solver = PrefixSolver.create(layout, config.solver)
+
     while pending:
         ready = _gather_ready(
             pending,
@@ -253,6 +286,7 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
                 break
             # Legacy escape hatch: pure band order is always
             # insertion-feasible, but its verdicts go unchecked.
+            disable_warm_engine()
             warnings.append("sequencer deadlocked; remaining steps follow band order")
             for position in pending:
                 _, chunk = chunks[position]
@@ -278,6 +312,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
             if result.stable:
                 chosen = position
                 emit(chunk, stable=True, score=result.max_score)
+                if prefix_solver is not None:
+                    prefix_solver.commit(chunk)
                 break
             if best is None or result.max_score < best[0]:
                 best = (result.max_score, position)
@@ -302,6 +338,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
                 "support the overhang by hand while building"
             )
             emit(chunk, stable=False, score=score)
+            if prefix_solver is not None:
+                prefix_solver.commit(chunk)
             chosen = position
         previous_centroid = centroids[chosen]
         pending.remove(chosen)
@@ -428,6 +466,8 @@ def verify_plan(
             supports[above_id].add(below_id)
     blockers = vertical_blockers(layout)
     placed: set[int] = set()
+    # Final-order prefixes are strictly append-only: ideal warm-start fit.
+    prefix_solver = PrefixSolver.create(layout, config.solver)
     for step in plan.steps:
         step_set = set(step.brick_ids)
         for brick_id in step.brick_ids:
@@ -435,7 +475,11 @@ def verify_plan(
                 violations.append(f"step {step.index}: support after dependent")
             if blockers[brick_id] & placed:
                 violations.append(f"step {step.index}: vertically blocked insert")
-        result = analyze(layout.subset(placed | step_set), config.solver)
+        if prefix_solver is not None:
+            result = prefix_solver.probe(step.brick_ids)
+            prefix_solver.commit(step.brick_ids)
+        else:
+            result = analyze(layout.subset(placed | step_set), config.solver)
         if result.stable != step.prefix_stable:
             violations.append(
                 f"step {step.index}: prefix stability mismatch "
