@@ -190,9 +190,20 @@ class _ColumnBatch:
 class PrefixSolver:
     """Incremental warm-started LP over a growing prefix of one layout."""
 
-    def __init__(self, layout: Layout, config: SolverConfig) -> None:
+    def __init__(
+        self,
+        layout: Layout,
+        config: SolverConfig,
+        *,
+        track_columns: bool = False,
+    ) -> None:
         self._layout = layout
         self._config = config
+        # Per-brick force-column registry for the warm removal core's
+        # bound deactivation; off on the greedy hot path (rollbacks would
+        # have to trim it).
+        self._track_columns = track_columns
+        self._brick_cols: dict[int, list[int]] = {}
         self._h = highspy.Highs()
         self._h.setOptionValue("output_flag", False)  # noqa: FBT003 - pybind
         self._h.setOptionValue("presolve", "off")
@@ -358,7 +369,9 @@ class PrefixSolver:
         """Rebuild the whole base model from scratch after a highspy failure."""
         with telemetry.span("stability.prefix.rebuild"):
             base = frozenset(self.present)
-            fresh = PrefixSolver(self._layout, self._config)
+            fresh = PrefixSolver(
+                self._layout, self._config, track_columns=self._track_columns
+            )
             self.__dict__.update(fresh.__dict__)  # adopt the clean state
             if base:
                 self._append(base)
@@ -492,7 +505,11 @@ class PrefixSolver:
             ):
                 entries.append((base + offset, coeff))
                 entries.append((base + _ROWS_PER_BRICK + offset, -coeff))
-        return batch.add(cost, entries)
+        col = batch.add(cost, entries)
+        if self._track_columns:
+            for bid, _direction, _position in loads:
+                self._brick_cols.setdefault(bid, []).append(col)
+        return col
 
     def _discover_knobs(
         self,
@@ -744,6 +761,110 @@ def _contact_adjacency(
     return adjacent
 
 
+class _WarmRemovalCore:
+    """Persistent bound-deactivation model for the shrinking rescue walk.
+
+    The measured dead end was LP *deletion* (basis dimensions change and
+    HiGHS discards the factorization). This core never deletes: removing
+    a chunk fixes every force/t/dmax column touching its bricks to zero
+    and relaxes their residual rows to non-binding — the restricted LP
+    is exactly the remainder LP plus zero-fixed variables, and the basis
+    keeps its dimensions, so dual simplex hot-starts (the standard
+    branch-and-bound pattern). Probes are lazily rolled back like
+    :class:`PrefixSolver`'s appends; commits keep the deactivation
+    (rescue states shrink monotonically).
+    """
+
+    def __init__(
+        self,
+        layout: Layout,
+        scope: frozenset[int],
+        config: SolverConfig,
+    ) -> None:
+        self._solver = PrefixSolver(layout, config, track_columns=True)
+        ordered = tuple(sorted(scope))
+        self.initial = self._solver.probe(ordered)  # full-scope solve
+        self._solver.commit(ordered)
+        self._scope = frozenset(scope)
+        self._removed: set[int] = set()
+        self._pending: set[int] | None = None
+        self._basis: highspy.HighsBasis = self._solver._h.getBasis()  # noqa: SLF001
+
+    def probe_removed(self, removed: frozenset[int]) -> StabilityResult:
+        """Solve ``scope - removed`` warm; raises :class:`PrefixSolverError`."""
+        self._restore_pending()
+        newly = set(removed) - self._removed
+        if removed - self._scope or (self._removed - set(removed)):
+            msg = "warm removal probe outside the monotone walk"
+            raise PrefixSolverError(msg)
+        self._set_active(newly, active=False)
+        self._pending = newly
+        solver = self._solver._h  # noqa: SLF001
+        solver.setBasis(self._basis)
+        solver.run()
+        _require_optimal(solver.getModelStatus())
+        subset = frozenset(self._scope - removed)
+        result, near_boundary = self._solver._extract(subset)  # noqa: SLF001
+        if near_boundary:
+            msg = "warm removal verdict near the stability threshold"
+            raise PrefixSolverError(msg)
+        return result
+
+    def commit_removed(self, chunk: frozenset[int]) -> None:
+        """Make a probed removal permanent and retain its warm basis."""
+        newly = set(chunk) - self._removed
+        if self._pending == newly:
+            self._pending = None
+            self._basis = self._solver._h.getBasis()  # noqa: SLF001
+        else:
+            self._restore_pending()
+            self._set_active(newly, active=False)
+        self._removed |= newly
+
+    def _restore_pending(self) -> None:
+        if self._pending:
+            self._set_active(self._pending, active=True)
+        self._pending = None
+
+    def _set_active(self, bricks: set[int], *, active: bool) -> None:
+        """Flip the columns and rows of ``bricks`` between live and null."""
+        if not bricks:
+            return
+        s = self._solver
+        cols: set[int] = set()
+        rows: list[int] = []
+        row_uppers: list[float] = []
+        for bid in sorted(bricks):
+            cols.update(s._brick_cols.get(bid, ()))  # noqa: SLF001
+            t_first = s._t_cols[bid]  # noqa: SLF001
+            cols.update(range(t_first, t_first + _ROWS_PER_BRICK))
+            if (dmax := s._dmax_col.get(bid)) is not None:  # noqa: SLF001
+                cols.add(dmax)
+            base = s._row_base[bid]  # noqa: SLF001
+            gravity_b = -s._mass_kg[bid] * GRAVITY  # noqa: SLF001
+            for i in range(_ROWS_PER_BRICK):  # upper block
+                rows.append(base + i)
+                row_uppers.append(-gravity_b if i == _FZ else 0.0)
+            for i in range(_ROWS_PER_BRICK):  # lower block
+                rows.append(base + _ROWS_PER_BRICK + i)
+                row_uppers.append(gravity_b if i == _FZ else 0.0)
+        col_list = sorted(cols)
+        col_upper = _INF if active else 0.0
+        s._h.changeColsBounds(  # noqa: SLF001
+            len(col_list),
+            col_list,
+            [0.0] * len(col_list),
+            [col_upper] * len(col_list),
+        )
+        uppers = row_uppers if active else [_INF] * len(rows)
+        s._h.changeRowsBounds(  # noqa: SLF001  # ty: ignore[unresolved-attribute]
+            len(rows),
+            rows,
+            [-_INF] * len(rows),
+            uppers,
+        )
+
+
 class RemovalSolver:
     """Component-decomposed analysis for the shrinking disassembly walk.
 
@@ -780,6 +901,15 @@ class RemovalSolver:
         )
         self._stud_adjacent = _stud_adjacency(layout, stud_at, socket_at)
         self._component_cache: dict[frozenset[int], StabilityResult] = {}
+        # Experimental warm walk (bound deactivation); built lazily on the
+        # first probe so its full-scope solve doubles as the initial
+        # rescue-state verdict. Dead after any failure.
+        self._warm_enabled = (
+            config.rescue_warm
+            and not config.engine_cross_check
+            and len(scope) >= config.rescue_direct_min_bricks
+        )
+        self._warm_core: _WarmRemovalCore | None = None
 
     @classmethod
     def create(
@@ -806,11 +936,41 @@ class RemovalSolver:
             if floating and not self._config.engine_cross_check:
                 with telemetry.span("stability.prefix.floating_shortcut"):
                     return _floating_shortcut(subset, floating)
+            if self._warm_enabled and (warm := self._warm_probe(subset)) is not None:
+                return warm
             return self._analyze_components(subset)
+
+    def _warm_probe(self, subset: frozenset[int]) -> StabilityResult | None:
+        """Try the bound-deactivation walk; None falls back to components."""
+        try:
+            if self._warm_core is None:
+                with telemetry.span("stability.rescue.warm_build", n=len(subset)):
+                    self._warm_core = _WarmRemovalCore(
+                        self._layout, frozenset(self.scope), self._config
+                    )
+            removed = self._warm_core._scope - subset  # noqa: SLF001
+            with telemetry.span("stability.rescue.warm", n=len(subset)):
+                return self._warm_core.probe_removed(frozenset(removed))
+        except PrefixSolverError:
+            with telemetry.span("stability.rescue.warm_fail"):
+                self._warm_enabled = False
+                return None
+        except Exception:  # noqa: BLE001 - contain highspy surprises
+            with telemetry.span("stability.rescue.warm_fail"):
+                self._warm_enabled = False
+                self._warm_core = None
+                return None
 
     def commit_without(self, chunk: tuple[int, ...]) -> None:
         """Permanently remove ``chunk`` from the scope."""
         self.scope -= set(chunk)
+        if self._warm_enabled and self._warm_core is not None:
+            try:
+                removed = self._warm_core._scope - frozenset(self.scope)  # noqa: SLF001
+                self._warm_core.commit_removed(frozenset(removed))
+            except Exception:  # noqa: BLE001 - contain highspy surprises
+                self._warm_enabled = False
+                self._warm_core = None
 
     def _analyze_components(self, subset: frozenset[int]) -> StabilityResult:
         if not subset:
