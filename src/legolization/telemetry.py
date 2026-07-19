@@ -33,22 +33,29 @@ _NOOP: AbstractContextManager[None] = nullcontext()
 
 
 @dataclass(slots=True)
+class _Bucket:
+    """Calls and wall seconds of one power-of-two size bucket."""
+
+    calls: int = 0
+    seconds: float = 0.0
+
+
+@dataclass(slots=True)
 class SpanStats:
     """Accumulated calls and wall seconds for one span name."""
 
     calls: int = 0
     seconds: float = 0.0
-    buckets: dict[int, list[float]] = field(default_factory=dict)
+    buckets: dict[int, _Bucket] = field(default_factory=dict)
 
     def add(self, seconds: float, n: int | None) -> None:
         """Fold one finished call into the totals."""
         self.calls += 1
         self.seconds += seconds
         if n is not None:
-            bucket = 1 << max(n - 1, 0).bit_length()
-            entry = self.buckets.setdefault(bucket, [0, 0.0])
-            entry[0] += 1
-            entry[1] += seconds
+            bucket = self.buckets.setdefault(1 << max(n - 1, 0).bit_length(), _Bucket())
+            bucket.calls += 1
+            bucket.seconds += seconds
 
 
 @dataclass(slots=True)
@@ -62,14 +69,18 @@ class Telemetry:
         self.spans.setdefault(name, SpanStats()).add(seconds, n)
 
     def to_dict(self) -> dict[str, object]:
-        """JSON-safe view: ``{name: {calls, seconds, buckets}}``."""
+        """JSON-safe view: ``{name: {calls, seconds, buckets}}``.
+
+        Bucket entries stay ``[calls, seconds]`` pairs — the profile JSON
+        schema is unchanged by the typed internal representation.
+        """
         return {
             name: {
                 "calls": stats.calls,
                 "seconds": round(stats.seconds, 6),
                 "buckets": {
-                    str(bucket): [int(entry[0]), round(entry[1], 6)]
-                    for bucket, entry in sorted(stats.buckets.items())
+                    str(size): [bucket.calls, round(bucket.seconds, 6)]
+                    for size, bucket in sorted(stats.buckets.items())
                 },
             }
             for name, stats in sorted(self.spans.items())

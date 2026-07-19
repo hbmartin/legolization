@@ -9,16 +9,17 @@ import pytest
 from legolization import telemetry
 from legolization.grid import VoxelGrid
 from legolization.pipeline import PipelineConfig, run
+from legolization.telemetry import _Bucket
 
 
-def test_span_is_noop_when_disabled():
+def test_span_is_noop_when_disabled() -> None:
     assert telemetry.current() is None
     with telemetry.span("anything", n=5):
         time.sleep(0)
     assert telemetry.current() is None
 
 
-def test_record_accumulates_calls_and_seconds():
+def test_record_accumulates_calls_and_seconds() -> None:
     with telemetry.record() as session:
         with telemetry.span("a"):
             pass
@@ -29,10 +30,12 @@ def test_record_accumulates_calls_and_seconds():
     assert session.spans["a"].calls == 2
     assert session.spans["a"].seconds >= 0.0
     assert session.spans["b"].calls == 1
-    assert session.spans["b"].buckets == {16: [1, session.spans["b"].seconds]}
+    assert session.spans["b"].buckets == {
+        16: _Bucket(calls=1, seconds=session.spans["b"].seconds)
+    }
 
 
-def test_nested_spans_both_record():
+def test_nested_spans_both_record() -> None:
     with (
         telemetry.record() as session,
         telemetry.span("outer"),
@@ -49,13 +52,13 @@ def _raise_inside_span() -> None:
         raise ValueError(msg)
 
 
-def test_exception_still_records_and_propagates():
+def test_exception_still_records_and_propagates() -> None:
     with telemetry.record() as session, pytest.raises(ValueError, match="boom"):
         _raise_inside_span()
     assert session.spans["failing"].calls == 1
 
 
-def test_sequential_sessions_are_independent():
+def test_sequential_sessions_are_independent() -> None:
     with telemetry.record() as first, telemetry.span("x"):
         pass
     with telemetry.record() as second:
@@ -65,7 +68,7 @@ def test_sequential_sessions_are_independent():
     assert telemetry.current() is None
 
 
-def test_bucket_boundaries_are_powers_of_two():
+def test_bucket_boundaries_are_powers_of_two() -> None:
     with telemetry.record() as session:
         for n in (1, 2, 3, 100, 128, 129):
             with telemetry.span("s", n=n):
@@ -73,7 +76,7 @@ def test_bucket_boundaries_are_powers_of_two():
     assert set(session.spans["s"].buckets) == {1, 2, 4, 128, 256}
 
 
-def test_to_dict_is_json_safe():
+def test_to_dict_is_json_safe() -> None:
     with telemetry.record() as session, telemetry.span("s", n=7):
         pass
     payload = json.loads(json.dumps(session.to_dict()))
@@ -81,7 +84,7 @@ def test_to_dict_is_json_safe():
     assert payload["s"]["buckets"]["8"][0] == 1
 
 
-def _placements(config: PipelineConfig) -> list[tuple]:
+def _placements(config: PipelineConfig) -> list[tuple[str, int, int, int, int, int]]:
     codes = np.full((5, 5, 2), 4, dtype=np.int16)
     grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
     result = run(grid, config)
@@ -91,7 +94,7 @@ def _placements(config: PipelineConfig) -> list[tuple]:
     )
 
 
-def test_recording_never_changes_behaviour():
+def test_recording_never_changes_behaviour() -> None:
     # The golden guard: identical placements with and without recording.
     config = PipelineConfig(seed=0)
     plain = _placements(config)
