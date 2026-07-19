@@ -65,6 +65,12 @@ solver stack — no Gurobi required.
   maximal-stability path (Tian et al. / Luo); an opt-in beam search
   (`InstructionsConfig(search="beam")`) explores whole build orders. `--bom
   out.json` writes a bill of materials with per-step callouts.
+- **SNOT cladding**: `--snot` clads tall flat wall faces with sideways
+  1x1 tiles (3070b) hung on side-stud brackets (87087) — real receiving
+  geometry, priced by the same RBE physics through genuine lateral stud
+  contacts. Only free-standing 1x1 wall columns are converted (carving a
+  bracket out of a wall-spanning brick would destroy its bonding), and
+  the pass reverts wholesale if it would flip the stability verdict.
 - **Subassemblies**: `--subassemblies` detects stretches that float in every
   build order (mushroom caps, arches), lifts them out as separately built
   units — each constructed stably on the table, then attached as one piece —
@@ -110,6 +116,7 @@ uv run legolization model.vox --instructions booklet.pdf   # rendered booklet
 uv run legolization model.npy --strategy luo --solid --seed 7
 uv run legolization model.vox --slopes --tiles      # surface finishing passes
 uv run legolization model.vox --slopes smooth       # legacy add-outside slopes
+uv run legolization model.vox --snot                # sideways wall cladding
 uv run legolization model.vox -o out.mpd --subassemblies  # separately built units
 uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
 uv run legolization model.vox --milp                # cross-check the exact LP

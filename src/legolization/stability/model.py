@@ -27,7 +27,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 
 from legolization import telemetry
-from legolization.graph import GROUND_ID, ConnectionGraph
+from legolization.graph import GROUND_ID, ConnectionGraph, KnobContact
 from legolization.stability.constants import (
     FOUR_POINT_OFFSETS,
     GRAVITY,
@@ -161,6 +161,71 @@ class _Assembler:
             self.data.append(coeff)
 
 
+def _add_lateral_knob(
+    asm: _Assembler,
+    knob: KnobContact,
+    contact_points: list[ContactPoint],
+    bottom_drag_cols: dict[int, list[int]],
+) -> None:
+    """Contact forces for a sideways (SNOT) stud mate.
+
+    The mating plane is vertical: the FOUR_POINT diamond is laid out in
+    that plane (transverse axis in studs, vertical axis converted to
+    plate units), the normal/drag pair acts along the stud axis
+    (pull-off capacity rides the same T-bounded drag machinery as
+    vertical mates), and the four in-plane presses carry the mounted
+    part's weight in stud shear.
+    """
+    nx, ny, _ = knob.normal
+    tx, ty = float(-ny), float(nx)  # transverse in-plane axis
+    plates_per_stud = KNOB_PITCH_M / PLATE_HEIGHT_M
+    x_pos = knob.x + 0.5 * nx
+    y_pos = knob.y + 0.5 * ny
+    z_center = knob.interface_layer + 0.5
+    outward = (float(nx), float(ny), 0.0)
+    inward = (float(-nx), float(-ny), 0.0)
+    for ox, oy in FOUR_POINT_OFFSETS:
+        position = (
+            x_pos + ox * tx,
+            y_pos + ox * ty,
+            z_center + oy * plates_per_stud,
+        )
+        normal_col = asm.new_var()
+        drag_col = asm.new_var()
+        # Mounted part: pressed off the wall, dragged back onto the stud.
+        asm.add_force(knob.above_id, normal_col, outward, position)
+        asm.add_force(knob.above_id, drag_col, inward, position)
+        if knob.below_id != GROUND_ID:
+            asm.add_force(knob.below_id, normal_col, inward, position)
+            asm.add_force(knob.below_id, drag_col, outward, position)
+        contact_points.append(
+            ContactPoint(
+                normal_col=normal_col,
+                drag_col=drag_col,
+                below_id=knob.below_id,
+                above_id=knob.above_id,
+            )
+        )
+        bottom_drag_cols[knob.above_id].append(drag_col)
+    stud_center = (float(x_pos), float(y_pos), float(z_center))
+    shear_directions = (
+        (tx, ty, 0.0),
+        (-tx, -ty, 0.0),
+        (0.0, 0.0, 1.0),
+        (0.0, 0.0, -1.0),
+    )
+    for direction in shear_directions:
+        col = asm.new_var()
+        asm.add_force(knob.above_id, col, direction, stud_center)
+        if knob.below_id != GROUND_ID:
+            asm.add_force(
+                knob.below_id,
+                col,
+                (-direction[0], -direction[1], -direction[2]),
+                stud_center,
+            )
+
+
 def cavity_pattern(layout: Layout, brick_id: int) -> tuple[tuple[float, float], ...]:
     """Contact-point offsets for a brick's bottom cavities (by min width)."""
     footprint = layout.part_of(layout.bricks[brick_id]).footprint
@@ -193,6 +258,9 @@ def _build_model_body(
     down: tuple[float, float, float] = (0.0, 0.0, -1.0)
 
     for knob in graph.knob_contacts:
+        if knob.normal != (0, 0, 1):
+            _add_lateral_knob(asm, knob, contact_points, bottom_drag_cols)
+            continue
         pattern = cavity_pattern(layout, knob.above_id)
         z_plane = float(knob.interface_layer)
         for ox, oy in pattern:

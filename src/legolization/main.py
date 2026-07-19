@@ -200,6 +200,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="cap exposed top plates with smooth tiles",
     )
     parser.add_argument(
+        "--snot",
+        action="store_true",
+        help=(
+            "clad tall flat wall faces with sideways tiles hung on "
+            "side-stud brackets (studs-not-on-top)"
+        ),
+    )
+    parser.add_argument(
         "--no-refine",
         action="store_true",
         help="skip the stability-driven refinement loop",
@@ -442,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
         hollow=not args.solid,
         slopes=args.slopes or False,
         tiles=args.tiles,
+        snot=args.snot,
         refine=not args.no_refine,
         repair=not args.no_repair,
         seed=args.seed,
@@ -529,6 +538,7 @@ def _validate_ldraw_args(
         args.solid
         or args.slopes is not None
         or args.tiles
+        or args.snot
         or args.no_refine
         or args.no_repair
         or args.milp
@@ -635,10 +645,11 @@ def _print_result(
     print(f"wrote {output}")
     if instructions_path is not None:
         print(f"wrote {instructions_path}")
+    snot_note = f"   snot: {result.snot_added}" if result.snot_added else ""
     print(
         f"  bricks: {result.brick_count}   mass: {result.mass_g:.1f} g   "
         f"steps: {result.step_count}   slopes: {result.slopes_added}   "
-        f"tiles: {result.tiles_added}"
+        f"tiles: {result.tiles_added}{snot_note}"
     )
     if result.plan is not None:
         for warning in result.plan.warnings:

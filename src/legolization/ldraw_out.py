@@ -17,18 +17,28 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from ldraw.geometry import Identity, Vector, YAxis
+from ldraw.geometry import Identity, Vector, XAxis, YAxis, ZAxis
 from ldraw.pieces import Piece
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from legolization.catalog import Part
     from legolization.instructions.sequencer import InstructionPlan
     from legolization.layout import Layout, PlacedBrick
 
 STUD_LDU = 20.0
 PLATE_LDU = 8.0
+
+# Sideways tile: rotation putting the smooth face along each outward grid
+# direction (probed against pyldraw3's rotation sign convention).
+_TILE_ROTATIONS = {
+    (1, 0): (90, ZAxis),
+    (-1, 0): (-90, ZAxis),
+    (0, 1): (-90, XAxis),
+    (0, -1): (90, XAxis),
+}
 
 _HEADER_LICENSE = "0 !LICENSE Licensed under GPL-3.0-or-later"
 
@@ -36,6 +46,8 @@ _HEADER_LICENSE = "0 !LICENSE Licensed under GPL-3.0-or-later"
 def piece_for(layout: Layout, brick: PlacedBrick) -> Piece:
     """Build the pyldraw3 piece for one placed brick."""
     part = layout.part_of(brick)
+    if part.category.value == "snot":
+        return _snot_piece(brick, part)
     columns = [
         (brick.x + rx, brick.y + ry) for rx, ry in _rotated_footprint(layout, brick)
     ]
@@ -60,6 +72,43 @@ def piece_for(layout: Layout, brick: PlacedBrick) -> Piece:
 def _fmt(value: float) -> str:
     """LDraw numeric formatting: integers stay integral."""
     return f"{value:g}"
+
+
+def _snot_piece(brick: PlacedBrick, part: Part) -> Piece:
+    """Emit a sideways (SNOT) part.
+
+    The bracket (87087) is a normal 1x1 column whose physical side stud
+    points along LDraw -Z at identity; +90 about Y lands it on the
+    modelled local ``+x``, composed with the placement yaw. The sideways
+    tile hangs its smooth face outward: origin at the outer surface
+    centre, body extending the 8 LDU back toward the wall face.
+    """
+    from legolization.catalog import rotate_offset  # noqa: PLC0415 - cycle guard
+
+    if part.mount_normal is None:  # the side-stud bracket
+        matrix = Identity().rotate((brick.yaw + 90) % 360, YAxis)
+        position = Vector(
+            STUD_LDU * brick.x,
+            -PLATE_LDU * (brick.layer + part.height_plates),
+            STUD_LDU * brick.y,
+        )
+    else:  # the sideways tile: outward = -socket direction, yaw-rotated
+        ox, oy, _ = rotate_offset(
+            (-part.mount_normal[0], -part.mount_normal[1], 0), brick.yaw
+        )
+        degrees, axis = _TILE_ROTATIONS[(ox, oy)]
+        matrix = Identity().rotate(degrees, axis)
+        position = Vector(
+            STUD_LDU * brick.x - 2.0 * ox,
+            -PLATE_LDU * brick.layer - 12.0,
+            STUD_LDU * brick.y - 2.0 * oy,
+        )
+    return Piece(
+        colour=brick.colour_code,
+        position=position,
+        matrix=matrix,
+        part=part.ldraw_part,
+    )
 
 
 def model_lines(

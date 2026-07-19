@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from ldraw.model import read_model
 
-from legolization.catalog import default_catalog, rotate_offset
+from legolization.catalog import Category, default_catalog, rotate_offset
 from legolization.color import default_palette
 from legolization.layout import CollisionError, Layout
 from legolization.ldraw_out import PLATE_LDU, STUD_LDU, _rotate_ldu
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ldraw.geometry import Matrix, Vector
+    from ldraw.model import ModelOccurrence
 
     from legolization.catalog import Catalog, Part
 
@@ -35,6 +36,17 @@ _YAW_MATRICES: dict[tuple[int, ...], int] = {
     (-1, 0, 0, 0, 1, 0, 0, 0, -1): 180,
     (0, 0, 1, 0, 1, 0, -1, 0, 0): 270,
 }
+
+# Sideways-tile rotations (ldraw_out._TILE_ROTATIONS images) → outward dir.
+_TILE_MATRICES: dict[tuple[int, ...], tuple[int, int]] = {
+    (0, -1, 0, 1, 0, 0, 0, 0, 1): (1, 0),
+    (0, 1, 0, -1, 0, 0, 0, 0, 1): (-1, 0),
+    (1, 0, 0, 0, 0, 1, 0, -1, 0): (0, 1),
+    (1, 0, 0, 0, 0, -1, 0, 1, 0): (0, -1),
+}
+
+# Outward grid direction → placement yaw (mirror of snot._FACE_YAW).
+_OUTWARD_YAW = {(1, 0): 0, (0, 1): 90, (-1, 0): 180, (0, -1): 270}
 
 
 class LdrawImportError(ValueError):
@@ -66,17 +78,27 @@ def layout_from_ldraw(path: Path, *, catalog: Catalog | None = None) -> Layout:
         if (part_key := reverse.get(str(occurrence.part_code))) is None:
             problems.append(f"{prefix}: part not in the catalog")
             continue
-        if (yaw := _decode_yaw(occurrence.matrix)) is None:
-            problems.append(f"{prefix}: rotation is not a yaw multiple of 90°")
-            continue
+        part = catalog.parts[part_key]
         if (colour := _decode_colour(occurrence.colour)) is None:
             problems.append(f"{prefix}: colour is not in the solid palette")
             continue
-        placement = _decode_position(catalog.parts[part_key], occurrence.position, yaw)
-        if placement is None:
-            problems.append(f"{prefix}: position is off the stud/plate grid")
-            continue
-        x, y, layer = placement
+        if part.category is Category.SNOT:
+            placed = _decode_snot(part, occurrence)
+            if placed is None:
+                problems.append(
+                    f"{prefix}: sideways part in an unsupported orientation"
+                )
+                continue
+            x, y, layer, yaw = placed
+        else:
+            if (yaw := _decode_yaw(occurrence.matrix)) is None:
+                problems.append(f"{prefix}: rotation is not a yaw multiple of 90°")
+                continue
+            placement = _decode_position(part, occurrence.position, yaw)
+            if placement is None:
+                problems.append(f"{prefix}: position is off the stud/plate grid")
+                continue
+            x, y, layer = placement
         try:
             layout.add(part_key, x, y, layer, yaw, colour)
         except CollisionError as error:
@@ -86,8 +108,40 @@ def layout_from_ldraw(path: Path, *, catalog: Catalog | None = None) -> Layout:
     return layout
 
 
-def _decode_yaw(matrix: Matrix) -> int | None:
-    """Match a 3x3 rotation against the four canonical yaws."""
+def _decode_snot(
+    part: Part,
+    occurrence: ModelOccurrence,
+) -> tuple[int, int, int, int] | None:
+    """Invert ``ldraw_out._snot_piece`` for the two sideways parts."""
+    position = occurrence.position
+    matrix = occurrence.matrix
+    if part.mount_normal is None:  # the bracket: yaw + 90 about Y
+        if (rotated := _decode_yaw(matrix)) is None:
+            return None
+        yaw = (rotated - 90) % 360
+        placement = _decode_position(part, position, yaw)
+        if placement is None:
+            return None
+        return (*placement, yaw)
+    flat = _flat_matrix(matrix)
+    if flat is None or (outward := _TILE_MATRICES.get(flat)) is None:
+        return None
+    ox, oy = outward
+    yaw = _OUTWARD_YAW[outward]
+    x = (float(position.x) + 2.0 * ox) / STUD_LDU
+    y = (float(position.z) + 2.0 * oy) / STUD_LDU
+    layer = (-float(position.y) - 12.0) / PLATE_LDU
+    coords = []
+    for value in (x, y, layer):
+        rounded = round(value)
+        if abs(value - rounded) > _GRID_EPS:
+            return None
+        coords.append(int(rounded))
+    return (coords[0], coords[1], coords[2], yaw)
+
+
+def _flat_matrix(matrix: Matrix) -> tuple[int, ...] | None:
+    """Return the rotation rows as rounded ints, or None when non-integral."""
     flat: list[int] = []
     for row in matrix.rows:
         for value in row:
@@ -95,7 +149,13 @@ def _decode_yaw(matrix: Matrix) -> int | None:
             if abs(float(value) - rounded) > _GRID_EPS:
                 return None
             flat.append(int(rounded))
-    return _YAW_MATRICES.get(tuple(flat))
+    return tuple(flat)
+
+
+def _decode_yaw(matrix: Matrix) -> int | None:
+    """Match a 3x3 rotation against the four canonical yaws."""
+    flat = _flat_matrix(matrix)
+    return None if flat is None else _YAW_MATRICES.get(flat)
 
 
 def _decode_colour(colour: object) -> int | None:

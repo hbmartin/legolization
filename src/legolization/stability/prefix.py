@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from legolization import telemetry
+from legolization.catalog import Category
 from legolization.graph import GROUND_ID
 from legolization.stability.constants import (
     ALPHA,
@@ -78,6 +79,15 @@ _AXIS_STEPS = ((1, 0), (0, 1))
 
 Cell = tuple[int, int, int]
 _Load = tuple[int, tuple[float, float, float], tuple[float, float, float]]
+
+
+def _has_lateral_parts(layout: Layout) -> bool:
+    """Whether any part mates sideways (SNOT).
+
+    The warm solvers' contact discovery is hard-wired to vertical stud
+    mates; lateral contacts must fall back to the legacy cold engine.
+    """
+    return any(layout.part_of(brick).category is Category.SNOT for brick in layout)
 
 
 def _floating_shortcut(
@@ -249,6 +259,8 @@ class PrefixSolver:
         """Build a solver, or None when the warm engine is unavailable."""
         config = config or SolverConfig()
         if config.mode != "lp" or config.engine != "highspy":
+            return None
+        if _has_lateral_parts(layout):
             return None
         try:
             return cls(layout, config)
@@ -774,6 +786,8 @@ class RemovalSolver:
         """Build a removal solver, or None when the warm engine is off."""
         config = config or SolverConfig()
         if config.mode != "lp" or config.engine != "highspy":
+            return None
+        if _has_lateral_parts(layout):
             return None
         return cls(layout, scope, config)
 

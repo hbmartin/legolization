@@ -18,12 +18,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-import numpy as np
-from scipy.optimize import Bounds, LinearConstraint, milp
-from scipy.sparse import coo_matrix
-
-from legolization.catalog import Category, rotate_offset
+from legolization.catalog import Category
 from legolization.grid import EMPTY
+from legolization.placement.carve import covering_donors, refill_tiling
 
 if TYPE_CHECKING:
     from legolization.catalog import Cell
@@ -121,7 +118,7 @@ def _try_preserve(  # noqa: PLR0913 - one candidate placement, locally owned
     void = set(part.cells_at(x, y, z, yaw)) - filled
     if not _profile_in_shape(layout, grid, filled=filled, void=void):
         return False
-    if (donors := _covering_donors(layout, filled)) is None:
+    if (donors := covering_donors(layout, filled)) is None:
         return False
     # Every donor overlaps the profile (that is how it was found), so the
     # slope's face colour is well-defined only if all donors agree.
@@ -136,7 +133,7 @@ def _try_preserve(  # noqa: PLR0913 - one candidate placement, locally owned
     remainder = set(colour_of) - filled
     if len(remainder) > _MAX_REMAINDER:
         return False
-    if (tiling := _tile_remainder(layout, remainder, colour_of)) is None:
+    if (tiling := refill_tiling(layout, remainder, colour_of)) is None:
         return False
     layout.remove_many(donors)
     layout.add(part_key, x, y, z, yaw, slope_colours.pop())
@@ -166,103 +163,6 @@ def _profile_in_shape(
         if layout.brick_at((cx, cy, cz)) is not None:
             return False
     return True
-
-
-def _covering_donors(
-    layout: Layout,
-    filled: set[Cell],
-) -> dict[int, PlacedBrick] | None:
-    """Rect bricks covering ``filled`` between them, or None.
-
-    Only plain bricks and plates may be carved — slopes and tiles placed
-    by an earlier sweep (or pass) keep their cells.
-    """
-    donors: dict[int, PlacedBrick] = {}
-    for cell in filled:
-        if (donor := layout.brick_at(cell)) is None:
-            return None
-        if layout.part_of(donor).category not in (Category.BRICK, Category.PLATE):
-            return None
-        donors[donor.brick_id] = donor
-    return donors
-
-
-def _refill_candidates(
-    layout: Layout,
-    remainder: set[Cell],
-    colour_of: dict[Cell, int],
-) -> list[tuple[str, Cell, int, int, tuple[Cell, ...]]]:
-    """Enumerate rect placements inside ``remainder``, one colour each."""
-    candidates: list[tuple[str, Cell, int, int, tuple[Cell, ...]]] = []
-    seen: set[tuple[str, Cell, int]] = set()
-    for part in layout.catalog.by_category(Category.BRICK, Category.PLATE):
-        for yaw in part.orientations:
-            offsets = [rotate_offset(cell, yaw) for cell in sorted(part.occupied_cells)]
-            for seed in remainder:
-                for ox, oy, oz in offsets:
-                    anchor = (seed[0] - ox, seed[1] - oy, seed[2] - oz)
-                    if anchor[2] < 0 or (part.key, anchor, yaw) in seen:
-                        continue
-                    seen.add((part.key, anchor, yaw))
-                    cells = tuple(
-                        (anchor[0] + dx, anchor[1] + dy, anchor[2] + dz)
-                        for dx, dy, dz in offsets
-                    )
-                    if not all(cell in remainder for cell in cells):
-                        continue
-                    colours = {colour_of[cell] for cell in cells}
-                    if len(colours) != 1:
-                        continue
-                    candidates.append((part.key, anchor, yaw, colours.pop(), cells))
-    return candidates
-
-
-def _tile_remainder(
-    layout: Layout,
-    remainder: set[Cell],
-    colour_of: dict[Cell, int],
-) -> list[tuple[str, Cell, int, int]] | None:
-    """Exact-cover ``remainder`` with rect parts, one colour per part.
-
-    Pure computation — nothing is mutated, so a failed candidate costs
-    nothing. Mirrors ``repair._milp_fill`` but takes cell colours from
-    the carved donors instead of grid codes (the pass runs after
-    ``resolve_ignore_colours``, so grid codes may still be IGNORE).
-    """
-    if not remainder:
-        return []
-    candidates = _refill_candidates(layout, remainder, colour_of)
-    if not candidates:
-        return None
-    cells_sorted = sorted(remainder)
-    cell_index = {cell: i for i, cell in enumerate(cells_sorted)}
-    rows: list[int] = []
-    cols: list[int] = []
-    for col, (_, _, _, _, covered) in enumerate(candidates):
-        for cell in covered:
-            rows.append(cell_index[cell])
-            cols.append(col)
-    matrix = coo_matrix(
-        (np.ones(len(rows)), (rows, cols)),
-        shape=(len(cells_sorted), len(candidates)),
-    ).tocsc()
-    # Tiny rank term keeps the chosen cover deterministic among ties.
-    costs = 1.0 + 1e-6 * np.arange(len(candidates))
-    result = milp(
-        c=costs,
-        constraints=LinearConstraint(matrix, lb=1.0, ub=1.0),
-        integrality=np.ones(len(candidates)),
-        bounds=Bounds(0, 1),
-    )
-    if not result.success or result.x is None:
-        return None
-    return [
-        (part_key, anchor, yaw, colour)
-        for chosen, (part_key, anchor, yaw, colour, _) in zip(
-            result.x, candidates, strict=True
-        )
-        if chosen > 0.5
-    ]
 
 
 def apply_tiles(layout: Layout) -> int:

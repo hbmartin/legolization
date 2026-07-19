@@ -30,6 +30,7 @@ from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.repair import RepairConfig, repair_stability
 from legolization.placement.slopes import SlopeMode, apply_slopes, apply_tiles
+from legolization.placement.snot import apply_snot
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -55,6 +56,9 @@ class PipelineConfig:
     ``"smooth"`` (or legacy ``True``) adds slopes outside the shape."""
 
     tiles: bool = False
+    snot: bool = False
+    """Clad tall flat wall faces with sideways tiles on 87087 brackets."""
+
     refine: bool = True
     seed: int = 0
     plates_per_voxel: int = 3
@@ -96,6 +100,7 @@ class PipelineResult:
     floating_count: int
     slopes_added: int = 0
     tiles_added: int = 0
+    snot_added: int = 0
     plan: InstructionPlan | None = None
 
     @property
@@ -172,7 +177,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         resolve_ignore_colours(layout)
 
     with telemetry.span("phase.slopes"):
-        stability, slopes_added, tiles_added = _finish_surfaces(
+        stability, slopes_added, tiles_added, snot_added = _finish_surfaces(
             layout, working, stability, config
         )
 
@@ -197,6 +202,7 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         floating_count=len(graph.floating_ids()),
         slopes_added=slopes_added,
         tiles_added=tiles_added,
+        snot_added=snot_added,
         plan=plan,
     )
 
@@ -206,8 +212,8 @@ def _finish_surfaces(
     working: VoxelGrid,
     stability: StabilityResult,
     config: PipelineConfig,
-) -> tuple[StabilityResult, int, int]:
-    """Run the opt-in slope and tile finishing passes; re-analyze if used."""
+) -> tuple[StabilityResult, int, int, int]:
+    """Run the opt-in slope/tile/snot finishing passes; re-analyze if used."""
     slope_mode: SlopeMode | None = (
         "smooth" if config.slopes is True else config.slopes or None
     )
@@ -231,10 +237,24 @@ def _finish_surfaces(
                     config.progress(
                         "slopes: preserve pass would break stability; reverted"
                     )
+    snot_added = 0
+    if config.snot:
+        guard = (layout.copy(), stability) if stability.stable else None
+        snot_added = apply_snot(layout, working)
+        if snot_added:
+            stability = analyze(layout, config.solver)
+            if guard is not None and not stability.stable:
+                layout.replace_with(guard[0])
+                stability = guard[1]
+                snot_added = 0
+                if config.progress is not None:
+                    config.progress(
+                        "snot: cladding pass would break stability; reverted"
+                    )
     tiles_added = apply_tiles(layout) if config.tiles else 0
     if tiles_added:
         stability = analyze(layout, config.solver)
-    return stability, slopes_added, tiles_added
+    return stability, slopes_added, tiles_added, snot_added
 
 
 def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:

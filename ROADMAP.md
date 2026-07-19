@@ -239,6 +239,61 @@ PASS, and kollsker immediately *wins* cantilever outright in the
 all-strategies sweep (objective 0.6245 → 0.5555 vs the old beauty
 winner).
 
+### 2026-07-19 — Item 4: SNOT sideways finishing pass (`--snot`)
+
+Shipped the first sideways building in the pipeline, end to end
+through the data model rather than as an emission hack. New
+`Category.SNOT` parts: the 1x1 side-stud bracket (87087 — a normal
+column plus a lateral stud at mid-height) and the sideways 1x1 tile
+(3070b — conservative 3-plate collision volume, token centre fill, one
+lateral anti-stud). The six planned seams all took the change:
+`graph` sockets are now keyed (cell, direction) with mates at cell +
+direction and a ground guard for down-only anti-studs (`KnobContact`
+gains `normal`); the RBE lays the FOUR_POINT diamond in the *vertical*
+mating plane, with pull-off riding the same T-bounded drag machinery
+and vertical stud-shear presses carrying the tile's weight;
+`piece_for` emits the bracket as yaw+90 about Y (the physical side
+stud points LDraw -Z — read from 87087.dat, not assumed) and the tile
+via four probed axis rotations; the LDraw importer round-trips both at
+every yaw; blockers for lateral-mount parts follow the outward
+slide-in ray instead of the vertical sweep; and the warm
+PrefixSolver/RemovalSolver decline SNOT layouts (their contact
+discovery is z-up-only) so physics falls back to the always-correct
+cold engine. The carve-and-refill surgery moved to shared
+`placement/carve.py` (slopes and snot both use it).
+
+The pass (`placement/snot.py`): brick-aligned wall windows whose
+outward neighbour is strictly outside the shape, in vertical runs of
+≥2 windows, get a bracket + outward-facing tile. Two measured safety
+rails: only free-standing 1x1 wall columns are converted — carving a
+bracket out of a wall-spanning brick demolishes its bonding (the first
+live run converted an entire 1x4 wall into disconnected bracket
+towers), and mounts re-check the target column at mount time (two
+perpendicular faces share an inside-corner column — collided on
+suzanne). The pipeline snapshot guard reverts wholesale on a
+stability flip, same as preserve slopes.
+
+Proof (seed 0): fire counts and physics —
+| model | mounts | stable | components |
+|---|---|---|---|
+| two-towers-bridge | 23 | yes | 1 |
+| mushroom | 41 | yes | 1 |
+| thin-shell | 12 | yes | 1 |
+| suzanne@16 | 6 | yes | 1 |
+| pyramid / letter-t / sparse-pillars | 0 | yes | unchanged |
+
+Renders confirm visibly smooth clad tower faces on two-towers-bridge.
+Off by default: goldens byte-exact, StableLego cross-validation
+untouched, 467 tests. Sequencing orders every tile with or after its
+bracket (lateral contacts are support edges), `verify_plan` clean.
+
+Deviations from plan: the carve+refill mount path was narrowed to
+single-column donors after the wall-demolition measurement — the
+plan's "1x1-swap or carve+refill" became "1x1-column carve only"; the
+5-plate/2-stud quantum never arises, as designed. Old roadmap "SNOT —
+sideways building" section: v1 scope DONE (bracket + sideways tile);
+full sideways regions/orientation field remain future work.
+
 Deviations from plan: end-to-end brick counts on mushroom (+4) and
 thin-shell (+19) came out slightly worse than bond — the per-layer
 bound is structural, but remerge/repair/hollow-restore interact with
