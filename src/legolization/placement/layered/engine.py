@@ -113,6 +113,10 @@ class LayerContext:
     seam_priority: dict[tuple[Column, int], float]
     long_axis_of: dict[int, int | None]
     stackable_footprints: dict[frozenset[Column], int]
+    grounded_below: frozenset[Column] | None = None
+    """Columns whose support brick has a stud path to ground in the
+    partial layout at band time (GROUND_ID counts). None = signal not
+    computed — every consumer must treat that as "no information"."""
 
 
 @dataclass(slots=True)
@@ -284,13 +288,21 @@ def build_context(layout: Layout, problem: LayerProblem) -> LayerContext:
         for brick_id in set(support_of.values())
         if brick_id != GROUND_ID
     }
+    graph = ConnectionGraph.from_layout(layout) if layout.bricks else None
+    floating = graph.floating_ids() if graph is not None else frozenset()
+    grounded_below = frozenset(
+        column
+        for column, support in support_of.items()
+        if support == GROUND_ID or support not in floating
+    )
     return LayerContext(
         support_of=support_of,
         gap_columns=frozenset(gaps),
         seams=seams,
-        seam_priority=_seam_priorities(layout, seams),
+        seam_priority=_seam_priorities(layout, seams, graph),
         long_axis_of=long_axis_of,
         stackable_footprints=_stackable_footprints(layout, problem),
+        grounded_below=grounded_below,
     )
 
 
@@ -330,6 +342,28 @@ def _seam_priorities(
         else:
             priorities[key] = 0.5
     return priorities
+
+
+def grounding_gain(rect: Rect2D, below: LayerContext) -> int:
+    """Ungrounded-support columns this rect stud-anchors to ground.
+
+    Zero when the signal is absent or the rect covers no grounded-below
+    column; otherwise the count of covered columns whose support exists
+    but has no stud path to ground yet — the mushroom cap-ring case: a
+    rect spanning from the stem-supported columns onto the floating
+    ring grounds the ring at band time. Gap columns never count
+    (nothing to stud onto), but may lie between the anchor and the
+    floating columns.
+    """
+    grounded = below.grounded_below
+    if grounded is None:
+        return 0
+    covered = rect.columns()
+    if not any(column in grounded for column in covered if column in below.support_of):
+        return 0
+    return sum(
+        1 for column in covered if column in below.support_of and column not in grounded
+    )
 
 
 def rect_dims(catalog: Catalog, height_plates: int) -> tuple[tuple[int, int], ...]:

@@ -35,6 +35,7 @@ from legolization.placement.layered.engine import (
     LayerProblem,
     Rect2D,
     enumerate_layer_rects,
+    grounding_gain,
 )
 
 if TYPE_CHECKING:
@@ -59,6 +60,11 @@ class KollskerStrategy(BondStrategy):
     layer_time_s: float = 10.0
     bond_weight: float = 1.0
     candidate_limit: int = 20_000
+    ground_weight: float = 2.0
+    """Stage-2 reward per ungrounded-support column a rect stud-anchors
+    to ground (normalized by area); 0.0 restores pre-v5 behaviour
+    bit-for-bit. The count stays pinned at N*, so grounding is purely
+    how the equal-count freedom is spent."""
 
     def __post_init__(self) -> None:
         """Reject non-finite or negative tuning before any solve runs."""
@@ -67,6 +73,12 @@ class KollskerStrategy(BondStrategy):
             raise ValueError(msg)
         if not math.isfinite(self.bond_weight) or self.bond_weight < 0:
             msg = f"bond_weight must be finite and non-negative, got {self.bond_weight}"
+            raise ValueError(msg)
+        if not math.isfinite(self.ground_weight) or self.ground_weight < 0:
+            msg = (
+                f"ground_weight must be finite and non-negative, "
+                f"got {self.ground_weight}"
+            )
             raise ValueError(msg)
 
     def tile(
@@ -140,7 +152,13 @@ class KollskerStrategy(BondStrategy):
         if stage1 is None or not stage1.success or stage1.x is None:
             return None
         n_star = float(np.round(stage1.fun))
-        rewards = np.array([bond_reward(rect, below) for rect in candidates])
+        rewards = np.array(
+            [
+                bond_reward(rect, below)
+                + self.ground_weight * grounding_gain(rect, below) / rect.area
+                for rect in candidates
+            ]
+        )
         rank = _RANK_EPS * np.arange(len(candidates))
         # Recomputed: stage 1 may have consumed most of the budget; when
         # nothing is left the minimum-count stage-1 cover stands.

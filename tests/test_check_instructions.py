@@ -204,7 +204,8 @@ def test_unsupported_ratio_measures_overhang() -> None:
         "eval_corpus_for_cs",
         Path(__file__).parent.parent / "scripts" / "eval_corpus.py",
     )
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

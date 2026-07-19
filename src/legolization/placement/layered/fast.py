@@ -22,6 +22,7 @@ from legolization.placement.layered.engine import (
     LayeredStrategy,
     LayerProblem,
     Rect2D,
+    grounding_gain,
     mergeable_union,
     random_fill,
 )
@@ -67,6 +68,17 @@ def _neighbours_of(
     return sorted(found)
 
 
+def _covers_floating_support(below: LayerContext, rect: Rect2D) -> bool:
+    """Whether the rect sits on any support with no stud path to ground."""
+    grounded = below.grounded_below
+    if grounded is None:
+        return False
+    return any(
+        column in below.support_of and column not in grounded
+        for column in rect.columns()
+    )
+
+
 @dataclass(slots=True)
 class FastStrategy(LayeredStrategy):
     """Greedy merge with dominant size weight and connectivity retries."""
@@ -75,6 +87,10 @@ class FastStrategy(LayeredStrategy):
     w_n: float = 0.2
     w_d: float = 0.2
     retry_max: int = 10
+    w_g: float = 0.2
+    """Retry preference against rects that cover floating-supported
+    columns without anchoring them to ground; 0.0 restores pre-v5
+    behaviour."""
 
     def tile(
         self,
@@ -85,17 +101,33 @@ class FastStrategy(LayeredStrategy):
         deadline: float | None,
     ) -> list[Rect2D]:
         """Greedy-merge the layer; retry when rects end up unsupported."""
-        best: tuple[int, float, list[Rect2D]] | None = None
+        best: tuple[int, float, float, list[Rect2D]] | None = None
         for _ in range(max(self.retry_max, 1)):
             rects = self._merge_layer(problem, below, rng, deadline=deadline)
             unsupported = sum(1 for rect in rects if not self._supported(below, rect))
+            unanchored = (
+                sum(
+                    self.w_g
+                    for rect in rects
+                    if _covers_floating_support(below, rect)
+                    and grounding_gain(rect, below) == 0
+                )
+                if self.w_g
+                else 0.0
+            )
             cost = self._cost(problem, below, rects)
-            if best is None or (unsupported, cost) < (best[0], best[1]):
-                best = (unsupported, cost, rects)
-            if best[0] == 0 or (deadline is not None and time.monotonic() > deadline):
+            if best is None or (unsupported, unanchored, cost) < (
+                best[0],
+                best[1],
+                best[2],
+            ):
+                best = (unsupported, unanchored, cost, rects)
+            if (best[0] == 0 and best[1] == 0.0) or (
+                deadline is not None and time.monotonic() > deadline
+            ):
                 break
         assert best is not None  # noqa: S101 - loop runs at least once
-        return best[2]
+        return best[3]
 
     def _merge_layer(
         self,
