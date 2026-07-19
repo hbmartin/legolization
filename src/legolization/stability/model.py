@@ -256,7 +256,7 @@ def footprint_columns(
     layout: Layout,
     brick_id: int,
 ) -> tuple[frozenset[tuple[int, int]], int]:
-    """A brick's world footprint columns and its min footprint dimension."""
+    """Return a brick's world footprint columns and min footprint dimension."""
     columns = frozenset((x, y) for x, y, _ in layout.cells_of(layout.bricks[brick_id]))
     xs = [x for x, _ in columns]
     ys = [y for _, y in columns]
@@ -271,7 +271,7 @@ def knob_pattern(
 ) -> tuple[tuple[float, float], ...]:
     """Per-knob contact offsets under the StableLego *paper* rule.
 
-    1×X cavities pinch at four points; 2×X at three; on Q×X bodies with
+    1xX cavities pinch at four points; 2xX at three; on QxX bodies with
     Q ≥ 3 the edge connections take three points and the interior ones
     four. Inert for the shipped catalog (no part has min dimension ≥ 3)
     but exact for any future wide part.
@@ -332,6 +332,26 @@ def _add_side_contact(asm: _Assembler, side: SideContact) -> None:
             asm.add_force(side.b_id, col, toward, position)
 
 
+class _PatternSource:
+    """Per-knob contact-pattern lookup under either knob rule."""
+
+    def __init__(self, layout: Layout, *, paper_knob_rule: bool) -> None:
+        self._layout = layout
+        self._paper = paper_knob_rule
+        self._footprints: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
+
+    def for_knob(self, knob: KnobContact) -> tuple[tuple[float, float], ...]:
+        """Contact offsets for the cavity gripping this knob."""
+        if not self._paper:
+            return cavity_pattern(self._layout, knob.above_id)
+        if knob.above_id not in self._footprints:
+            self._footprints[knob.above_id] = footprint_columns(
+                self._layout, knob.above_id
+            )
+        columns, min_dim = self._footprints[knob.above_id]
+        return knob_pattern(columns, min_dim, (knob.x, knob.y))
+
+
 def _build_model_body(
     layout: Layout,
     graph: ConnectionGraph | None,
@@ -348,18 +368,12 @@ def _build_model_body(
     up: tuple[float, float, float] = (0.0, 0.0, 1.0)
     down: tuple[float, float, float] = (0.0, 0.0, -1.0)
 
-    footprints: dict[int, tuple[frozenset[tuple[int, int]], int]] = {}
+    patterns = _PatternSource(layout, paper_knob_rule=paper_knob_rule)
     for knob in graph.knob_contacts:
         if knob.normal != (0, 0, 1):
             _add_lateral_knob(asm, knob, contact_points, bottom_drag_cols)
             continue
-        if paper_knob_rule:
-            if knob.above_id not in footprints:
-                footprints[knob.above_id] = footprint_columns(layout, knob.above_id)
-            columns, min_dim = footprints[knob.above_id]
-            pattern = knob_pattern(columns, min_dim, (knob.x, knob.y))
-        else:
-            pattern = cavity_pattern(layout, knob.above_id)
+        pattern = patterns.for_knob(knob)
         z_plane = float(knob.interface_layer)
         for ox, oy in pattern:
             position = (knob.x + ox, knob.y + oy, z_plane)

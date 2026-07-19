@@ -6,7 +6,7 @@ import pytest
 from scipy.optimize import OptimizeResult
 
 import legolization.stability.solver as solver_module
-from legolization.catalog import default_catalog
+from legolization.catalog import Catalog, default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.layout import Layout
 from legolization.stability import (
@@ -374,15 +374,8 @@ def test_side_contact_transverse_extent_recorded(layout):
 # --- paper knob rule (Q x X) ---
 
 
-def _catalog_with_3x3() -> Any:
-    from legolization.catalog import (
-        DOWN,
-        UP,
-        Category,
-        Connector,
-        Part,
-        default_catalog,
-    )
+def _catalog_with_3x3() -> Catalog:
+    from legolization.catalog import DOWN, UP, Category, Connector, Part
 
     catalog = default_catalog()
     columns = [(dx, dy) for dx in range(3) for dy in range(3)]

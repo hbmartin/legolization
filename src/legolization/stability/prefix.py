@@ -231,19 +231,7 @@ class PrefixSolver:
             self._pattern[bid] = cavity_pattern(layout, bid)
             if config.paper_knob_rule:
                 self._footprint[bid] = footprint_columns(layout, bid)
-        # Stud-only reachability data for the LP-free floating shortcut.
-        self._grounded = frozenset(
-            bid
-            for bid, bottoms in self._bottom_conns.items()
-            if any(cell[2] == 0 for cell in bottoms)
-        )
-        self._stud_adjacent: dict[int, set[int]] = {bid: set() for bid in layout.bricks}
-        for cell, bid in self._stud_at.items():
-            x, y, z = cell
-            mate = self._socket_at.get((x, y, z + 1))
-            if mate is not None and mate != bid:
-                self._stud_adjacent[bid].add(mate)
-                self._stud_adjacent[mate].add(bid)
+        self._build_reachability(layout)
         # Canonical append-order index state.
         self.present: set[int] = set()
         self._row_base: dict[int, int] = {}
@@ -483,6 +471,21 @@ class PrefixSolver:
             values,
         )
         self._row_count += len(drag_links)
+
+    def _build_reachability(self, layout: Layout) -> None:
+        """Stud-only reachability data for the LP-free floating shortcut."""
+        self._grounded = frozenset(
+            bid
+            for bid, bottoms in self._bottom_conns.items()
+            if any(cell[2] == 0 for cell in bottoms)
+        )
+        self._stud_adjacent = {bid: set() for bid in layout.bricks}
+        for cell, bid in self._stud_at.items():
+            x, y, z = cell
+            mate = self._socket_at.get((x, y, z + 1))
+            if mate is not None and mate != bid:
+                self._stud_adjacent[bid].add(mate)
+                self._stud_adjacent[mate].add(bid)
 
     def _force_col(
         self,
