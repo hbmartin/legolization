@@ -122,6 +122,29 @@ ring overhangs empty cells (gap columns: nothing to anchor through at
 band time; the signal's documented limit). Corpus zero hard
 regressions; greedy untouched; goldens byte-exact.
 
+### 2026-07-19 — WS-4: always-k seed restarts
+
+Single-strategy CLI runs now race `--restarts` seeds by default
+(3: seed..seed+2) through `compare.restart_race` — placement and
+physics per seed in parallel workers with instruction sequencing
+disabled, then one deterministic full re-run of the winner — so the
+expensive sequencing pass is paid exactly once. `--seeds` overrides
+with an explicit list, `--restarts 1` restores pre-v5 behaviour,
+`--jobs`/`--timeout` now also govern races, `--profile` demands
+`--restarts 1` (telemetry cannot cross workers), and
+`--report`/`--keep-candidates` stay sweep-only. The goldens mirror the
+policy: `test_examples_regression` races the same seeds the CLI does.
+
+Measured wins at the defaults: **arch 32 → 15 bricks** (seed 1 wins the
+race), heart re-seeds to seed 2 (12 bricks, better objective), pyramid
+keeps seed 0. Variance evidence: thin-shell's per-seed best spans
+**287–386 bricks across seeds 0–2** (`seed_spread`), exactly the tail
+the race harvests. Shipped examples and README sample output
+regenerated; race wall ≈ the slowest seed's placement (parallel) plus
+one sequencing run. Library `run()`/`run_file` APIs unchanged — the
+race is CLI-level policy; eval harnesses pin their own seeds and are
+unaffected.
+
 ## v4 progress notes
 
 Living log of the v4 program (PR #17 review remediation, residual

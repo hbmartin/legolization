@@ -258,7 +258,7 @@ def test_cli_smart_steps_and_bom(tmp_path, capsys):
     np.save(npy, codes)
     out = tmp_path / "box.ldr"
     bom_path = tmp_path / "box-bom.json"
-    code = main([str(npy), "-o", str(out), "--bom", str(bom_path)])
+    code = main(["--restarts", "1", str(npy), "-o", str(out), "--bom", str(bom_path)])
     captured = capsys.readouterr()
     assert code == 0
     assert "steps:" in captured.out
@@ -275,7 +275,7 @@ def test_cli_layer_steps_keep_legacy_output(tmp_path):
     np.save(npy, codes)
     smart = tmp_path / "smart.ldr"
     layer = tmp_path / "layer.ldr"
-    assert main([str(npy), "-o", str(smart)]) == 0
+    assert main(["--restarts", "1", str(npy), "-o", str(smart)]) == 0
     assert main([str(npy), "-o", str(layer), "--steps", "layer"]) == 0
     assert "ROTSTEP" not in layer.read_text()
     # The legacy path steps once per plate layer.
@@ -586,7 +586,10 @@ def test_cli_profile_payload_is_schema_two(tmp_path):
     np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
     profile = tmp_path / "profile.json"
     out = tmp_path / "m.ldr"
-    assert main([str(npy), "-o", str(out), "--profile", str(profile)]) == 0
+    assert (
+        main(["--restarts", "1", str(npy), "-o", str(out), "--profile", str(profile)])
+        == 0
+    )
     payload = json.loads(profile.read_text())
     assert payload["schema"] == 2
     assert payload["source"] == "cli"
