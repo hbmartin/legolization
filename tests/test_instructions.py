@@ -487,3 +487,27 @@ def test_layout_translated_preserves_ids() -> None:
     )
     with pytest.raises(ValueError, match="below ground"):
         top.translated(dz=100)
+
+
+def test_profile_rejected_for_sweep_and_import(tmp_path):
+    from legolization.main import main
+
+    npy = tmp_path / "m.npy"
+    np.save(npy, np.full((2, 2, 2), 4, dtype=np.int16))
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(npy), "--strategy", "all", "--profile", str(tmp_path / "p.json")])
+    assert excinfo.value.code == 2
+
+    source = tmp_path / "m.ldr"
+    source.write_text("0 m\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n")
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(source),
+                "-o",
+                str(tmp_path / "out.ldr"),
+                "--profile",
+                str(tmp_path / "p.json"),
+            ]
+        )
+    assert excinfo.value.code == 2

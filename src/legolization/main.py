@@ -397,6 +397,11 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error(
             "--jobs/--timeout/--report/--keep-candidates/--seeds require --strategy all"
         )
+    if args.profile is not None and args.strategy == "all":
+        parser.error(
+            "--profile requires a single strategy "
+            "(telemetry does not cross sweep workers)"
+        )
     if args.subassemblies and args.steps == "layer":
         parser.error("--subassemblies requires --steps smart")
     if args.instructions is not None:
@@ -555,6 +560,11 @@ def _validate_ldraw_args(
         parser.error(
             ".ldr/.mpd input needs an explicit -o/--output "
             "(the default would overwrite the input)"
+        )
+    if args.profile is not None:
+        parser.error(
+            "--profile does not apply to .ldr/.mpd inputs (import skips "
+            "the placement phases the profile measures)"
         )
 
 

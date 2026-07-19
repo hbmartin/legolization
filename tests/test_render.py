@@ -467,3 +467,13 @@ def test_ldr_input_with_subassemblies_warns(tmp_path: Path) -> None:
         False,
         False,
     ]
+
+
+def test_submodel_filename_convention_is_shared() -> None:
+    # The renderer must derive submodel filenames from the emitter's
+    # canonical helper, never rebuild the convention inline.
+    from legolization.instructions.render import _submodel_file as used
+    from legolization.ldraw_out import _submodel_file as canonical
+
+    assert used is canonical
+    assert canonical("model", "sub-1") == "model-sub-1.ldr"

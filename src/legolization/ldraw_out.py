@@ -199,8 +199,14 @@ def _world_order(layout: Layout, brick_ids: tuple[int, ...]) -> list[int]:
     )
 
 
+def _submodel_name(stem: str, sub_name: str) -> str:
+    """Build the stem-qualified submodel identity for titles and filenames."""
+    return f"{stem}-{sub_name}"
+
+
 def _submodel_file(stem: str, sub_name: str) -> str:
-    return f"{stem}-{sub_name}.ldr"
+    """Canonical FILE-section filename for a subassembly (single source)."""
+    return f"{_submodel_name(stem, sub_name)}.ldr"
 
 
 def _submodel_lines(
@@ -248,7 +254,7 @@ def write_model(
                 lines.extend(
                     (
                         f"0 FILE {sub_file}",
-                        f"0 {stem}-{sub.name}",
+                        f"0 {_submodel_name(stem, sub.name)}",
                         f"0 Name: {sub_file}",
                         "0 Author: legolization",
                         "0 !LDRAW_ORG Unofficial_Model",
