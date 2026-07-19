@@ -109,6 +109,57 @@ thin-shell's outright best (370) — the pass regresses every strategy
 toward the same random-maximal mean; closing that gap needs
 structure-preserving bridge synthesis (report §5 non-recommendations).
 
+### 2026-07-19 — SNOT v2: data-driven catalog, 11211 + sideways 1x2 tile, bonded walls
+
+Four commits. (1) The catalog's two-key SNOT dispatcher became
+role-dispatched data: carriers declare `lateral_studs` +
+`emit_yaw_offset`, claddings declare windows/sockets/`mount_normal` +
+four pinned per-outward `mount_matrices` + `mount_offset_ldu`; 87087
+and 3070b migrated byte-compatibly (pinned-line tests unchanged).
+(2) Emission/import generalized from that data; ambiguous decodes
+report instead of resolving by catalog order; a v1-emitted fixture
+(`tests/data/snot_tower_v1.ldr`) pins cross-version import. (3) New
+parts: `brick_1x2_side_studs` (11211, 0.86 g, studs verified LDraw
+−Z at the same height as 87087 so v1's proven offsets transfer) and
+`tile_1x2_snot` (3069b sideways, analytically derived mount matrices,
+round-trips at every yaw; flat 3069b still decodes flat). Blocking fix
+(latent in 87087): a carrier's protruding studs sweep their neighbour
+columns during vertical insertion. (4) The pass works in paired
+2-column sites with running-bond stagger and single-column fallback;
+the single-column donor guard is replaced by a per-mount **re-bond
+guard** (carve+refill+mount on a copy; accept only if stud-graph
+components and floating count do not increase) plus a **two-tier
+stability rail** in the pipeline: the conservative tier (v1's
+own-column donors) lands under its own checkpoint before the bold
+wall-carving tier, so one destabilizing wall carve can no longer
+revert the whole pass (measured on mushroom: 86 accepted mounts, all
+lost under the old all-or-nothing rail; now the 41 safe mounts stay).
+
+Proof (seed 0; baseline = v1 pass at the pre-v2 commit, same session —
+the v3-era numbers were stale: suzanne's 6 died with the WS-A2
+cavity-reachability fix, not with v2):
+| model | pre-v2 | v2 | split 11211/87087 | stable | comps |
+|---|---|---|---|---|---|
+| two-towers-bridge | 13 | **108** | 49/59 | ✓ | 1 |
+| mushroom | 41 | 41 | 0/41 (bold tier reverted) | ✓ | 1 |
+| thin-shell | 12 | **100** | 35/65 | ✓ | 1 |
+| suzanne@16 | 0 | 1 | 1/0 | ✓ | 1 |
+| letter-t | 0 | **68** | 39/29 | ✓ | 1 |
+| sparse-pillars | 0 | **44** | 12/32 | ✓ | 4 (pre-existing) |
+| pyramid | 0 | 0 | — | ✓ | 1 |
+
+Sequencing verifies CLEAN on the heaviest clad models (two-towers 108
+mounts/39 steps, letter-t 68/22); renders show flush tiles and the
+running-bond stagger. Guard cost: ≤1 s small models, mushroom 3.9 s,
+thin-shell 11 s (per-mount full-graph builds at ~500 bricks — an
+incremental-graph guard is future work if this grows). Deferred with
+reasons: the vertical 1×2 tile can never be plate-aligned (side studs
+at 8z+12 LDU; adjacent-window studs 24 LDU apart vs the tile's 20 LDU
+anti-stud pitch — the 5-plate quantum belongs to a stage-1 orientation
+field), 99781/4070/4733 (half-plate arms, sub-cell depth, blocker
+over-conservatism), true 8-LDU tile depth (the grid cannot express
+8-of-20-LDU horizontal occupancy).
+
 *(Future note — mesh-kind eval baseline: the committed scorecard
 baseline covers synthetics only. Now that v3's sequencing speedups make
 mesh sweeps feasible (suzanne@16 ≈ 30 s), commit a mesh-kind baseline

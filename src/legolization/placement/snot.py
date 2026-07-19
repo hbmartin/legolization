@@ -40,15 +40,40 @@ _BRICK_PLATES = 3
 _FACES = ((1, 0), (0, 1), (-1, 0), (0, -1))
 
 
-def apply_snot(layout: Layout, grid: VoxelGrid, *, min_run: int = 2) -> int:
-    """Clad qualifying wall windows; return the number of mounts."""
+def apply_snot(
+    layout: Layout,
+    grid: VoxelGrid,
+    *,
+    min_run: int = 2,
+    spanning_donors: bool = True,
+) -> int:
+    """Clad qualifying wall windows; return the number of mounts.
+
+    ``spanning_donors=False`` restricts carving to donors that live
+    entirely inside the site's own columns — v1's conservative tier,
+    which never weakens wall bonding. The pipeline runs that tier
+    first and keeps it under its own stability checkpoint before
+    attempting the bolder wall-carving mounts.
+    """
     mounted = 0
     graph = ConnectionGraph.from_layout(layout)
     baseline = (graph.component_count(), len(graph.floating_ids()))
     for site in _mount_sites(layout, grid, min_run=min_run):
-        if (result := _mount(layout, grid, site, baseline)) is not None:
+        result = _mount(layout, grid, site, baseline, spanning_donors=spanning_donors)
+        if result is not None:
             mounted += 1
             baseline = result
+            continue
+        # A failed pair falls back to its columns one at a time — a
+        # rejected 11211 mount must not cost the windows their 87087s.
+        for column in site.columns if len(site.columns) > 1 else ():
+            single = _Site(columns=(column,), z=site.z, face=site.face)
+            result = _mount(
+                layout, grid, single, baseline, spanning_donors=spanning_donors
+            )
+            if result is not None:
+                mounted += 1
+                baseline = result
     return mounted
 
 
@@ -273,7 +298,38 @@ def _site_parts(
     return (carrier, carrier_yaw, cladding, tile_yaw)
 
 
-def _mount_plan(layout: Layout, grid: VoxelGrid, site: _Site) -> _MountPlan | None:
+def _site_donors(
+    layout: Layout,
+    site: _Site,
+    window: set[tuple[int, int, int]],
+    *,
+    spanning_donors: bool,
+) -> dict[int, PlacedBrick] | None:
+    """Carvable, colour-uniform donors for the window, or None.
+
+    Without ``spanning_donors`` every donor must live inside the site's
+    own columns — the conservative tier that never cuts wall bonding.
+    """
+    if (donors := covering_donors(layout, window)) is None:
+        return None
+    if not spanning_donors and any(
+        (cx, cy) not in site.columns
+        for donor in donors.values()
+        for cx, cy, _ in layout.cells_of(donor)
+    ):
+        return None
+    if len({donor.colour_code for donor in donors.values()}) != 1:
+        return None
+    return donors
+
+
+def _mount_plan(
+    layout: Layout,
+    grid: VoxelGrid,
+    site: _Site,
+    *,
+    spanning_donors: bool = True,
+) -> _MountPlan | None:
     """Validate one cladding site; None on any failed eligibility guard."""
     if (parts := _site_parts(layout.catalog, site)) is None:
         return None
@@ -291,12 +347,10 @@ def _mount_plan(layout: Layout, grid: VoxelGrid, site: _Site) -> _MountPlan | No
     }
     if any(layout.brick_at(cell) is not None for cell in target):
         return None
-    if (donors := covering_donors(layout, window)) is None:
+    donors = _site_donors(layout, site, window, spanning_donors=spanning_donors)
+    if donors is None:
         return None
-    colours = {donor.colour_code for donor in donors.values()}
-    if len(colours) != 1:
-        return None
-    bracket_colour = colours.pop()
+    bracket_colour = next(iter(donors.values())).colour_code
     colour_of = {
         cell: donor.colour_code
         for donor in donors.values()
@@ -344,6 +398,8 @@ def _mount(
     grid: VoxelGrid,
     site: _Site,
     baseline: tuple[int, int],
+    *,
+    spanning_donors: bool = True,
 ) -> tuple[int, int] | None:
     """Carve, refill, and clad one site — accepted only via the re-bond guard.
 
@@ -352,7 +408,8 @@ def _mount(
     ``baseline`` (carving a bonded wall must not cost connectivity).
     Returns the accepted layout's (components, floating), or None.
     """
-    if (plan := _mount_plan(layout, grid, site)) is None:
+    plan = _mount_plan(layout, grid, site, spanning_donors=spanning_donors)
+    if plan is None:
         return None
     trial = layout.copy()
     trial.remove_many(plan.donors)

@@ -254,24 +254,57 @@ def _finish_surfaces(
                     )
     snot_added = 0
     if config.snot:
-        guard = (layout.copy(), stability) if stability.stable else None
         with telemetry.span("finish.snot"):
-            snot_added = apply_snot(layout, working)
-        if snot_added:
-            stability = analyze(layout, config.solver)
-            if guard is not None and not stability.stable:
-                layout.replace_with(guard[0])
-                stability = guard[1]
-                snot_added = 0
-                if config.progress is not None:
-                    config.progress(
-                        "snot: cladding pass would break stability; reverted"
-                    )
+            snot_added, stability = _snot_tiers(layout, working, config, stability)
     with telemetry.span("finish.tiles"):
         tiles_added = apply_tiles(layout) if config.tiles else 0
     if tiles_added:
         stability = analyze(layout, config.solver)
     return stability, slopes_added, tiles_added, snot_added
+
+
+def _snot_tiers(
+    layout: Layout,
+    working: VoxelGrid,
+    config: PipelineConfig,
+    stability: StabilityResult,
+) -> tuple[int, StabilityResult]:
+    """Run the cladding pass in two stability-checkpointed tiers.
+
+    Tier one mounts only sites whose donors live inside their own
+    columns (v1's conservative carve — never weakens wall bonding) and
+    is reverted wholesale if it breaks stability. Tier two re-runs the
+    pass with wall-spanning donors allowed; already-clad windows fail
+    their plans, so only the bolder mounts are new. If those break
+    stability the layout retreats to the tier-one checkpoint instead of
+    losing every mount — one bad wall carve must not cost the safe
+    cladding (measured on mushroom: 86 accepted mounts, all reverted).
+    """
+    guard = (layout.copy(), stability) if stability.stable else None
+    snot_added = apply_snot(layout, working, spanning_donors=False)
+    if snot_added:
+        stability = analyze(layout, config.solver)
+        if guard is not None and not stability.stable:
+            layout.replace_with(guard[0])
+            stability = guard[1]
+            snot_added = 0
+            if config.progress is not None:
+                config.progress("snot: cladding pass would break stability; reverted")
+    checkpoint = (layout.copy(), stability) if stability.stable else None
+    bold_added = apply_snot(layout, working, spanning_donors=True)
+    if bold_added:
+        stability = analyze(layout, config.solver)
+        if checkpoint is not None and not stability.stable:
+            layout.replace_with(checkpoint[0])
+            stability = checkpoint[1]
+            if config.progress is not None:
+                config.progress(
+                    "snot: wall-carving tier would break stability; "
+                    "kept the conservative tier"
+                )
+        else:
+            snot_added += bold_added
+    return snot_added, stability
 
 
 def _phase_gauge(
