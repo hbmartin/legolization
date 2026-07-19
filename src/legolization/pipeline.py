@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
+from legolization import telemetry
 from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import IGNORE, VoxelGrid
@@ -28,7 +29,8 @@ from legolization.mesh import MESH_SUFFIXES, MeshOptions, mesh_to_grid
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.repair import RepairConfig, repair_stability
-from legolization.placement.slopes import apply_slopes, apply_tiles
+from legolization.placement.slopes import SlopeMode, apply_slopes, apply_tiles
+from legolization.placement.snot import apply_snot
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -49,8 +51,14 @@ class PipelineConfig:
     hollow: bool = True
     hollow_rounds: int = 5
     hollow_restore_radius: int = 2
-    slopes: bool = False
+    slopes: bool | SlopeMode = False
+    """``"preserve"`` swaps exact in-shape profile matches (adds nothing);
+    ``"smooth"`` (or legacy ``True``) adds slopes outside the shape."""
+
     tiles: bool = False
+    snot: bool = False
+    """Clad tall flat wall faces with sideways tiles on 87087 brackets."""
+
     refine: bool = True
     seed: int = 0
     plates_per_voxel: int = 3
@@ -63,6 +71,8 @@ class PipelineConfig:
     dither: bool = False
     time_budget_s: float | None = None
     ga_generations: int = 200
+    milp_layer_time_s: float = 10.0
+    milp_bond_weight: float = 1.0
     beauty_preset: Literal["balanced", "stability", "aesthetics", "efficiency"] = (
         "balanced"
     )
@@ -81,13 +91,16 @@ class PipelineResult:
 
     layout: Layout
     stability: StabilityResult
-    grid: VoxelGrid
+    grid: VoxelGrid | None
+    """The voxel grid the layout was placed from; None for imported models."""
+
     brick_count: int
     mass_g: float
     component_count: int
     floating_count: int
     slopes_added: int = 0
     tiles_added: int = 0
+    snot_added: int = 0
     plan: InstructionPlan | None = None
 
     @property
@@ -117,53 +130,56 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     config = config or PipelineConfig()
     catalog = default_catalog()
     rng = np.random.default_rng(config.seed)
-    working = (
-        hollow_grid(
-            grid,
-            shell_studs=config.shell_studs,
-            shell_plates=config.shell_plates,
+    with telemetry.span("phase.hollow"):
+        working = (
+            hollow_grid(
+                grid,
+                shell_studs=config.shell_studs,
+                shell_plates=config.shell_plates,
+            )
+            if config.hollow
+            else grid
         )
-        if config.hollow
-        else grid
-    )
-    if config.ignore_interior:
-        working = _ignore_interior(working)
+        if config.ignore_interior:
+            working = _ignore_interior(working)
 
     layout, stability = _place_and_repair(working, catalog, config, rng)
     if config.hollow:
-        rounds = 0
-        while not stability.stable and rounds < config.hollow_rounds:
-            trouble = {
-                cell
-                for brick_id in stability.unstable_ids
-                for cell in layout.cells_of(layout.bricks[brick_id])
-            }
-            restored = restore_columns(
-                grid,
-                working,
-                trouble,
-                radius=config.hollow_restore_radius,
-            )
-            if restored is working:
-                break
-            working = restored
-            layout, stability = _place_and_repair(working, catalog, config, rng)
-            rounds += 1
+        with telemetry.span("phase.hollow_restore"):
+            rounds = 0
+            while not stability.stable and rounds < config.hollow_rounds:
+                trouble = {
+                    cell
+                    for brick_id in stability.unstable_ids
+                    for cell in layout.cells_of(layout.bricks[brick_id])
+                }
+                restored = restore_columns(
+                    grid,
+                    working,
+                    trouble,
+                    radius=config.hollow_restore_radius,
+                )
+                if restored is working:
+                    break
+                working = restored
+                layout, stability = _place_and_repair(working, catalog, config, rng)
+                rounds += 1
 
-    if final_remerge(
-        layout,
-        working,
-        rng,
-        weights=config.weights,
-        solver_config=config.solver,
-    ):
-        stability = analyze(layout, config.solver)
-    resolve_ignore_colours(layout)
+    with telemetry.span("phase.remerge"):
+        if final_remerge(
+            layout,
+            working,
+            rng,
+            weights=config.weights,
+            solver_config=config.solver,
+        ):
+            stability = analyze(layout, config.solver)
+        resolve_ignore_colours(layout)
 
-    slopes_added = apply_slopes(layout, working) if config.slopes else 0
-    tiles_added = apply_tiles(layout) if config.tiles else 0
-    if slopes_added or tiles_added:
-        stability = analyze(layout, config.solver)
+    with telemetry.span("phase.slopes"):
+        stability, slopes_added, tiles_added, snot_added = _finish_surfaces(
+            layout, working, stability, config
+        )
 
     plan: InstructionPlan | None = None
     if config.instructions.mode == "smart":
@@ -172,7 +188,8 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
             if config.instructions.solver is not None
             else replace(config.instructions, solver=config.solver)
         )
-        plan = plan_instructions(layout, config=instructions_config)
+        with telemetry.span("phase.sequencing"):
+            plan = plan_instructions(layout, config=instructions_config)
 
     graph = ConnectionGraph.from_layout(layout)
     return PipelineResult(
@@ -185,8 +202,59 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         floating_count=len(graph.floating_ids()),
         slopes_added=slopes_added,
         tiles_added=tiles_added,
+        snot_added=snot_added,
         plan=plan,
     )
+
+
+def _finish_surfaces(
+    layout: Layout,
+    working: VoxelGrid,
+    stability: StabilityResult,
+    config: PipelineConfig,
+) -> tuple[StabilityResult, int, int, int]:
+    """Run the opt-in slope/tile/snot finishing passes; re-analyze if used."""
+    slope_mode: SlopeMode | None = (
+        "smooth" if config.slopes is True else config.slopes or None
+    )
+    slopes_added = 0
+    if slope_mode is not None:
+        # Preserve mode must never trade stability for looks: carving
+        # donors fragments load paths, so keep a snapshot to revert to.
+        guard = (
+            (layout.copy(), stability)
+            if slope_mode == "preserve" and stability.stable
+            else None
+        )
+        slopes_added = apply_slopes(layout, working, mode=slope_mode)
+        if slopes_added:
+            stability = analyze(layout, config.solver)
+            if guard is not None and not stability.stable:
+                layout.replace_with(guard[0])
+                stability = guard[1]
+                slopes_added = 0
+                if config.progress is not None:
+                    config.progress(
+                        "slopes: preserve pass would break stability; reverted"
+                    )
+    snot_added = 0
+    if config.snot:
+        guard = (layout.copy(), stability) if stability.stable else None
+        snot_added = apply_snot(layout, working)
+        if snot_added:
+            stability = analyze(layout, config.solver)
+            if guard is not None and not stability.stable:
+                layout.replace_with(guard[0])
+                stability = guard[1]
+                snot_added = 0
+                if config.progress is not None:
+                    config.progress(
+                        "snot: cladding pass would break stability; reverted"
+                    )
+    tiles_added = apply_tiles(layout) if config.tiles else 0
+    if tiles_added:
+        stability = analyze(layout, config.solver)
+    return stability, slopes_added, tiles_added, snot_added
 
 
 def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:
@@ -321,18 +389,20 @@ def _place_and_repair(
 ) -> tuple[Layout, StabilityResult]:
     """Place, then rearrange at constant volume before any material is added."""
     strategy = _strategy(catalog, config)
-    layout = strategy.place(grid, rng=rng)
+    with telemetry.span("phase.place"):
+        layout = strategy.place(grid, rng=rng)
     stability = analyze(layout, config.solver)
     if config.repair and not stability.stable:
-        repair_stability(
-            layout,
-            grid,
-            catalog=catalog,
-            solver_config=config.solver,
-            rng=rng,
-            config=config.repair_config,
-        )
-        stability = analyze(layout, config.solver)
+        with telemetry.span("phase.repair"):
+            repair_stability(
+                layout,
+                grid,
+                catalog=catalog,
+                solver_config=config.solver,
+                rng=rng,
+                config=config.repair_config,
+            )
+            stability = analyze(layout, config.solver)
     return layout, stability
 
 

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
     from legolization.instructions.sequencer import InstructionsConfig
     from legolization.layout import Layout
+    from legolization.stability.prefix import RemovalSolver
     from legolization.stability.solver import StabilityResult
 
 
@@ -47,6 +48,7 @@ def disassembly_order(  # noqa: PLR0913 - the search reads all sequencing state
     blockers: Mapping[int, frozenset[int]],
     config: InstructionsConfig,
     cache: dict[frozenset[int], StabilityResult],
+    remover: RemovalSolver | None = None,
 ) -> list[ChunkVerdict]:
     """Order the remaining chunks by disassembling the complete structure.
 
@@ -73,7 +75,9 @@ def disassembly_order(  # noqa: PLR0913 - the search reads all sequencing state
     alive = list(range(len(chunks)))
     present = set(placed).union(*(set(chunk) for _, chunk in chunks), set())
     removal: list[ChunkVerdict] = []
-    state = _analyze_cached(layout, present, config=config, cache=cache)
+    state = _analyze_cached(
+        layout, present, config=config, cache=cache, remover=remover
+    )
 
     while alive:
         candidates = [
@@ -98,6 +102,7 @@ def disassembly_order(  # noqa: PLR0913 - the search reads all sequencing state
             present=present,
             config=config,
             cache=cache,
+            remover=remover,
         )
         removal.append(
             ChunkVerdict(
@@ -106,6 +111,8 @@ def disassembly_order(  # noqa: PLR0913 - the search reads all sequencing state
                 max_score=state.max_score,
             )
         )
+        if remover is not None:
+            remover.commit_without(chunks[chosen][1])
         present -= set(chunks[chosen][1])
         alive.remove(chosen)
         if next_state is not None:
@@ -121,6 +128,7 @@ def _choose_removal(  # noqa: PLR0913 - candidate scoring reads all search state
     present: set[int],
     config: InstructionsConfig,
     cache: dict[frozenset[int], StabilityResult],
+    remover: RemovalSolver | None = None,
 ) -> tuple[int, StabilityResult | None]:
     """Pick the candidate whose removal leaves the stablest remainder.
 
@@ -132,7 +140,14 @@ def _choose_removal(  # noqa: PLR0913 - candidate scoring reads all search state
         rest = present - set(chunks[position][1])
         if not rest:
             return position, None
-        result = _analyze_cached(layout, rest, config=config, cache=cache)
+        result = _analyze_cached(
+            layout,
+            rest,
+            config=config,
+            cache=cache,
+            remover=remover,
+            removed=chunks[position][1],
+        )
         if result.stable:
             return position, result
         if best is None or result.max_score < best[0]:
@@ -172,16 +187,22 @@ def _stress(chunk: tuple[int, ...], state: StabilityResult) -> float:
     )
 
 
-def _analyze_cached(
+def _analyze_cached(  # noqa: PLR0913 - optional warm-removal plumbing
     layout: Layout,
     brick_ids: set[int],
     *,
     config: InstructionsConfig,
     cache: dict[frozenset[int], StabilityResult],
+    remover: RemovalSolver | None = None,
+    removed: tuple[int, ...] = (),
 ) -> StabilityResult:
     key = frozenset(brick_ids)
     if (hit := cache.get(key)) is None:
-        cache[key] = hit = analyze(layout.subset(key), config.solver)
+        if remover is not None and set(remover.scope) - set(removed) == key:
+            hit = remover.probe_without(removed)
+        else:
+            hit = analyze(layout.subset(key), config.solver)
+        cache[key] = hit
     return hit
 
 

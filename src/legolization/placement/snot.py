@@ -1,0 +1,161 @@
+"""Sideways (SNOT) finishing pass: clad flat vertical wall faces.
+
+Tall, flat wall faces read as a stack of raw brick sides. This opt-in
+pass finds brick-aligned 3-plate wall windows whose outward neighbour
+column is strictly outside the target shape, in vertical runs of at
+least ``min_run`` windows, and clads each: the wall cell column is
+carved (via the shared carve-and-refill surgery) and replaced by a 1x1
+side-stud bracket (87087), and a sideways 1x1 tile (3070b) hangs on the
+lateral stud with its smooth face outward. Only real receiving geometry
+is used — the tile is genuinely held by a stud, and the RBE prices the
+lateral mate like any other contact.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from legolization.grid import EMPTY, merge_colour
+from legolization.placement.carve import covering_donors, refill_tiling
+
+if TYPE_CHECKING:
+    from legolization.grid import VoxelGrid
+    from legolization.layout import Layout
+
+_BRICK_PLATES = 3
+
+# Outward face direction → bracket yaw rotating the lateral stud
+# (local +x) onto it.
+_FACE_YAW = {
+    (1, 0): 0,
+    (0, 1): 90,
+    (-1, 0): 180,
+    (0, -1): 270,
+}
+
+
+def apply_snot(layout: Layout, grid: VoxelGrid, *, min_run: int = 2) -> int:
+    """Clad qualifying wall windows with bracket+tile pairs; return count."""
+    mounted = 0
+    for x, y, z, face in _qualifying_sites(layout, grid, min_run=min_run):
+        if _mount(layout, grid, x, y, z, face):
+            mounted += 1
+    return mounted
+
+
+def _qualifying_sites(
+    layout: Layout,
+    grid: VoxelGrid,
+    *,
+    min_run: int,
+) -> list[tuple[int, int, int, tuple[int, int]]]:
+    """Wall windows in vertical runs of at least ``min_run``, sorted."""
+    gx, gy, gz = grid.shape
+    sites: dict[tuple[int, int, tuple[int, int]], list[int]] = {}
+    for x in range(gx):
+        for y in range(gy):
+            for z in range(0, gz - _BRICK_PLATES + 1, _BRICK_PLATES):
+                window = [(x, y, z + dz) for dz in range(_BRICK_PLATES)]
+                if any(layout.brick_at(cell) is None for cell in window):
+                    continue
+                for face in _FACE_YAW:
+                    nx, ny = x + face[0], y + face[1]
+                    if _face_is_open(layout, grid, nx, ny, z):
+                        sites.setdefault((x, y, face), []).append(z)
+    chosen: list[tuple[int, int, int, tuple[int, int]]] = []
+    for (x, y, face), zs in sites.items():
+        for run in _runs(sorted(zs), min_run=min_run):
+            chosen.extend((x, y, rz, face) for rz in run)
+    return sorted(chosen)
+
+
+def _runs(zs: list[int], *, min_run: int) -> list[list[int]]:
+    """Maximal consecutive-window runs of at least ``min_run``."""
+    runs: list[list[int]] = []
+    current: list[int] = []
+    for z in zs:
+        if current and z != current[-1] + _BRICK_PLATES:
+            if len(current) >= min_run:
+                runs.append(current)
+            current = []
+        current.append(z)
+    if len(current) >= min_run:
+        runs.append(current)
+    return runs
+
+
+def _face_is_open(
+    layout: Layout,
+    grid: VoxelGrid,
+    nx: int,
+    ny: int,
+    z: int,
+) -> bool:
+    """Whether the neighbour window is outside the shape and unoccupied."""
+    gx, gy, gz = grid.shape
+    for dz in range(_BRICK_PLATES):
+        cz = z + dz
+        inside = 0 <= nx < gx and 0 <= ny < gy and 0 <= cz < gz
+        # IGNORE cells are interior shape fill — never clad toward them.
+        if inside and grid.codes[nx, ny, cz] != EMPTY:
+            return False
+        if layout.brick_at((nx, ny, cz)) is not None:
+            return False
+    return True
+
+
+def _mount(  # noqa: PLR0913 - one site is five scalars plus the layout
+    layout: Layout,
+    grid: VoxelGrid,
+    x: int,
+    y: int,
+    z: int,
+    face: tuple[int, int],
+) -> bool:
+    """Carve the wall column, seat the bracket, hang the tile."""
+    window = {(x, y, z + dz) for dz in range(_BRICK_PLATES)}
+    # Sites are gathered before any mutation; an earlier mount may have
+    # hung its tile into this face's neighbour column (inside corners
+    # share it — hit on suzanne). Re-check occupancy now.
+    target = {(x + face[0], y + face[1], z + dz) for dz in range(_BRICK_PLATES)}
+    if any(layout.brick_at(cell) is not None for cell in target):
+        return False
+    if (donors := covering_donors(layout, window)) is None:
+        return False
+    # Only single-column donors may be carved: cutting a bracket out of a
+    # wall-spanning brick would destroy the wall's horizontal bonding
+    # (and cascade through its own refills — measured, not hypothetical).
+    if any(
+        (cx, cy) != (x, y)
+        for donor in donors.values()
+        for cx, cy, _ in layout.cells_of(donor)
+    ):
+        return False
+    colours = {donor.colour_code for donor in donors.values()}
+    if len(colours) != 1:
+        return False
+    bracket_colour = colours.pop()
+    colour_of = {
+        cell: donor.colour_code
+        for donor in donors.values()
+        for cell in layout.cells_of(donor)
+    }
+    remainder = set(colour_of) - window
+    if (tiling := refill_tiling(layout, remainder, colour_of)) is None:
+        return False
+    gx, gy, gz = grid.shape
+    face_codes = [
+        int(grid.codes[x, y, z + dz])
+        for dz in range(_BRICK_PLATES)
+        if 0 <= x < gx and 0 <= y < gy and z + dz < gz
+    ]
+    tile_colour = merge_colour(*face_codes) if face_codes else None
+    if tile_colour is None or tile_colour < 0:
+        tile_colour = bracket_colour
+    yaw = _FACE_YAW[face]
+    layout.remove_many(donors)
+    layout.add("brick_1x1_side_stud", x, y, z, yaw, bracket_colour)
+    for part_key, (ax, ay, az), part_yaw, part_colour in tiling:
+        layout.add(part_key, ax, ay, az, part_yaw, part_colour)
+    layout.add("tile_1x1_snot", x + face[0], y + face[1], z, yaw, tile_colour)
+    return True

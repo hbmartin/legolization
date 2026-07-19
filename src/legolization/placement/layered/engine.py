@@ -349,6 +349,28 @@ def rects_covering(
     return results
 
 
+def enumerate_layer_rects(
+    problem: LayerProblem,
+    columns: Iterable[Column],
+    catalog: Catalog,
+) -> list[Rect2D]:
+    """Every catalog-feasible rect inside ``columns``, deterministic order.
+
+    The order is load-bearing: MILP consumers add rank-based tiebreak
+    costs indexed by position in this list.
+    """
+    free = frozenset(columns)
+    seen: set[tuple[int, int, int, int]] = set()
+    rects: list[Rect2D] = []
+    for column in sorted(free):
+        for rect in rects_covering(problem, column, catalog, uncovered=free):
+            key = (rect.x0, rect.y0, rect.x1, rect.y1)
+            if key not in seen:
+                seen.add(key)
+                rects.append(rect)
+    return rects
+
+
 def mergeable_union(
     a: Rect2D,
     b: Rect2D,

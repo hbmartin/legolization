@@ -26,6 +26,7 @@ from legolization.grid import EMPTY, VoxelGrid
 from legolization.main import main
 from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import ObjectiveWeights
+from legolization.placement.registry import strategy_names
 from legolization.stability import SolverConfig
 
 # --- helpers -------------------------------------------------------------
@@ -167,19 +168,22 @@ _metrics_st = st.builds(
 
 @st.composite
 def _candidate_lists(draw: st.DrawFn) -> list[Candidate]:
-    names = draw(
+    keys = draw(
         st.lists(
-            st.text(alphabet=string.ascii_lowercase, min_size=1, max_size=8),
+            st.tuples(
+                st.text(alphabet=string.ascii_lowercase, min_size=1, max_size=8),
+                st.integers(min_value=0, max_value=3),
+            ),
             min_size=1,
             max_size=8,
             unique=True,
         )
     )
     return [
-        Candidate(strategy=name, seconds=0.1, error="boom")
+        Candidate(strategy=name, seconds=0.1, seed=seed, error="boom")
         if draw(st.booleans())
-        else Candidate(strategy=name, seconds=0.1, metrics=draw(_metrics_st))
-        for name in names
+        else Candidate(strategy=name, seconds=0.1, seed=seed, metrics=draw(_metrics_st))
+        for name, seed in keys
     ]
 
 
@@ -214,9 +218,10 @@ def test_winner_is_gated_and_optimal(candidates: list[Candidate]) -> None:
         -winner_metrics.maximin_capacity,
         winner_metrics.brick_count,
         winner.strategy,
+        winner.seed,
     )
     assert winner_key == min(
-        (m.objective_total, -m.maximin_capacity, m.brick_count, c.strategy)
+        (m.objective_total, -m.maximin_capacity, m.brick_count, c.strategy, c.seed)
         for c, m in buildable
     )
 
@@ -224,13 +229,16 @@ def test_winner_is_gated_and_optimal(candidates: list[Candidate]) -> None:
 @given(_candidate_lists())
 def test_report_lists_everyone_and_serializes(candidates: list[Candidate]) -> None:
     report = select_best(candidates)
-    assert [c.strategy for c in report.candidates] == sorted(
-        c.strategy for c in candidates
+    assert [(c.strategy, c.seed) for c in report.candidates] == sorted(
+        (c.strategy, c.seed) for c in candidates
     )
     payload = json.loads(json.dumps(report.to_dict()))
     assert len(payload["candidates"]) == len(candidates)
     winner_name = report.winner.strategy if report.winner is not None else None
     assert payload["winner"] == winner_name
+    winner_seed = report.winner.seed if report.winner is not None else None
+    assert payload["winner_seed"] == winner_seed
+    assert all("seed" in entry for entry in payload["candidates"])
 
 
 # --- candidate_metrics on a real pipeline result --------------------------
@@ -304,9 +312,10 @@ def test_collect_converts_future_exception_to_candidate() -> None:
     future: Future[Candidate] = Future()
     future.set_exception(TypeError("cannot unpickle result"))
 
-    candidate = _collect(future, strategy="bond")
+    candidate = _collect(future, strategy="bond", seed=2)
 
     assert candidate.strategy == "bond"
+    assert candidate.seed == 2
     assert candidate.error == (
         "failed to retrieve result: TypeError: cannot unpickle result"
     )
@@ -315,11 +324,11 @@ def test_collect_converts_future_exception_to_candidate() -> None:
 @pytest.mark.parametrize("strategy", ["greedy", "bond"])
 def test_candidate_config_strips_progress_and_sets_strategy(strategy: str) -> None:
     config = PipelineConfig(progress=print, time_budget_s=9.0)
-    clone = _candidate_config(config, strategy=strategy, timeout_s=4.0)
+    clone = _candidate_config(config, strategy=strategy, seed=3, timeout_s=4.0)
     assert clone.strategy == strategy
     assert clone.progress is None
     assert clone.time_budget_s == 4.0
-    assert clone.seed == config.seed
+    assert clone.seed == 3
 
 
 def test_parallel_matches_sequential() -> None:
@@ -335,6 +344,83 @@ def test_parallel_matches_sequential() -> None:
     assert par_winner is not None
     assert seq_winner.strategy == par_winner.strategy
     assert select_best(sequential).reason == select_best(parallel).reason
+
+
+# --- multi-seed restarts ---------------------------------------------------
+
+
+def test_seed_breaks_full_ties() -> None:
+    late = Candidate(strategy="a", seconds=0.1, seed=1, metrics=_metrics())
+    early = Candidate(strategy="a", seconds=0.1, seed=0, metrics=_metrics())
+    assert select_best([late, early]).winner is early
+
+
+def test_run_all_seeds_produces_strategy_seed_grid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[str, int]] = []
+    real_run = legolization.compare.run
+
+    def spy_run(*, grid: VoxelGrid, config: PipelineConfig) -> PipelineResult:
+        seen.append((config.strategy, config.seed))
+        return real_run(grid=grid, config=config)
+
+    monkeypatch.setattr(legolization.compare, "run", spy_run)
+    candidates = run_all(
+        _box_grid(),
+        PipelineConfig(seed=9),
+        jobs=1,
+        names=("greedy", "bond"),
+        seeds=(0, 1),
+    )
+    assert [(c.strategy, c.seed) for c in candidates] == [
+        ("bond", 0),
+        ("bond", 1),
+        ("greedy", 0),
+        ("greedy", 1),
+    ]
+    assert sorted(seen) == [
+        ("bond", 0),
+        ("bond", 1),
+        ("greedy", 0),
+        ("greedy", 1),
+    ]
+
+
+def test_run_all_default_seeds_uses_config_seed() -> None:
+    candidates = run_all(
+        _box_grid(),
+        PipelineConfig(seed=5),
+        jobs=1,
+        names=("greedy",),
+        seeds=None,
+    )
+    assert [(c.strategy, c.seed) for c in candidates] == [("greedy", 5)]
+
+
+def test_run_all_dedupes_seeds() -> None:
+    candidates = run_all(
+        _box_grid(),
+        PipelineConfig(seed=0),
+        jobs=1,
+        names=("greedy",),
+        seeds=(1, 1, 0, 1),
+    )
+    assert [(c.strategy, c.seed) for c in candidates] == [
+        ("greedy", 0),
+        ("greedy", 1),
+    ]
+
+
+def test_parallel_matches_sequential_with_seeds() -> None:
+    grid = _box_grid()
+    config = PipelineConfig(seed=0)
+    sequential = run_all(grid, config, jobs=1, names=("greedy", "bond"), seeds=(0, 1))
+    parallel = run_all(grid, config, jobs=4, names=("greedy", "bond"), seeds=(0, 1))
+    assert [(c.strategy, c.seed) for c in sequential] == [
+        (c.strategy, c.seed) for c in parallel
+    ]
+    assert [c.metrics for c in sequential] == [c.metrics for c in parallel]
 
 
 # --- CLI ------------------------------------------------------------------
@@ -369,7 +455,7 @@ def test_cli_sweep_end_to_end(
     assert code == 0
     assert out.exists()
     payload = json.loads(report_path.read_text())
-    assert len(payload["candidates"]) == 6
+    assert len(payload["candidates"]) == len(strategy_names())
     names = {c["strategy"] for c in payload["candidates"]}
     assert payload["winner"] in names
     assert payload["buildable"] is True
@@ -390,6 +476,64 @@ def test_cli_sweep_flags_require_strategy_all(
         main([str(tmp_path / "x.npy"), "--jobs", "2"])
     assert excinfo.value.code == 2
     assert "--strategy all" in capsys.readouterr().err
+
+
+def test_cli_seeds_require_strategy_all(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(tmp_path / "x.npy"), "--seeds", "0,1"])
+    assert excinfo.value.code == 2
+    assert "--strategy all" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["", "a,b", "0,,1"])
+def test_cli_seeds_reject_malformed_lists(tmp_path: Path, value: str) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(tmp_path / "x.npy"), "--strategy", "all", "--seeds", value])
+    assert excinfo.value.code == 2
+
+
+def test_cli_sweep_multi_seed_end_to_end(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((4, 3, 2), 4, dtype=np.int16))
+    out = tmp_path / "box.ldr"
+    report_path = tmp_path / "report.json"
+    candidates_dir = tmp_path / "candidates"
+    code = main(
+        [
+            str(npy),
+            "-o",
+            str(out),
+            "--strategy",
+            "all",
+            "--jobs",
+            "1",
+            "--seeds",
+            "0,1",
+            "--report",
+            str(report_path),
+            "--keep-candidates",
+            str(candidates_dir),
+        ]
+    )
+    assert code == 0
+    payload = json.loads(report_path.read_text())
+    assert payload["seeds"] == [0, 1]
+    assert len(payload["candidates"]) == 2 * len(strategy_names())
+    assert {c["seed"] for c in payload["candidates"]} == {0, 1}
+    assert payload["winner_seed"] in (0, 1)
+    succeeded = [c for c in payload["candidates"] if c["error"] is None]
+    assert {p.name for p in candidates_dir.iterdir()} == {
+        f"box.{c['strategy']}.seed{c['seed']}.ldr" for c in succeeded
+    }
+    captured = capsys.readouterr()
+    assert " seed " in captured.out
+    assert "(seed " in captured.out
 
 
 @pytest.mark.parametrize(
@@ -473,7 +617,7 @@ def test_full_sweep_selects_buildable_winner() -> None:
         codes[lo:hi, lo:hi, z] = 4
     grid = VoxelGrid.from_array(codes, plates_per_voxel=3)
     candidates = run_all(grid, PipelineConfig(seed=0, time_budget_s=10.0), jobs=0)
-    assert len(candidates) == 6
+    assert len(candidates) == len(strategy_names())
     winner = select_best(candidates).winner
     assert winner is not None
     assert winner.metrics is not None

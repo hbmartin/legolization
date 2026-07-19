@@ -14,6 +14,7 @@ from legolization.placement.layered import (
     BeautyWeights,
     BondStrategy,
     FastStrategy,
+    KollskerStrategy,
     SmGaConfig,
     SmGaStrategy,
 )
@@ -111,6 +112,18 @@ def _make_beauty(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
     )
 
 
+def _make_kollsker(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
+    return KollskerStrategy(
+        catalog=catalog,
+        weights=config.weights,
+        solver_config=config.solver,
+        time_budget_s=config.time_budget_s,
+        progress=config.progress,
+        layer_time_s=config.milp_layer_time_s,
+        bond_weight=config.milp_bond_weight,
+    )
+
+
 _STRATEGIES: dict[str, StrategyFactory] = {
     "greedy": _make_greedy,
     "luo": _make_luo,
@@ -118,4 +131,5 @@ _STRATEGIES: dict[str, StrategyFactory] = {
     "fast": _make_fast,
     "smga": _make_smga,
     "beauty": _make_beauty,
+    "kollsker": _make_kollsker,
 }

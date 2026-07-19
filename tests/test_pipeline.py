@@ -209,8 +209,10 @@ def test_hollow_restore_loop_fires_on_instability(monkeypatch):
 
     assert calls["count"] > 1  # the loop re-placed after restoring
     assert result.stability.stable
+    assert result.grid is not None
     assert (result.grid.codes == IGNORE).any()  # restored fill is IGNORE
     baseline = run(grid, PipelineConfig(seed=0, hollow_rounds=0, repair=False))
+    assert baseline.grid is not None
     assert result.grid.filled_count > baseline.grid.filled_count
 
 

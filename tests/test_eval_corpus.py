@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -283,6 +284,7 @@ def test_markdown_rendering(evaluator: _EvaluatorModule) -> None:
         ["--kind", "synthetic", "--traits", "fast"],
         ["--kind", "synthetic", "--strategies", "greedy"],
         ["--kind", "synthetic", "--seed", "1"],
+        ["--kind", "synthetic", "--seeds", "0,1"],
     ],
 )
 def test_write_baseline_rejects_noncanonical_scope(
@@ -291,6 +293,99 @@ def test_write_baseline_rejects_noncanonical_scope(
 ) -> None:
     with pytest.raises(SystemExit, match="unfiltered --kind synthetic"):
         evaluator.main(argv=[*scope_args, "--write-baseline"])
+
+
+def _multi_seed_report(*, objectives: dict[int, float]) -> dict:
+    candidates = []
+    for seed, objective in objectives.items():
+        metrics = {
+            "buildable": True,
+            "objective_total": objective,
+            "brick_count": 10 + seed,
+            "max_score": 0.1,
+            "maximin_capacity": 2.0,
+        }
+        candidates.append(
+            {
+                "strategy": "greedy",
+                "seed": seed,
+                "seconds": 1.0,
+                "error": None,
+                "metrics": metrics,
+            }
+        )
+    best_seed = min(objectives, key=lambda seed: objectives[seed])
+    return {
+        "winner": "greedy",
+        "winner_seed": best_seed,
+        "reason": "test",
+        "buildable": True,
+        "candidates": candidates,
+    }
+
+
+def test_build_row_multi_seed_spread(evaluator: _EvaluatorModule) -> None:
+    report = _multi_seed_report(objectives={0: 0.9, 1: 0.5, 2: 0.7})
+    row = evaluator.build_row(model=_FakeModel(), report_dict=report, status="ok")
+    assert row["seeds"] == [0, 1, 2]
+    assert row["winner_seed"] == 1
+    assert row["buildable_count"] == 1  # one distinct strategy, not three
+    assert row["seed_spread"]["buildable_seeds"] == [0, 1, 2]
+    assert row["seed_spread"]["objective_min"] == 0.5
+    assert row["seed_spread"]["objective_max"] == 0.9
+    assert row["seed_spread"]["brick_min"] == 10
+    assert row["seed_spread"]["brick_max"] == 12
+    assert row["objective_total"] == 0.5  # the winner's (seed 1) metrics
+
+
+def test_single_seed_row_has_no_spread(evaluator: _EvaluatorModule) -> None:
+    row = evaluator.build_row(
+        model=_FakeModel(),
+        report_dict=_report_dict(),
+        status="ok",
+    )
+    assert "seed_spread" not in row
+    assert "seeds" not in row
+
+
+def test_multi_seed_skips_baseline_diff(
+    evaluator: _EvaluatorModule,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"models": []}))
+    rows = [
+        evaluator.build_row(
+            model=_FakeModel(),
+            report_dict=_multi_seed_report(objectives={0: 0.9, 1: 0.5}),
+            status="ok",
+        )
+    ]
+
+    def fake_sweep(
+        _corpus: object,
+        _models: object,
+        _args: object,
+    ) -> list[dict]:
+        return rows
+
+    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
+    exit_code = evaluator.main(
+        argv=[
+            "--models",
+            "cantilever",
+            "--seeds",
+            "0,1",
+            "--out",
+            str(tmp_path / "runs"),
+            "--baseline",
+            str(baseline),
+        ]
+    )
+    assert exit_code == 0
+    assert "baseline comparison skipped" in capsys.readouterr().out
 
 
 def test_skips_are_unevaluated_but_errors_fail(

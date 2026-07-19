@@ -28,7 +28,7 @@ deterministic chunk position.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
 from legolization.graph import GROUND_ID, ConnectionGraph
@@ -40,6 +40,7 @@ from legolization.instructions.search import (
     beam_order,
     disassembly_order,
 )
+from legolization.stability.prefix import PrefixSolver, RemovalSolver
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -72,6 +73,9 @@ class InstructionsConfig:
     search: Literal["greedy", "beam"] = "greedy"
     beam_states: int = 3
     lp_budget: int | None = None  # beam mode; None = 8 x chunk count
+    subassemblies: bool = False
+    min_sub_bricks: int = 3
+    max_subassemblies: int = 6
 
     def __post_init__(self) -> None:
         """Validate search widths before sequencing starts."""
@@ -90,27 +94,58 @@ class RotStep:
 
 @dataclass(frozen=True, slots=True)
 class BuildStep:
-    """One instruction step: bricks in emission order plus its verdict."""
+    """One instruction step: bricks in emission order plus its verdict.
+
+    ``submodel`` names the subassembly this step builds on the table;
+    ``attaches`` marks the step that seats a finished subassembly onto
+    the main model (such steps place no individual bricks:
+    ``brick_ids == ()``).
+    """
 
     index: int
     brick_ids: tuple[int, ...]
     prefix_stable: bool
     prefix_max_score: float
     rotstep: RotStep | None = None
+    submodel: str | None = None
+    attaches: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Subassembly:
+    """A cluster built separately and attached to the main model as a unit."""
+
+    name: str
+    brick_ids: tuple[int, ...]
+    anchor_layer: int  # world base layer; sub-local layer = world - anchor
 
 
 @dataclass(frozen=True, slots=True)
 class InstructionPlan:
-    """A full build sequence with warnings and the bill of materials."""
+    """A full build sequence with warnings and the bill of materials.
+
+    ``steps`` is flat: each subassembly's build steps appear immediately
+    before its attach step, so every index-zipped consumer (per-step BOM
+    callouts, step images, booklet entries) stays aligned.
+    """
 
     steps: tuple[BuildStep, ...]
     warnings: tuple[str, ...]
     bom: BillOfMaterials
+    subassemblies: tuple[Subassembly, ...] = ()
 
     @property
     def order(self) -> tuple[int, ...]:
         """Every brick id in build order."""
         return tuple(brick_id for step in self.steps for brick_id in step.brick_ids)
+
+    def main_steps(self) -> tuple[BuildStep, ...]:
+        """Return the main-model steps (attach steps included)."""
+        return tuple(step for step in self.steps if step.submodel is None)
+
+    def sub_steps(self, name: str) -> tuple[BuildStep, ...]:
+        """Return one subassembly's build steps, in order."""
+        return tuple(step for step in self.steps if step.submodel == name)
 
 
 def plan_instructions(
@@ -135,21 +170,35 @@ def plan_instructions(
     ordered_steps, warnings = _sequence(
         layout, config, chunks, supports, blockers, blocks
     )
-    if config.rotstep:
-        ordered_steps = _assign_rotsteps(layout, ordered_steps)
     plan = InstructionPlan(
         steps=tuple(ordered_steps),
         warnings=tuple(warnings),
         bom=BillOfMaterials(total=(), per_step=()),
     )
-    return InstructionPlan(
-        steps=plan.steps,
-        warnings=plan.warnings,
-        bom=bill_of_materials(layout, plan=plan),
-    )
+    if config.subassemblies:
+        from legolization.instructions.subassembly import (  # noqa: PLC0415 - cycle
+            extract_subassemblies,
+        )
+
+        plan = extract_subassemblies(layout, plan, config=config)
+    if config.rotstep:
+        plan = replace(
+            plan, steps=tuple(_assign_rotsteps_subaware(layout, list(plan.steps)))
+        )
+    return replace(plan, bom=bill_of_materials(layout, plan=plan))
 
 
-def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing state
+def _assign_rotsteps_subaware(
+    layout: Layout,
+    steps: list[BuildStep],
+) -> list[BuildStep]:
+    """Assign ROTSTEP hints over MAIN steps only; sub steps stay unrotated."""
+    main = [step for step in steps if step.submodel is None]
+    rotated = iter(_assign_rotsteps(layout, main))
+    return [step if step.submodel is not None else next(rotated) for step in steps]
+
+
+def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequencing state
     layout: Layout,
     config: InstructionsConfig,
     chunks: list[tuple[int, tuple[int, ...]]],
@@ -162,6 +211,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
     steps: list[BuildStep] = []
     warnings: list[str] = []
     cache: dict[frozenset[int], StabilityResult] = {}
+    warm_keys: set[frozenset[int]] = set()
+    prefix_solver: PrefixSolver | None = None
     centroids = [chunk_centroid(layout, chunk) for _, chunk in chunks]
     previous_centroid: tuple[float, float] | None = None
 
@@ -190,8 +241,21 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
     def analyze_prefix(chunk: tuple[int, ...]) -> StabilityResult:
         key = frozenset(placed | set(chunk))
         if (hit := cache.get(key)) is None:
-            cache[key] = hit = analyze(layout.subset(key), config.solver)
+            if prefix_solver is not None:
+                hit = prefix_solver.probe(chunk)
+                warm_keys.add(key)
+            else:
+                hit = analyze(layout.subset(key), config.solver)
+            cache[key] = hit
         return hit
+
+    def disable_warm_engine() -> None:
+        """Rescue/beam/band paths float-order scores: legacy numbers only."""
+        nonlocal prefix_solver
+        prefix_solver = None
+        for key in warm_keys:
+            cache.pop(key, None)
+        warm_keys.clear()
 
     def emit_verdicts(verdicts: list[ChunkVerdict]) -> None:
         for verdict in verdicts:
@@ -210,7 +274,21 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
             emit(verdict.chunk, stable=verdict.stable, score=verdict.max_score)
 
     def rescue() -> None:
-        """Re-plan the whole remainder by assembly-by-disassembly."""
+        """Re-plan the whole remainder by assembly-by-disassembly.
+
+        The rescue goes warm through a :class:`RemovalSolver` when the
+        highspy engine is on. Its scores can differ in degenerate float
+        ties from the scipy engine's, so byte-identity across engines is
+        guaranteed only for plans that never enter the rescue (which
+        includes all shipped goldens); rescued plans are validated by
+        ``verify_plan``/plan-quality equivalence instead.
+        """
+        nonlocal prefix_solver
+        prefix_solver = None  # the forward base can no longer advance
+        scope = frozenset(placed).union(
+            *(set(chunks[position][1]) for position in pending), frozenset()
+        )
+        remover = RemovalSolver.create(layout, scope, config.solver)
         emit_verdicts(
             disassembly_order(
                 layout,
@@ -220,6 +298,7 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
                 blockers=blockers,
                 config=config,
                 cache=cache,
+                remover=remover,
             )
         )
 
@@ -237,6 +316,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
         )
         return steps, warnings
 
+    prefix_solver = PrefixSolver.create(layout, config.solver)
+
     while pending:
         ready = _gather_ready(
             pending,
@@ -253,6 +334,7 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
                 break
             # Legacy escape hatch: pure band order is always
             # insertion-feasible, but its verdicts go unchecked.
+            disable_warm_engine()
             warnings.append("sequencer deadlocked; remaining steps follow band order")
             for position in pending:
                 _, chunk = chunks[position]
@@ -278,6 +360,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
             if result.stable:
                 chosen = position
                 emit(chunk, stable=True, score=result.max_score)
+                if prefix_solver is not None:
+                    prefix_solver.commit(chunk)
                 break
             if best is None or result.max_score < best[0]:
                 best = (result.max_score, position)
@@ -302,6 +386,8 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns all sequencing st
                 "support the overhang by hand while building"
             )
             emit(chunk, stable=False, score=score)
+            if prefix_solver is not None:
+                prefix_solver.commit(chunk)
             chosen = position
         previous_centroid = centroids[chosen]
         pending.remove(chosen)
@@ -370,6 +456,9 @@ def _assign_rotsteps(
             for brick_id in step.brick_ids
             for x, y, _ in layout.cells_of(layout.bricks[brick_id])
         ]
+        if not step_columns:  # attach steps place no individual bricks
+            rotated.append(step)
+            continue
         cx = sum(x for x, _ in step_columns) / len(step_columns)
         cy = sum(y for _, y in step_columns) / len(step_columns)
         rotstep: RotStep | None = None
@@ -408,13 +497,23 @@ def _angular_distance(a: float, b: float) -> float:
     return abs((a - b + 180.0) % 360.0 - 180.0)
 
 
-def verify_plan(
+def verify_plan(  # noqa: C901, PLR0912, PLR0915 - three step kinds, one walk
     layout: Layout,
     plan: InstructionPlan,
     *,
     config: InstructionsConfig | None = None,
 ) -> list[str]:
-    """Check plan invariants; returns human-readable violations (ideally [])."""
+    """Check plan invariants; returns human-readable violations (ideally []).
+
+    Three step kinds: sub-build steps are checked in the subassembly's
+    own grounded frame (the unit sits on the table); an attach step is
+    checked as a UNIT insertion — every sub brick's world blockers
+    against the placed world, unit grounding, and the post-attach
+    analysis; main steps get the classic per-brick checks. Preservation
+    argument for the rewrite: extracted bricks only ever move LATER, and
+    any window brick stud-touching the cluster is inside it by component
+    construction, so no surviving main step can lose a support.
+    """
     config = config or InstructionsConfig()
     violations: list[str] = []
     order = plan.order
@@ -427,15 +526,85 @@ def verify_plan(
         if below_id != GROUND_ID:
             supports[above_id].add(below_id)
     blockers = vertical_blockers(layout)
+    subs = {sub.name: sub for sub in plan.subassemblies}
+    sub_placed: dict[str, set[int]] = {name: set() for name in subs}
     placed: set[int] = set()
+    # Final-order main prefixes are strictly append-only: warm-start fit.
+    prefix_solver = PrefixSolver.create(layout, config.solver)
+
+    def analyzed(subset: set[int]) -> StabilityResult:
+        return analyze(layout.subset(subset), config.solver)
+
     for step in plan.steps:
         step_set = set(step.brick_ids)
+        if step.submodel is not None:
+            sub = subs.get(step.submodel)
+            if sub is None:
+                violations.append(f"step {step.index}: unknown submodel")
+                continue
+            seen = sub_placed[step.submodel]
+            sub_all = set(sub.brick_ids)
+            for brick_id in step.brick_ids:
+                if not (supports[brick_id] & sub_all) <= (seen | step_set):
+                    violations.append(f"step {step.index}: sub support after dependent")
+                if blockers[brick_id] & seen:
+                    violations.append(
+                        f"step {step.index}: sub vertically blocked insert"
+                    )
+            seen |= step_set
+            sub_layout = layout.subset(seen).translated(dz=sub.anchor_layer)
+            result = analyze(sub_layout, config.solver)
+            if result.stable != step.prefix_stable:
+                violations.append(
+                    f"step {step.index}: sub prefix stability mismatch "
+                    f"(expected {step.prefix_stable}, analyzed {result.stable})"
+                )
+            continue
+        if step.attaches is not None:
+            sub = subs.get(step.attaches)
+            if sub is None:
+                violations.append(f"step {step.index}: unknown subassembly")
+                continue
+            unit = set(sub.brick_ids)
+            if sub_placed[step.attaches] != unit:
+                violations.append(
+                    f"step {step.index}: attach before subassembly complete"
+                )
+            if step.brick_ids:
+                violations.append(
+                    f"step {step.index}: attach step must place no bricks"
+                )
+            if any(blockers[bid] & placed for bid in unit):
+                violations.append(f"step {step.index}: attach unit vertically blocked")
+            result = analyzed(placed | unit)
+            floating = {
+                bid
+                for bid, score in result.scores.items()
+                if bid in unit and not score.in_equilibrium
+            }
+            if result.stable != step.prefix_stable:
+                violations.append(
+                    f"step {step.index}: attach stability mismatch "
+                    f"(expected {step.prefix_stable}, analyzed {result.stable})"
+                )
+            if not result.stable and floating == unit:
+                violations.append(
+                    f"step {step.index}: attached subassembly has no seat"
+                )
+            placed |= unit
+            if prefix_solver is not None:
+                prefix_solver.commit(tuple(unit))
+            continue
         for brick_id in step.brick_ids:
             if not supports[brick_id] <= placed | step_set:
                 violations.append(f"step {step.index}: support after dependent")
             if blockers[brick_id] & placed:
                 violations.append(f"step {step.index}: vertically blocked insert")
-        result = analyze(layout.subset(placed | step_set), config.solver)
+        if prefix_solver is not None:
+            result = prefix_solver.probe(step.brick_ids)
+            prefix_solver.commit(step.brick_ids)
+        else:
+            result = analyzed(placed | step_set)
         if result.stable != step.prefix_stable:
             violations.append(
                 f"step {step.index}: prefix stability mismatch "

@@ -235,3 +235,10 @@ def test_download_isolates_failures_and_replaces_atomically(
     output = capsys.readouterr().out
     assert "download failed" in output
     assert "ok meshes/good.stl" in output
+
+
+def test_largest_component_only_field(corpus: ModuleType) -> None:
+    models = {model.name: model for model in corpus.load_manifest()}
+    assert models["homer"].largest_component_only is True
+    assert models["spot"].largest_component_only is False
+    assert models["cantilever"].largest_component_only is False

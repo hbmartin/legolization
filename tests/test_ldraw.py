@@ -92,3 +92,182 @@ def test_roundtrip_through_pyldraw3(layout, tmp_path):
     pieces = [obj for obj in model.objects if isinstance(obj, Piece)]
     assert len(pieces) == 3
     assert sorted(p.part for p in pieces) == ["3001", "3020", "3040b"]
+
+
+def _subassembly_layout(layout: Layout) -> Layout:
+    for level in (0, 3, 6):
+        layout.add("brick_2x2", 3, 3, level, 0, 15)  # stem
+    layout.add("brick_2x2", 1, 3, 9, 0, 4)  # petal, no support below
+    layout.add("brick_2x2", 3, 3, 9, 0, 4)  # hub on the stem
+    layout.add("brick_2x2", 2, 3, 12, 0, 4)  # bridge petal to hub
+    return layout
+
+
+def test_mpd_submodel_structure(layout, tmp_path):
+    from legolization.instructions import InstructionsConfig, plan_instructions
+
+    _subassembly_layout(layout)
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert len(plan.subassemblies) == 1
+    sub = plan.subassemblies[0]
+
+    mpd = tmp_path / "model.mpd"
+    write_model(layout, mpd, plan=plan)
+    lines = mpd.read_text().splitlines()
+
+    file_headers = [line for line in lines if line.startswith("0 FILE ")]
+    assert file_headers == ["0 FILE model.mpd", f"0 FILE model-{sub.name}.ldr"]
+    assert lines.count("0 NOFILE") == 2
+
+    # The attach step is a single colour-16 reference at -8 * anchor_layer.
+    reference = next(
+        line for line in _type1_lines(lines) if line.endswith(f"model-{sub.name}.ldr")
+    )
+    fields = reference.split()
+    assert fields[:5] == ["1", "16", "0", str(-8 * sub.anchor_layer), "0"]
+    assert fields[5:14] == ["1", "0", "0", "0", "1", "0", "0", "0", "1"]
+
+    # Main-file steps == main + attach steps; sub file carries its own steps.
+    boundary = lines.index(f"0 FILE model-{sub.name}.ldr")
+    main_lines, sub_lines = lines[:boundary], lines[boundary:]
+    assert main_lines.count("0 STEP") == len(plan.main_steps())
+    assert sub_lines.count("0 STEP") == len(plan.sub_steps(sub.name))
+
+    # Sub bricks are emitted in the local grounded frame: the unit's lowest
+    # brick tops out at y = -8 * height, exactly as if it sat on the table.
+    sub_type1 = _type1_lines(sub_lines)
+    assert len(sub_type1) == len(sub.brick_ids)
+    ys = [float(line.split()[3]) for line in sub_type1]
+    assert max(ys) == -24.0  # brick_2x2 on the table
+
+
+def test_ldr_fallback_flattens_submodels(layout, tmp_path):
+    from legolization.instructions import InstructionsConfig, plan_instructions
+
+    _subassembly_layout(layout)
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert plan.subassemblies
+
+    ldr = tmp_path / "model.ldr"
+    write_model(layout, ldr, plan=plan)
+    lines = ldr.read_text().splitlines()
+    assert not any(line.startswith("0 FILE") for line in lines)
+    type1 = _type1_lines(lines)
+    assert len(type1) == len(layout.bricks)
+    assert all(line.endswith(".dat") for line in type1)
+
+
+# --- LDraw import (ldraw_in) ---
+
+
+def _brick_key(layout: Layout) -> list[tuple]:
+    return sorted(
+        (b.part_key, b.x, b.y, b.layer, b.yaw % 360, b.colour_code)
+        for b in layout.bricks.values()
+    )
+
+
+@pytest.mark.parametrize("name", ["heart", "pyramid", "arch"])
+def test_import_roundtrips_shipped_examples(name, tmp_path):
+    """Every shipped example imports whole and survives write → re-import.
+
+    Byte-identity is not the bar: examples are emitted in plan-step order
+    with ROTSTEP hints, while a bare re-emission rasters by layer. The
+    brick multiset is what the import contract preserves.
+    """
+    from pathlib import Path
+
+    from legolization.ldraw_in import layout_from_ldraw
+
+    source = Path(__file__).parent.parent / "data" / "examples" / f"{name}.ldr"
+    imported = layout_from_ldraw(source)
+    type1 = _type1_lines(source.read_text().splitlines())
+    assert len(imported.bricks) == len(type1)  # nothing dropped
+    out = tmp_path / f"{name}.ldr"
+    write_model(imported, out)
+    assert _brick_key(layout_from_ldraw(out)) == _brick_key(imported)
+
+
+def test_import_roundtrips_slopes_and_yaws(layout, tmp_path):
+    from legolization.ldraw_in import layout_from_ldraw
+
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    layout.add("plate_2x4", 0, 0, 3, 90, 14)
+    layout.add("slope_45_2x1", 4, 0, 0, 180, 15)
+    layout.add("slope_33_3x1", 6, 2, 0, 270, 1)
+    layout.add("slope_45_2x2", 0, 4, 0, 0, 2)
+    path = tmp_path / "rt.ldr"
+    write_model(layout, path)
+    assert _brick_key(layout_from_ldraw(path)) == _brick_key(layout)
+
+
+def test_import_flattens_mpd_submodels(layout, tmp_path):
+    from legolization.instructions import InstructionsConfig, plan_instructions
+    from legolization.ldraw_in import layout_from_ldraw
+
+    _subassembly_layout(layout)
+    plan = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=True)
+    )
+    assert plan.subassemblies
+    path = tmp_path / "subs.mpd"
+    write_model(layout, path, plan=plan)
+    assert _brick_key(layout_from_ldraw(path)) == _brick_key(layout)
+
+
+def test_import_strict_reports_every_problem(tmp_path):
+    from legolization.ldraw_in import LdrawImportError, layout_from_ldraw
+
+    path = tmp_path / "bad.ldr"
+    path.write_text(
+        "0 bad\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 9999.dat\n"  # unknown part
+        "1 4 7 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # off-grid x
+        "1 99999 20 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # unknown colour
+        "1 4 40 -24 0 0.7 0 -0.7 0 1 0 0.7 0 0.7 3005.dat\n"  # 45-degree
+        "1 4 60 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # fine
+        "1 4 60 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # collides with it
+    )
+    with pytest.raises(LdrawImportError) as excinfo:
+        layout_from_ldraw(path)
+    problems = "\n".join(excinfo.value.problems)
+    assert len(excinfo.value.problems) == 5
+    assert "part not in the catalog" in problems
+    assert "off the stud/plate grid" in problems
+    assert "not in the solid palette" in problems
+    assert "not a yaw multiple" in problems
+    assert "collides" in problems
+
+
+def test_import_cli_end_to_end(tmp_path):
+    from pathlib import Path
+
+    from legolization.main import main
+
+    source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
+    out = tmp_path / "reimport.ldr"
+    bom = tmp_path / "bom.json"
+    assert main([str(source), "-o", str(out), "--bom", str(bom)]) == 0
+    assert out.read_text() != ""
+    assert bom.read_text().startswith("{")
+
+
+def test_import_cli_rejects_placement_flags(tmp_path):
+    from pathlib import Path
+
+    from legolization.main import main
+
+    source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
+    for extra in (
+        [],  # no -o: default output would overwrite the input
+        ["-o", str(tmp_path / "x.ldr"), "--strategy", "luo"],
+        ["-o", str(tmp_path / "x.ldr"), "--slopes"],
+        ["-o", str(tmp_path / "x.ldr"), "--dither"],
+    ):
+        with pytest.raises(SystemExit) as excinfo:
+            main([str(source), *extra])
+        assert excinfo.value.code == 2

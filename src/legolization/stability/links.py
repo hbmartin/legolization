@@ -19,6 +19,7 @@ import cvxpy as cp
 import numpy as np
 from scipy.sparse import coo_matrix
 
+from legolization import telemetry
 from legolization.graph import ConnectionGraph
 from legolization.stability.constants import (
     KNOB_PITCH_M,
@@ -64,6 +65,15 @@ def localize_instability(
     """Solve the artificial-link QP; infeasible = unpatchable collapse."""
     if not len(layout):
         return LinkReport(q=0.0, links=(), status="optimal")
+    with telemetry.span("stability.links", n=len(layout)):
+        return _localize_body(layout, graph)
+
+
+def _localize_body(
+    layout: Layout,
+    graph: ConnectionGraph | None,
+) -> LinkReport:
+    """Run the body of :func:`localize_instability` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
     model = build_model(layout, graph)
     if not graph.side_contacts:
@@ -145,6 +155,11 @@ def _centroids(layout: Layout) -> dict[int, tuple[float, float, float]]:
 
 
 def _solve(problem: cp.Problem) -> str:
+    with telemetry.span("stability.links.cvxpy"):
+        return _solve_body(problem)
+
+
+def _solve_body(problem: cp.Problem) -> str:
     last_status = "error"
     for solver in _QP_SOLVERS:
         try:

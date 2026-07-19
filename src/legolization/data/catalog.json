@@ -1,34 +1,374 @@
 {
   "comment": "Seed part catalog. size = [width, length] in studs (length runs along local dx). Masses in grams: bricks from StableLego Table I (1x3/2x3/2x8 interpolated by footprint area); plates/tiles use nominal BrickLink catalog weights (real plates weigh ~0.45-0.55x the same-footprint brick, not exactly one third); slopes estimated from filled volume. Slope specs list stud_cells (full-height columns carrying studs) and slope_cells (columns under the sloped face); the LDraw models descend toward -Z from an origin at the stud-cell centroid.",
   "parts": [
-    { "key": "brick_1x1", "ldraw_part": "3005", "category": "brick", "size": [1, 1], "height_plates": 3, "mass_g": 0.43 },
-    { "key": "brick_1x2", "ldraw_part": "3004", "category": "brick", "size": [1, 2], "height_plates": 3, "mass_g": 0.81 },
-    { "key": "brick_1x3", "ldraw_part": "3622", "category": "brick", "size": [1, 3], "height_plates": 3, "mass_g": 1.19 },
-    { "key": "brick_1x4", "ldraw_part": "3010", "category": "brick", "size": [1, 4], "height_plates": 3, "mass_g": 1.57 },
-    { "key": "brick_1x6", "ldraw_part": "3009", "category": "brick", "size": [1, 6], "height_plates": 3, "mass_g": 2.28 },
-    { "key": "brick_1x8", "ldraw_part": "3008", "category": "brick", "size": [1, 8], "height_plates": 3, "mass_g": 3.03 },
-    { "key": "brick_2x2", "ldraw_part": "3003", "category": "brick", "size": [2, 2], "height_plates": 3, "mass_g": 1.15 },
-    { "key": "brick_2x3", "ldraw_part": "3002", "category": "brick", "size": [2, 3], "height_plates": 3, "mass_g": 1.66 },
-    { "key": "brick_2x4", "ldraw_part": "3001", "category": "brick", "size": [2, 4], "height_plates": 3, "mass_g": 2.16 },
-    { "key": "brick_2x6", "ldraw_part": "2456", "category": "brick", "size": [2, 6], "height_plates": 3, "mass_g": 3.23 },
-    { "key": "brick_2x8", "ldraw_part": "3007", "category": "brick", "size": [2, 8], "height_plates": 3, "mass_g": 4.30 },
-    { "key": "plate_1x1", "ldraw_part": "3024", "category": "plate", "size": [1, 1], "height_plates": 1, "mass_g": 0.18 },
-    { "key": "plate_1x2", "ldraw_part": "3023", "category": "plate", "size": [1, 2], "height_plates": 1, "mass_g": 0.36 },
-    { "key": "plate_1x3", "ldraw_part": "3623", "category": "plate", "size": [1, 3], "height_plates": 1, "mass_g": 0.53 },
-    { "key": "plate_1x4", "ldraw_part": "3710", "category": "plate", "size": [1, 4], "height_plates": 1, "mass_g": 0.70 },
-    { "key": "plate_1x6", "ldraw_part": "3666", "category": "plate", "size": [1, 6], "height_plates": 1, "mass_g": 1.06 },
-    { "key": "plate_1x8", "ldraw_part": "3460", "category": "plate", "size": [1, 8], "height_plates": 1, "mass_g": 1.41 },
-    { "key": "plate_2x2", "ldraw_part": "3022", "category": "plate", "size": [2, 2], "height_plates": 1, "mass_g": 0.60 },
-    { "key": "plate_2x3", "ldraw_part": "3021", "category": "plate", "size": [2, 3], "height_plates": 1, "mass_g": 0.89 },
-    { "key": "plate_2x4", "ldraw_part": "3020", "category": "plate", "size": [2, 4], "height_plates": 1, "mass_g": 1.15 },
-    { "key": "plate_2x6", "ldraw_part": "3795", "category": "plate", "size": [2, 6], "height_plates": 1, "mass_g": 1.72 },
-    { "key": "plate_2x8", "ldraw_part": "3034", "category": "plate", "size": [2, 8], "height_plates": 1, "mass_g": 2.30 },
-    { "key": "tile_1x1", "ldraw_part": "3070b", "category": "tile", "size": [1, 1], "height_plates": 1, "mass_g": 0.16 },
-    { "key": "tile_1x2", "ldraw_part": "3069b", "category": "tile", "size": [1, 2], "height_plates": 1, "mass_g": 0.26 },
-    { "key": "tile_1x4", "ldraw_part": "2431", "category": "tile", "size": [1, 4], "height_plates": 1, "mass_g": 0.55 },
-    { "key": "tile_2x2", "ldraw_part": "3068b", "category": "tile", "size": [2, 2], "height_plates": 1, "mass_g": 0.50 },
-    { "key": "slope_45_2x1", "ldraw_part": "3040b", "category": "slope", "height_plates": 3, "mass_g": 0.9, "stud_cells": [[0, 1]], "slope_cells": [[0, 0]] },
-    { "key": "slope_45_2x2", "ldraw_part": "3039", "category": "slope", "height_plates": 3, "mass_g": 1.7, "stud_cells": [[0, 1], [1, 1]], "slope_cells": [[0, 0], [1, 0]] },
-    { "key": "slope_33_3x1", "ldraw_part": "4286", "category": "slope", "height_plates": 3, "mass_g": 1.1, "stud_cells": [[0, 2]], "slope_cells": [[0, 0], [0, 1]] }
+    {
+      "key": "brick_1x1",
+      "ldraw_part": "3005",
+      "category": "brick",
+      "size": [
+        1,
+        1
+      ],
+      "height_plates": 3,
+      "mass_g": 0.43
+    },
+    {
+      "key": "brick_1x2",
+      "ldraw_part": "3004",
+      "category": "brick",
+      "size": [
+        1,
+        2
+      ],
+      "height_plates": 3,
+      "mass_g": 0.81
+    },
+    {
+      "key": "brick_1x3",
+      "ldraw_part": "3622",
+      "category": "brick",
+      "size": [
+        1,
+        3
+      ],
+      "height_plates": 3,
+      "mass_g": 1.19
+    },
+    {
+      "key": "brick_1x4",
+      "ldraw_part": "3010",
+      "category": "brick",
+      "size": [
+        1,
+        4
+      ],
+      "height_plates": 3,
+      "mass_g": 1.57
+    },
+    {
+      "key": "brick_1x6",
+      "ldraw_part": "3009",
+      "category": "brick",
+      "size": [
+        1,
+        6
+      ],
+      "height_plates": 3,
+      "mass_g": 2.28
+    },
+    {
+      "key": "brick_1x8",
+      "ldraw_part": "3008",
+      "category": "brick",
+      "size": [
+        1,
+        8
+      ],
+      "height_plates": 3,
+      "mass_g": 3.03
+    },
+    {
+      "key": "brick_2x2",
+      "ldraw_part": "3003",
+      "category": "brick",
+      "size": [
+        2,
+        2
+      ],
+      "height_plates": 3,
+      "mass_g": 1.15
+    },
+    {
+      "key": "brick_2x3",
+      "ldraw_part": "3002",
+      "category": "brick",
+      "size": [
+        2,
+        3
+      ],
+      "height_plates": 3,
+      "mass_g": 1.66
+    },
+    {
+      "key": "brick_2x4",
+      "ldraw_part": "3001",
+      "category": "brick",
+      "size": [
+        2,
+        4
+      ],
+      "height_plates": 3,
+      "mass_g": 2.16
+    },
+    {
+      "key": "brick_2x6",
+      "ldraw_part": "2456",
+      "category": "brick",
+      "size": [
+        2,
+        6
+      ],
+      "height_plates": 3,
+      "mass_g": 3.23
+    },
+    {
+      "key": "brick_2x8",
+      "ldraw_part": "3007",
+      "category": "brick",
+      "size": [
+        2,
+        8
+      ],
+      "height_plates": 3,
+      "mass_g": 4.3
+    },
+    {
+      "key": "plate_1x1",
+      "ldraw_part": "3024",
+      "category": "plate",
+      "size": [
+        1,
+        1
+      ],
+      "height_plates": 1,
+      "mass_g": 0.18
+    },
+    {
+      "key": "plate_1x2",
+      "ldraw_part": "3023",
+      "category": "plate",
+      "size": [
+        1,
+        2
+      ],
+      "height_plates": 1,
+      "mass_g": 0.36
+    },
+    {
+      "key": "plate_1x3",
+      "ldraw_part": "3623",
+      "category": "plate",
+      "size": [
+        1,
+        3
+      ],
+      "height_plates": 1,
+      "mass_g": 0.53
+    },
+    {
+      "key": "plate_1x4",
+      "ldraw_part": "3710",
+      "category": "plate",
+      "size": [
+        1,
+        4
+      ],
+      "height_plates": 1,
+      "mass_g": 0.7
+    },
+    {
+      "key": "plate_1x6",
+      "ldraw_part": "3666",
+      "category": "plate",
+      "size": [
+        1,
+        6
+      ],
+      "height_plates": 1,
+      "mass_g": 1.06
+    },
+    {
+      "key": "plate_1x8",
+      "ldraw_part": "3460",
+      "category": "plate",
+      "size": [
+        1,
+        8
+      ],
+      "height_plates": 1,
+      "mass_g": 1.41
+    },
+    {
+      "key": "plate_2x2",
+      "ldraw_part": "3022",
+      "category": "plate",
+      "size": [
+        2,
+        2
+      ],
+      "height_plates": 1,
+      "mass_g": 0.6
+    },
+    {
+      "key": "plate_2x3",
+      "ldraw_part": "3021",
+      "category": "plate",
+      "size": [
+        2,
+        3
+      ],
+      "height_plates": 1,
+      "mass_g": 0.89
+    },
+    {
+      "key": "plate_2x4",
+      "ldraw_part": "3020",
+      "category": "plate",
+      "size": [
+        2,
+        4
+      ],
+      "height_plates": 1,
+      "mass_g": 1.15
+    },
+    {
+      "key": "plate_2x6",
+      "ldraw_part": "3795",
+      "category": "plate",
+      "size": [
+        2,
+        6
+      ],
+      "height_plates": 1,
+      "mass_g": 1.72
+    },
+    {
+      "key": "plate_2x8",
+      "ldraw_part": "3034",
+      "category": "plate",
+      "size": [
+        2,
+        8
+      ],
+      "height_plates": 1,
+      "mass_g": 2.3
+    },
+    {
+      "key": "tile_1x1",
+      "ldraw_part": "3070b",
+      "category": "tile",
+      "size": [
+        1,
+        1
+      ],
+      "height_plates": 1,
+      "mass_g": 0.16
+    },
+    {
+      "key": "tile_1x2",
+      "ldraw_part": "3069b",
+      "category": "tile",
+      "size": [
+        1,
+        2
+      ],
+      "height_plates": 1,
+      "mass_g": 0.26
+    },
+    {
+      "key": "tile_1x4",
+      "ldraw_part": "2431",
+      "category": "tile",
+      "size": [
+        1,
+        4
+      ],
+      "height_plates": 1,
+      "mass_g": 0.55
+    },
+    {
+      "key": "tile_2x2",
+      "ldraw_part": "3068b",
+      "category": "tile",
+      "size": [
+        2,
+        2
+      ],
+      "height_plates": 1,
+      "mass_g": 0.5
+    },
+    {
+      "key": "slope_45_2x1",
+      "ldraw_part": "3040b",
+      "category": "slope",
+      "height_plates": 3,
+      "mass_g": 0.9,
+      "stud_cells": [
+        [
+          0,
+          1
+        ]
+      ],
+      "slope_cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "key": "slope_45_2x2",
+      "ldraw_part": "3039",
+      "category": "slope",
+      "height_plates": 3,
+      "mass_g": 1.7,
+      "stud_cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "slope_cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "key": "slope_33_3x1",
+      "ldraw_part": "4286",
+      "category": "slope",
+      "height_plates": 3,
+      "mass_g": 1.1,
+      "stud_cells": [
+        [
+          0,
+          2
+        ]
+      ],
+      "slope_cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "key": "brick_1x1_side_stud",
+      "ldraw_part": "87087",
+      "category": "snot",
+      "height_plates": 3,
+      "mass_g": 0.64
+    },
+    {
+      "key": "tile_1x1_snot",
+      "ldraw_part": "3070b",
+      "category": "snot",
+      "height_plates": 3,
+      "mass_g": 0.16
+    }
   ]
 }

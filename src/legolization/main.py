@@ -6,10 +6,15 @@ import argparse
 import json
 import math
 import sys
+import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from legolization import telemetry
 from legolization.compare import Candidate, SelectionReport, run_all, select_best
-from legolization.instructions.sequencer import InstructionsConfig
+from legolization.graph import ConnectionGraph
+from legolization.instructions.sequencer import InstructionsConfig, plan_instructions
+from legolization.ldraw_in import LdrawImportError, layout_from_ldraw
 from legolization.ldraw_out import write_model
 from legolization.mesh import DEFAULT_MESH_COLOUR, MESH_SUFFIXES, MeshOptions
 from legolization.pipeline import (
@@ -21,7 +26,12 @@ from legolization.pipeline import (
 )
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.registry import strategy_names
-from legolization.stability.solver import SolverConfig
+from legolization.stability.solver import SolverConfig, analyze
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+LDRAW_SUFFIXES = {".ldr", ".mpd"}
 
 
 def _non_negative_int(value: str) -> int:
@@ -44,6 +54,19 @@ def _positive_int(value: str) -> int:
         msg = f"{value!r} must be greater than zero"
         raise argparse.ArgumentTypeError(msg)
     return parsed
+
+
+def _seed_list(value: str) -> tuple[int, ...]:
+    """Parse a comma-separated seed list for argparse."""
+    parts = [part.strip() for part in value.split(",")]
+    if not parts or any(not part for part in parts):
+        msg = f"{value!r} must be comma-separated integers"
+        raise argparse.ArgumentTypeError(msg)
+    try:
+        return tuple(int(part) for part in parts)
+    except ValueError as error:
+        msg = f"{value!r} must be comma-separated integers"
+        raise argparse.ArgumentTypeError(msg) from error
 
 
 def _positive_float(value: str) -> float:
@@ -125,6 +148,16 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="also write every successful strategy's model into DIR",
     )
+    sweep.add_argument(
+        "--seeds",
+        type=_seed_list,
+        default=None,
+        metavar="N,N,...",
+        help=(
+            "run every strategy once per listed seed and pick the overall "
+            "best (restarts; --timeout still bounds the whole sweep)"
+        ),
+    )
     parser.add_argument(
         "--time-budget",
         type=float,
@@ -151,13 +184,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--slopes",
-        action="store_true",
-        help="smooth staircase surfaces with 45-degree slope bricks",
+        nargs="?",
+        const="preserve",
+        choices=("preserve", "smooth"),
+        default=None,
+        help=(
+            "fit slope bricks onto staircase surfaces: 'preserve' (default) "
+            "swaps exact in-shape matches without adding material; 'smooth' "
+            "adds slopes outside the shape"
+        ),
     )
     parser.add_argument(
         "--tiles",
         action="store_true",
         help="cap exposed top plates with smooth tiles",
+    )
+    parser.add_argument(
+        "--snot",
+        action="store_true",
+        help=(
+            "clad tall flat wall faces with sideways tiles hung on "
+            "side-stud brackets (studs-not-on-top)"
+        ),
     )
     parser.add_argument(
         "--no-refine",
@@ -204,6 +252,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             f"LDraw colour code for all mesh voxels "
             f"(default {DEFAULT_MESH_COLOUR} = light grey)"
+        ),
+    )
+    mesh.add_argument(
+        "--mesh-colour-mode",
+        choices=("uniform", "sampled"),
+        default=None,
+        help=(
+            "uniform (default) paints every voxel --mesh-colour; sampled "
+            "takes each voxel's colour from the mesh's texture/vertex "
+            "colours, falling back to --mesh-colour when the mesh has none"
         ),
     )
     mesh.add_argument(
@@ -283,6 +341,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="omit 0 ROTSTEP view-rotation hints from smart steps",
     )
     parser.add_argument(
+        "--subassemblies",
+        action="store_true",
+        help=(
+            "extract persistently floating clusters as separately built "
+            "subassemblies with attach steps (write .mpd output to get "
+            "submodel FILE sections; .ldr flattens them)"
+        ),
+    )
+    parser.add_argument(
         "--bom",
         type=Path,
         default=None,
@@ -305,41 +372,54 @@ def _build_parser() -> argparse.ArgumentParser:
         default=4.0,
         help="objective weight of physical stability (default 4.0)",
     )
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "record telemetry span timings for this run to a JSON file "
+            "(single-strategy runs only; see scripts/profile_pipeline.py)"
+        ),
+    )
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the CLI; returns a process exit code."""
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject invalid flag combinations in milliseconds, not after a run."""
     if args.strategy != "all" and (
         args.jobs != 0
         or args.timeout is not None
         or args.report is not None
         or args.keep_candidates is not None
+        or args.seeds is not None
     ):
         parser.error(
-            "--jobs/--timeout/--report/--keep-candidates require --strategy all"
+            "--jobs/--timeout/--report/--keep-candidates/--seeds require --strategy all"
         )
+    if args.subassemblies and args.steps == "layer":
+        parser.error("--subassemblies requires --steps smart")
     if args.instructions is not None:
-        # Fail in milliseconds, not after a full pipeline run.
         if args.steps == "layer":
             parser.error("--instructions requires --steps smart")
         if args.instructions.suffix.lower() not in {".html", ".pdf"}:
             parser.error("--instructions must end in .html or .pdf")
+    if args.input.suffix.lower() in LDRAW_SUFFIXES:
+        _validate_ldraw_args(parser, args)
     mesh_input = args.input.suffix.lower() in MESH_SUFFIXES
     mesh_flags = (
         args.target_studs is not None
         or args.pitch is not None
         or args.up is not None
+        or args.mesh_colour_mode is not None
         or args.mesh_colour is not None
         or args.no_fill
         or args.largest_component_only
     )
     if mesh_flags and not mesh_input:
         parser.error(
-            "--target-studs/--pitch/--up/--mesh-colour/--no-fill/"
-            "--largest-component-only apply only to mesh inputs "
+            "--target-studs/--pitch/--up/--mesh-colour/--mesh-colour-mode/"
+            "--no-fill/--largest-component-only apply only to mesh inputs "
             "(.obj/.stl/.ply)"
         )
     if mesh_input and (
@@ -350,17 +430,27 @@ def main(argv: list[str] | None = None) -> int:
             "mesh inputs (meshes are voxelized at plate resolution and are "
             "always aspect-correct)"
         )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the CLI; returns a process exit code."""
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    _validate_args(parser, args)
     output: Path = args.output or args.input.with_suffix(".ldr")
     progress = (
         (lambda message: print(f"  {message}", file=sys.stderr, flush=True))
         if sys.stderr.isatty()
         else None
     )
+    if args.input.suffix.lower() in LDRAW_SUFFIXES:
+        return _run_import(args, output=output, progress=progress)
     config = PipelineConfig(
         strategy=args.strategy,
         hollow=not args.solid,
-        slopes=args.slopes,
+        slopes=args.slopes or False,
         tiles=args.tiles,
+        snot=args.snot,
         refine=not args.no_refine,
         repair=not args.no_repair,
         seed=args.seed,
@@ -380,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.steps,
             target_step_size=args.step_size,
             rotstep=not args.no_rotstep,
+            subassemblies=args.subassemblies,
         ),
         mesh=MeshOptions(
             target_studs=(args.target_studs if args.target_studs is not None else 32),
@@ -390,6 +481,11 @@ def main(argv: list[str] | None = None) -> int:
                 if args.mesh_colour is not None
                 else DEFAULT_MESH_COLOUR
             ),
+            colour_mode=(
+                args.mesh_colour_mode
+                if args.mesh_colour_mode is not None
+                else "uniform"
+            ),
             fill=not args.no_fill,
             keep_largest=args.largest_component_only,
         ),
@@ -399,17 +495,144 @@ def main(argv: list[str] | None = None) -> int:
     if args.strategy == "all":
         return _run_sweep(args, config=config, output=output)
     try:
-        result = run_file(
-            args.input,
+        if args.profile is not None:
+            started = time.perf_counter()
+            with telemetry.record() as session:
+                result = run_file(
+                    args.input,
+                    output,
+                    config,
+                    bom_path=args.bom,
+                    instructions_path=args.instructions,
+                )
+            _write_profile(
+                args,
+                session=session,
+                result=result,
+                total_seconds=time.perf_counter() - started,
+            )
+        else:
+            result = run_file(
+                args.input,
+                output,
+                config,
+                bom_path=args.bom,
+                instructions_path=args.instructions,
+            )
+    except (ValueError, OSError, RuntimeError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    return _print_result(result, output, instructions_path=args.instructions)
+
+
+def _validate_ldraw_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> None:
+    """Reject flags that presume placement when the input is a brick model."""
+    if args.strategy != "greedy":
+        parser.error(
+            "--strategy does not apply to .ldr/.mpd inputs (import skips placement)"
+        )
+    placement_flags = (
+        args.solid
+        or args.slopes is not None
+        or args.tiles
+        or args.snot
+        or args.no_refine
+        or args.no_repair
+        or args.milp
+        or args.plates_per_voxel is not None
+        or args.aspect_correct
+        or args.dither
+    )
+    if placement_flags:
+        parser.error(
+            "placement/voxelization flags do not apply to .ldr/.mpd "
+            "inputs (the model's bricks are imported as-is)"
+        )
+    if args.output is None:
+        parser.error(
+            ".ldr/.mpd input needs an explicit -o/--output "
+            "(the default would overwrite the input)"
+        )
+
+
+def _run_import(
+    args: argparse.Namespace,
+    *,
+    output: Path,
+    progress: Callable[[str], None] | None,
+) -> int:
+    """Instructions for an existing LDraw model: import, analyze, sequence.
+
+    Placement never runs — the model's own bricks are the layout. Strict
+    import: any part outside the catalog is an error.
+    """
+    solver = SolverConfig()
+    try:
+        layout = layout_from_ldraw(args.input)
+    except (LdrawImportError, OSError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    stability = analyze(layout, solver)
+    plan = None
+    if args.steps == "smart":
+        plan = plan_instructions(
+            layout,
+            config=InstructionsConfig(
+                target_step_size=args.step_size,
+                rotstep=not args.no_rotstep,
+                subassemblies=args.subassemblies,
+                solver=solver,
+            ),
+        )
+    graph = ConnectionGraph.from_layout(layout)
+    result = PipelineResult(
+        layout=layout,
+        stability=stability,
+        grid=None,
+        brick_count=len(layout),
+        mass_g=layout.total_mass_g(),
+        component_count=graph.component_count(),
+        floating_count=len(graph.floating_ids()),
+        plan=plan,
+    )
+    try:
+        write_outputs(
+            result,
             output,
-            config,
             bom_path=args.bom,
             instructions_path=args.instructions,
+            progress=progress,
         )
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return _print_result(result, output, instructions_path=args.instructions)
+
+
+def _write_profile(
+    args: argparse.Namespace,
+    *,
+    session: telemetry.Telemetry,
+    result: PipelineResult,
+    total_seconds: float,
+) -> None:
+    """Dump a run's telemetry spans plus metadata to ``args.profile``."""
+    payload = {
+        "schema": 1,
+        "input": str(args.input),
+        "strategy": args.strategy,
+        "seed": args.seed,
+        "brick_count": result.brick_count,
+        "step_count": result.step_count,
+        "total_seconds": round(total_seconds, 3),
+        "spans": session.to_dict(),
+    }
+    args.profile.parent.mkdir(parents=True, exist_ok=True)
+    args.profile.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"wrote {args.profile}")
 
 
 def _print_result(
@@ -422,10 +645,11 @@ def _print_result(
     print(f"wrote {output}")
     if instructions_path is not None:
         print(f"wrote {instructions_path}")
+    snot_note = f"   snot: {result.snot_added}" if result.snot_added else ""
     print(
         f"  bricks: {result.brick_count}   mass: {result.mass_g:.1f} g   "
         f"steps: {result.step_count}   slopes: {result.slopes_added}   "
-        f"tiles: {result.tiles_added}"
+        f"tiles: {result.tiles_added}{snot_note}"
     )
     if result.plan is not None:
         for warning in result.plan.warnings:
@@ -463,6 +687,7 @@ def _run_sweep(
         grid,
         config,
         jobs=args.jobs,
+        seeds=args.seeds,
         timeout_s=args.timeout,
         progress=config.progress,
     )
@@ -473,6 +698,7 @@ def _run_sweep(
             payload = {
                 "input": str(args.input),
                 "seed": config.seed,
+                "seeds": list(args.seeds) if args.seeds is not None else None,
                 "jobs": args.jobs,
                 **report.to_dict(),
             }
@@ -497,25 +723,31 @@ def _run_sweep(
     except OSError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"selected {winner.strategy}: {report.reason}")
+    winner_tag = (
+        f" (seed {winner.seed})" if len({c.seed for c in report.candidates}) > 1 else ""
+    )
+    print(f"selected {winner.strategy}{winner_tag}: {report.reason}")
     return _print_result(winner.result, output, instructions_path=args.instructions)
 
 
 def _print_table(candidates: list[Candidate]) -> None:
-    """Print one summary line per strategy."""
+    """Print one summary line per (strategy, seed) candidate."""
+    multi_seed = len({candidate.seed for candidate in candidates}) > 1
+    seed_header = f" {'seed':>4}" if multi_seed else ""
     print(
-        f"  {'strategy':<8} {'bricks':>6} {'buildable':>9} "
+        f"  {'strategy':<8}{seed_header} {'bricks':>6} {'buildable':>9} "
         f"{'objective':>9} {'capacity':>8} {'seconds':>7}"
     )
     for candidate in candidates:
+        seed_cell = f" {candidate.seed:>4}" if multi_seed else ""
         if (metrics := candidate.metrics) is None:
             print(
-                f"  {candidate.strategy:<8} "
+                f"  {candidate.strategy:<8}{seed_cell} "
                 f"error: {candidate.error} ({candidate.seconds:.1f}s)"
             )
         else:
             print(
-                f"  {candidate.strategy:<8} {metrics.brick_count:>6} "
+                f"  {candidate.strategy:<8}{seed_cell} {metrics.brick_count:>6} "
                 f"{'yes' if metrics.buildable else 'no':>9} "
                 f"{metrics.objective_total:>9.4f} "
                 f"{metrics.maximin_capacity:>8.3f} {candidate.seconds:>7.1f}"
@@ -530,10 +762,14 @@ def _write_candidates(
 ) -> None:
     """Write every successful candidate's model into ``directory``."""
     directory.mkdir(parents=True, exist_ok=True)
+    multi_seed = len({c.seed for c in report.candidates}) > 1
     for candidate in report.candidates:
         if candidate.result is None:
             continue
-        path = directory / f"{output.stem}.{candidate.strategy}{output.suffix}"
+        seed_tag = f".seed{candidate.seed}" if multi_seed else ""
+        path = (
+            directory / f"{output.stem}.{candidate.strategy}{seed_tag}{output.suffix}"
+        )
         write_model(candidate.result.layout, path, plan=candidate.result.plan)
         print(f"wrote {path}")
 

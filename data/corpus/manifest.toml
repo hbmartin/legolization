@@ -10,6 +10,12 @@
 #
 # expect_min_buildable = how many of the 6 strategies must produce a
 # buildable model for this input (0 = expected unbuildable by design).
+#
+# Mesh target_studs are sized for a feasible overnight sweep: per-solve
+# LP cost grows superlinearly (~5s at n~1000 bricks; see the profiling
+# campaign on PR #16), so 16-24 studs keeps 6 strategies x 6 meshes in
+# hours, not days. largest_component_only opts a mesh into the
+# fragment filter (off by default since commit 99c6cd8).
 
 # --- curated meshes ------------------------------------------------------
 
@@ -20,7 +26,7 @@ path = "data/corpus/meshes/spot.obj"
 source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/spot.obj"
 sha256 = "0738b5e8608fed74e5e8c7aa8dd0af97b4b74f9f6cbf7aac84cd7e40b2e44a75"
 license = "CC0 (Keenan Crane)"
-target_studs = 36
+target_studs = 24
 up = "y"
 traits = ["smooth-blob", "baseline", "legs"]
 expect_min_buildable = 1
@@ -33,7 +39,7 @@ path = "data/corpus/meshes/stanford-bunny.obj"
 source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/stanford-bunny.obj"
 sha256 = "1eb35d1e21ce99e5ce911353b6be278990713448dd9e8f5c9387f9de39b32205"
 license = "Stanford Scanning Repository (research use)"
-target_studs = 32
+target_studs = 24
 up = "y"
 traits = ["organic", "ears-overhang"]
 expect_min_buildable = 1
@@ -46,7 +52,7 @@ path = "data/corpus/meshes/teapot.obj"
 source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/teapot.obj"
 sha256 = "1b5396fedd74b577e32cef41146582c2f2e1a050d5b4915193c0ac1ad4187ed4"
 license = "Utah teapot (public domain)"
-target_studs = 32
+target_studs = 24
 up = "y"
 traits = ["open-surface", "spout-handle-overhang"]
 expect_min_buildable = 1
@@ -59,7 +65,7 @@ path = "data/corpus/meshes/armadillo.obj"
 source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/armadillo.obj"
 sha256 = "d2fd040334c12b16804fbcb9962391232cc24708244617f931baaa871210563e"
 license = "Stanford Scanning Repository (research use)"
-target_studs = 32
+target_studs = 24
 up = "y"
 traits = ["organic", "limbs-overhang", "large"]
 expect_min_buildable = 1
@@ -72,8 +78,9 @@ path = "data/corpus/meshes/homer.obj"
 source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/homer.obj"
 sha256 = "b20b1391fd62964f65703d748514d86d747d1202d38e55e0f1addac7a5a10e8b"
 license = "see source repo"
-target_studs = 28
+target_studs = 20
 up = "y"
+largest_component_only = true
 traits = ["organic", "thin-arms"]
 expect_min_buildable = 1
 notes = "Thin arms fragment at low resolution - largest-component filter test."
@@ -85,7 +92,7 @@ path = "data/corpus/meshes/suzanne.obj"
 source_url = "https://raw.githubusercontent.com/alecjacobson/common-3d-test-models/8a4f8642acaf43f9cd7b67858a1502e1055ef202/data/suzanne.obj"
 sha256 = "d8684326f9bd8cfc24d3d302c1042fa16f63d2e66e49ed56b413fa20bed271e6"
 license = "Blender (GPL-compatible)"
-target_studs = 28
+target_studs = 16
 up = "y"
 traits = ["non-watertight", "ears-overhang", "fast"]
 expect_min_buildable = 1

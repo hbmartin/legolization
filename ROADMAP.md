@@ -4,6 +4,304 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v3 progress notes
+
+Living log of the six-item v3 program (sequencer LP performance, MPD
+subassemblies, shape-preserving slopes, SNOT finishing pass, per-layer
+Kollsker MILP, LDraw model import). Every landed item appends a dated
+entry here with its measured proof numbers; entries are append-only.
+
+*(Program plan approved 2026-07-18; evidence base: the profiling
+campaign on PR #16 — 99% of large-model runtime is cold HiGHS LP solves
+in sequencing, ~2 per step, superlinear per-solve cost — and
+`docs/unstable-prefix-report.md` — the floating-until-later-band step
+class is unorderable without subassemblies.)*
+
+### 2026-07-19 — Item 1: sequencer LP performance
+
+Shipped `stability/prefix.py` behind `SolverConfig.engine` (default
+`"highspy"`; `"scipy"` preserves the legacy path bit-for-bit): a
+warm-started incremental `PrefixSolver` for the greedy loop (probe =
+append rows/cols + re-solve from the retained basis, ~20-90 simplex
+iterations per step instead of a full cold solve; commit of the probed
+chunk is free), an LP-free **floating shortcut** (a prefix with a
+stud-unreachable brick is unstable by definition — verdict + 1.0 score
+without any solve), and a component-decomposed `RemovalSolver` for the
+disassembly rescue (per-contact-component verdict cache; the RBE is
+block-diagonal across uncoupled components).
+
+Proof (same sha-pinned inputs as the PR #16 campaign, seed 0):
+| model | before | after | speedup | notes |
+|---|---|---|---|---|
+| pyramid.npy | 1.26 s | 0.99 s | 1.3x | clean greedy path |
+| suzanne @16 | 81.3 s | 30.3 s | 2.7x | 72 of 104 solves shortcut |
+| spot @24 | 1465.5 s | 468.6 s | **3.1x** | 215 of 287 rescue probes LP-free |
+
+Byte-exact goldens unchanged with the new default (dual-engine plan/byte
+equality pinned by tests on every shipped example); synthetic corpus
+scorecard row-for-row identical to the committed baseline; 408 tests.
+
+Deviations from plan: LP-deletion warm starts for the rescue do NOT pay
+(HiGHS discards too much basis on deletion — measured, not assumed);
+the rescue's win came from the floating shortcut + component
+decomposition instead. Byte-identity across engines is guaranteed for
+plans that never enter the rescue (includes all goldens); rescued plans
+are verdict-equivalent (equal unstable counts, `verify_plan` clean) with
+solver-tolerance-level score drift on degenerate optima — the same drift
+class scipy exhibits across its own versions. Remaining headroom: 80
+cold LPs on grounded-stable rescue states at n≈1000.
+
+### 2026-07-19 — Item 2: MPD subassembly steps
+
+Shipped `instructions/subassembly.py` behind `--subassemblies`
+(`InstructionsConfig.subassemblies=False` default — flag-off is
+byte-identical to before, pinned by the goldens): a post-pass on the
+finished plan that walks per-prefix `ConnectionGraph.floating_ids()`
+(no extra LPs), finds persistent floating runs, closes them into
+stud-connected clusters of the run's placement window, validates each
+cluster (grounding on attach: `floating_ids(P∪S) ∩ S = ∅`; unit
+vertical insertability: no placed brick overhangs any cluster brick),
+and rewrites the plan: cluster bricks become a separately built unit —
+sequenced by a recursive `plan_instructions` on the grounded, table-
+level translated sub-layout — plus one attach step that places the unit
+as a whole. Emission writes real multi-`FILE` `.mpd` submodels (attach
+= one colour-16 reference line at `-8·anchor_layer`; `.ldr` falls back
+to world-frame flattening), the booklet gets per-unit sections, attach
+callouts, and "support while attaching" labels, `verify_plan` audits
+sub steps in the sub's own grounded frame, and step images render per
+submodel section (no renderer CLI flags needed).
+
+Proof (`scripts/check_instructions.py --subassemblies`, seed 0,
+before-JSONs from the pre-item baseline):
+| model | unstable steps | subs | attach steps | violations |
+|---|---|---|---|---|
+| mushroom | **17 → 0** | 5 | 5 | 0 |
+| heart.vox | 2 → 1 | 1 | 1 | 0 |
+| letter-t | 1 → 0 | 1 | 1 | 0 |
+| cantilever | 1 → 0 | 1 | 1 | 0 |
+| wide-arch | 2 → 0 | 1 | 1 | 0 |
+| two-towers-bridge | 0 → 0 | 0 | 0 | 0 |
+
+Mushroom (the worst instruction-quality case in the corpus, 17 unstable
+steps with up to 26 bricks floating mid-build) now builds with zero
+unstable steps: the cap is assembled as five table-built units. Heart's
+one residual is *inside* a sub build (the lobe overhang floats even on
+the table until the next sub step ties it) and carries the honest
+"support the overhang by hand" warning. Two-towers-bridge extracts
+nothing and its flag-on JSON is byte-identical to flag-off on the same
+code. Booklet renders verified visually: sub steps build flat on the
+table with highlights, the attach step seats the whole highlighted unit
+on the stem. 422 tests; goldens untouched.
+
+Deviations from plan: `max_subassemblies` defaults to 6, not the
+planned 4 — measured on mushroom, cap 4 leaves one floating window
+uncaptured (1 unstable step); cap 6 captures all five. The planned
+"attach steps stay warned" caveat mostly did not materialize: attach
+prefixes re-analyze as stable everywhere in the proof set (the RBE sees
+the same final geometry; it was the *intermediate* orders that were
+unstable). Old roadmap "Deferred: MPD subassembly submodels" marked
+DONE.
+
+### 2026-07-19 — Item 3: shape-preserving slopes
+
+Shipped preserve-mode slope fitting: `--slopes` (= `--slopes preserve`)
+matches each catalogued slope's own `filled_cells` profile — stud
+columns at full height plus 1-plate toes — against cells inside the
+target shape (sloped-void cells must be *outside* it), carves out the
+same-colour donor bricks covering the profile, places the slope, and
+MILP-refills any donor cells beyond the profile (exact cover, colours
+inherited per cell from the carved donors; the tiling is computed
+before any mutation so a failed candidate costs nothing). Zero
+material added or removed — the filled-cell set is asserted identical
+on every proof run. All three catalogued slopes now place (45° 2x1
+`3040b`, 45° 2x2 `3039`, 33° 3x1 `4286` — the latter two had never
+been placed by any pass), swept largest profile first. The legacy
+add-outside pass is `--slopes smooth`; `PipelineConfig.slopes=True`
+still means smooth for API back-compat.
+
+Two safety rails, both measured in: the carve is capped at 4 freed
+cells per swap (on suzanne@16, caps 0/2/4/6/8 place 2/10/29/44/51
+slopes and the structure collapses at 8 — fragmenting load-bearing
+bricks into weak stacks), and the pipeline snapshots the layout before
+the pass and reverts wholesale if the RBE verdict flips stable →
+unstable, so preserve mode can never trade stability for looks.
+
+Proof (seed 0; "fill-identical" = union of filled cells unchanged):
+| model | bricks | slopes placed | fill-identical | stable |
+|---|---|---|---|---|
+| suzanne@16 | 331 → 330 | 29 | yes | yes → yes (worst 0.137) |
+| teapot@16 | 270 → 270 | 10 | yes | yes → yes |
+| homer@16 | 190 → 190 | 0 (guard reverted) | yes | yes → yes |
+| heart.vox | 12 → 12 | 0 (no sites) | yes | yes → yes |
+| pyramid.npy | 124 → 124 | 0 (no sites) | yes | yes → yes |
+
+On homer even the cap-4 carve trips the RBE verdict, the snapshot
+guard reverts the whole pass, and the model ships exactly as the
+baseline — the guard is load-bearing, not theoretical.
+
+Voxel models quantized at 3 plates/voxel (heart, pyramid) have no
+1-plate treads, so preserve mode correctly never fires there — the
+profile only exists on plate-resolution surfaces, i.e. mesh imports.
+Renders confirm visibly smoother ramps on suzanne's brow, nose, and
+chin. Off by default: goldens and corpus baseline untouched (428
+tests).
+
+Deviations from plan: the plan's expectation that pyramid-style
+brick-step models would gain slopes was wrong — their sloped-void
+cells are *inside* the shape, which shape preservation must reject;
+the win lives on mesh surfaces instead. The carve-and-refill
+extension (planned as a follow-up) shipped in v1 because measurement
+demanded it: exact-donor matching alone fired on only 2 of 82
+shape-valid sites on suzanne (0 of 68 on teapot) — merged bricks
+almost always span the profile boundary. Unguarded carving at a large
+cap breaks stability (suzanne/teapot/homer all flip unstable at cap
+24); the cap-4 + snapshot-revert combination is what ships. Old
+roadmap "Slopes" section marked DONE.
+
+### 2026-07-19 — Item 6: LDraw model import (strict)
+
+Shipped `ldraw_in.layout_from_ldraw`: an existing `.ldr`/`.mpd` model
+becomes a `Layout` — the exact inverse of `ldraw_out.piece_for`'s
+transform (yaw decoded from the four canonical rotation matrices,
+`layer = -Y/8 - height`, x/y from position minus the rotated-footprint
+centroid and un-rotated slope `origin_offset`). MPD submodels flatten
+through `iter_occurrences`' composed world transforms (`iter_pieces`
+yields local frames — measured, not assumed). Strict by decision: any
+part outside the catalog, non-yaw rotation, off-grid position,
+out-of-palette colour, collision, or below-ground brick errors; ALL
+problems are aggregated into one `LdrawImportError` so a user sees the
+model's full distance to importable. CLI: `.ldr`/`.mpd` input skips
+placement entirely — import, analyze, sequence, emit (`legolization
+model.ldr -o out.ldr --instructions b.pdf`); placement/voxel/mesh
+flags and a defaulted output (which would overwrite the input) are
+argparse errors. `PipelineResult.grid` became optional (imported
+models have no voxel grid); `write_outputs` is reused unchanged.
+
+Proof (seed 0):
+| example | round-trip | steps (native → imported) | unstable | violations |
+|---|---|---|---|---|
+| heart.ldr | exact | 7 → 7 | 2 → 2 | 0 |
+| pyramid.ldr | exact | 21 → 21 | 2 → 2 | 0 |
+| arch.ldr | exact | 8 → 8 | 1 → 1 | 0 |
+
+"Round-trip exact" = import → write → re-import brick-multiset
+equality with nothing dropped (byte-identity is not the bar — shipped
+examples are emitted in plan-step order with ROTSTEPs, a bare
+re-emission rasters by layer). Slope parts round-trip at all four yaws
+(origin-offset inversion); a subassembly `.mpd` flattens back to the
+exact source layout. Live CLI run: heart.ldr → booklet + BOM, exit 0.
+A hand-built pathological file reports all five problem kinds in one
+error. 436 tests; goldens untouched.
+
+Deviations from plan: none. The planned "identical plan_quality to the
+natively-generated plan" held exactly (table above) — brick ids differ
+between import order and placement order, yet the sequencer's
+tiebreaks land on the same plan shape.
+
+### 2026-07-19 — Item 5: per-layer Kollsker MILP (`--strategy kollsker`)
+
+Shipped `placement/layered/kollsker.py`: the paper's exact
+set-partitioning model (eqs. 1-3) solved per 4-connected component of
+each layer problem — the tractable scope; the whole-model MILP is
+exponential and the paper's own matheuristic re-optimizes regions the
+same way (eqs. 26-39). Two-stage lexicographic solve: stage 1
+minimizes part count (N*), stage 2 pins Σx = N* and maximizes a
+perimeter-normalized stagger reward (+`seam_priority` per straddled
+below-seam, −0.5·priority per border-aligned one) with a 1e-6 rank
+tiebreak for determinism. `h3` lookahead deliberately dropped — it
+guides sequential commitment, which the simultaneous cover subsumes.
+Fallback to the constructive bond pass per component on candidate
+blowup (>20k), solver failure, or timeout (`layer_time_s`, default
+10 s, deadline-aware). Registered as `kollsker` → CLI, `--strategy
+all` sweeps, and eval tooling pick it up automatically;
+`PipelineConfig.milp_layer_time_s` / `milp_bond_weight` tune it.
+
+Proof (seed 0, end-to-end pipeline, layer-steps mode):
+| model | bond | kollsker | | model | bond | kollsker |
+|---|---|---|---|---|---|---|
+| cantilever | 62 | **36** | | thin-shell | 398 | 417 |
+| staircase-overhang | 42 | **16** | | mushroom | 265 | 269 |
+| wide-arch | 41 | **28** | | sparse-pillars | 20 | 20 |
+| letter-h | 26 | **18** | | letter-t | 14 | **13** |
+| topple-arm | 14 | **8** | | arch | 14 | **13** |
+| two-towers-bridge | 81 | **75** | | pyramid | 136 | **128** |
+| letter-h-bicolour | 28 | **22** | | | | |
+
+11 of 13 better or equal, up to 2.6× fewer bricks; stability verdicts
+identical to bond on every model. Tests pin the per-layer optimality
+claim exactly: brute-force DFS minimum matched on small shapes,
+never-worse-than-bond on seeded random layers, stage-2 border
+avoidance on a two-course wall, fallback and determinism. Runtime
+bounded and small (≤ 8.6 s on the largest synthetic).
+
+Corpus scorecard: zero hard regressions, all 11 manifest expectations
+PASS, and kollsker immediately *wins* cantilever outright in the
+all-strategies sweep (objective 0.6245 → 0.5555 vs the old beauty
+winner).
+
+### 2026-07-19 — Item 4: SNOT sideways finishing pass (`--snot`)
+
+Shipped the first sideways building in the pipeline, end to end
+through the data model rather than as an emission hack. New
+`Category.SNOT` parts: the 1x1 side-stud bracket (87087 — a normal
+column plus a lateral stud at mid-height) and the sideways 1x1 tile
+(3070b — conservative 3-plate collision volume, token centre fill, one
+lateral anti-stud). The six planned seams all took the change:
+`graph` sockets are now keyed (cell, direction) with mates at cell +
+direction and a ground guard for down-only anti-studs (`KnobContact`
+gains `normal`); the RBE lays the FOUR_POINT diamond in the *vertical*
+mating plane, with pull-off riding the same T-bounded drag machinery
+and vertical stud-shear presses carrying the tile's weight;
+`piece_for` emits the bracket as yaw+90 about Y (the physical side
+stud points LDraw -Z — read from 87087.dat, not assumed) and the tile
+via four probed axis rotations; the LDraw importer round-trips both at
+every yaw; blockers for lateral-mount parts follow the outward
+slide-in ray instead of the vertical sweep; and the warm
+PrefixSolver/RemovalSolver decline SNOT layouts (their contact
+discovery is z-up-only) so physics falls back to the always-correct
+cold engine. The carve-and-refill surgery moved to shared
+`placement/carve.py` (slopes and snot both use it).
+
+The pass (`placement/snot.py`): brick-aligned wall windows whose
+outward neighbour is strictly outside the shape, in vertical runs of
+≥2 windows, get a bracket + outward-facing tile. Two measured safety
+rails: only free-standing 1x1 wall columns are converted — carving a
+bracket out of a wall-spanning brick demolishes its bonding (the first
+live run converted an entire 1x4 wall into disconnected bracket
+towers), and mounts re-check the target column at mount time (two
+perpendicular faces share an inside-corner column — collided on
+suzanne). The pipeline snapshot guard reverts wholesale on a
+stability flip, same as preserve slopes.
+
+Proof (seed 0): fire counts and physics —
+| model | mounts | stable | components |
+|---|---|---|---|
+| two-towers-bridge | 23 | yes | 1 |
+| mushroom | 41 | yes | 1 |
+| thin-shell | 12 | yes | 1 |
+| suzanne@16 | 6 | yes | 1 |
+| pyramid / letter-t / sparse-pillars | 0 | yes | unchanged |
+
+Renders confirm visibly smooth clad tower faces on two-towers-bridge.
+Off by default: goldens byte-exact, StableLego cross-validation
+untouched, 467 tests. Sequencing orders every tile with or after its
+bracket (lateral contacts are support edges), `verify_plan` clean.
+
+Deviations from plan: the carve+refill mount path was narrowed to
+single-column donors after the wall-demolition measurement — the
+plan's "1x1-swap or carve+refill" became "1x1-column carve only"; the
+5-plate/2-stud quantum never arises, as designed. Old roadmap "SNOT —
+sideways building" section: v1 scope DONE (bracket + sideways tile);
+full sideways regions/orientation field remain future work.
+
+Deviations from plan: end-to-end brick counts on mushroom (+4) and
+thin-shell (+19) came out slightly worse than bond — the per-layer
+bound is structural, but remerge/repair/hollow-restore interact with
+the different layer seams downstream, exactly the drift the plan said
+to report empirically. `test_compare`'s hardcoded strategy counts now
+derive from `strategy_names()`. The committed synthetic baseline was
+regenerated in this commit to include the seventh strategy.
+
 ## Where things stand
 
 Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and
@@ -47,8 +345,12 @@ merge-engine filler for large regions instead of CPLEX.
 Shipped as designed below, with two deviations: the pitch derives from the
 **largest horizontal extent** (`max(extents[:2]) / target_studs`), not the
 overall max — "target studs" means footprint, and the overall max would
-shrink tall models; and colour sampling is deferred — v1 applies a uniform
-`--mesh-colour` (interiors are hollowed away regardless). A
+shrink tall models; and colour sampling landed as **nearest-vertex** via
+scipy's cKDTree (`--mesh-colour-mode sampled`; texture and vertex colours
+both route through trimesh's `to_color`), not `ProximityQuery.on_surface`
+— rtree is not a dependency, and vertex density exceeds voxel resolution
+for every corpus mesh. Meshes without colour data fall back to the
+uniform `--mesh-colour` with a note. A
 largest-component filter (6-connected, with a "dropped N voxels" progress
 warning) handles non-watertight meshes; `--up {x,y,z}` orients Y-up `.obj`
 files via a proper rotation. See `src/legolization/mesh.py` and
@@ -169,11 +471,11 @@ remainder by **assembly-by-disassembly** along a maximal-stability path
 (`fallback="band"` is the legacy escape hatch); an opt-in **beam search**
 (`search="beam"`, `beam_states`, `lp_budget`) explores whole build orders
 ranked by (unstable prefixes, summed scores); `sequence_similarity`
-(Kendall's τ + RLSD) and `plan_quality` quantify orders. Deferred: MPD
-subassembly submodels (would change the `InstructionPlan` data model the
-booklet consumes; `BuildStep` can gain `submodel` additively later) and
-±X/±Y block edges (SNOT-only; the blocker-map `Mapping[int,
-frozenset[int]]` seam in `blocking.py` is the plug-in point).
+(Kendall's τ + RLSD) and `plan_quality` quantify orders. MPD
+subassembly submodels: **DONE in v3 item 2** (`--subassemblies`, see the
+progress notes above). Still deferred: ±X/±Y block edges (SNOT-only; the
+blocker-map `Mapping[int, frozenset[int]]` seam in `blocking.py` is the
+plug-in point).
 
 ---
 

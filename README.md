@@ -17,9 +17,13 @@ solver stack — no Gurobi required.
   codes or RGB(A) voxels — colours are quantized to the nearest solid LDraw
   colour, with optional Floyd-Steinberg dithering for gradients).
 - **Placement**: covers every voxel with bricks and plates at true heights
-  (plate = 8 LDU, brick = 24 LDU) using one of six strategies; tiles and 45°
-  slopes are opt-in finishing passes (`--tiles`, `--slopes` — the catalogued
-  33° slope and 2x2 slope are not yet placed by any pass):
+  (plate = 8 LDU, brick = 24 LDU) using one of seven strategies; tiles and
+  slopes are opt-in finishing passes (`--tiles`, `--slopes`). Slope fitting
+  places all three catalogued slopes (45° 2x1/2x2, 33° 3x1): `--slopes`
+  (= `--slopes preserve`) swaps bricks whose cells exactly match a slope's
+  own profile inside the shape — no material added or removed — while
+  `--slopes smooth` is the legacy pass that fills staircase steps with
+  slopes *outside* the shape:
   - `greedy` (default): largest-first bottom-up fill with Kollsker's
     remainder-lookahead h(r) and distance-decayed stretcher-bond scoring,
     then delete-and-rebuild reinforcement around the weakest bricks.
@@ -35,6 +39,10 @@ solver stack — no Gurobi required.
   - `beauty`: Min et al.'s objective-driven tiling with symmetry/balance,
     stability-priority, and big-brick terms (`--beauty-preset
     {balanced,stability,aesthetics,efficiency}`).
+  - `kollsker`: Kollsker & Malaguti's exact set-partitioning MILP, solved
+    per 4-connected component of each layer — stage 1 minimizes the part
+    count, stage 2 maximizes stagger quality at that optimum; falls back
+    to `bond` per component on timeout.
 - **Physics**: every layout is scored by the RBE — gravity, support, press,
   drag/pull friction (capacity T = 0.98 N per contact point), knob presses,
   and torque-capable side presses at shared-face extremes (side-supported
@@ -57,6 +65,18 @@ solver stack — no Gurobi required.
   maximal-stability path (Tian et al. / Luo); an opt-in beam search
   (`InstructionsConfig(search="beam")`) explores whole build orders. `--bom
   out.json` writes a bill of materials with per-step callouts.
+- **SNOT cladding**: `--snot` clads tall flat wall faces with sideways
+  1x1 tiles (3070b) hung on side-stud brackets (87087) — real receiving
+  geometry, priced by the same RBE physics through genuine lateral stud
+  contacts. Only free-standing 1x1 wall columns are converted (carving a
+  bracket out of a wall-spanning brick would destroy its bonding), and
+  the pass reverts wholesale if it would flip the stability verdict.
+- **Subassemblies**: `--subassemblies` detects stretches that float in every
+  build order (mushroom caps, arches), lifts them out as separately built
+  units — each constructed stably on the table, then attached as one piece —
+  and emits them as `.mpd` submodel FILE sections. Booklets get per-unit
+  sections and attach callouts; the `.ldr` fallback flattens attach steps
+  back to world-frame bricks.
 - **Booklets**: `--instructions out.html` (or `.pdf`) writes a paginated
   instruction booklet — cover page with model stats, parts list, and one
   rendered image per step with new bricks highlighted and per-step part
@@ -70,6 +90,13 @@ solver stack — no Gurobi required.
   [pyldraw3](https://pypi.org/project/pyldraw3/). Open it in
   [LDView](https://tcobbs.github.io/ldview/) or
   [BrickLink Studio](https://www.bricklink.com/v3/studio/download.page).
+- **LDraw input**: an existing `.ldr`/`.mpd` model can be the input too —
+  placement is skipped and the model's own bricks are analyzed and
+  sequenced into instructions (`legolization model.ldr -o out.ldr
+  --instructions booklet.pdf`). Import is strict: every part must be in
+  the catalog, axis-aligned, on the stud/plate grid, and in the solid
+  palette; all problems are reported together. MPD submodels are
+  flattened through their world transforms.
 
 ## Setup
 
@@ -88,10 +115,15 @@ uv run legolization model.vox --strategy bond --bom parts.json
 uv run legolization model.vox --instructions booklet.pdf   # rendered booklet
 uv run legolization model.npy --strategy luo --solid --seed 7
 uv run legolization model.vox --slopes --tiles      # surface finishing passes
+uv run legolization model.vox --slopes smooth       # legacy add-outside slopes
+uv run legolization model.vox --snot                # sideways wall cladding
+uv run legolization model.vox -o out.mpd --subassemblies  # separately built units
 uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
 uv run legolization model.vox --milp                # cross-check the exact LP
 uv run legolization model.npy --strategy all --jobs 4 --report report.json
 uv run legolization model.obj --up y --target-studs 24   # mesh input (M6)
+uv run legolization model.ldr -o out.ldr --instructions b.pdf  # LDraw input
+
 ```
 
 Mesh inputs (`.obj`/`.stl`/`.ply`) are voxelized directly at plate
@@ -101,6 +133,11 @@ the common Y-up convention, `--mesh-colour CODE` picks the uniform colour,
 and `--no-fill` keeps shell meshes hollow. Disconnected mesh components are
 preserved by default; `--largest-component-only` discards every smaller
 voxel island and always reports how many voxels were removed.
+`--mesh-colour-mode sampled` colours each voxel from the mesh's
+texture/vertex colours (nearest-vertex, quantized to the LDraw palette),
+falling back to `--mesh-colour` with a note when the mesh carries no
+colour data — note a loose `.obj` without its `.mtl`/texture (e.g. the
+corpus `spot.obj`) has none, so it stays uniform.
 
 `--strategy all` runs every registered strategy on the same input (in
 parallel worker processes; `--jobs 1` forces sequential) and keeps the best

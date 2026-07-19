@@ -16,6 +16,8 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
+from legolization import telemetry
+
 if TYPE_CHECKING:
     from legolization.layout import Layout
 
@@ -29,6 +31,10 @@ class KnobContact:
 
     ``x``/``y`` are the knob's grid column; ``interface_layer`` is the plate
     layer of the mating plane (the bottom layer of the upper brick).
+    ``normal`` is the stud axis — ``(0, 0, 1)`` for ordinary vertical
+    mates; lateral (SNOT) mates carry their sideways direction, and then
+    ``x``/``y``/``interface_layer`` are the stud cell itself rather than
+    a horizontal mating plane.
     """
 
     below_id: int
@@ -36,6 +42,7 @@ class KnobContact:
     x: int
     y: int
     interface_layer: int
+    normal: tuple[int, int, int] = (0, 0, 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,18 +79,29 @@ class ConnectionGraph:
     @classmethod
     def from_layout(cls, layout: Layout) -> ConnectionGraph:
         """Extract all knob and side contacts from a layout."""
-        sockets: dict[tuple[int, int, int], int] = {}
+        with telemetry.span("graph.from_layout", n=len(layout)):
+            return cls._from_layout_body(layout)
+
+    @classmethod
+    def _from_layout_body(cls, layout: Layout) -> ConnectionGraph:
+        """Run the body of :meth:`from_layout` without its telemetry span."""
+        # Sockets are keyed by (cell, mating direction): a lateral
+        # anti-stud only accepts a stud pointing back along its axis.
+        sockets: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
         for brick in layout:
             for conn in layout.connectors_of(brick, top=False):
-                sockets[conn.cell] = brick.brick_id
+                sockets[(conn.cell, conn.direction)] = brick.brick_id
 
         knob_contacts: list[KnobContact] = []
         grounded: set[int] = set()
         for brick in layout:
             for conn in layout.connectors_of(brick, top=True):
                 cx, cy, cz = conn.cell
-                mate = (cx, cy, cz + 1)
-                if (above := sockets.get(mate)) is not None:
+                dx, dy, dz = conn.direction
+                mate = (cx + dx, cy + dy, cz + dz)
+                if (above := sockets.get((mate, (-dx, -dy, -dz)))) is None:
+                    continue
+                if conn.direction == (0, 0, 1):
                     knob_contacts.append(
                         KnobContact(
                             below_id=brick.brick_id,
@@ -93,8 +111,20 @@ class ConnectionGraph:
                             interface_layer=cz + 1,
                         )
                     )
+                else:  # lateral (SNOT) mate: record the stud cell itself
+                    knob_contacts.append(
+                        KnobContact(
+                            below_id=brick.brick_id,
+                            above_id=above,
+                            x=cx,
+                            y=cy,
+                            interface_layer=cz,
+                            normal=conn.direction,
+                        )
+                    )
             for conn in layout.connectors_of(brick, top=False):
-                if conn.cell[2] == 0:
+                # Only downward anti-studs can seat on the ground plane.
+                if conn.cell[2] == 0 and conn.direction == (0, 0, -1):
                     grounded.add(brick.brick_id)
                     knob_contacts.append(
                         KnobContact(

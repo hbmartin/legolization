@@ -39,6 +39,8 @@ class Category(StrEnum):
     PLATE = "plate"
     TILE = "tile"
     SLOPE = "slope"
+    SNOT = "snot"
+    """Sideways parts; excluded from every rect tiler by category."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +85,10 @@ class Part:
     filled_cells: frozenset[Cell] = field(default=frozenset())
     """Cells the part contributes to the target shape; for cuboid parts this
     equals ``occupied_cells``, for slopes it excludes the sloped void."""
+
+    mount_normal: Cell | None = None
+    """Local stud-axis direction for sideways-mounted parts (LDraw
+    orientation only); None for ordinary stud-up parts."""
 
     def __post_init__(self) -> None:
         if not self.filled_cells:
@@ -231,6 +237,53 @@ def _slope_part(spec: dict[str, Any]) -> Part:
     )
 
 
+def _snot_part(spec: dict[str, Any]) -> Part:
+    """Expand a sideways (SNOT) JSON spec.
+
+    Two parts are modelled. ``brick_1x1_side_stud`` (87087) is a normal
+    1x1 brick column plus a lateral stud at mid-height pointing along
+    local ``+x``. ``tile_1x1_snot`` (3070b mounted sideways) occupies the
+    full 3-plate window of the column it clads — conservative collision
+    volume — with a single lateral anti-stud pointing back along local
+    ``-x`` toward its bracket, and only its centre cell counted as shape
+    fill.
+    """
+    key = str(spec["key"])
+    height = int(spec["height_plates"])
+    cells = frozenset((0, 0, dz) for dz in range(height))
+    if key == "brick_1x1_side_stud":
+        return Part(
+            key=key,
+            ldraw_part=str(spec["ldraw_part"]),
+            category=Category.SNOT,
+            occupied_cells=cells,
+            top_connectors=(
+                Connector(cell=(0, 0, height - 1), direction=UP),
+                Connector(cell=(0, 0, 1), direction=(1, 0, 0)),
+            ),
+            bottom_connectors=(Connector(cell=(0, 0, 0), direction=DOWN),),
+            height_plates=height,
+            mass_g=float(spec["mass_g"]),
+            orientations=_FULL_YAWS,
+        )
+    if key == "tile_1x1_snot":
+        return Part(
+            key=key,
+            ldraw_part=str(spec["ldraw_part"]),
+            category=Category.SNOT,
+            occupied_cells=cells,
+            top_connectors=(),
+            bottom_connectors=(Connector(cell=(0, 0, 1), direction=(-1, 0, 0)),),
+            height_plates=height,
+            mass_g=float(spec["mass_g"]),
+            orientations=_FULL_YAWS,
+            filled_cells=frozenset({(0, 0, 1)}),
+            mount_normal=(-1, 0, 0),
+        )
+    msg = f"unknown snot part spec {key!r}"
+    raise ValueError(msg)
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class Catalog:
     """An immutable collection of :class:`Part` records keyed by ``key``.
@@ -246,11 +299,13 @@ class Catalog:
         specs = json.loads(path.read_text())
         parts: dict[str, Part] = {}
         for spec in specs["parts"]:
-            part = (
-                _slope_part(spec)
-                if spec["category"] == Category.SLOPE
-                else _rect_part(spec)
-            )
+            match spec["category"]:
+                case Category.SLOPE:
+                    part = _slope_part(spec)
+                case Category.SNOT:
+                    part = _snot_part(spec)
+                case _:
+                    part = _rect_part(spec)
             parts[part.key] = part
         return cls(parts=parts)
 

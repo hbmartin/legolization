@@ -25,3 +25,4 @@ reviews_triage/
 data/corpus/meshes/
 data/corpus/synthetic/
 eval/runs/
+eval/profiles/
