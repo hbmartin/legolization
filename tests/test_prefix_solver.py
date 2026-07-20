@@ -405,3 +405,19 @@ def test_press_probe_scipy_engine_goes_cold():
     # equivalence is definitional; pin the gate itself.
     layout, _ids = _tower_layout()
     assert PrefixSolver.create(layout, SolverConfig(engine="scipy")) is None
+
+
+def test_torque_z_warm_path_stays_warm():
+    # PR #20 review (severity 3): the near-boundary zip hard-coded five
+    # tolerances, so torque_z's sixth residual raised inside the broad
+    # warm-fail handler and EVERY probe silently ran cold — the
+    # dual-engine regression passed while testing the fallback engine.
+    layout, ids = _tower_layout()
+    solver = PrefixSolver.create(layout, SolverConfig(torque_z=True))
+    assert solver is not None
+    with telemetry.record() as session:
+        solver.probe((ids[0], ids[1]))
+        solver.commit((ids[0], ids[1]))
+        solver.probe((ids[2], ids[3]))
+    assert "stability.prefix.warm_fail" not in session.spans
+    assert "stability.prefix.rebuild" not in session.spans

@@ -24,7 +24,6 @@ from legolization.layout import Layout
 from legolization.ldraw_out import model_lines
 from legolization.pipeline import PipelineConfig, run
 from legolization.stability import SolverConfig, StabilityResult
-from legolization.stability.solver import StabilityResult
 
 
 def _pyramid_layout() -> Layout:

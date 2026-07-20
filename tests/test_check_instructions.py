@@ -247,3 +247,52 @@ def test_press_tower_pins_the_insertion_audit(
     assert not any("unstable" in row["flags"] for row in pressed_rows)
     fragile = [r for r in pressed_rows if "insertion-fragile" in r["flags"]]
     assert len(fragile) >= 1  # measured: 4 of 18 steps
+
+
+def test_attach_step_press_is_audited(checker: _CheckerModule) -> None:
+    # PR #20 review (severity 2): attach steps place no direct bricks,
+    # so the press audit silently skipped them; the whole seated unit
+    # must be pressed. Fixture: a slim column whose subassembly (a
+    # cantilevered arm unit) is statically seatable but press-fragile.
+    from legolization.instructions.sequencer import (
+        BuildStep,
+        InstructionPlan,
+        Subassembly,
+    )
+
+    catalog = default_catalog()
+    layout = Layout(catalog=catalog)
+    column = layout.add("brick_1x2", 0, 0, 0, 0, 1)
+    arm = layout.add("plate_1x6", 0, 0, 3, 0, 4)
+    plan = InstructionPlan(
+        steps=(
+            BuildStep(
+                index=1,
+                brick_ids=(column.brick_id,),
+                prefix_stable=True,
+                prefix_max_score=0.0,
+            ),
+            BuildStep(
+                index=2,
+                brick_ids=(arm.brick_id,),
+                prefix_stable=True,
+                prefix_max_score=0.0,
+                submodel="sub-1",
+            ),
+            BuildStep(
+                index=3,
+                brick_ids=(),
+                prefix_stable=True,
+                prefix_max_score=0.01,
+                attaches="sub-1",
+            ),
+        ),
+        warnings=(),
+        bom=bill_of_materials(layout),
+        subassemblies=(
+            Subassembly(name="sub-1", brick_ids=(arm.brick_id,), anchor_layer=3),
+        ),
+    )
+    rows = checker.check_steps(layout, plan, 10, insertion_mass_kg=1.0)
+    attach_row = next(row for row in rows if row["index"] == 3)
+    assert "insertion-fragile" in attach_row["flags"]

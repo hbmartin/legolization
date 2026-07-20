@@ -264,7 +264,7 @@ def test_subassembly_badges_and_attach_callouts() -> None:
     assert document.count('<section class="step"') == len(plan.steps)
 
 
-def test_support_warnings_aggregate_consecutive_runs():
+def test_support_warnings_aggregate_consecutive_runs() -> None:
     from legolization.instructions.booklet import _aggregate_support_warnings
 
     warnings = (

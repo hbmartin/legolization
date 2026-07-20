@@ -365,8 +365,13 @@ def rotate_pattern(
             return tuple((-oy, ox) for ox, oy in pattern)
         case 180:
             return tuple((-ox, -oy) for ox, oy in pattern)
-        case _:
+        case 270:
             return tuple((oy, -ox) for ox, oy in pattern)
+        case _:
+            # Mirror catalog.rotate_offset: a non-orthogonal yaw is a
+            # caller bug, not a 270-degree rotation (PR #20 review).
+            msg = f"yaw must be a multiple of 90, got {yaw}"
+            raise ValueError(msg)
 
 
 class _PatternSource:

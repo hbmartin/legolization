@@ -307,10 +307,12 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     unbudgeted tail (PR #18 review).
 
     ``bridge`` (a ``BridgeSynthesizer``) is tried first each iteration:
-    a deterministic MILP re-tiling of the ring that consumes no rng —
-    accepted outright when it reduces components, with the random draws
-    below as the fallback, so the rng stream matches ``bridge=None``
-    whenever the synthesizer declines.
+    a deterministic MILP re-tiling of the ring that consumes no rng.
+    Its candidate seeds the best-of-k comparison and COMPETES with the
+    random draws on the same ``(components, bricks)`` key — it never
+    preempts them (a preempting accept measured +11 bricks on
+    mushroom). The rng stream matches ``bridge=None`` exactly, whether
+    the synthesizer declines or merely loses the comparison.
 
     ``bridge_draws > 1`` enables best-of-k acceptance: a random-maximal
     region rewrite is the count-inflation hotspot (measured on mushroom:

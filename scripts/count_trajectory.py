@@ -184,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
             "hollow": config.hollow,
             "repair": config.repair,
             "fail_max": args.fail_max,
+            "milp_bridge": config.milp_bridge,
         },
         "result": {
             "brick_count": result.brick_count,

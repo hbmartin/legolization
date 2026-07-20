@@ -823,7 +823,12 @@ class PrefixSolver:
                 tol / 10.0 < v < tol * 10.0
                 for v, tol in zip(
                     t_vals,
-                    (config.tol_force,) * 3 + (config.tol_torque,) * 2,
+                    # 3 force rows + (rpb - 3) torque rows: torque_z adds
+                    # a sixth residual, and the hard-coded 5 made this
+                    # strict zip raise — silently demoting every
+                    # torque_z=True probe to the cold engine via the
+                    # broad warm-fail handler (PR #20 review, severity 3).
+                    (config.tol_force,) * 3 + (config.tol_torque,) * (self._rpb - 3),
                     strict=True,
                 )
             ):

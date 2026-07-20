@@ -175,12 +175,20 @@ so drift stays visible:
   against the §4 checklists; `compare-strategies` on the worst corpus
   row; ratchet `expect_min_buildable` when reality improves — that
   ratchet is the point.
-- **Periodically (roughly monthly, or before a release)**: full mesh
-  sweep in background (`eval_corpus --kind mesh`; write the baseline on
-  a clean run — see docs/v5-pending-measurements.md until the first cut
-  lands); `--seeds 0,1,2` seed_spread on seed-variance-trait models;
-  re-run the physics A/B harness if any SolverConfig default moved;
-  `check_instructions --insertion-check` on the flagship set.
+- **Periodically (roughly monthly, or before a release)** — the exact
+  commands, copy-pasteable (PR #20 review):
+
+      uv run python scripts/eval_corpus.py --kind mesh
+      uv run python scripts/eval_corpus.py --kind mesh --write-baseline  # clean runs only
+      uv run python scripts/eval_corpus.py --seeds 0,1,2 --only thin-shell
+      uv run python scripts/check_instructions.py data/examples/heart.vox --insertion-check
+      uv run python scripts/check_instructions.py data/corpus/synthetic/mushroom.npy --insertion-check
+      uv run python scripts/check_instructions.py data/corpus/synthetic/press-tower.npy --insertion-check
+
+  (`press-tower` is the audit's flagship input — statically clean with
+  known press-fragile arm steps, so a silently broken audit shows up as
+  zero flags.) Re-run the physics A/B harness if any SolverConfig
+  default moved.
 - **Every new capability adds a corpus model that stresses it** (the v5
-  additions still owed: a twist-load synthetic for `torque_z`, a
-  press-fragile tower for the insertion audit).
+  additions, landed in v6: `torsion-bridge` for `torque_z`,
+  `press-tower` for the insertion audit).

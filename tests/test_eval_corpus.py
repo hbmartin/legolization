@@ -357,11 +357,15 @@ def test_baseline_rows_merge_both_kinds(
     only = evaluator.baseline_rows(evaluator.parse_args(["--baseline", str(mesh)]))
     assert only is not None
     assert {row["model"] for row in only} == {"suzanne"}
-    # No baseline on disk -> None (comparison skipped).
-    missing = evaluator.baseline_rows(
-        evaluator.parse_args(["--baseline", str(tmp_path / "absent.json")])
-    )
-    assert missing is None
+    # A typo'd EXPLICIT path errors loudly (PR #20 review) ...
+    with pytest.raises(SystemExit, match="does not exist"):
+        evaluator.baseline_rows(
+            evaluator.parse_args(["--baseline", str(tmp_path / "absent.json")])
+        )
+    # ... while absent committed defaults still skip the comparison.
+    synthetic.unlink()
+    mesh.unlink()
+    assert evaluator.baseline_rows(evaluator.parse_args([])) is None
 
 
 def _multi_seed_report(*, objectives: dict[int, float]) -> dict:
@@ -483,6 +487,8 @@ def test_skips_are_unevaluated_but_errors_fail(
     ) -> list[dict]:
         return rows
 
+    empty_baseline = tmp_path / "empty-baseline.json"
+    empty_baseline.write_text(json.dumps({"models": []}))
     monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
     exit_code = evaluator.main(
         argv=[
@@ -491,7 +497,7 @@ def test_skips_are_unevaluated_but_errors_fail(
             "--out",
             str(tmp_path / "runs"),
             "--baseline",
-            str(tmp_path / "missing-baseline.json"),
+            str(empty_baseline),
         ]
     )
 
@@ -583,6 +589,8 @@ def test_smoke_sweep_two_models(
     evaluator: _EvaluatorModule,
     tmp_path: Path,
 ) -> None:
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"models": []}))
     exit_code = evaluator.main(
         argv=[
             "--models",
@@ -594,11 +602,12 @@ def test_smoke_sweep_two_models(
             "--out",
             str(tmp_path / "runs"),
             "--baseline",
-            str(tmp_path / "baseline.json"),
+            str(baseline),
         ]
     )
     assert exit_code == 0
-    assert not (tmp_path / "baseline.json").exists()
+    # Without --write-baseline the explicit file is never touched.
+    assert json.loads(baseline.read_text()) == {"models": []}
     runs = list((tmp_path / "runs").iterdir())
     assert len(runs) == 1
     assert (runs[0] / "scorecard.md").exists()
