@@ -358,3 +358,50 @@ def test_dual_engine_agrees_with_torque_z():
         a, b = plans["scipy"], plans["highspy"]
         assert [s.brick_ids for s in a.steps] == [s.brick_ids for s in b.steps]
         assert [s.prefix_stable for s in a.steps] == [s.prefix_stable for s in b.steps]
+
+
+def test_press_probe_matches_cold_extra_masses():
+    # WS-I: the warm bound-change press must equal the cold
+    # analyze(extra_masses=) verdicts and scores on both chunks.
+    layout, ids = _tower_layout()
+    solver = _warm_prefix(layout)
+    solver.probe((ids[0], ids[1]))
+    solver.commit((ids[0], ids[1]))
+    chunk = (ids[2], ids[3])
+    warm = solver.press_probe(chunk, 1.0)
+    cold = analyze(
+        layout.subset(frozenset(ids[:4])),
+        SolverConfig(),
+        extra_masses=dict.fromkeys(chunk, 1.0),
+    )
+    assert warm.stable == cold.stable
+    assert _score_drift(warm, cold) <= 1e-6
+
+
+def test_press_probe_restores_bounds_before_commit():
+    # The top-risk invariant: probe -> press -> probe must be bitwise
+    # unchanged, and a commit after a press must never bake the press
+    # into the base model.
+    layout, ids = _tower_layout()
+    solver = _warm_prefix(layout)
+    solver.probe((ids[0], ids[1]))
+    solver.commit((ids[0], ids[1]))
+    chunk = (ids[2], ids[3])
+    before = solver.probe(chunk)
+    solver.press_probe(chunk, 5.0)
+    after = solver.probe(chunk)
+    assert before.stable == after.stable
+    assert _score_drift(before, after) == 0.0
+    solver.commit(chunk)
+    committed = solver.probe((ids[4],))
+    cold = analyze(layout.subset(frozenset(ids)), SolverConfig())
+    assert committed.stable == cold.stable
+    assert _score_drift(committed, cold) <= 1e-6
+
+
+def test_press_probe_scipy_engine_goes_cold():
+    # The scipy engine has no warm model: PrefixSolver.create returns
+    # None there, so the sequencer's press path is the cold analyze —
+    # equivalence is definitional; pin the gate itself.
+    layout, _ids = _tower_layout()
+    assert PrefixSolver.create(layout, SolverConfig(engine="scipy")) is None

@@ -33,12 +33,16 @@ from legolization.instructions.sequencer import (
     Subassembly,
     plan_instructions,
 )
+from legolization.stability.prefix import PrefixSolver
 from legolization.stability.solver import analyze
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from legolization.layout import Layout
 
 _UNSTABLE_WARNING_MARK = ": prefix unstable"
+_FRAGILE_WARNING_MARK = ": insertion-fragile"
 
 
 def extract_subassemblies(
@@ -249,6 +253,10 @@ def _rewrite(
     warnings: list[str] = []
     subassemblies: list[Subassembly] = []
     placed_world: set[int] = set()
+    # One warm walker over the final world order keeps the per-step
+    # press re-derivation at bound-change cost instead of a cold LP per
+    # kept step (suzanne-scale rewrites pay dozens of presses).
+    world_press, world_commit = _press_walker(layout, config, placed_world)
 
     for index, step in enumerate(plan.steps):
         kept = tuple(bid for bid in step.brick_ids if bid not in sub_bricks)
@@ -259,6 +267,11 @@ def _rewrite(
             if verdict is None:
                 result = analyze(layout.subset(key), config.solver)
                 verdict = (result.stable, result.max_score)
+            # The pre-rewrite press mark is stale: extraction changes
+            # every kept step's prefix, so re-derive the press verdict
+            # against the prefix this plan actually builds.
+            fragile = config.insertion_check and verdict[0] and world_press(kept)
+            world_commit(kept)
             new_steps.append(
                 replace(
                     step,
@@ -266,6 +279,7 @@ def _rewrite(
                     prefix_stable=verdict[0],
                     prefix_max_score=verdict[1],
                     rotstep=None,
+                    insertion_fragile=fragile,
                 )
             )
         for cluster in attach_at.get(index, ()):
@@ -277,7 +291,9 @@ def _rewrite(
                 subassemblies,
                 placed_world,
                 config=config,
+                world_press=world_press,
             )
+            world_commit(tuple(sorted(cluster.bricks)))
             placed_world |= cluster.bricks
 
     renumbered = tuple(
@@ -292,6 +308,38 @@ def _rewrite(
     )
 
 
+def _press_walker(
+    layout: Layout,
+    config: InstructionsConfig,
+    placed_world: set[int],
+) -> tuple[Callable[[tuple[int, ...]], bool], Callable[[tuple[int, ...]], None]]:
+    """Build (press, commit) callbacks over the final world order.
+
+    One warm walker keeps the per-step press re-derivation at
+    bound-change cost instead of a cold LP per kept step (suzanne-scale
+    rewrites pay dozens of presses); the scipy engine falls back to the
+    cold path against the live ``placed_world`` set.
+    """
+    walker = (
+        PrefixSolver.create(layout, config.solver) if config.insertion_check else None
+    )
+
+    def world_press(bricks: tuple[int, ...]) -> bool:
+        if walker is not None:
+            return not walker.press_probe(bricks, config.insertion_mass_kg).stable
+        return not analyze(
+            layout.subset(placed_world | set(bricks)),
+            config.solver,
+            extra_masses=dict.fromkeys(bricks, config.insertion_mass_kg),
+        ).stable
+
+    def world_commit(bricks: tuple[int, ...]) -> None:
+        if walker is not None:
+            walker.commit(bricks)
+
+    return world_press, world_commit
+
+
 def _emit_subassembly(  # noqa: PLR0913 - the rewrite hands over all its state
     layout: Layout,
     cluster: _Cluster,
@@ -301,6 +349,7 @@ def _emit_subassembly(  # noqa: PLR0913 - the rewrite hands over all its state
     placed_world: set[int],
     *,
     config: InstructionsConfig,
+    world_press: Callable[[tuple[int, ...]], bool] | None = None,
 ) -> None:
     anchor = min(layout.bricks[bid].layer for bid in cluster.bricks)
     sub_layout = layout.subset(cluster.bricks).translated(dz=anchor)
@@ -319,6 +368,14 @@ def _emit_subassembly(  # noqa: PLR0913 - the rewrite hands over all its state
     )
     combined = placed_world | cluster.bricks
     attach_result = analyze(layout.subset(combined), config.solver)
+    # Whole-unit press: seating a finished subassembly presses its full
+    # footprint at once — a check the step-by-step audit cannot see.
+    attach_fragile = (
+        config.insertion_check
+        and attach_result.stable
+        and world_press is not None
+        and world_press(tuple(sorted(cluster.bricks)))
+    )
     new_steps.append(
         BuildStep(
             index=0,  # renumbered later
@@ -326,6 +383,7 @@ def _emit_subassembly(  # noqa: PLR0913 - the rewrite hands over all its state
             prefix_stable=attach_result.stable,
             prefix_max_score=attach_result.max_score,
             attaches=cluster.name,
+            insertion_fragile=attach_fragile,
         )
     )
     subassemblies.append(
@@ -359,9 +417,20 @@ def _regenerate_warnings(
         warning
         for warning in original.warnings
         if _UNSTABLE_WARNING_MARK not in warning
+        and _FRAGILE_WARNING_MARK not in warning
     ]
     regenerated: list[str] = []
     for step in steps:
+        if step.insertion_fragile and step.submodel is None:
+            what = (
+                f"seating subassembly {step.attaches} "
+                if step.attaches is not None
+                else ""
+            )
+            regenerated.append(
+                f"step {step.index}: insertion-fragile ({what}under press); "
+                "press bricks home gently and support the joint"
+            )
         if step.prefix_stable:
             continue
         if step.attaches is not None:

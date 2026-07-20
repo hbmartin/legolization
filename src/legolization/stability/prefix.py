@@ -272,6 +272,26 @@ class PrefixSolver:
         with telemetry.span("stability.prefix.probe", n=size):
             return self._probe_body(chunk)
 
+    def press_probe(
+        self,
+        chunk: tuple[int, ...],
+        extra_mass_kg: float,
+    ) -> StabilityResult:
+        """Solve base | chunk with a press load on every chunk brick.
+
+        Liu et al. 2024's virtual-brick insertion model: the gravity RHS
+        of each pressed brick grows by ``extra_mass_kg`` (the same
+        semantics as ``analyze(extra_masses=dict.fromkeys(chunk, kg))``).
+        Only row bounds change, so the warm basis re-converges in a few
+        dual-simplex iterations instead of a cold LP. Appended state
+        stays pending; the press bounds are ALWAYS restored before this
+        returns, so a following ``commit`` can never bake a press into
+        the base model.
+        """
+        size = len(self.present) + len(chunk)
+        with telemetry.span("stability.prefix.press", n=size):
+            return self._press_body(chunk, extra_mass_kg)
+
     def commit(self, chunk: tuple[int, ...]) -> None:
         """Advance the base by ``chunk`` (zero LP when it was just probed)."""
         wanted = frozenset(chunk) - self.present
@@ -325,6 +345,99 @@ class PrefixSolver:
         if self._config.engine_cross_check:
             return self._cross_check(subset, result)
         return result
+
+    def _press_body(
+        self,
+        chunk: tuple[int, ...],
+        extra_mass_kg: float,
+    ) -> StabilityResult:
+        wanted = frozenset(chunk) - self.present
+        subset = frozenset(self.present | wanted)
+        press_ids = frozenset(chunk)
+        if not hasattr(self._h, "changeRowBounds"):
+            # Net-new highspy API: older bindings take the cold path.
+            return self._cold_press(
+                subset, press_ids, extra_mass_kg, span="stability.prefix.press_cold"
+            )
+        floating = _stud_reach_floating(subset, self._grounded, self._stud_adjacent)
+        if floating and not self._config.engine_cross_check:
+            with telemetry.span("stability.prefix.floating_shortcut"):
+                self._rollback()
+                return _floating_shortcut(subset, floating)
+        try:
+            self._rollback()
+            self._append(wanted)
+            try:
+                self._press_rows(press_ids, extra_mass_kg)
+                self._h.setBasis(self._extended_basis(self._base_basis))
+                self._h.run()
+                _require_optimal(self._h.getModelStatus())
+                result, near_boundary = self._extract(subset)
+            finally:
+                # Restore BEFORE anything can commit: the base model must
+                # never carry press bounds forward.
+                self._press_rows(press_ids, 0.0)
+        except Exception as error:  # noqa: BLE001 - contain highspy surprises
+            if not isinstance(error, PrefixSolverError):
+                self._hard_reset()
+            return self._cold_press(
+                subset, press_ids, extra_mass_kg, span="stability.prefix.warm_fail"
+            )
+        if near_boundary:
+            return self._cold_press(
+                subset,
+                press_ids,
+                extra_mass_kg,
+                span="stability.prefix.boundary_fallback",
+            )
+        if self._config.engine_cross_check:
+            return self._press_cross_check(subset, press_ids, extra_mass_kg, result)
+        return result
+
+    def _press_rows(self, press_ids: frozenset[int], extra_mass_kg: float) -> None:
+        """Set each pressed brick's FZ row bounds for its loaded mass."""
+        for bid in sorted(press_ids):
+            base = self._row_base[bid]
+            load = (self._mass_kg[bid] + extra_mass_kg) * GRAVITY
+            self._h.changeRowBounds(base + _FZ, -_INF, load)
+            self._h.changeRowBounds(base + self._rpb + _FZ, -_INF, -load)
+
+    def _cold_press(
+        self,
+        subset: frozenset[int],
+        press_ids: frozenset[int],
+        extra_mass_kg: float,
+        *,
+        span: str,
+    ) -> StabilityResult:
+        with telemetry.span(span):
+            return analyze(
+                self._layout.subset(subset),
+                self._config,
+                extra_masses=dict.fromkeys(press_ids, extra_mass_kg),
+            )
+
+    def _press_cross_check(
+        self,
+        subset: frozenset[int],
+        press_ids: frozenset[int],
+        extra_mass_kg: float,
+        warm: StabilityResult,
+    ) -> StabilityResult:
+        """Debug mode: measure warm-vs-cold press drift, return the COLD."""
+        cold = analyze(
+            self._layout.subset(subset),
+            self._config,
+            extra_masses=dict.fromkeys(press_ids, extra_mass_kg),
+        )
+        drift = max(
+            (abs(warm.scores[b].score - cold.scores[b].score) for b in cold.scores),
+            default=0.0,
+        )
+        if cold.stable != warm.stable or drift > 1e-6:
+            with telemetry.span("stability.prefix.cross_check_mismatch"):
+                pass
+        return cold
 
     def _cross_check(
         self,
