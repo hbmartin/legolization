@@ -33,9 +33,10 @@ shell's venv hook aborts them) — use absolute paths.
   --render-dir steps/` — `verify_plan` invariants + per-step floating
   (dangling) and component counts + step PNG dump. Exit 1 = violation
   (always a bug), 2 = warnings.
-- **Corpus sweep**: `scripts/eval_corpus.py` → `eval/runs/<UTC>/
-  scorecard.{json,md}`, diffed against `eval/baselines/scorecard.json`
-  (committed, currently synthetic-only scope).
+- **Corpus sweep**: `scripts/eval_corpus.py` defaults to the synthetic
+  fast scope and writes `eval/runs/<UTC>/scorecard.{json,md}`, diffed
+  against `eval/baselines/scorecard.json`. Meshes are never part of the
+  default inner loop; opt in with `--kind mesh`.
 - **Renderers**: LeoCAD at `/Applications/LeoCAD.app` works headlessly on
   this Mac (LDView's headless snapshot silently writes nothing); LDraw
   parts at `~/Library/Caches/pyldraw3/2018-02/ldraw`. A PNG on disk is the

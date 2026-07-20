@@ -79,7 +79,7 @@ ignore = ["COM812", "D105", "D107", "D203", "D212", "D213", "EM101", "PLR2004", 
 
 [tool.pytest.ini_options]
 markers = [
-    "slow: full benchmark sweeps; deselect with -m 'not slow'",
+    "slow: opt-in benchmark, sweep, and real-render tests; run with --run-slow",
 ]
 
 [tool.ty.src]

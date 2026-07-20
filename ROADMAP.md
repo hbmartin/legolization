@@ -74,6 +74,25 @@ coverage proves the builder still sees “press bricks home gently.”
 The playbook uses `--models thin-shell`, records 13 synthetic models,
 and generates the ignored corpus before consuming its paths.
 
+### 2026-07-20 — WS-V: fast inner loop; long validation opt-in
+
+Tests marked `slow` now skip by default; `uv run pytest --run-slow`
+is the explicit full-suite gate and CI opts into it. A bare
+`scripts/eval_corpus.py` run now selects synthetics only, while mesh
+evaluation requires `--kind mesh`. This keeps normal implementation
+iterations bounded without deleting the release/performance checks.
+Measured default loop: **609 passed, 4 skipped in 57.22 s**; the
+explicit full collection remains 613 tests.
+
+The idle-machine mesh attempt also disproved the remaining 300-second
+assumption. At a 900-second cap, spot produced five valid strategies,
+Stanford Bunny two, and Teapot seven, but Armadillo still timed out on
+all seven. No baseline was written; Armadillo's failed row guarantees
+the guarded write would have declined it. The user stopped Homer after
+another ten minutes and made the mesh cut an explicit offline/release
+task with a cap above Armadillo's measured floor, not a default
+development gate.
+
 ## v6 progress notes
 
 Living log of the v6 program (PR-18 remediation, pending-measurement

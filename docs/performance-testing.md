@@ -10,6 +10,12 @@ before any timing claim.** A perf change that shifts a golden byte, a
 scorecard row, a dual-engine plan, or an unstable-step count is a
 regression regardless of how much faster it is.
 
+The development inner loop is intentionally bounded:
+`uv run pytest` skips tests marked `slow`, and a bare
+`scripts/eval_corpus.py` sweep selects synthetics only. Use
+`uv run pytest --run-slow` for the full test suite and opt into mesh
+evaluation explicitly with `--kind mesh`; CI uses the full-test flag.
+
 ## 1. Tools
 
 ### `scripts/profile_pipeline.py` (the primary tool)

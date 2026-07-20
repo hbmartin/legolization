@@ -1,6 +1,6 @@
 """Sweep the evaluation corpus through every strategy and score the field.
 
-For each manifest model (see ``scripts/corpus.py``) this runs the full
+For each selected manifest model (see ``scripts/corpus.py``) this runs the full
 ``--strategy all`` machinery in-process (``compare.run_all`` +
 ``select_best``), collects a scorecard row, and writes
 ``eval/runs/<UTC>/scorecard.{json,md}``. With a committed baseline
@@ -16,8 +16,9 @@ Usage::
         [--timeout 300] [--seed 0] [--write-baseline] [--tolerance 0.05]
 
 Timings are never compared. Synthetic models are regenerated in memory
-(never stale); mesh models missing from disk are recorded as skipped -
-run ``scripts/corpus.py download`` first for full coverage.
+(never stale) and are the default fast scope. Mesh evaluation is
+deliberately opt-in via ``--kind mesh``; run ``scripts/corpus.py
+download`` first for full coverage.
 """
 
 from __future__ import annotations
@@ -309,7 +310,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", default=None, metavar="NAME,...")
     parser.add_argument("--traits", default=None, metavar="TRAIT,...")
-    parser.add_argument("--kind", choices=("mesh", "synthetic"), default=None)
+    parser.add_argument(
+        "--kind",
+        choices=("mesh", "synthetic"),
+        default="synthetic",
+        help="corpus kind to sweep (default: synthetic; mesh is opt-in)",
+    )
     parser.add_argument("--strategies", default=None, metavar="NAME,...")
     parser.add_argument("--jobs", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=300.0)
@@ -353,9 +359,8 @@ def baseline_write_path(args: argparse.Namespace) -> Path:
 def baseline_rows(args: argparse.Namespace) -> list[dict] | None:
     """Baseline rows to diff against, or None when no baseline exists.
 
-    An explicit ``--baseline`` names one file; otherwise every committed
-    per-kind baseline that exists contributes rows (models are keyed by
-    name, so a mixed-kind sweep diffs each model against its own kind).
+    An explicit ``--baseline`` names one file; otherwise the baseline
+    for the selected kind contributes rows.
     """
     if args.baseline is not None and not args.baseline.exists():
         # A typo'd explicit path must fail loudly, not silently run
@@ -364,9 +369,7 @@ def baseline_rows(args: argparse.Namespace) -> list[dict] | None:
         msg = f"--baseline {args.baseline} does not exist"
         raise SystemExit(msg)
     paths = (
-        [args.baseline]
-        if args.baseline is not None
-        else list(_BASELINE_BY_KIND.values())
+        [args.baseline] if args.baseline is not None else [_BASELINE_BY_KIND[args.kind]]
     )
     rows: list[dict] = []
     found = False

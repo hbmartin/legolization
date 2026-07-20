@@ -1,23 +1,32 @@
 # v5 pending measurements — circle back
 
-Status as of the v6 program end (2026-07-20). Runs 2 and 3 closed;
-run 1 remains open with new evidence about WHY it keeps failing.
+Status as of the v7 program (2026-07-20). Runs 2 and 3 closed;
+run 1 remains an explicit offline/release measurement, not part of
+the default development loop.
 
 ## 1. Mesh-kind baseline cut — STILL PENDING
 
 `eval/baselines/scorecard-mesh.json` does not exist yet. The v6
-attempt ran in an isolated worktree but the machine was carrying four
-concurrent jobs: five of six meshes timed out at the 300 s per-job cap
-across ALL strategies ("error: all failed"); only suzanne completed
-(greedy, 365 bricks, PASS). The write-guard correctly refused the
-baseline. The command is unchanged — what it needs is an OTHERWISE
-IDLE machine:
+attempt under contention showed that the 300 s cap was insufficient.
+The v7 idle-machine rerun raised it to 900 s and measured:
 
-    uv run python scripts/eval_corpus.py --kind mesh --write-baseline
+- spot: five strategies succeeded (605.9–900.1 s), two timed out;
+- stanford-bunny: SM-GA and bond succeeded (350.2/871.9 s);
+- teapot: all seven succeeded (189.8–300.2 s);
+- armadillo: all seven still timed out at 900 s.
+
+No baseline was written; Armadillo's failed row guarantees the guarded
+write would have declined it. The user stopped Homer after another ten
+minutes and made these runs opt-in by policy: default pytest skips
+`slow` tests, and bare `eval_corpus.py` selects synthetics. Finish the
+mesh cut only as an explicit offline/release run on an idle machine,
+with a cap above Armadillo's measured floor:
+
+    uv run python scripts/eval_corpus.py --kind mesh --timeout SECONDS --write-baseline
 
 Run it after any change that moves placement or physics, on the state
-you want as the reference. Do not share the machine with other sweeps:
-the 300 s job timeout is calibrated for an uncontended core.
+you want as the reference. Do not share the machine with other sweeps,
+and do not put this command in the fast inner loop.
 
 ## 2. U1 subassemblies-at-scale: the spot pair — CLOSED (v6)
 
