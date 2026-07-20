@@ -231,6 +231,46 @@ def wide_arch(span: int = 10) -> np.ndarray:
     return codes
 
 
+def torsion_bridge(arm: int = 8) -> np.ndarray:
+    """Twin corner towers joined by a one-stud dog-leg deck: yaw torque.
+
+    The single-stud-wide deck leaves tower A along +x, turns the far
+    corner, and runs along +y into tower B: each tower grips a long
+    eccentric beam through a handful of knobs, the lateral-chain class
+    where the τz (yaw) residual row measurably moves scores (kollsker
+    seed 0: 0.0496 → 0.0690 with ``torque_z=True``) while gravity-only
+    verdicts never flip (v5 A/B).
+    """
+    tower, height, deck = 2, 6, 2
+    size = tower + arm
+    codes = np.full((size, size, height + deck), _EMPTY, dtype=np.int16)
+    codes[:tower, :tower, :height] = 1  # tower A at the origin corner
+    codes[-tower:, -tower:, :height] = 1  # tower B at the far corner
+    codes[:, 0, height:] = 14  # deck: one-stud +x run out of A
+    codes[-1, :, height:] = 14  # deck: corner turn, one-stud +y run into B
+    return codes
+
+
+def press_tower(arms: int = 3) -> np.ndarray:
+    """Stacked short cantilever arms on a slim column: press-fragile steps.
+
+    Every prefix is statically stable (arms are short, the mass stays
+    over the base), but each arm row anchors through just two knobs on
+    the column — seating it under Liu's 1 kg virtual press tears the
+    joint, so ``--insertion-check`` must flag arm steps while the plain
+    audit stays clean.
+    """
+    column, arm_len, spacing = 2, 3, 2
+    height = 1 + arms * spacing + 1
+    nx = column + arm_len
+    codes = np.full((nx, column, height), _EMPTY, dtype=np.int16)
+    codes[:column, :, :] = 1  # the column
+    for i in range(arms):
+        z = 1 + i * spacing
+        codes[:, 0, z] = 4  # arm row overlaps the column: stud-anchored
+    return codes
+
+
 def sparse_pillars() -> np.ndarray:
     """Four disconnected pillars: exercises the least-bad selection path."""
     codes = np.full((10, 10, 5), _EMPTY, dtype=np.int16)
@@ -250,6 +290,8 @@ GENERATORS: dict[str, Callable[[], np.ndarray]] = {
     "letter_h_bicolour": letter_h_bicolour,
     "staircase_overhang": staircase_overhang,
     "wide_arch": wide_arch,
+    "torsion_bridge": torsion_bridge,
+    "press_tower": press_tower,
     "sparse_pillars": sparse_pillars,
 }
 
