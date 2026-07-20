@@ -5,7 +5,7 @@ import pytest
 
 from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
-from legolization.grid import VoxelGrid
+from legolization.grid import EMPTY, VoxelGrid
 from legolization.layout import Layout
 from legolization.placement.layered.bridge import BridgeSynthesizer
 from legolization.placement.merge import improve_connectivity
@@ -116,3 +116,161 @@ def test_bridge_expired_budget_skips_enumeration(catalog, monkeypatch):
     layout, grid = _towers()
     synth = BridgeSynthesizer(catalog=catalog, slab_time_s=1e-9, total_time_s=1e-9)
     assert synth(layout, set(layout.bricks), grid) is None
+
+
+def _elevated_ladder() -> tuple[Layout, VoxelGrid, set[int]]:
+    # The cover-coordination class the per-slab pass cannot solve: an
+    # elevated ten-column plate run (max part length 8 forces a two-rect
+    # cover with a seam) on a central pedestal, end risers up to two
+    # floating plates A and B, and a mid plate that bridges the z3 seam
+    # ONLY if the cover chooses to put the seam under it. Per-slab
+    # commits the z3 cover before knowing the mid plate needs the seam
+    # at x4..6; the joint flow MILP coordinates the choice. Elevation
+    # matters: a grounded run would let flow route through the ground
+    # (the documented approximation) instead of through structure.
+    codes = np.full((10, 1, 6), EMPTY, dtype=np.int16)
+    codes[4:6, 0, 0:3] = 4
+    codes[:, 0, 3] = 4
+    codes[0, 0, 4] = 4
+    codes[9, 0, 4] = 4
+    codes[3:7, 0, 4] = 4
+    codes[0, 0, 5] = 4
+    codes[9, 0, 5] = 4
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x2", 4, 0, 0, 0, 4)  # pedestal, remaining
+    ring = [
+        layout.add("plate_1x8", 0, 0, 3, 0, 4),
+        layout.add("plate_1x2", 8, 0, 3, 0, 4),
+        layout.add("plate_1x1", 0, 0, 4, 0, 4),
+        layout.add("plate_1x1", 9, 0, 4, 0, 4),
+        layout.add("plate_1x4", 3, 0, 4, 0, 4),
+    ]
+    layout.add("plate_1x1", 0, 0, 5, 0, 4)  # A, remaining
+    layout.add("plate_1x1", 9, 0, 5, 0, 4)  # B, remaining
+    return layout, grid, {r.brick_id for r in ring}
+
+
+def test_flow_escalation_solves_what_per_slab_declines(catalog):
+    layout, grid, region = _elevated_ladder()
+    assert ConnectionGraph.from_layout(layout).component_count() == 2
+
+    per_slab_only = BridgeSynthesizer(catalog=catalog, flow_escalate=False)
+    assert per_slab_only(layout, region, grid) is None
+
+    bridged = BridgeSynthesizer(catalog=catalog)(layout, region, grid)
+    assert bridged is not None
+    graph = ConnectionGraph.from_layout(bridged)
+    assert graph.component_count() == 1
+    assert not graph.floating_ids()
+
+
+def test_flow_is_deterministic(catalog):
+    def signature(result) -> list:
+        return sorted(
+            (b.part_key, b.x, b.y, b.layer, b.yaw, b.colour_code)
+            for b in result.bricks.values()
+        )
+
+    runs = []
+    for _ in range(2):
+        layout, grid, region = _elevated_ladder()
+        bridged = BridgeSynthesizer(catalog=catalog)(layout, region, grid)
+        assert bridged is not None
+        runs.append(signature(bridged))
+    assert runs[0] == runs[1]
+
+
+def test_flow_graph_mates_across_brick_plate_planes(catalog):
+    # A carved brick slab (planes 0..3) under a carved plate course
+    # (planes 3..4) under a remaining plate at layer 4: hubs key on the
+    # actual mating plane, so the brick problem's top and the plate
+    # problem's bottom share hub (column, 3) — plate interleaving falls
+    # out of the keying, never a fixed z±3 offset.
+    import time
+
+    codes = np.full((2, 1, 5), EMPTY, dtype=np.int16)
+    codes[:, 0, :] = 4
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    ring = [
+        layout.add("brick_1x2", 0, 0, 0, 0, 4),
+        layout.add("plate_1x2", 0, 0, 3, 0, 4),
+    ]
+    remaining = layout.add("plate_1x2", 0, 0, 4, 0, 4)
+    del remaining
+    region = {r.brick_id for r in ring}
+
+    synth = BridgeSynthesizer(catalog=catalog)
+    carved = synth._carve(layout, region, grid)  # noqa: SLF001
+    assert carved is not None
+    candidate, cells = carved
+    labels = ConnectionGraph.from_layout(candidate).brick_components()
+    entries = synth._gather_entries(  # noqa: SLF001
+        candidate, cells, time.monotonic() + 5.0
+    )
+    assert entries is not None
+    assert sorted((e.problem.layer, e.problem.height_plates) for e in entries) == [
+        (0, 3),
+        (3, 1),
+    ]
+    graph = synth._flow_graph(candidate, entries, labels)  # noqa: SLF001
+    assert graph is not None
+    shared_plane_hubs = [
+        key
+        for key in graph.node_ids
+        if key[0] == "h" and isinstance(key[1], tuple) and key[1][1] == 3
+    ]
+    assert shared_plane_hubs  # the brick top / plate bottom meeting plane
+    arcs_by_node = dict.fromkeys(graph.node_ids.values(), 0)
+    for tail, head in graph.arcs:
+        arcs_by_node[tail] += 1
+        arcs_by_node[head] += 1
+    for key in shared_plane_hubs:
+        # Both the brick-problem rects and the plate-problem rects reach
+        # this hub, so it carries arcs from more than one problem.
+        assert arcs_by_node[graph.node_ids[key]] >= 4
+
+
+def test_flow_grounded_root_when_everything_carved(catalog):
+    # No remaining components: the ground is the flow root and the
+    # towers rejoin through it legitimately (they rebuild from plane 0).
+    import time
+
+    layout, grid = _towers()
+    region = set(layout.bricks)
+    synth = BridgeSynthesizer(catalog=catalog)
+    before = ConnectionGraph.from_layout(layout).component_count()
+    bridged = synth._flow_candidate(  # noqa: SLF001
+        layout, region, grid, time.monotonic() + 10.0, before
+    )
+    assert bridged is not None
+    assert ConnectionGraph.from_layout(bridged).component_count() == 1
+
+
+def test_flow_limits_return_none(catalog):
+    layout, grid, region = _elevated_ladder()
+    tight_candidates = BridgeSynthesizer(catalog=catalog, flow_candidate_limit=10)
+    assert tight_candidates(layout, region, grid) is None
+    tight_arcs = BridgeSynthesizer(catalog=catalog, flow_arc_limit=10)
+    assert tight_arcs(layout, region, grid) is None
+
+
+def test_flow_decline_still_preserves_rng(catalog):
+    # With escalation ON and both paths declining, improve_connectivity
+    # must consume the same rng stream as bridge=None (the synthesizer
+    # never draws).
+    layout_a, grid = _towers()
+    layout_b = layout_a.copy()
+    declining = BridgeSynthesizer(catalog=catalog, slab_time_s=1e-9, total_time_s=1e-9)
+    final_a = improve_connectivity(
+        layout_a, grid, np.random.default_rng(3), bridge_draws=2, bridge=declining
+    )
+    final_b = improve_connectivity(
+        layout_b, grid, np.random.default_rng(3), bridge_draws=2, bridge=None
+    )
+    assert final_a == final_b == 1
+    sig = lambda lo: sorted(  # noqa: E731
+        (b.part_key, b.x, b.y, b.layer) for b in lo.bricks.values()
+    )
+    assert sig(layout_a) == sig(layout_b)
