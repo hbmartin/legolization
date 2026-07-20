@@ -95,6 +95,30 @@ suzanne@16 with the check on (52 presses × ~1.1 s — a 1 kg press
 redistributes the whole force field, disproving the "few dual
 iterations" estimate); opt-in only, check-off unchanged.
 
+### 2026-07-20 — WS-E: v6 program end
+
+Full gates green (580 fast tests; ruff/ty/pyrefly/lizard CCN-18
+clean). Program-end synthetic sweep in a fresh worktree at the
+WS-F/WS-I state: **exit 0, 13/13 PASS, zero hard regressions** against
+the baseline cut at the corpus commit — the flow bridge and the
+insertion machinery are corpus-neutral on default paths, as designed.
+`check_instructions` signatures unchanged (heart 8/1, mushroom 52/0,
+cantilever 16/0, wide-arch 16/0; press-tower 18/0 and torsion-bridge
+16/0 join the table clean). The PR #20 codex triage
+(docs/pr-20-review.md) was implemented in full — 11 fixes, led by the
+severity-3 discovery that the `torque_z` warm path had been silently
+dead since v5 (hard-coded five-tolerance zip; every probe fell back
+cold while the dual-engine regression compared the fallback against
+itself — now a telemetry regression pins zero warm-fail spans).
+Version 0.5.0.
+
+**Mesh baseline: still pending.** The worktree attempt ran under four
+concurrent jobs and five of six meshes timed out at the 300 s per-job
+cap across all strategies (only suzanne completed: greedy, 365
+bricks, PASS); the write-guard correctly refused. The command needs an
+otherwise idle machine — docs/v5-pending-measurements.md item 1 stays
+open with that evidence.
+
 ## v5 progress notes
 
 Living log of the v5 program (physics fidelity, structure-preserving
@@ -258,6 +282,15 @@ Dated outcomes of the standing cadence (`docs/self-evaluation-playbook.md`
   check_instructions (kollsker 8 unstable with subassemblies — the
   gap-column limit recorded in WS-3); insertion audit flags cantilever
   4/16, mushroom 19/52 press-fragile steps as the next quality target.
+- 2026-07-20 — v6 program-end sweep: synthetic corpus 13/13 PASS
+  (two new rows), zero hard regressions. The v5-declared insertion
+  target is measured a FLOOR, not headroom: fragile steps sit in
+  singleton ready windows and rescue tails (residuals 4/4/19), so the
+  next quality lever there is chunking/rescue press-awareness, not
+  window scanning. Flow-bridge residual likewise re-scoped: the
+  interleaved-shell class needs re-phased candidate enumeration.
+  Mesh-kind baseline still unwritten (contended-machine timeouts —
+  needs an idle box).
 
 ## v4 progress notes
 
