@@ -150,6 +150,30 @@ class StabilityResult:
         return max((s.score for s in self.scores.values()), default=0.0)
 
 
+def build_model_from_config(
+    layout: Layout,
+    config: SolverConfig,
+    graph: ConnectionGraph | None = None,
+    *,
+    extra_masses: dict[int, float] | None = None,
+) -> StabilityModel:
+    """Build one RBE model using every configured physics switch.
+
+    Production callers use this helper so scoring, maximin selection,
+    localization, and sequencing cannot silently drift onto the low-level
+    :func:`build_model` defaults.
+    """
+    return build_model(
+        layout,
+        graph,
+        torque_z=config.torque_z,
+        paper_knob_rule=config.paper_knob_rule,
+        rotate_contact_pattern=config.rotate_contact_pattern,
+        ground_pull=config.ground_pull,
+        extra_masses=extra_masses,
+    )
+
+
 def analyze(
     layout: Layout,
     config: SolverConfig | None = None,
@@ -166,13 +190,10 @@ def analyze(
         return StabilityResult(stable=True)
     config = config or SolverConfig()
     with telemetry.span("stability.analyze", n=len(layout)):
-        model = build_model(
+        model = build_model_from_config(
             layout,
+            config,
             graph,
-            torque_z=config.torque_z,
-            paper_knob_rule=config.paper_knob_rule,
-            rotate_contact_pattern=config.rotate_contact_pattern,
-            ground_pull=config.ground_pull,
             extra_masses=extra_masses,
         )
         return solve_model(model, config)
@@ -477,7 +498,12 @@ def _solve_with_fallback(problem: cp.Problem, config: SolverConfig) -> str:
     last_status: str | None = None
     for solver in solvers:
         try:
-            problem.solve(solver=solver)
+            if solver == "HIGHS":
+                # HiGHS owns one process-global scheduler. Leaving CVXPY at
+                # its auto thread count poisons later one-thread warm solvers.
+                problem.solve(solver=solver, threads=1)
+            else:
+                problem.solve(solver=solver)
         except (cp.SolverError, ValueError) as error:
             last_error = error
         else:

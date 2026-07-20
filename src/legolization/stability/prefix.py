@@ -54,7 +54,6 @@ from legolization.stability.constants import (
 )
 from legolization.stability.model import (
     brick_centroid,
-    build_model,
     cavity_pattern,
     footprint_columns,
     force_entries,
@@ -68,6 +67,7 @@ from legolization.stability.solver import (
     StabilityResult,
     _solve_lp_highspy,
     analyze,
+    build_model_from_config,
 )
 
 if TYPE_CHECKING:
@@ -757,7 +757,7 @@ class PrefixSolver:
         toward = (unit[0], unit[1], 0.0)
         for z_edge in (float(z_lo), float(z_hi + 1)):
             if self._config.torque_z:
-                spots = [min(transverse), max(transverse)]
+                spots = [min(transverse) - 0.5, max(transverse) + 0.5]
             else:
                 spots = [cy if axis == 0 else cx]
             for t_coord in spots:
@@ -1029,7 +1029,8 @@ class RemovalSolver:
         try:
             with telemetry.span("stability.rescue.cold_direct", n=len(component)):
                 direct, near_boundary = _solve_lp_highspy(
-                    build_model(sub_layout), self._config
+                    build_model_from_config(sub_layout, self._config),
+                    self._config,
                 )
         except Exception:  # noqa: BLE001 - any failure means scipy-exact
             with telemetry.span("stability.rescue.cold_fallback", n=len(component)):

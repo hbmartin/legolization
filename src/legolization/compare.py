@@ -35,7 +35,11 @@ from legolization.instructions.sequencer import InstructionsConfig
 from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import ObjectiveWeights, evaluate
 from legolization.placement.registry import strategy_names
-from legolization.stability import SolverConfig, build_model, solve_maximin
+from legolization.stability import (
+    SolverConfig,
+    build_model_from_config,
+    solve_maximin,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -140,7 +144,7 @@ def candidate_metrics(
         weights=weights,
         solver_config=solver_config,
     )
-    maximin = solve_maximin(build_model(result.layout))
+    maximin = solve_maximin(build_model_from_config(result.layout, solver_config))
     return CandidateMetrics(
         buildable=result.buildable,
         stable=result.stability.stable,

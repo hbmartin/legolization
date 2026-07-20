@@ -231,15 +231,16 @@ def wide_arch(span: int = 10) -> np.ndarray:
     return codes
 
 
-def torsion_bridge(arm: int = 8) -> np.ndarray:
+def torsion_bridge(arm: int = 18) -> np.ndarray:
     """Twin corner towers joined by a one-stud dog-leg deck: yaw torque.
 
     The single-stud-wide deck leaves tower A along +x, turns the far
     corner, and runs along +y into tower B: each tower grips a long
     eccentric beam through a handful of knobs, the lateral-chain class
-    where the τz (yaw) residual row measurably moves scores (kollsker
-    seed 0: 0.0496 → 0.0690 with ``torque_z=True``) while gravity-only
-    verdicts never flip (v5 A/B).
+    where the τz (yaw) residual row measurably moves scores even with
+    side presses placed at the physical face edges (kollsker seed 0:
+    0.2025 → 0.2272 with ``torque_z=True``) while gravity-only verdicts
+    never flip.
     """
     tower, height, deck = 2, 6, 2
     size = tower + arm

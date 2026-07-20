@@ -34,7 +34,7 @@ from legolization.placement.merge import (
 from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
     import numpy as np
 
@@ -133,6 +133,8 @@ class LayeredStrategy:
     """Bridge connectivity repairs with the exact-cover synthesizer
     first (random rewrite as fallback); False = v4 behaviour, the
     count_trajectory ablation knob."""
+    bridge_rephase: bool = False
+    """Try all three vertical brick phases during bridge synthesis."""
 
     def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
         """Tile every layer problem bottom-up, then repair topology."""
@@ -190,7 +192,11 @@ class LayeredStrategy:
             fail_max=self.fail_max,
             bridge_draws=BRIDGE_DRAWS,
             deadline=deadline,
-            bridge=BridgeSynthesizer(catalog=self.catalog)
+            bridge=BridgeSynthesizer(
+                catalog=self.catalog,
+                placement_deadline=deadline,
+                rephase=self.bridge_rephase,
+            )
             if self.milp_bridge
             else None,
         )
@@ -232,16 +238,23 @@ def slab_decompose(grid: VoxelGrid) -> list[LayerProblem]:
     return slab_problems(cell_colours)
 
 
-def slab_problems(cell_colours: Mapping[Cell, int]) -> list[LayerProblem]:
+def slab_problems(
+    cell_colours: Mapping[Cell, int],
+    *,
+    phase: int = 0,
+) -> list[LayerProblem]:
     """Split filled cells into brick problems (3-plate slabs) + plate problems.
 
     The policy behind :func:`slab_decompose`, usable on any cell set —
     connectivity-repair rings re-tile through the same decomposition the
     strategies place with. Cells absent from the mapping are EMPTY.
     """
+    if phase not in range(_BRICK_PLATES):
+        msg = f"phase must be 0, 1, or 2, got {phase}"
+        raise ValueError(msg)
     by_slab: dict[int, dict[Column, dict[int, int]]] = {}
     for (x, y, z), code in cell_colours.items():
-        slab = z - z % _BRICK_PLATES
+        slab = z - (z - phase) % _BRICK_PLATES
         by_slab.setdefault(slab, {}).setdefault((x, y), {})[z] = code
     problems: list[LayerProblem] = []
     for slab_base in sorted(by_slab):
@@ -441,25 +454,52 @@ def rects_covering(
     return results
 
 
+def iter_layer_rects(
+    problem: LayerProblem,
+    columns: Iterable[Column],
+    catalog: Catalog,
+    *,
+    deadline: float | None = None,
+) -> Iterator[Rect2D]:
+    """Yield catalog-feasible rects deterministically until ``deadline``."""
+    free = frozenset(columns)
+    seen: set[tuple[int, int, int, int]] = set()
+    for column in sorted(free):
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError
+        for rect in rects_covering(problem, column, catalog, uncovered=free):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError
+            key = (rect.x0, rect.y0, rect.x1, rect.y1)
+            if key not in seen:
+                seen.add(key)
+                yield rect
+
+
 def enumerate_layer_rects(
     problem: LayerProblem,
     columns: Iterable[Column],
     catalog: Catalog,
+    *,
+    candidate_limit: int | None = None,
+    deadline: float | None = None,
 ) -> list[Rect2D]:
-    """Every catalog-feasible rect inside ``columns``, deterministic order.
+    """Collect deterministic candidates, stopping at ``limit + 1``.
 
-    The order is load-bearing: MILP consumers add rank-based tiebreak
-    costs indexed by position in this list.
+    The extra candidate lets optimization callers distinguish an exact
+    limit-sized set from overflow without materializing the full search.
+    Omitting the bounds preserves the historical complete enumeration.
     """
-    free = frozenset(columns)
-    seen: set[tuple[int, int, int, int]] = set()
     rects: list[Rect2D] = []
-    for column in sorted(free):
-        for rect in rects_covering(problem, column, catalog, uncovered=free):
-            key = (rect.x0, rect.y0, rect.x1, rect.y1)
-            if key not in seen:
-                seen.add(key)
-                rects.append(rect)
+    for rect in iter_layer_rects(
+        problem,
+        columns,
+        catalog,
+        deadline=deadline,
+    ):
+        rects.append(rect)
+        if candidate_limit is not None and len(rects) > candidate_limit:
+            break
     return rects
 
 

@@ -128,7 +128,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sweep.add_argument(
         "--jobs",
         type=_non_negative_int,
-        default=0,
+        default=None,
         metavar="N",
         help=(
             "parallel worker processes for the sweep (default 0 = one per "
@@ -174,7 +174,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--restarts",
         type=int,
-        default=DEFAULT_RESTARTS,
+        default=None,
         metavar="N",
         help=(
             "single-strategy runs race N seeds (seed..seed+N-1) in parallel "
@@ -240,6 +240,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-repair",
         action="store_true",
         help="skip the ALNS destroy-and-repair pass on unstable layouts",
+    )
+    parser.add_argument(
+        "--bridge-rephase",
+        action="store_true",
+        help="experimentally try all three exact-cover bridge slab phases",
     )
     parser.add_argument(
         "--milp",
@@ -429,9 +434,9 @@ def _validate_sweep_args(
         args.report is not None or args.keep_candidates is not None
     ):
         parser.error("--report/--keep-candidates require --strategy all")
-    if args.restarts < 1:
+    if args.restarts is not None and args.restarts < 1:
         parser.error("--restarts must be at least 1")
-    if args.strategy == "all" and args.restarts != DEFAULT_RESTARTS:
+    if args.strategy == "all" and args.restarts is not None:
         parser.error("--restarts applies to single strategies; sweeps use --seeds")
     if args.profile is not None and args.strategy == "all":
         parser.error(
@@ -456,15 +461,15 @@ def _race_seeds(
     time (PR #20 review).
     """
     seeds = _effective_seeds(args)
-    if len(seeds) <= 1:
-        return config, None
+    if len(seeds) == 1:
+        return replace(config, seed=seeds[0]), None
     try:
         grid = load_grid(args.input, config)
         winner_seed, report = restart_race(
             grid,
             config,
             seeds=seeds,
-            jobs=args.jobs,
+            jobs=_effective_jobs(args),
             timeout_s=args.timeout,
         )
     except (ValueError, OSError, RuntimeError) as error:
@@ -482,7 +487,13 @@ def _effective_seeds(args: argparse.Namespace) -> tuple[int, ...]:
     """Resolve the seed list a single-strategy run will race."""
     if args.seeds is not None:
         return tuple(args.seeds)
-    return tuple(range(args.seed, args.seed + args.restarts))
+    restarts = args.restarts if args.restarts is not None else DEFAULT_RESTARTS
+    return tuple(range(args.seed, args.seed + restarts))
+
+
+def _effective_jobs(args: argparse.Namespace) -> int:
+    """Resolve the parser sentinel to the public auto-worker default."""
+    return args.jobs if args.jobs is not None else 0
 
 
 def _validate_instructions_args(
@@ -553,6 +564,7 @@ def main(argv: list[str] | None = None) -> int:
         snot=args.snot,
         refine=not args.no_refine,
         repair=not args.no_repair,
+        bridge_rephase=args.bridge_rephase,
         seed=args.seed,
         plates_per_voxel=(
             args.plates_per_voxel if args.plates_per_voxel is not None else 3
@@ -612,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             _write_profile(
                 args,
+                config=config,
                 session=session,
                 result=result,
                 total_seconds=time.perf_counter() - started,
@@ -652,11 +665,16 @@ def _validate_ldraw_args(
             ("--snot", args.snot),
             ("--no-refine", args.no_refine),
             ("--no-repair", args.no_repair),
+            ("--bridge-rephase", args.bridge_rephase),
             ("--milp", args.milp),
             ("--plates-per-voxel", args.plates_per_voxel is not None),
             ("--aspect-correct", args.aspect_correct),
             ("--dither", args.dither),
             ("--time-budget", args.time_budget is not None),
+            ("--seeds", args.seeds is not None),
+            ("--restarts", args.restarts is not None),
+            ("--jobs", args.jobs is not None),
+            ("--timeout", args.timeout is not None),
             ("--ga-generations", args.ga_generations != 200),
             ("--beauty-preset", args.beauty_preset != "balanced"),
             ("--shell-plates", args.shell_plates != 3),
@@ -741,6 +759,7 @@ def _run_import(
 def _write_profile(
     args: argparse.Namespace,
     *,
+    config: PipelineConfig,
     session: telemetry.Telemetry,
     result: PipelineResult,
     total_seconds: float,
@@ -757,7 +776,7 @@ def _write_profile(
         "git_sha": telemetry.git_sha(),
         "input": str(args.input),
         "strategy": args.strategy,
-        "seed": args.seed,
+        "seed": config.seed,
         "brick_count": result.brick_count,
         "step_count": result.step_count,
         "total_seconds": round(total_seconds, 3),
@@ -819,7 +838,7 @@ def _run_sweep(
     candidates = run_all(
         grid,
         config,
-        jobs=args.jobs,
+        jobs=_effective_jobs(args),
         seeds=args.seeds,
         timeout_s=args.timeout,
         progress=config.progress,
@@ -832,7 +851,7 @@ def _run_sweep(
                 "input": str(args.input),
                 "seed": config.seed,
                 "seeds": list(args.seeds) if args.seeds is not None else None,
-                "jobs": args.jobs,
+                "jobs": _effective_jobs(args),
                 **report.to_dict(),
             }
             args.report.parent.mkdir(parents=True, exist_ok=True)

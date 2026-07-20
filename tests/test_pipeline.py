@@ -303,12 +303,13 @@ def test_dataclass_positional_layouts_are_stable():
         "colour_mode",
     ]
     config_names = [f.name for f in fields(PipelineConfig)]
-    assert config_names[-5:] == [
+    assert config_names[-6:] == [
         "snot",
         "milp_layer_time_s",
         "milp_bond_weight",
         "connectivity_fail_max",
         "milp_bridge",
+        "bridge_rephase",
     ]
     assert config_names.index("tiles") + 1 == config_names.index("refine")
     result_names = [f.name for f in fields(pipeline_module.PipelineResult)]
@@ -327,10 +328,14 @@ def test_connectivity_fail_max_override():
     overridden = make_strategy(
         "bond",
         catalog=default_catalog(),
-        config=PipelineConfig(connectivity_fail_max=0),
+        config=PipelineConfig(
+            connectivity_fail_max=0,
+            bridge_rephase=False,
+        ),
     )
     assert isinstance(overridden, BondStrategy)
     assert overridden.fail_max == 0
+    assert overridden.bridge_rephase is False
     greedy = make_strategy(
         "greedy",
         catalog=default_catalog(),

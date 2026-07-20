@@ -506,6 +506,24 @@ def test_improve_connectivity_bridges_grounded_towers():
     _assert_exact_cover(layout, grid)
 
 
+def test_luo_maximin_uses_strategy_physics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import Mock
+
+    import legolization.placement.luo as luo_module
+    from legolization.stability import SolverConfig
+
+    config = SolverConfig(torque_z=True, ground_pull=False)
+    helper = Mock(wraps=luo_module.build_model_from_config)
+    monkeypatch.setattr(luo_module, "build_model_from_config", helper)
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    LuoStrategy(solver_config=config)._capacity(layout)  # noqa: SLF001
+    helper.assert_called_once()
+    assert helper.call_args.args[1] is config
+
+
 def test_greedy_sweeps_layers_bottom_up():
     codes = np.full((2, 1, 6), EMPTY, dtype=np.int16)
     codes[0, 0, 5] = 4

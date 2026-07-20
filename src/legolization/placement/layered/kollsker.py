@@ -136,7 +136,16 @@ class KollskerStrategy(BondStrategy):
         """Two-stage lexicographic MILP; None means use the fallback."""
         if self._time_limit(deadline) is None:
             return None  # deadline already spent: don't pay for enumeration
-        candidates = enumerate_layer_rects(problem, component, self.catalog)
+        try:
+            candidates = enumerate_layer_rects(
+                problem,
+                component,
+                self.catalog,
+                candidate_limit=self.candidate_limit,
+                deadline=deadline,
+            )
+        except TimeoutError:
+            return None
         if not candidates or len(candidates) > self.candidate_limit:
             return None
         # Recheck: enumeration itself may have consumed the remainder.
@@ -155,12 +164,9 @@ class KollskerStrategy(BondStrategy):
         if stage1 is None or not stage1.success or stage1.x is None:
             return None
         n_star = float(np.round(stage1.fun))
-        rewards = np.array(
-            [
-                bond_reward(rect, below)
-                + self.ground_weight * grounding_gain(rect, below) / rect.area
-                for rect in candidates
-            ]
+        bond_rewards = np.array([bond_reward(rect, below) for rect in candidates])
+        grounding_rewards = np.array(
+            [grounding_gain(rect, below) / rect.area for rect in candidates]
         )
         rank = _RANK_EPS * np.arange(len(candidates))
         # Recomputed: stage 1 may have consumed most of the budget; when
@@ -170,7 +176,11 @@ class KollskerStrategy(BondStrategy):
             None
             if stage2_limit is None
             else _guarded_milp(
-                c=-self.bond_weight * rewards + rank,
+                c=-(
+                    self.bond_weight * bond_rewards
+                    + self.ground_weight * grounding_rewards
+                )
+                + rank,
                 constraints=[
                     LinearConstraint(cover, lb=1.0, ub=1.0),
                     LinearConstraint(np.ones((1, len(candidates))), n_star, n_star),

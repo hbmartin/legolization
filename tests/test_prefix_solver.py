@@ -313,6 +313,26 @@ def test_direct_rescue_solve_matches_cold():
         assert abs(a.objective - b.objective) <= 1e-6 + 1e-3 * abs(b.objective)
 
 
+def test_direct_rescue_uses_configured_table_physics():
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    layout.add("brick_1x6", 0, 0, 3, 0, 4)
+    for level in range(3):
+        layout.add("brick_1x1", 5, 0, 6 + 3 * level, 0, 4)
+    config = SolverConfig(
+        engine="highspy",
+        rescue_direct_min_bricks=1,
+        ground_pull=False,
+    )
+    solver = RemovalSolver.create(layout, frozenset(layout.bricks), config)
+    assert solver is not None
+    direct = solver.probe_without(())
+    cold = analyze(layout, config)
+    assert not direct.stable
+    assert direct.stable == cold.stable
+    assert direct.unstable_ids == cold.unstable_ids
+
+
 def test_direct_rescue_failure_falls_back_to_scipy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -412,6 +432,23 @@ def test_torque_z_warm_path_stays_warm():
     # tolerances, so torque_z's sixth residual raised inside the broad
     # warm-fail handler and EVERY probe silently ran cold — the
     # dual-engine regression passed while testing the fallback engine.
+    layout, ids = _tower_layout()
+    solver = PrefixSolver.create(layout, SolverConfig(torque_z=True))
+    assert solver is not None
+    with telemetry.record() as session:
+        solver.probe((ids[0], ids[1]))
+        solver.commit((ids[0], ids[1]))
+        solver.probe((ids[2], ids[3]))
+    assert "stability.prefix.warm_fail" not in session.spans
+    assert "stability.prefix.rebuild" not in session.spans
+
+
+def test_milp_then_torque_z_warm_path_stays_warm():
+    milp_layout = Layout(catalog=default_catalog())
+    milp_layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    milp_layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    assert analyze(milp_layout, SolverConfig(mode="milp")).stable
+
     layout, ids = _tower_layout()
     solver = PrefixSolver.create(layout, SolverConfig(torque_z=True))
     assert solver is not None

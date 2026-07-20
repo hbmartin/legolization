@@ -14,7 +14,9 @@ from legolization.placement.layered.engine import (
     LayerProblem,
     build_context,
     enumerate_layer_rects,
+    iter_layer_rects,
     slab_decompose,
+    slab_problems,
 )
 from legolization.placement.layered.kollsker import KollskerStrategy, _components
 from legolization.placement.registry import make_strategy, strategy_names
@@ -51,6 +53,28 @@ def _min_parts_brute(problem: LayerProblem, catalog: Catalog) -> int:
 
     search(problem.columns, 0)
     return best
+
+
+def test_slab_problems_support_all_vertical_phases() -> None:
+    cells = {(0, 0, z): 4 for z in range(1, 4)}
+    phase_zero = slab_problems(cells)
+    assert [(problem.layer, problem.height_plates) for problem in phase_zero] == [
+        (1, 1),
+        (2, 1),
+        (3, 1),
+    ]
+    phase_one = slab_problems(cells, phase=1)
+    assert [(problem.layer, problem.height_plates) for problem in phase_one] == [(1, 3)]
+
+    occupied = {
+        (x, y, z)
+        for problem in phase_one
+        for x, y in problem.columns
+        for z in range(problem.layer, problem.layer + problem.height_plates)
+    }
+    assert occupied == set(cells)
+    with pytest.raises(ValueError, match="phase"):
+        slab_problems(cells, phase=3)
 
 
 @pytest.mark.parametrize(
@@ -146,6 +170,63 @@ def test_candidate_blowup_falls_back_to_bond() -> None:
     strategy = KollskerStrategy(catalog=catalog, candidate_limit=1)
     rects = strategy.tile(problem, context, rng=np.random.default_rng(0), deadline=None)
     assert {c for r in rects for c in r.columns()} == problem.columns
+
+
+def test_candidate_collection_stops_at_limit_plus_one() -> None:
+    problem = _layer_problem({(x, 0) for x in range(10)})
+    candidates = enumerate_layer_rects(
+        problem,
+        problem.columns,
+        default_catalog(),
+        candidate_limit=2,
+    )
+    assert len(candidates) == 3
+
+
+def test_candidate_iterator_checks_deadline_incrementally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.placement.layered.engine as engine_mod
+
+    ticks = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr(engine_mod.time, "monotonic", lambda: next(ticks))
+    problem = _layer_problem({(x, 0) for x in range(4)})
+    with pytest.raises(TimeoutError):
+        list(
+            iter_layer_rects(
+                problem,
+                problem.columns,
+                default_catalog(),
+                deadline=1.0,
+            )
+        )
+
+
+def test_grounding_reward_survives_zero_bond_weight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.placement.layered.kollsker as kollsker_mod
+
+    monkeypatch.setattr(kollsker_mod, "bond_reward", lambda rect, below: 0.0)
+    monkeypatch.setattr(
+        kollsker_mod,
+        "grounding_gain",
+        lambda rect, below: float(rect.area) if rect.x0 == 8 else 0.0,
+    )
+    catalog = default_catalog()
+    problem = _layer_problem({(x, 0) for x in range(10)})
+    context = build_context(Layout(catalog=catalog), problem)
+    rects = KollskerStrategy(
+        catalog=catalog,
+        bond_weight=0.0,
+        ground_weight=10.0,
+    ).tile(
+        problem,
+        context,
+        rng=np.random.default_rng(0),
+        deadline=None,
+    )
+    assert sorted((rect.x0, rect.x1) for rect in rects) == [(0, 7), (8, 9)]
 
 
 def test_registered_and_constructed_from_config() -> None:
