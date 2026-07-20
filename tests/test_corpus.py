@@ -242,3 +242,52 @@ def test_largest_component_only_field(corpus: ModuleType) -> None:
     assert models["homer"].largest_component_only is True
     assert models["spot"].largest_component_only is False
     assert models["cantilever"].largest_component_only is False
+
+
+def test_torsion_bridge_dogleg_geometry(corpus: ModuleType) -> None:
+    from scipy import ndimage
+
+    codes = corpus.torsion_bridge()
+    filled = codes != EMPTY
+    structure = ndimage.generate_binary_structure(rank=3, connectivity=1)
+    _labels, whole = ndimage.label(filled, structure=structure)
+    assert whole == 1
+    deck_layers = 2
+    _labels, without_deck = ndimage.label(
+        filled[:, :, :-deck_layers], structure=structure
+    )
+    assert without_deck == 2  # towers rejoin only through the deck
+    # The deck is one stud wide along both runs: the eccentric-beam trait.
+    deck = filled[:, :, -deck_layers:]
+    assert deck[:, 0, :].all()  # the +x run at y=0
+    assert deck[-1, :, :].all()  # the +y run at x=max
+    assert not deck[:-1, 1:, :].any()  # nothing else
+
+
+def test_torsion_bridge_yaw_row_moves_the_score(corpus: ModuleType) -> None:
+    # The model's reason to exist: a lateral chain where torque_z raises
+    # max_score (score inequality, NOT a verdict — gravity alone never
+    # flips tau_z verdicts, v5 A/B). Kollsker's minimal tiling grips the
+    # one-stud beam through few knobs, which is where the yaw row binds.
+    from legolization.pipeline import PipelineConfig, run
+    from legolization.stability.solver import SolverConfig, analyze
+
+    grid = VoxelGrid.from_array(corpus.torsion_bridge(), plates_per_voxel=3)
+    result = run(grid, PipelineConfig(strategy="kollsker", seed=0, hollow=False))
+    base = analyze(result.layout, SolverConfig())
+    yaw = analyze(result.layout, SolverConfig(torque_z=True))
+    assert yaw.stable == base.stable  # verdict untouched
+    assert yaw.max_score > base.max_score + 0.005  # measured +0.0194
+
+
+def test_press_tower_arms_overhang(corpus: ModuleType) -> None:
+    codes = corpus.press_tower()
+    filled = codes != EMPTY
+    # Each arm row cantilevers past the column: filled above empty.
+    above = filled[:, :, 1:] & ~filled[:, :, :-1]
+    assert above.any()
+    from scipy import ndimage
+
+    structure = ndimage.generate_binary_structure(rank=3, connectivity=1)
+    _labels, components = ndimage.label(filled, structure=structure)
+    assert components == 1

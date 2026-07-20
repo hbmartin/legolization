@@ -198,3 +198,21 @@ generator = "sparse_pillars"
 traits = ["disconnected", "least-bad", "fast"]
 expect_min_buildable = 0
 notes = "Four disconnected pillars - exercises least-bad selection (exit 2)."
+
+[[model]]
+name = "torsion-bridge"
+kind = "synthetic"
+path = "data/corpus/synthetic/torsion-bridge.npy"
+generator = "torsion_bridge"
+traits = ["lateral-chain", "torsion", "fast"]
+expect_min_buildable = 1
+notes = "Dog-leg deck between corner towers - tau_z-sensitive score class."
+
+[[model]]
+name = "press-tower"
+kind = "synthetic"
+path = "data/corpus/synthetic/press-tower.npy"
+generator = "press_tower"
+traits = ["insertion-fragile", "fast"]
+expect_min_buildable = 1
+notes = "Stacked two-knob cantilever arms - insertion-audit target (Liu press)."

@@ -420,22 +420,27 @@ def write_outputs(
     return booklet
 
 
-def run_file(
+def run_file(  # noqa: PLR0913 - optional artifact paths + the preloaded grid
     input_path: Path,
     output_path: Path,
     config: PipelineConfig | None = None,
     *,
     bom_path: Path | None = None,
     instructions_path: Path | None = None,
+    grid: VoxelGrid | None = None,
 ) -> PipelineResult:
     """Load a ``.vox``/``.npy`` grid, run the pipeline, write ``.ldr``/``.mpd``.
 
     ``bom_path`` additionally writes the bill of materials (JSON when the
     suffix is ``.json``, text otherwise); ``instructions_path`` an
-    instruction booklet (``.html`` or ``.pdf``).
+    instruction booklet (``.html`` or ``.pdf``). ``grid`` skips the
+    load: the restart race already voxelized the input, and a mesh
+    voxelization is not free to repeat (PR #20 review).
     """
     config = config or PipelineConfig()
-    result = run(grid=load_grid(input_path, config), config=config)
+    result = run(
+        grid=grid if grid is not None else load_grid(input_path, config), config=config
+    )
     write_outputs(
         result,
         output_path,

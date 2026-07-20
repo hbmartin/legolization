@@ -357,6 +357,12 @@ def baseline_rows(args: argparse.Namespace) -> list[dict] | None:
     per-kind baseline that exists contributes rows (models are keyed by
     name, so a mixed-kind sweep diffs each model against its own kind).
     """
+    if args.baseline is not None and not args.baseline.exists():
+        # A typo'd explicit path must fail loudly, not silently run
+        # baseline-free (PR #20 review); only the committed per-kind
+        # defaults may be legitimately absent.
+        msg = f"--baseline {args.baseline} does not exist"
+        raise SystemExit(msg)
     paths = (
         [args.baseline]
         if args.baseline is not None

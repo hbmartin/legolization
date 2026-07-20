@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import tempfile
 from dataclasses import replace
@@ -36,7 +37,7 @@ from legolization.instructions.sequencer import (
 from legolization.ldraw_out import write_model
 from legolization.mesh import MeshOptions
 from legolization.pipeline import PipelineConfig, PipelineResult, load_grid, run
-from legolization.stability.solver import analyze
+from legolization.stability.solver import SolverConfig, analyze
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -51,6 +52,7 @@ def check_steps(
     max_step_size: int,
     *,
     insertion_mass_kg: float | None = None,
+    solver: SolverConfig | None = None,
 ) -> list[dict]:
     """Audit each step's after-state; returns one JSON-safe row per step.
 
@@ -90,13 +92,21 @@ def check_steps(
             flags.append("unstable-prefix")
         if len(step.brick_ids) > max_step_size:
             flags.append("oversized")
+        # Attach steps place no direct bricks: press the whole seated
+        # unit instead of skipping them (PR #20 review, severity 2).
+        pressed_ids = (
+            subs[step.attaches].brick_ids
+            if step.attaches is not None
+            else step.brick_ids
+        )
         if (
             insertion_mass_kg is not None
             and step.prefix_stable
-            and step.brick_ids
+            and pressed_ids
             and not analyze(
                 audit_layout,
-                extra_masses=dict.fromkeys(step.brick_ids, insertion_mass_kg),
+                solver,
+                extra_masses=dict.fromkeys(pressed_ids, insertion_mass_kg),
             ).stable
         ):
             # Statically fine, but pressing the new bricks home would
@@ -148,6 +158,15 @@ def _dump_step_images(
     return list(images.warnings)
 
 
+def _positive_mass(text: str) -> float:
+    """Reject non-finite or non-positive press masses at the boundary."""
+    value = float(text)
+    if not math.isfinite(value) or value <= 0:
+        msg = f"must be a finite positive mass, got {text}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -168,7 +187,12 @@ def main(argv: list[str] | None = None) -> int:
             "insertion-fragile flag"
         ),
     )
-    parser.add_argument("--insertion-mass-kg", type=float, default=1.0, metavar="KG")
+    parser.add_argument(
+        "--insertion-mass-kg",
+        type=_positive_mass,
+        default=1.0,
+        metavar="KG",
+    )
     parser.add_argument("--json", dest="json_path", default=None, metavar="PATH")
     parser.add_argument("--render-dir", type=Path, default=None, metavar="DIR")
     parser.add_argument("--target-studs", type=int, default=32, metavar="N")
@@ -184,6 +208,10 @@ def main(argv: list[str] | None = None) -> int:
         instructions=InstructionsConfig(
             target_step_size=args.step_size,
             subassemblies=args.subassemblies is not False,
+            # With the check on the SEQUENCER avoids fragile orderings,
+            # so the audit below measures the residual, not the raw count.
+            insertion_check=args.insertion_check,
+            insertion_mass_kg=args.insertion_mass_kg,
         ),
         mesh=MeshOptions(target_studs=args.target_studs, up=args.up),
         progress=progress,
@@ -206,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         result.plan,
         instructions_config.max_step_size,
         insertion_mass_kg=args.insertion_mass_kg if args.insertion_check else None,
+        solver=instructions_config.solver,
     )
     warnings = list(result.plan.warnings)
     if args.render_dir is not None:

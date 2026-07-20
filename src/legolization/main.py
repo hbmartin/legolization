@@ -38,7 +38,12 @@ from legolization.stability.solver import SolverConfig, analyze
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from legolization.grid import VoxelGrid
+
 LDRAW_SUFFIXES = {".ldr", ".mpd"}
+DEFAULT_RESTARTS = 3
+"""The --restarts default, shared with the sweep-conflict validation
+(PR #20 review: the two literals could drift apart)."""
 
 
 def _non_negative_int(value: str) -> int:
@@ -169,7 +174,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--restarts",
         type=int,
-        default=3,
+        default=DEFAULT_RESTARTS,
         metavar="N",
         help=(
             "single-strategy runs race N seeds (seed..seed+N-1) in parallel "
@@ -426,7 +431,7 @@ def _validate_sweep_args(
         parser.error("--report/--keep-candidates require --strategy all")
     if args.restarts < 1:
         parser.error("--restarts must be at least 1")
-    if args.strategy == "all" and args.restarts != 3:
+    if args.strategy == "all" and args.restarts != DEFAULT_RESTARTS:
         parser.error("--restarts applies to single strategies; sweeps use --seeds")
     if args.profile is not None and args.strategy == "all":
         parser.error(
@@ -443,11 +448,16 @@ def _validate_sweep_args(
 def _race_seeds(
     args: argparse.Namespace,
     config: PipelineConfig,
-) -> PipelineConfig | None:
-    """Run the restart race and pin the winning seed; None = load error."""
+) -> tuple[PipelineConfig, VoxelGrid | None] | None:
+    """Run the restart race and pin the winning seed; None = load error.
+
+    Returns the raced config together with the grid the race loaded, so
+    the winner's full run does not voxelize the same input a second
+    time (PR #20 review).
+    """
     seeds = _effective_seeds(args)
     if len(seeds) <= 1:
-        return config
+        return config, None
     try:
         grid = load_grid(args.input, config)
         winner_seed, report = restart_race(
@@ -465,7 +475,7 @@ def _race_seeds(
         f"restart race: seeds {min(seeds)}..{max(seeds)} -> seed {winner_seed}"
         + (f" ({failures} failed)" if failures else "")
     )
-    return replace(config, seed=winner_seed)
+    return replace(config, seed=winner_seed), grid
 
 
 def _effective_seeds(args: argparse.Namespace) -> tuple[int, ...]:
@@ -587,7 +597,7 @@ def main(argv: list[str] | None = None) -> int:
     raced = _race_seeds(args, config)
     if raced is None:
         return 1
-    config = raced
+    config, raced_grid = raced
     try:
         if args.profile is not None:
             started = time.perf_counter()
@@ -598,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
                     config,
                     bom_path=args.bom,
                     instructions_path=args.instructions,
+                    grid=raced_grid,
                 )
             _write_profile(
                 args,
@@ -612,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
                 config,
                 bom_path=args.bom,
                 instructions_path=args.instructions,
+                grid=raced_grid,
             )
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)

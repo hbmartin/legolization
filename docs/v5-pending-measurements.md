@@ -1,58 +1,32 @@
 # v5 pending measurements — circle back
 
-Two long-running measurement jobs were cut short during the v5 program
-(user call: too slow for the session); everything below is ready to
-re-run verbatim. Neither blocks the v5 code that landed — they close
-bookkeeping, not correctness.
+Status as of the v6 program end (2026-07-20). Runs 2 and 3 closed;
+run 1 remains open with new evidence about WHY it keeps failing.
 
-## 1. Mesh-kind baseline cut (WS-0, not yet written)
+## 1. Mesh-kind baseline cut — STILL PENDING
 
-`eval/baselines/scorecard-mesh.json` does not exist yet. The per-kind
-baseline machinery landed and is tested; the sweep itself (6 meshes ×
-7 strategies, ~30–60 min) kept getting interrupted. Run when a machine
-can sit:
+`eval/baselines/scorecard-mesh.json` does not exist yet. The v6
+attempt ran in an isolated worktree but the machine was carrying four
+concurrent jobs: five of six meshes timed out at the 300 s per-job cap
+across ALL strategies ("error: all failed"); only suzanne completed
+(greedy, 365 bricks, PASS). The write-guard correctly refused the
+baseline. The command is unchanged — what it needs is an OTHERWISE
+IDLE machine:
 
     uv run python scripts/eval_corpus.py --kind mesh --write-baseline
 
-The guard writes only on a clean run. Run it AFTER any change that
-moves placement or physics, on the state you want as the reference —
-currently that is post-`rotate_contact_pattern`-flip (commit 867389c
-or later).
+Run it after any change that moves placement or physics, on the state
+you want as the reference. Do not share the machine with other sweeps:
+the 300 s job timeout is calibrated for an uncontended core.
 
-## 2. U1 subassemblies-at-scale: the spot pair (WS-3)
+## 2. U1 subassemblies-at-scale: the spot pair — CLOSED (v6)
 
-`--subassemblies` measured post-physics-flip (seed 0,
-`scripts/check_instructions.py`):
+spot@24: 80/155 unstable (v4 record) → **72/176** with
+`--subassemblies`. Completes the U1 evidence table at six of six
+models, five improved; recorded in ROADMAP's v6 WS-M entry.
 
-| model | default unstable | subassemblies unstable | max prefix score |
-|---|---|---|---|
-| mushroom | 17/41 steps | **0**/52 | 1.00 → 0.10 |
-| heart | 2/7 | 1/8 | 1.00 → 1.00 |
-| wide-arch | 2/14 | **0**/16 | 1.00 → 0.02 |
-| cantilever | 1/15 | **0**/16 | 1.00 → 0.09 |
-| suzanne@16 | 33/60 | 21/77 | 1.00 → 1.00 |
-| spot@24 | 80/155 (v4 record) | **not measured** | — |
+## 3. spot@24 program-end profile — CLOSED (v6)
 
-The missing cell (~20 min):
-
-    uv run python scripts/check_instructions.py data/corpus/meshes/spot.obj \
-        --target-studs 24 --up y --subassemblies
-
-Five of six models show clear improvement with no downsides (three go
-fully clean; pre-flip and post-flip tables are identical, so the
-physics flip is orthogonal). The `InstructionsConfig.subassemblies`
-default flip is pre-approved on this evidence; the spot cell is
-verification coverage, not a gate — record its number when run.
-
-## 3. spot@24 program-end profile (WS-5)
-
-The v5-end profile set ran pyramid + suzanne only; spot (~9 min) is
-deferred:
-
-    uv run python scripts/profile_pipeline.py spot --target-studs 24 \
-        --label v5-end --seed 0
-
-Compare the result block against the v4 record (996 bricks / 155
-steps); with subassemblies default-on the step count will move — that
-is the U1 trade, not a regression. Wall belongs to the same session's
-before-run per docs/performance-testing.md.
+Result block 996 bricks / 176 steps (155 → 176 is the U1 subassembly
+trade, not a regression). Wall was measured under four concurrent jobs
+and is excluded from regression claims per docs/performance-testing.md.

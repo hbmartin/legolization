@@ -597,3 +597,132 @@ def test_cli_profile_payload_is_schema_two(tmp_path):
     assert isinstance(sha, str)
     assert len(sha) == 40
     assert payload["spans"]["stability.analyze"]["calls"] >= 1
+
+
+def _verdict(*, stable: bool, score: float) -> StabilityResult:
+    from legolization.stability.solver import BrickScore
+
+    return StabilityResult(
+        stable=stable,
+        scores={
+            1: BrickScore(brick_id=1, score=score, drag_max=0.0, in_equilibrium=True)
+        },
+    )
+
+
+def test_scan_window_defers_press_fragile_candidates() -> None:
+    # WS-I: with the check on, a statically-stable-but-press-fragile
+    # candidate is skipped when the window holds a press-stable
+    # alternative; with the check off the scan accepts the first stable
+    # candidate exactly as before.
+    from legolization.instructions.sequencer import _scan_ready_window
+
+    chunks: list[tuple[int, tuple[int, ...]]] = [(0, (1,)), (0, (2,))]
+    static = _verdict(stable=True, score=0.2)
+    press_bad = _verdict(stable=False, score=1.0)
+    press_ok = _verdict(stable=True, score=0.3)
+    accepted: list[tuple[int, ...]] = []
+
+    def analyze_prefix(chunk: tuple[int, ...]) -> StabilityResult:
+        return static
+
+    def press_prefix(chunk: tuple[int, ...]) -> StabilityResult:
+        return press_bad if chunk == (1,) else press_ok
+
+    def accept(chunk: tuple[int, ...], score: float) -> None:
+        accepted.append(chunk)
+
+    on = InstructionsConfig(insertion_check=True)
+    pos, _best, best_fragile = _scan_ready_window(
+        [0, 1],
+        chunks,
+        on,
+        analyze_prefix=analyze_prefix,
+        press_prefix=press_prefix,
+        accept=accept,
+    )
+    assert pos == 1  # the press-stable second candidate wins
+    assert accepted == [(2,)]
+    assert best_fragile == (1.0, 0, 0.2)
+
+    accepted.clear()
+    off = InstructionsConfig()
+    pos, _best, best_fragile = _scan_ready_window(
+        [0, 1],
+        chunks,
+        off,
+        analyze_prefix=analyze_prefix,
+        press_prefix=press_prefix,
+        accept=accept,
+    )
+    assert pos == 0  # byte-identical to the historical scan
+    assert accepted == [(1,)]
+    assert best_fragile is None
+
+
+def test_scan_window_all_fragile_returns_best() -> None:
+    from legolization.instructions.sequencer import _scan_ready_window
+
+    chunks: list[tuple[int, tuple[int, ...]]] = [(0, (1,)), (0, (2,))]
+    static = _verdict(stable=True, score=0.2)
+
+    def analyze_prefix(chunk: tuple[int, ...]) -> StabilityResult:
+        return static
+
+    def press_prefix(chunk: tuple[int, ...]) -> StabilityResult:
+        return _verdict(stable=False, score=2.0 if chunk == (1,) else 1.5)
+
+    pos, _best, best_fragile = _scan_ready_window(
+        [0, 1],
+        chunks,
+        InstructionsConfig(insertion_check=True),
+        analyze_prefix=analyze_prefix,
+        press_prefix=press_prefix,
+        accept=lambda chunk, score: None,
+    )
+    assert pos is None
+    assert best_fragile == (1.5, 1, 0.2)  # least-fragile candidate tracked
+
+
+def _press_arm_layout() -> Layout:
+    # A slim column with one short two-knob cantilever arm: statically
+    # stable throughout, but seating the arm under a 1 kg press tears
+    # its joint (the press-tower corpus class, minimal).
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x2", 0, 0, 0, 0, 1)
+    layout.add("plate_1x6", 0, 0, 3, 0, 4)  # arm: two knobs on the column
+    return layout
+
+
+def test_insertion_check_flags_forced_fragile_step() -> None:
+    layout = _press_arm_layout()
+    plan = plan_instructions(
+        layout,
+        config=InstructionsConfig(
+            rotstep=False, subassemblies=False, insertion_check=True
+        ),
+    )
+    fragile = [step for step in plan.steps if step.insertion_fragile]
+    assert len(fragile) == 1
+    assert fragile[0].prefix_stable  # statically fine, press-fragile
+    assert any("insertion-fragile" in w for w in plan.warnings)
+    config = InstructionsConfig(
+        rotstep=False, subassemblies=False, insertion_check=True
+    )
+    assert verify_plan(layout, plan, config=config) == []
+
+
+def test_insertion_check_off_is_byte_identical() -> None:
+    layout = _press_arm_layout()
+    base = plan_instructions(
+        layout, config=InstructionsConfig(rotstep=False, subassemblies=False)
+    )
+    assert all(not step.insertion_fragile for step in base.steps)
+    assert not any("insertion-fragile" in w for w in base.warnings)
+
+
+def test_insertion_mass_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="insertion_mass_kg"):
+        InstructionsConfig(insertion_mass_kg=0.0)
+    with pytest.raises(ValueError, match="insertion_mass_kg"):
+        InstructionsConfig(insertion_mass_kg=float("nan"))

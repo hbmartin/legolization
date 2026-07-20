@@ -147,38 +147,61 @@ def _aggregate_support_warnings(warnings: tuple[str, ...]) -> tuple[str, ...]:
     """
     aggregated: list[str] = []
     run: list[int] = []
+    run_kind: str | None = None
 
     def flush() -> None:
+        nonlocal run_kind
         if not run:
             return
-        if len(run) == 1:
-            aggregated.append(
-                f"step {run[0]}: temporary support needed while building "
-                "(unstable prefix)"
-            )
-        else:
-            aggregated.append(
-                f"steps {run[0]}-{run[-1]}: temporary support needed while "
-                f"building ({len(run)} unstable prefixes)"
-            )
+        single, many = _RUN_TEXTS[run_kind or "support"]
+        template = single if len(run) == 1 else many
+        aggregated.append(template.format(first=run[0], last=run[-1], count=len(run)))
         run.clear()
+        run_kind = None
 
     for warning in warnings:
-        step: int | None = None
-        if warning.startswith("step ") and "prefix unstable" in warning:
-            head = warning.removeprefix("step ").split(":", 1)[0]
-            if head.isdigit():
-                step = int(head)
-        if step is not None and (not run or step == run[-1] + 1):
+        entry = _classify_step_warning(warning)
+        if entry is not None:
+            step, kind = entry
+            if run and kind == run_kind and step == run[-1] + 1:
+                run.append(step)
+                continue
+            flush()
             run.append(step)
+            run_kind = kind
             continue
         flush()
-        if step is not None:
-            run.append(step)
-        else:
-            aggregated.append(warning)
+        aggregated.append(warning)
     flush()
     return tuple(aggregated)
+
+
+_RUN_TEXTS = {
+    "support": (
+        "step {first}: temporary support needed while building (unstable prefix)",
+        "steps {first}-{last}: temporary support needed while "
+        "building ({count} unstable prefixes)",
+    ),
+    "press": (
+        "step {first}: press bricks home gently (insertion-fragile)",
+        "steps {first}-{last}: press bricks home gently "
+        "({count} insertion-fragile steps)",
+    ),
+}
+
+
+def _classify_step_warning(warning: str) -> tuple[int, str] | None:
+    """(step number, run kind) for aggregatable warnings, else None."""
+    if not warning.startswith("step "):
+        return None
+    head = warning.removeprefix("step ").split(":", 1)[0]
+    if not head.isdigit():
+        return None
+    if "prefix unstable" in warning:
+        return int(head), "support"
+    if "insertion-fragile" in warning:
+        return int(head), "press"
+    return None
 
 
 def validate_booklet_path(path: Path) -> None:

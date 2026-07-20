@@ -44,6 +44,8 @@ from legolization.stability.prefix import PrefixSolver, RemovalSolver
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from legolization.layout import Layout
 
 _ROTATE_THRESHOLD_DEG = 120.0
@@ -76,11 +78,23 @@ class InstructionsConfig:
     subassemblies: bool = True
     min_sub_bricks: int = 3
     max_subassemblies: int = 6
+    insertion_check: bool = False
+    """Prefer press-robust orderings: a statically stable candidate that
+    collapses under the insertion press keeps scanning the ready window
+    for a press-stable alternative; only-fragile windows are accepted
+    with a warning and ``BuildStep.insertion_fragile`` (never rescue)."""
+    insertion_mass_kg: float = 1.0
 
     def __post_init__(self) -> None:
         """Validate search widths before sequencing starts."""
         if self.beam_width <= 0:
             msg = "beam_width must be positive"
+            raise ValueError(msg)
+        if not math.isfinite(self.insertion_mass_kg) or self.insertion_mass_kg <= 0:
+            msg = (
+                f"insertion_mass_kg must be finite and positive, "
+                f"got {self.insertion_mass_kg}"
+            )
             raise ValueError(msg)
 
 
@@ -109,6 +123,9 @@ class BuildStep:
     rotstep: RotStep | None = None
     submodel: str | None = None
     attaches: str | None = None
+    insertion_fragile: bool = False
+    """Statically stable but collapses under the insertion press
+    (Liu et al. 2024 virtual brick); appended last for back-compat."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,7 +231,7 @@ def _assign_rotsteps_subaware(
     return [step if step.submodel is not None else next(rotated) for step in steps]
 
 
-def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequencing state
+def _sequence(  # noqa: PLR0913, PLR0915, C901 - the loop owns sequencing state
     layout: Layout,
     config: InstructionsConfig,
     chunks: list[tuple[int, tuple[int, ...]]],
@@ -232,7 +249,13 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequenci
     centroids = [chunk_centroid(layout, chunk) for _, chunk in chunks]
     previous_centroid: tuple[float, float] | None = None
 
-    def emit(chunk: tuple[int, ...], *, stable: bool, score: float) -> None:
+    def emit(
+        chunk: tuple[int, ...],
+        *,
+        stable: bool,
+        score: float,
+        fragile: bool = False,
+    ) -> None:
         ordered = tuple(
             sorted(
                 chunk,
@@ -250,6 +273,7 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequenci
                 brick_ids=ordered,
                 prefix_stable=stable,
                 prefix_max_score=score,
+                insertion_fragile=fragile,
             )
         )
         placed.update(chunk)
@@ -263,6 +287,31 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequenci
             else:
                 hit = analyze(layout.subset(key), config.solver)
             cache[key] = hit
+        return hit
+
+    def accept(chunk: tuple[int, ...], score: float) -> None:
+        emit(chunk, stable=True, score=score)
+        if prefix_solver is not None:
+            prefix_solver.commit(chunk)
+
+    press_cache: dict[tuple[frozenset[int], frozenset[int]], StabilityResult] = {}
+
+    def press_prefix(chunk: tuple[int, ...]) -> StabilityResult:
+        # Keyed (prefix set, chunk set) — NOT analyze_prefix's
+        # prefix-set-only cache: the same final set pressed via a
+        # different chunk is a different load case.
+        key = (frozenset(placed), frozenset(chunk))
+        if (hit := press_cache.get(key)) is None:
+            if prefix_solver is not None:
+                hit = prefix_solver.press_probe(chunk, config.insertion_mass_kg)
+            else:
+                subset = frozenset(placed | set(chunk))
+                hit = analyze(
+                    layout.subset(subset),
+                    config.solver,
+                    extra_masses=dict.fromkeys(chunk, config.insertion_mass_kg),
+                )
+            press_cache[key] = hit
         return hit
 
     def disable_warm_engine() -> None:
@@ -287,7 +336,25 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequenci
                     f"(score {verdict.max_score:.2f}); "
                     "support the overhang by hand while building"
                 )
-            emit(verdict.chunk, stable=verdict.stable, score=verdict.max_score)
+            # Rescue/band orderings are fixed by their own solvers, so
+            # fragility here is flag-only (never avoidance): the mark
+            # keeps the plan truthful where the ready loop never scanned.
+            fragile = (
+                config.insertion_check
+                and verdict.stable
+                and not press_prefix(verdict.chunk).stable
+            )
+            if fragile:
+                warnings.append(
+                    f"step {len(steps) + 1}: insertion-fragile; "
+                    "press bricks home gently and support the joint"
+                )
+            emit(
+                verdict.chunk,
+                stable=verdict.stable,
+                score=verdict.max_score,
+                fragile=fragile,
+            )
 
     def rescue() -> None:
         """Re-plan the whole remainder by assembly-by-disassembly.
@@ -368,19 +435,29 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequenci
         if config.spatial_tiebreak and previous_centroid is not None:
             ready = _spatial_order(ready, chunks, centroids, previous_centroid)
 
-        chosen: int | None = None
-        best: tuple[float, int] | None = None
-        for position in ready:
+        chosen, best, best_fragile = _scan_ready_window(
+            ready,
+            chunks,
+            config,
+            analyze_prefix=analyze_prefix,
+            press_prefix=press_prefix,
+            accept=accept,
+        )
+        if chosen is None and best_fragile is not None:
+            # Fragility never triggers rescue and never blocks acceptance:
+            # the whole window is press-fragile, so take the least-fragile
+            # statically-stable candidate with a warning.
+            press_score, position, static_score = best_fragile
             _, chunk = chunks[position]
-            result = analyze_prefix(chunk)
-            if result.stable:
-                chosen = position
-                emit(chunk, stable=True, score=result.max_score)
-                if prefix_solver is not None:
-                    prefix_solver.commit(chunk)
-                break
-            if best is None or result.max_score < best[0]:
-                best = (result.max_score, position)
+            warnings.append(
+                f"step {len(steps) + 1}: insertion-fragile "
+                f"(press score {press_score:.2f}); "
+                "press bricks home gently and support the joint"
+            )
+            emit(chunk, stable=True, score=static_score, fragile=True)
+            if prefix_solver is not None:
+                prefix_solver.commit(chunk)
+            chosen = position
         if chosen is None:
             assert best is not None  # noqa: S101 - ready was non-empty
             score, position = best
@@ -408,6 +485,40 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - the loop owns sequenci
         previous_centroid = centroids[chosen]
         pending.remove(chosen)
     return steps, warnings
+
+
+def _scan_ready_window(  # noqa: PLR0913 - the scan reads the loop's shared state
+    window: list[int],
+    chunks: list[tuple[int, tuple[int, ...]]],
+    config: InstructionsConfig,
+    *,
+    analyze_prefix: Callable[[tuple[int, ...]], StabilityResult],
+    press_prefix: Callable[[tuple[int, ...]], StabilityResult],
+    accept: Callable[[tuple[int, ...], float], None],
+) -> tuple[int | None, tuple[float, int] | None, tuple[float, int, float] | None]:
+    """Scan one ready window for the first acceptable chunk.
+
+    Returns (accepted position or None, best-unstable ``(score, pos)``,
+    best-fragile ``(press score, pos, static score)``). With
+    ``insertion_check`` on, a statically stable candidate that collapses
+    under the press is skipped (tracked as best-fragile) and the scan
+    continues — the caller decides what to do with an all-fragile window.
+    """
+    best: tuple[float, int] | None = None
+    best_fragile: tuple[float, int, float] | None = None
+    for position in window:
+        _, chunk = chunks[position]
+        result = analyze_prefix(chunk)
+        if result.stable:
+            if config.insertion_check and not (press := press_prefix(chunk)).stable:
+                if best_fragile is None or press.max_score < best_fragile[0]:
+                    best_fragile = (press.max_score, position, result.max_score)
+                continue
+            accept(chunk, result.max_score)
+            return position, best, best_fragile
+        if best is None or result.max_score < best[0]:
+            best = (result.max_score, position)
+    return None, best, best_fragile
 
 
 def _gather_ready(  # noqa: PLR0913 - the readiness scan reads all sequencing state
@@ -684,12 +795,49 @@ class _PlanVerifier:
                 self.violations.append(f"step {step.index}: vertically blocked insert")
         if self.prefix_solver is not None:
             result = self.prefix_solver.probe(step.brick_ids)
+            self._check_fragile_mark(step)
             self.prefix_solver.commit(step.brick_ids)
         else:
             result = self._analyzed(self.placed | step_set)
+            self._check_fragile_mark(step)
         if result.stable != step.prefix_stable:
             self.violations.append(
                 f"step {step.index}: prefix stability mismatch "
                 f"(expected {step.prefix_stable}, analyzed {result.stable})"
             )
         self.placed |= step_set
+
+    def _check_fragile_mark(self, step: BuildStep) -> None:
+        """Re-derive the press verdict for steps the sequencer flagged.
+
+        One-directional on purpose: a fragile mark must reproduce as
+        press-unstable (the flag never lies), but unflagged steps are
+        not press-verified — rescue and band orderings are never
+        press-scanned during sequencing, so demanding their absence of
+        the flag re-derive would fail valid plans. When the check is
+        off, no press LP runs at all (verify stays byte-identical).
+        """
+        if not (
+            self.config.insertion_check
+            and step.insertion_fragile
+            and step.prefix_stable
+            and step.brick_ids
+        ):
+            return
+        if self.prefix_solver is not None:
+            press = self.prefix_solver.press_probe(
+                step.brick_ids, self.config.insertion_mass_kg
+            )
+        else:
+            press = analyze(
+                self.layout.subset(self.placed | set(step.brick_ids)),
+                self.config.solver,
+                extra_masses=dict.fromkeys(
+                    step.brick_ids, self.config.insertion_mass_kg
+                ),
+            )
+        if press.stable:
+            self.violations.append(
+                f"step {step.index}: flagged insertion-fragile but the "
+                f"press verdict is stable"
+            )
