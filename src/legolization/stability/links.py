@@ -25,7 +25,8 @@ from legolization.stability.constants import (
     KNOB_PITCH_M,
     T_CAPACITY_N,
 )
-from legolization.stability.model import ROWS_PER_BRICK, StabilityModel, build_model
+from legolization.stability.model import StabilityModel, build_model
+from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
     from legolization.layout import Layout
@@ -61,21 +62,31 @@ class LinkReport:
 def localize_instability(
     layout: Layout,
     graph: ConnectionGraph | None = None,
+    config: SolverConfig | None = None,
 ) -> LinkReport:
     """Solve the artificial-link QP; infeasible = unpatchable collapse."""
     if not len(layout):
         return LinkReport(q=0.0, links=(), status="optimal")
     with telemetry.span("stability.links", n=len(layout)):
-        return _localize_body(layout, graph)
+        return _localize_body(layout, graph, config or SolverConfig())
 
 
 def _localize_body(
     layout: Layout,
     graph: ConnectionGraph | None,
+    config: SolverConfig,
 ) -> LinkReport:
     """Run the body of :func:`localize_instability` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
-    model = build_model(layout, graph)
+    # The QP must judge with the same physics the verdicts use.
+    model = build_model(
+        layout,
+        graph,
+        torque_z=config.torque_z,
+        paper_knob_rule=config.paper_knob_rule,
+        rotate_contact_pattern=config.rotate_contact_pattern,
+        ground_pull=config.ground_pull,
+    )
     if not graph.side_contacts:
         return _no_link_verdict(model)
 
@@ -86,7 +97,7 @@ def _localize_body(
     data: list[float] = []
     for link_col, side in enumerate(graph.side_contacts):
         for brick_id, sign in ((side.a_id, 1.0), (side.b_id, -1.0)):
-            base = ROWS_PER_BRICK * index[brick_id]
+            base = model.rows_per_brick * index[brick_id]
             cx, cy, _ = centroids[brick_id]
             rx = (side.centroid[0] - cx) * KNOB_PITCH_M
             ry = (side.centroid[1] - cy) * KNOB_PITCH_M

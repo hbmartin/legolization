@@ -7,11 +7,18 @@ import json
 import math
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from legolization import telemetry
-from legolization.compare import Candidate, SelectionReport, run_all, select_best
+from legolization.compare import (
+    Candidate,
+    SelectionReport,
+    restart_race,
+    run_all,
+    select_best,
+)
 from legolization.graph import ConnectionGraph
 from legolization.instructions.sequencer import InstructionsConfig, plan_instructions
 from legolization.ldraw_in import LdrawImportError, layout_from_ldraw
@@ -155,7 +162,19 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N,N,...",
         help=(
             "run every strategy once per listed seed and pick the overall "
-            "best (restarts; --timeout still bounds the whole sweep)"
+            "best (restarts; --timeout still bounds the whole sweep); on a "
+            "single strategy this overrides --restarts with an explicit list"
+        ),
+    )
+    parser.add_argument(
+        "--restarts",
+        type=int,
+        default=3,
+        metavar="N",
+        help=(
+            "single-strategy runs race N seeds (seed..seed+N-1) in parallel "
+            "without instructions and re-run the winner with full outputs; "
+            "1 disables the race (pre-v5 behaviour)"
         ),
     )
     parser.add_argument(
@@ -342,11 +361,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--subassemblies",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
             "extract persistently floating clusters as separately built "
             "subassemblies with attach steps (write .mpd output to get "
-            "submodel FILE sections; .ldr flattens them)"
+            "submodel FILE sections; .ldr flattens them); on by default "
+            "since v5 — --no-subassemblies restores the flat plan"
         ),
     )
     parser.add_argument(
@@ -398,22 +419,60 @@ def _validate_sweep_args(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
 ) -> None:
-    """Sweep-only flags demand --strategy all; profiling forbids it."""
+    """Sweep-only flags demand --strategy all; profiling forbids races."""
     if args.strategy != "all" and (
-        args.jobs != 0
-        or args.timeout is not None
-        or args.report is not None
-        or args.keep_candidates is not None
-        or args.seeds is not None
+        args.report is not None or args.keep_candidates is not None
     ):
-        parser.error(
-            "--jobs/--timeout/--report/--keep-candidates/--seeds require --strategy all"
-        )
+        parser.error("--report/--keep-candidates require --strategy all")
+    if args.restarts < 1:
+        parser.error("--restarts must be at least 1")
+    if args.strategy == "all" and args.restarts != 3:
+        parser.error("--restarts applies to single strategies; sweeps use --seeds")
     if args.profile is not None and args.strategy == "all":
         parser.error(
             "--profile requires a single strategy "
             "(telemetry does not cross sweep workers)"
         )
+    if args.profile is not None and len(_effective_seeds(args)) > 1:
+        parser.error(
+            "--profile requires a single seed (telemetry does not cross "
+            "restart workers); pass --restarts 1"
+        )
+
+
+def _race_seeds(
+    args: argparse.Namespace,
+    config: PipelineConfig,
+) -> PipelineConfig | None:
+    """Run the restart race and pin the winning seed; None = load error."""
+    seeds = _effective_seeds(args)
+    if len(seeds) <= 1:
+        return config
+    try:
+        grid = load_grid(args.input, config)
+        winner_seed, report = restart_race(
+            grid,
+            config,
+            seeds=seeds,
+            jobs=args.jobs,
+            timeout_s=args.timeout,
+        )
+    except (ValueError, OSError, RuntimeError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return None
+    failures = sum(1 for c in report.candidates if c.error is not None)
+    print(
+        f"restart race: seeds {min(seeds)}..{max(seeds)} -> seed {winner_seed}"
+        + (f" ({failures} failed)" if failures else "")
+    )
+    return replace(config, seed=winner_seed)
+
+
+def _effective_seeds(args: argparse.Namespace) -> tuple[int, ...]:
+    """Resolve the seed list a single-strategy run will race."""
+    if args.seeds is not None:
+        return tuple(args.seeds)
+    return tuple(range(args.seed, args.seed + args.restarts))
 
 
 def _validate_instructions_args(
@@ -422,6 +481,8 @@ def _validate_instructions_args(
 ) -> None:
     """Instruction outputs need smart steps and a booklet suffix."""
     if args.subassemblies and args.steps == "layer":
+        # Only an EXPLICIT --subassemblies conflicts; the default (None ->
+        # on) is quietly inert for layer plans, which never sequence.
         parser.error("--subassemblies requires --steps smart")
     if args.instructions is not None:
         if args.steps == "layer":
@@ -499,7 +560,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.steps,
             target_step_size=args.step_size,
             rotstep=not args.no_rotstep,
-            subassemblies=args.subassemblies,
+            subassemblies=args.subassemblies is not False,
         ),
         mesh=MeshOptions(
             target_studs=(args.target_studs if args.target_studs is not None else 32),
@@ -523,6 +584,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.strategy == "all":
         return _run_sweep(args, config=config, output=output)
+    raced = _race_seeds(args, config)
+    if raced is None:
+        return 1
+    config = raced
     try:
         if args.profile is not None:
             started = time.perf_counter()
@@ -563,22 +628,37 @@ def _validate_ldraw_args(
         parser.error(
             "--strategy does not apply to .ldr/.mpd inputs (import skips placement)"
         )
-    placement_flags = (
-        args.solid
-        or args.slopes is not None
-        or args.tiles
-        or args.snot
-        or args.no_refine
-        or args.no_repair
-        or args.milp
-        or args.plates_per_voxel is not None
-        or args.aspect_correct
-        or args.dither
-    )
-    if placement_flags:
+    # Non-None defaults compare against the default value, matching the
+    # --strategy check above: an explicitly-passed default is
+    # indistinguishable but also harmless.
+    ignored = [
+        name
+        for name, given in (
+            ("--solid", args.solid),
+            ("--slopes", args.slopes is not None),
+            ("--tiles", args.tiles),
+            ("--snot", args.snot),
+            ("--no-refine", args.no_refine),
+            ("--no-repair", args.no_repair),
+            ("--milp", args.milp),
+            ("--plates-per-voxel", args.plates_per_voxel is not None),
+            ("--aspect-correct", args.aspect_correct),
+            ("--dither", args.dither),
+            ("--time-budget", args.time_budget is not None),
+            ("--ga-generations", args.ga_generations != 200),
+            ("--beauty-preset", args.beauty_preset != "balanced"),
+            ("--shell-plates", args.shell_plates != 3),
+            ("--seed", args.seed != 0),
+            ("--colour", args.colour != "hard"),
+            ("--colour-weight", args.colour_weight != 1.0),
+            ("--stability-weight", args.stability_weight != 4.0),
+        )
+        if given
+    ]
+    if ignored:
         parser.error(
-            "placement/voxelization flags do not apply to .ldr/.mpd "
-            "inputs (the model's bricks are imported as-is)"
+            f"{'/'.join(ignored)} do not apply to .ldr/.mpd inputs "
+            "(placement never runs: the model's bricks are imported as-is)"
         )
     if args.output is None:
         parser.error(
@@ -617,7 +697,7 @@ def _run_import(
             config=InstructionsConfig(
                 target_step_size=args.step_size,
                 rotstep=not args.no_rotstep,
-                subassemblies=args.subassemblies,
+                subassemblies=args.subassemblies is not False,
                 solver=solver,
             ),
         )

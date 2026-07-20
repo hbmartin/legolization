@@ -56,9 +56,18 @@ class _FailMaxKwargs(TypedDict, total=False):
 
 
 def _fail_max_override(config: PipelineConfig) -> _FailMaxKwargs:
-    """Build the optional improve_connectivity override kwargs."""
+    """Build the optional improve_connectivity override kwargs.
+
+    Validation lives here rather than on the frozen PipelineConfig:
+    every strategy factory funnels through this override, so a negative
+    cap fails at construction instead of silently disabling the
+    connectivity pass (PR #18 review).
+    """
     if config.connectivity_fail_max is None:
         return {}
+    if config.connectivity_fail_max < 0:
+        msg = f"connectivity_fail_max must be >= 0, got {config.connectivity_fail_max}"
+        raise ValueError(msg)
     return {"fail_max": config.connectivity_fail_max}
 
 
@@ -90,6 +99,7 @@ def _make_bond(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         solver_config=config.solver,
         time_budget_s=config.time_budget_s,
         progress=config.progress,
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -101,6 +111,7 @@ def _make_fast(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         solver_config=config.solver,
         time_budget_s=config.time_budget_s,
         progress=config.progress,
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -113,6 +124,7 @@ def _make_smga(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         time_budget_s=config.time_budget_s,
         progress=config.progress,
         config=SmGaConfig(max_generations=config.ga_generations),
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -125,6 +137,7 @@ def _make_beauty(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         time_budget_s=config.time_budget_s,
         progress=config.progress,
         beauty=BeautyWeights.preset(config.beauty_preset),
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 
@@ -138,6 +151,7 @@ def _make_kollsker(catalog: Catalog, config: PipelineConfig) -> PlacementStrateg
         progress=config.progress,
         layer_time_s=config.milp_layer_time_s,
         bond_weight=config.milp_bond_weight,
+        milp_bridge=config.milp_bridge,
         **_fail_max_override(config),
     )
 

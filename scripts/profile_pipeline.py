@@ -27,11 +27,13 @@ from __future__ import annotations
 
 import argparse
 import cProfile
+import hashlib
 import json
 import os
 import platform
 import sys
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -53,14 +55,60 @@ git_sha = telemetry.git_sha
 """Shared with the CLI --profile writer (legolization.telemetry)."""
 
 
+@dataclass(frozen=True, slots=True)
+class ResolvedInput:
+    """A model resolved to a grid plus the identity that produced it.
+
+    ``mesh`` holds the EFFECTIVE options — for corpus names the manifest
+    values actually used, not the CLI flags (PR #18 review: two profiles
+    of the same corpus model at different ``--target-studs`` recorded
+    different identities for identical runs). ``input_hash`` pins the
+    bytes: sha256 for files, ``generator:<name>`` for synthetics.
+    """
+
+    name: str
+    input: str
+    grid: VoxelGrid
+    source: str  # "file" | "manifest" | "synthetic"
+    mesh: MeshOptions | None
+    input_hash: str
+
+    def run_identity(self) -> dict[str, object]:
+        """Return the payload fragment both profile writers stamp."""
+        return {
+            "model": self.name,
+            "input": self.input,
+            "input_source": self.source,
+            "input_hash": self.input_hash,
+            "target_studs": self.mesh.target_studs if self.mesh else None,
+            "up": self.mesh.up if self.mesh else None,
+            "keep_largest": self.mesh.keep_largest if self.mesh else None,
+        }
+
+
+def _sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _resolve_grid(
     model: str,
     config: PipelineConfig,
-) -> tuple[str, str, VoxelGrid]:
-    """Resolve MODEL to (name, input description, grid)."""
+) -> ResolvedInput:
+    """Resolve MODEL to a grid with its effective input identity."""
     path = Path(model)
     if path.suffix and path.exists():
-        return path.stem, str(path), load_grid(path, config)
+        return ResolvedInput(
+            name=path.stem,
+            input=str(path),
+            grid=load_grid(path, config),
+            source="file",
+            mesh=config.mesh,
+            input_hash=_sha256_of(path),
+        )
     spec_path = _SCRIPTS / "eval_corpus.py"
     import importlib.util  # noqa: PLC0415 - only needed for corpus names
 
@@ -76,11 +124,24 @@ def _resolve_grid(
     if not matches:
         msg = f"{model!r} is neither an existing input file nor a corpus model"
         raise SystemExit(msg)
-    grid = module.model_grid(corpus, matches[0])
+    entry = matches[0]
+    grid = module.model_grid(corpus, entry)
     if grid is None:
         msg = f"corpus mesh {model!r} is not on disk; run scripts/corpus.py download"
         raise SystemExit(msg)
-    return matches[0].name, str(matches[0].path), grid
+    mesh_options = module.model_mesh_options(entry)
+    return ResolvedInput(
+        name=entry.name,
+        input=str(entry.path),
+        grid=grid,
+        source="synthetic" if mesh_options is None else "manifest",
+        mesh=mesh_options,
+        input_hash=(
+            f"generator:{entry.generator}"
+            if mesh_options is None
+            else _sha256_of(entry.abs_path)
+        ),
+    )
 
 
 def _run_profiled(
@@ -126,7 +187,8 @@ def main(argv: list[str] | None = None) -> int:
         mesh=MeshOptions(target_studs=args.target_studs, up=args.up),
         progress=lambda message: print(f"  {message}", file=sys.stderr),
     )
-    name, input_desc, grid = _resolve_grid(args.model, config)
+    resolved = _resolve_grid(args.model, config)
+    name, grid = resolved.name, resolved.grid
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     args.out.mkdir(parents=True, exist_ok=True)
@@ -151,11 +213,9 @@ def main(argv: list[str] | None = None) -> int:
             "cpu_count": os.cpu_count(),
         },
         "run": {
-            "model": name,
-            "input": input_desc,
+            **resolved.run_identity(),
             "strategy": args.strategy,
             "seed": args.seed,
-            "target_studs": args.target_studs,
             "hollow": not args.solid,
             "repair": not args.no_repair,
             "steps": args.steps,

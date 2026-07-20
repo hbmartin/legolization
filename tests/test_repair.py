@@ -57,7 +57,9 @@ def test_repair_falls_back_to_rbe_when_qp_is_infeasible(monkeypatch):
     )
     monkeypatch.setattr(
         "legolization.placement.repair.localize_instability",
-        lambda _layout: LinkReport(q=float("inf"), links=(), status="infeasible"),
+        lambda _layout, config=None: LinkReport(
+            q=float("inf"), links=(), status="infeasible"
+        ),
     )
     monkeypatch.setattr(
         "legolization.placement.repair._rbe_report",

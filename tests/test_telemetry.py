@@ -1,7 +1,9 @@
 """Telemetry span recording tests, including the behaviour-invariance guard."""
 
 import json
+import subprocess
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -9,7 +11,7 @@ import pytest
 from legolization import telemetry
 from legolization.grid import VoxelGrid
 from legolization.pipeline import PipelineConfig, run
-from legolization.telemetry import _Bucket
+from legolization.telemetry import _Bucket, git_sha
 
 
 def test_span_is_noop_when_disabled() -> None:
@@ -131,3 +133,54 @@ def test_value_gauge_sessions_are_independent() -> None:
         pass
     assert first.values == {"x": [1.0]}
     assert second.values == {}
+
+
+def test_git_sha_resolves_linked_worktrees(tmp_path: Path) -> None:
+    # PR #18 P2: in a linked worktree .git is a FILE with a gitdir:
+    # indirection; the sha must resolve through it and through
+    # commondir for refs.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.com",
+        "PATH": "/usr/bin:/bin",
+    }
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
+    (repo / "f.txt").write_text("x")
+    subprocess.run(["git", "-C", str(repo), "add", "f.txt"], check=True, env=env)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-q", "-m", "x"], check=True, env=env
+    )
+    main_sha = git_sha(repo)
+    assert main_sha is not None
+    assert len(main_sha) == 40
+
+    worktree = tmp_path / "wt"
+    subprocess.run(
+        ["git", "-C", str(repo), "worktree", "add", "-q", str(worktree)],
+        check=True,
+        env=env,
+    )
+    assert (worktree / ".git").is_file()  # the indirection under test
+    assert git_sha(worktree) == main_sha
+
+    # Packed refs still resolve through commondir.
+    subprocess.run(["git", "-C", str(repo), "pack-refs", "--all"], check=True, env=env)
+    assert git_sha(worktree) == main_sha
+
+
+def test_bucket_legacy_sequence_interface() -> None:
+    # Buckets were [calls, seconds] lists before the typed dataclass;
+    # index/len/iter must keep that contract (PR #18 review).
+    with telemetry.record() as session, telemetry.span("s", n=7):
+        pass
+    bucket = session.spans["s"].buckets[8]
+    assert bucket[0] == 1
+    assert bucket[1] == bucket.seconds
+    assert len(bucket) == 2
+    calls, seconds = bucket
+    assert (calls, seconds) == (bucket.calls, bucket.seconds)
+    assert list(bucket) == [bucket.calls, bucket.seconds]

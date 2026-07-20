@@ -462,3 +462,36 @@ def test_two_stud_carrier_sweeps_both_columns():
     right = layout.add("brick_1x1", 1, 0, 3, 0, 4)
     blockers = vertical_blockers(layout)
     assert {left.brick_id, right.brick_id} <= blockers[carrier.brick_id]
+
+
+def test_outward_ray_cost_is_bounded_on_sparse_models():
+    # PR #18 P1: LDraw imports permit arbitrarily sparse coordinates; the
+    # slide-in ray must iterate indexed occupied cells, not every empty
+    # coordinate between two bricks a billion studs apart.
+    import time
+
+    layout = Layout(catalog=default_catalog())
+    bracket = layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
+    tile = layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
+    far = layout.add("brick_1x1", 1_000_000_000, 0, 0, 0, 4)
+    started = time.perf_counter()
+    blockers = vertical_blockers(layout)
+    elapsed = time.perf_counter() - started
+    assert elapsed < 0.1  # was minutes with the coordinate walk
+    # The far brick sits on the tile's outward ray and still blocks it.
+    assert far.brick_id in blockers[tile.brick_id]
+    assert blockers[bracket.brick_id] == frozenset({tile.brick_id})
+
+
+def test_outward_ray_matches_dense_walk_semantics():
+    # Same fixture the v1 pin uses: nearby occupants on and off the ray.
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
+    tile = layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
+    on_ray = layout.add("brick_1x1", 5, 0, 0, 0, 4)
+    behind = layout.add("brick_1x1", -3, 0, 0, 0, 4)  # opposite direction
+    off_layer = layout.add("brick_1x1", 5, 0, 3, 0, 4)  # above the window
+    blockers = vertical_blockers(layout)
+    assert on_ray.brick_id in blockers[tile.brick_id]
+    assert behind.brick_id not in blockers[tile.brick_id]
+    assert off_layer.brick_id not in blockers[tile.brick_id]

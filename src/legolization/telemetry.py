@@ -35,10 +35,25 @@ _NOOP: AbstractContextManager[None] = nullcontext()
 
 @dataclass(slots=True)
 class _Bucket:
-    """Calls and wall seconds of one power-of-two size bucket."""
+    """Calls and wall seconds of one power-of-two size bucket.
+
+    Buckets were plain ``[calls, seconds]`` lists before the typed
+    representation; the sequence protocol keeps callers written against
+    that shape — ``buckets[8][0]``, unpacking — working unchanged
+    (PR #18 review).
+    """
 
     calls: int = 0
     seconds: float = 0.0
+
+    def __getitem__(self, index: int) -> int | float:
+        return (self.calls, self.seconds)[index]
+
+    def __len__(self) -> int:
+        return 2
+
+    def __iter__(self) -> Iterator[int | float]:
+        return iter((self.calls, self.seconds))
 
 
 @dataclass(slots=True)
@@ -65,6 +80,11 @@ class Telemetry:
 
     spans: dict[str, SpanStats] = field(default_factory=dict)
     values: dict[str, list[float]] = field(default_factory=dict)
+    events: list[tuple[str, float]] = field(default_factory=list)
+    """Every gauge reading in emission order — the global sequence the
+    per-name ``values`` lists cannot reconstruct (PR #18 review: phase
+    rows printed placed-before-repaired because names were ordered
+    independently)."""
 
     def add(self, name: str, seconds: float, n: int | None = None) -> None:
         """Record one finished call of ``name``."""
@@ -74,9 +94,12 @@ class Telemetry:
         """Append one exact gauge reading.
 
         Spans bucket ``n`` by powers of two; phase-boundary quantities
-        like brick counts need this lossless channel.
+        like brick counts need this lossless channel. The reading joins
+        both the per-name ``values`` list and the global ``events``
+        sequence.
         """
         self.values.setdefault(name, []).append(value)
+        self.events.append((name, value))
 
     def to_dict(self) -> dict[str, object]:
         """JSON-safe span view: ``{name: {calls, seconds, buckets}}``.
@@ -101,6 +124,10 @@ class Telemetry:
     def values_dict(self) -> dict[str, list[float]]:
         """JSON-safe gauge view: ``{name: [reading, ...]}`` in order."""
         return {name: list(entries) for name, entries in sorted(self.values.items())}
+
+    def events_list(self) -> list[tuple[str, float]]:
+        """Gauge readings in global emission order (JSON-safe pairs)."""
+        return list(self.events)
 
 
 class _Span:
@@ -131,27 +158,68 @@ _SHA_LENGTH = 40
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+def _git_dirs(root: Path) -> tuple[Path, Path] | None:
+    """Resolve (git_dir, common_dir) for a checkout, following worktrees.
+
+    In a linked ``git worktree``, ``.git`` is a FILE containing a
+    ``gitdir:`` indirection to a per-worktree directory whose
+    ``commondir`` file points back at the shared object store where
+    refs and packed-refs live (PR #18 review: the directory assumption
+    returned None in every worktree, stripping artifacts of their
+    code-state identity).
+    """
+    dot_git = root / ".git"
+    if dot_git.is_dir():
+        git_dir = dot_git
+    else:
+        try:
+            content = dot_git.read_text().strip()
+        except OSError:
+            return None
+        if not content.startswith("gitdir:"):
+            return None
+        target = Path(content.removeprefix("gitdir:").strip())
+        git_dir = target if target.is_absolute() else (root / target).resolve()
+    common_dir = git_dir
+    try:
+        common = (git_dir / "commondir").read_text().strip()
+    except OSError:
+        pass
+    else:
+        target = Path(common)
+        common_dir = target if target.is_absolute() else (git_dir / target).resolve()
+    return git_dir, common_dir
+
+
 def git_sha(repo: Path | None = None) -> str | None:
     """Read the current commit sha from ``.git`` without spawning a process.
 
     Profile artifacts stamp this so before/after comparisons are pinned
     to code states; both profile writers (the script and the CLI
-    ``--profile``) share it.
+    ``--profile``) share it. Linked worktrees resolve through their
+    ``gitdir:``/``commondir`` indirections.
     """
     root = repo if repo is not None else _REPO_ROOT
+    if (dirs := _git_dirs(root)) is None:
+        return None
+    git_dir, common_dir = dirs
     try:
-        content = (root / ".git" / "HEAD").read_text().strip()
+        content = (git_dir / "HEAD").read_text().strip()
     except OSError:
         return None
     if not content.startswith("ref:"):
         return content if len(content) == _SHA_LENGTH else None
-    ref = content.removeprefix("ref:").strip()
+    return _resolve_ref(content.removeprefix("ref:").strip(), git_dir, common_dir)
+
+
+def _resolve_ref(ref: str, git_dir: Path, common_dir: Path) -> str | None:
+    for base in (common_dir, git_dir):
+        try:
+            return (base / ref).read_text().strip()
+        except OSError:
+            continue
     try:
-        return (root / ".git" / ref).read_text().strip()
-    except OSError:
-        pass
-    try:
-        packed = (root / ".git" / "packed-refs").read_text()
+        packed = (common_dir / "packed-refs").read_text()
     except OSError:
         return None
     for line in packed.splitlines():

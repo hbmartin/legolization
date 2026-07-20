@@ -303,11 +303,12 @@ def test_dataclass_positional_layouts_are_stable():
         "colour_mode",
     ]
     config_names = [f.name for f in fields(PipelineConfig)]
-    assert config_names[-4:] == [
+    assert config_names[-5:] == [
         "snot",
         "milp_layer_time_s",
         "milp_bond_weight",
         "connectivity_fail_max",
+        "milp_bridge",
     ]
     assert config_names.index("tiles") + 1 == config_names.index("refine")
     result_names = [f.name for f in fields(pipeline_module.PipelineResult)]
@@ -337,6 +338,15 @@ def test_connectivity_fail_max_override():
     )
     assert isinstance(greedy, GreedyStrategy)
     assert greedy.fail_max == 5
+    # PR #18 P3: a negative cap silently disabled the pass; it now
+    # fails at strategy construction (PipelineConfig is frozen+slots,
+    # so the funnel validates).
+    with pytest.raises(ValueError, match="connectivity_fail_max"):
+        make_strategy(
+            "bond",
+            catalog=default_catalog(),
+            config=PipelineConfig(connectivity_fail_max=-1),
+        )
 
 
 def test_phase_gauges_record_brick_trajectory():

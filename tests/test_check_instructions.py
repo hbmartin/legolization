@@ -27,6 +27,8 @@ class _CheckerModule(Protocol):
         result_layout: Layout,
         plan: InstructionPlan,
         max_step_size: int,
+        *,
+        insertion_mass_kg: float | None = None,
     ) -> list[dict]:
         """Audit the instruction steps."""
         ...
@@ -160,3 +162,58 @@ def test_end_to_end_json_stdout(
     stdout = capsys.readouterr().out
     payload = json.loads(stdout)
     assert payload["input"].endswith("heart.vox")
+
+
+def test_insertion_check_flags_press_fragile_steps(checker: _CheckerModule) -> None:
+    # The single-stud cantilever holds statically but collapses under a
+    # 1 kg press on the beam (Liu et al. 2024's virtual-brick model).
+    layout = Layout(catalog=default_catalog())
+    tower = layout.add(
+        part_key="brick_1x1", x=0, y=0, layer=0, yaw=0, colour_code=4
+    ).brick_id
+    beam = layout.add(
+        part_key="brick_1x4", x=0, y=0, layer=3, yaw=0, colour_code=4
+    ).brick_id
+    plan = InstructionPlan(
+        steps=(
+            BuildStep(
+                index=1, brick_ids=(tower,), prefix_stable=True, prefix_max_score=0.0
+            ),
+            BuildStep(
+                index=2, brick_ids=(beam,), prefix_stable=True, prefix_max_score=0.02
+            ),
+        ),
+        warnings=(),
+        bom=bill_of_materials(layout),
+    )
+    plain = checker.check_steps(result_layout=layout, plan=plan, max_step_size=10)
+    assert all("insertion-fragile" not in row["flags"] for row in plain)
+    audited = checker.check_steps(
+        result_layout=layout, plan=plan, max_step_size=10, insertion_mass_kg=1.0
+    )
+    assert "insertion-fragile" not in audited[0]["flags"]  # pressing on ground
+    assert "insertion-fragile" in audited[1]["flags"]
+
+
+def test_unsupported_ratio_measures_overhang() -> None:
+    import numpy as np
+
+    from legolization.grid import VoxelGrid
+
+    spec = importlib.util.spec_from_file_location(
+        "eval_corpus_for_cs",
+        Path(__file__).parent.parent / "scripts" / "eval_corpus.py",
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    codes = np.full((2, 1, 2), -1, dtype=np.int16)
+    codes[0, 0, 0] = 4  # grounded column
+    codes[0, 0, 1] = 4  # supported
+    codes[1, 0, 1] = 4  # overhang (nothing below)
+    grid = VoxelGrid(codes=codes)
+    assert module.unsupported_ratio(grid) == pytest.approx(1 / 3, abs=1e-4)
+    assert module.unsupported_ratio(None) is None

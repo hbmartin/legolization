@@ -1,12 +1,14 @@
 """Trace a model's brick count and topology through every pipeline phase.
 
 Runs one strategy on one model under telemetry recording and tabulates
-the exact-value gauges the pipeline and layered engine emit: bricks,
-components, and stability after tiling, vertical compaction,
-improve_connectivity, repair, each hollow-restore round, and the final
-remerge. This is the measurement tool behind
-``docs/kollsker-drift-report.md`` — a per-layer-optimal tiling that ends
-worse than a heuristic did so in one of these phases.
+the exact-value gauges the pipeline and layered engine emit, in global
+emission order. Coverage per phase (PR #18 review made the promise
+precise): the layered engine's tiled/compacted/connected phases carry
+bricks + components (no stability — an LP per engine phase is not paid
+for a diagnostic); the pipeline's placed/repaired/restored/remerged
+phases carry bricks + components + stability. This is the measurement
+tool behind ``docs/kollsker-drift-report.md`` — a per-layer-optimal
+tiling that ends worse than a heuristic did so in one of these phases.
 
 Usage::
 
@@ -34,6 +36,22 @@ from legolization import telemetry
 from legolization.instructions.sequencer import InstructionsConfig
 from legolization.mesh import MeshOptions
 from legolization.pipeline import PipelineConfig, run
+from legolization.placement.registry import strategy_names
+
+
+def _positive_int(text: str) -> int:
+    if (value := int(text)) < 1:
+        msg = f"must be >= 1, got {value}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
+def _non_negative_int(text: str) -> int:
+    if (value := int(text)) < 0:
+        msg = f"must be >= 0, got {value}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -74,23 +92,47 @@ class _Row(NamedTuple):
     stable: bool | None
 
 
-def _rows(values: dict[str, list[float]]) -> list[_Row]:
-    """Flatten the gauge readings into ordered phase rows."""
+def _rows(events: list[tuple[str, float]]) -> list[_Row]:
+    """Order phase rows by gauge EMISSION sequence, not by phase name.
+
+    Grouping per name printed pass-two tiling before pass-one repair
+    (and even placed before repaired, which is emitted first inside
+    _place_and_repair) — deltas were attributed to the wrong phase
+    (PR #18 review). Rows now follow the global event log; the i-th
+    ``.bricks`` reading of a phase pairs with that phase's i-th
+    companion components/stable readings.
+    """
+    labels = dict(_PHASES)
+    by_name: dict[str, list[float]] = {}
+    for name, value in events:
+        by_name.setdefault(name, []).append(value)
     rows: list[_Row] = []
-    for key, label in _PHASES:
-        bricks = values.get(f"{key}.bricks", [])
-        components = values.get(f"{key}.components", [])
-        stable = values.get(f"{key}.stable", [])
-        for i, count in enumerate(bricks):
-            rows.append(
-                _Row(
-                    phase=label,
-                    occurrence=i + 1,
-                    bricks=int(count),
-                    components=int(components[i]) if i < len(components) else None,
-                    stable=bool(stable[i]) if i < len(stable) else None,
-                )
+    seen: dict[str, int] = {}
+    for name, value in events:
+        if not name.endswith(".bricks"):
+            continue
+        key = name.removesuffix(".bricks")
+        if key not in labels:
+            continue
+        occurrence = seen.get(key, 0) + 1
+        seen[key] = occurrence
+        components = by_name.get(f"{key}.components", [])
+        stable = by_name.get(f"{key}.stable", [])
+        rows.append(
+            _Row(
+                phase=labels[key],
+                occurrence=occurrence,
+                bricks=int(value),
+                components=(
+                    int(components[occurrence - 1])
+                    if occurrence <= len(components)
+                    else None
+                ),
+                stable=(
+                    bool(stable[occurrence - 1]) if occurrence <= len(stable) else None
+                ),
             )
+        )
     return rows
 
 
@@ -98,12 +140,13 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model")
-    parser.add_argument("--strategy", default="kollsker")
+    parser.add_argument("--strategy", default="kollsker", choices=strategy_names())
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--solid", action="store_true")
     parser.add_argument("--no-repair", action="store_true")
-    parser.add_argument("--fail-max", type=int, default=None, metavar="N")
-    parser.add_argument("--target-studs", type=int, default=32, metavar="N")
+    parser.add_argument("--fail-max", type=_non_negative_int, default=None, metavar="N")
+    parser.add_argument("--no-milp-bridge", action="store_true")
+    parser.add_argument("--target-studs", type=_positive_int, default=32, metavar="N")
     parser.add_argument("--out", type=Path, default=_REPO / "eval" / "profiles")
     args = parser.parse_args(argv)
 
@@ -114,10 +157,12 @@ def main(argv: list[str] | None = None) -> int:
         hollow=not args.solid,
         repair=not args.no_repair,
         connectivity_fail_max=args.fail_max,
+        milp_bridge=not args.no_milp_bridge,
         instructions=InstructionsConfig(mode="layer"),
         mesh=MeshOptions(target_studs=args.target_studs),
     )
-    name, input_used, grid = profiler._resolve_grid(args.model, config)  # noqa: SLF001
+    resolved = profiler._resolve_grid(args.model, config)  # noqa: SLF001
+    name, grid = resolved.name, resolved.grid
 
     started = time.perf_counter()
     with telemetry.record() as session:
@@ -125,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     total = time.perf_counter() - started
 
     values = session.values_dict()
-    rows = _rows(values)
+    rows = _rows(session.events_list())
     connectivity = session.spans.get("connectivity.attempt")
     accepts = session.spans.get("connectivity.accept")
     payload = {
@@ -133,8 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         "generated": datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%dT%H%M%SZ"),
         "git_sha": telemetry.git_sha(),
         "run": {
-            "model": name,
-            "input": input_used,
+            **resolved.run_identity(),
             "strategy": args.strategy,
             "seed": args.seed,
             "hollow": config.hollow,
@@ -153,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "trajectory": [row._asdict() for row in rows],
         "values": values,
+        "events": [[name, value] for name, value in session.events_list()],
     }
     variant = "".join(
         tag
@@ -160,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
             ("-solid", args.solid),
             ("-norepair", args.no_repair),
             (f"-fm{args.fail_max}", args.fail_max is not None),
+            ("-nobridge", args.no_milp_bridge),
         )
         if active
     )

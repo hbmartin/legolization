@@ -14,12 +14,15 @@ would plug into the readiness and disassembly checks without redesign.
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from legolization.layout import Layout, PlacedBrick
+
+_ID_MAX = 2**63 - 1  # sorts after any real brick id at equal coordinate
 
 
 def vertical_blockers(layout: Layout) -> dict[int, frozenset[int]]:
@@ -33,8 +36,16 @@ def vertical_blockers(layout: Layout) -> dict[int, frozenset[int]]:
     ray at their own layers.
     """
     columns: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    rows_x: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    rows_y: dict[tuple[int, int], list[tuple[int, int]]] = {}
     for (x, y, z), brick_id in layout.occupancy.items():
         columns.setdefault((x, y), []).append((z, brick_id))
+        rows_x.setdefault((y, z), []).append((x, brick_id))
+        rows_y.setdefault((x, z), []).append((y, brick_id))
+    for line in rows_x.values():
+        line.sort()
+    for line in rows_y.values():
+        line.sort()
     blockers: dict[int, set[int]] = {brick_id: set() for brick_id in layout.bricks}
     lateral = {
         brick.brick_id: brick
@@ -55,7 +66,7 @@ def vertical_blockers(layout: Layout) -> dict[int, frozenset[int]]:
         if brick.brick_id not in lateral:
             blockers[brick.brick_id] |= _stud_sweep_blockers(layout, brick, columns)
     for brick_id, brick in lateral.items():
-        blockers[brick_id] = _outward_ray_blockers(layout, brick)
+        blockers[brick_id] = _outward_ray_blockers(layout, brick, rows_x, rows_y)
     return {brick_id: frozenset(ids) for brick_id, ids in blockers.items()}
 
 
@@ -89,12 +100,20 @@ def _stud_sweep_blockers(
     return found
 
 
-def _outward_ray_blockers(layout: Layout, brick: PlacedBrick) -> set[int]:
+def _outward_ray_blockers(
+    layout: Layout,
+    brick: PlacedBrick,
+    rows_x: dict[tuple[int, int], list[tuple[int, int]]],
+    rows_y: dict[tuple[int, int], list[tuple[int, int]]],
+) -> set[int]:
     """Bricks on the sideways part's outward slide-in path.
 
-    The ray extent derives from the layout's occupied bounds — a fixed
-    scan cap silently approved impossible insertions on models wider
-    than the cap (PR #17 review).
+    The ray iterates the indexed occupied cells on the outward half-ray
+    instead of stepping one coordinate at a time to the model bounds — a
+    sparse LDraw import (two pieces a billion studs apart) must cost a
+    bisect, not a billion occupancy lookups (PR #18 review; the fixed
+    scan cap it replaced silently approved impossible insertions,
+    PR #17 review).
     """
     sockets = [
         conn
@@ -103,23 +122,23 @@ def _outward_ray_blockers(layout: Layout, brick: PlacedBrick) -> set[int]:
     ]
     if not sockets or not layout.occupancy:
         return set()
-    xs = [x for x, _, _ in layout.occupancy]
-    ys = [y for _, y, _ in layout.occupancy]
-    bounds = (min(xs), max(xs), min(ys), max(ys))
     found: set[int] = set()
     for conn in sockets:
         ox, oy = -conn.direction[0], -conn.direction[1]
-        for cell in layout.cells_of(brick):
-            x, y, z = cell
-            step = 1
-            while True:
-                px, py = x + ox * step, y + oy * step
-                if px < bounds[0] or px > bounds[1] or py < bounds[2] or py > bounds[3]:
-                    break
-                other = layout.brick_at((px, py, z))
-                if other is not None and other.brick_id != brick.brick_id:
-                    found.add(other.brick_id)
-                step += 1
+        for x, y, z in layout.cells_of(brick):
+            if ox:
+                line = rows_x.get((y, z), [])
+                coordinate = x
+                direction = ox
+            else:
+                line = rows_y.get((x, z), [])
+                coordinate = y
+                direction = oy
+            if direction > 0:
+                span = line[bisect_right(line, (coordinate, _ID_MAX)) :]
+            else:
+                span = line[: bisect_left(line, (coordinate, -1))]
+            found.update(occupant for _, occupant in span if occupant != brick.brick_id)
     return found
 
 
