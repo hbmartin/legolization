@@ -4,6 +4,97 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v6 progress notes
+
+Living log of the v6 program (PR-18 remediation, pending-measurement
+closure + corpus growth, flow-connected cross-slab bridge, insertion-
+fragile reduction). Every landed workstream appends a dated entry with
+measured proof; append-only.
+
+### 2026-07-20 — WS-M: pending measurements closed + two corpus models
+
+The three deferred v5 runs executed in isolated git worktrees (the
+session lesson: long runs never import the live tree; `git_sha` now
+resolves worktree indirections, so the artifacts keep their code-state
+stamps). **spot@24 subassemblies cell**: 80/155 unstable (v4 record)
+→ **72/176** with `--subassemblies` — the same partial-improvement
+class as suzanne (33→21), completing the U1 evidence table at six of
+six models, five improved. **spot@24 v5-end profile**: result block
+996 bricks / 176 steps (155 → 176 is the U1 subassembly trade, not a
+regression); wall was measured under four concurrent jobs and is
+excluded from regression claims per docs/performance-testing.md.
+**Mesh-kind baseline**: swept in its own worktree post-flip (see the
+WS-E entry). Corpus grew two models with trait tests: `torsion-bridge`
+(one-stud dog-leg deck between corner towers; kollsker seed 0
+max_score 0.0496 → 0.0690 with `torque_z=True`, pinned as a score
+inequality — a wider deck and a ring-cap variant measured ~zero delta,
+so one-stud beams through few knobs are what makes the yaw row bind)
+and `press-tower` (stacked two-knob cantilever arms; statically clean,
+4/18 steps insertion-fragile under the 1 kg press — the audit's
+end-to-end corpus pin). Synthetic baseline regenerated clean worktree:
+13/13 PASS, new rows informational (torsion-bridge winner smga 7/7
+buildable Cs 0.0581; press-tower winner beauty 7/7 Cs 0.0732).
+
+### 2026-07-20 — WS-F: cross-slab flow bridge (escalate-on-decline)
+
+`BridgeSynthesizer` escalates on per-slab decline to one joint MILP
+over every slab problem: block-diagonal exact covers tied by a
+hub-aggregated single-commodity flow (hubs keyed on the actual MATING
+PLANE `(column, plane)`, so plate/brick interleaving falls out of the
+keying); remaining components attach through the same two guards as
+the bridging row (shared `_mates_of`); the root — largest remaining
+component, or the ground when everything is carved — is the sole net
+emitter, so chosen rects cannot fabricate connectivity from
+circulations. Join slacks per terminal and orphan slacks per rect
+(`o ≤ x`) keep un-stud-connectable rings feasible; objective is
+lexicographic joins > orphans > count, with a pinned reward stage.
+
+Measured honestly: the escalation closes the **cover-coordination
+class** — an elevated ten-column ladder whose z-course seam must land
+under a mid plate goes per-slab-None → flow 1 component, 0 floaters
+(pinned; determinism, plane-mating, grounded-root, and limit tests
+alongside). It does NOT close the interleaved-shell residual:
+mushroom's per-slab candidate (22 comps / 112 bricks) loses best-of-k
+to the random rewrite's (1 / 267) because the cap ring's
+absolute-slab re-tiling cannot stud-connect at all (stage 1 without
+orphan slacks is infeasible) — that class needs re-phased candidate
+enumeration (the drift report's known limitation), not coordination.
+Tractability measured far below the design estimate: ladder scale
+(54 rects / 648 arcs) proves optimality sub-second; thin-shell's ring
+(1_364 / 15_752) cannot close in 60 s and flat weight rescaling does
+not help — so `flow_candidate_limit`/`flow_arc_limit` default to
+600/8_000 and oversized rings decline in 0.04 s (thin-shell wall
+restored; corpus counts unchanged 251/386; goldens byte-exact).
+
+### 2026-07-20 — WS-I: insertion-aware sequencing (warm press probe)
+
+`PrefixSolver.press_probe(chunk, kg)` = Liu's virtual-brick press as
+a bound change on the warm model's chunk FZ rows (≡ cold
+`analyze(extra_masses=)`, ≤1e-6 pinned; restore-before-commit
+bitwise-idempotent, pinned; near-boundary/API/failure valves go
+cold). `InstructionsConfig.insertion_check` (default OFF; plans
+byte-identical without it) makes the ready-window scan skip
+press-fragile candidates while alternatives exist and accept
+least-fragile-with-warning otherwise — never rescue. Rescue/band
+steps get flag-only marks; the subassembly rewrite re-derives every
+kept step's press verdict against the FINAL prefix through one warm
+walker (pre-rewrite marks are provably stale — cantilever's audit
+flags moved 4 steps); attach steps get the whole-unit press the step
+audit cannot see; the verifier re-derives marks one-directionally;
+booklets collapse fragile runs into "press gently" callouts;
+`check_instructions --insertion-check` now measures the residual.
+
+Measured honestly: corpus reduction is a **floor** — press-tower /
+cantilever / mushroom fragile steps live in singleton ready windows
+and rescue tails (instrumented: zero windows offered a press-stable
+alternative), so residuals hold at 4/4/19 while plan marks became
+truthful end-to-end (plan-marked ⊇ audit flags, zero verifier
+violations, attach presses add coverage the audit misses). The
+avoidance mechanism is pinned at unit level. Cost: 2.7× sequencing on
+suzanne@16 with the check on (52 presses × ~1.1 s — a 1 kg press
+redistributes the whole force field, disproving the "few dual
+iterations" estimate); opt-in only, check-off unchanged.
+
 ## v5 progress notes
 
 Living log of the v5 program (physics fidelity, structure-preserving
