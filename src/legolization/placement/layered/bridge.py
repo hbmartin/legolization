@@ -32,10 +32,14 @@ or a grounded non-root chain, so a specific terminal merge is not
 guaranteed — the count never increases, and the best-of-k comparison
 in `improve_connectivity` keeps whichever bridge is leaner.
 
-Re-phasing-only bridges (plate columns joined by `compact_columns`'
-mod-3 vote in the random path) are invisible to an absolute-slab
-re-tiling; the synthesizer returns None for those rings and the random
-fallback still covers them. No rng is consumed on the MILP path, so
+With the opt-in ``rephase`` ablation, the synthesizer tries absolute
+slab phases 0, 1, and 2 under one outer placement deadline. Cheap
+per-slab candidates from every phase are measured before joint-flow
+escalation, promising phases run first, and the deterministic
+``(components, bricks, phase)`` key chooses the result. The production
+default stays phase 0: measured re-phased shell covers reduced the
+intermediate component count but still lost to the random repair's
+fully connected candidate. No rng is consumed on the MILP path, so
 runs stay deterministic and the fallback's draw sequence is unchanged.
 """
 

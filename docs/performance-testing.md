@@ -163,7 +163,25 @@ falls back to the legacy chain.
 - Telemetry does not cross spawn workers: `--strategy all` sweeps
   cannot be profiled; profile single strategies in-process.
 
-## 8. Pointers
+## 8. Deadline and enumeration guardrails
+
+Placement owns one absolute monotonic deadline. Layered tiling,
+connectivity repair, and every bridge phase consume that same budget;
+no nested synthesizer may start a fresh default timeout. Rectangle
+enumeration is incremental and checks both the deadline and
+`candidate_limit` while yielding, stopping at limit+1 so callers can
+distinguish an exact in-budget list from overflow without
+materializing the full search space.
+
+The re-phased bridge ablation makes this especially important: phases
+0, 1, and 2 share one deadline, cheap per-slab candidates are gathered
+before flow escalation, and promising phases run first. Telemetry
+records the attempted and accepted phases plus candidate/arc counts.
+Do not raise the 600-candidate / 8_000-arc flow defaults from a single
+partial result: mushroom already measured 2_322 candidates / 44_162
+arcs at the larger envelope without an end-to-end win.
+
+## 9. Pointers
 
 - `docs/self-evaluation-playbook.md` — the wider quality loop;
   "seconds are noise" guidance.

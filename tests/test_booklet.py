@@ -264,6 +264,24 @@ def test_subassembly_badges_and_attach_callouts() -> None:
     assert document.count('<section class="step"') == len(plan.steps)
 
 
+def test_fragile_sub_build_keeps_press_gently_warning() -> None:
+    from legolization.instructions.subassembly import _regenerate_warnings
+
+    original = _plan(1, 0)
+    fragile = replace(
+        original.steps[0],
+        submodel="sub-1",
+        insertion_fragile=True,
+    )
+    warnings = _regenerate_warnings(original, (fragile,), [])
+    plan = replace(original, steps=(fragile,), warnings=tuple(warnings))
+
+    document = booklet_html(build_booklet(plan, _STATS, _images(len(plan.steps), None)))
+
+    assert "building subassembly sub-1 under press" in plan.warnings[0]
+    assert "press bricks home gently" in document
+
+
 def test_support_warnings_aggregate_consecutive_runs() -> None:
     from legolization.instructions.booklet import _aggregate_support_warnings
 

@@ -227,3 +227,28 @@ best (370) — regression-to-the-random-maximal-mean still caps how much
 a minimal tiling is worth on heavily fragmented models; closing that
 residual gap needs a structure-preserving bridge synthesis, out of
 scope here.
+
+### v7 addendum: re-phased candidate enumeration (built, not promoted)
+
+The absolute-slab limitation is now an explicit ablation rather than
+an unimplemented hypothesis. `BridgeSynthesizer(rephase=True)` tries
+phases 0, 1, and 2 under one placement deadline, measures all cheap
+per-slab candidates before flow, escalates the most promising partial
+phase first, and chooses by `(components, bricks, phase)`.
+
+The mechanism exposes the predicted shell candidates but does not beat
+the existing best-of-k repair:
+
+| model | best re-phased intermediate | competing random repair | final |
+|---|---:|---:|---:|
+| mushroom | phase 1: 3 components / 196 bricks | 1 / 267 | 251 bricks |
+| thin-shell | phase 2: 17 / 380 | 1 component wins | 386 bricks |
+
+Mushroom's other cheap candidates were phase 0 = 22 / 112 and phase 2
+= 4 / 193. A larger flow probe reached 2_322 candidates / 44_162 arcs
+on phase 0 without improving the final result. The feature therefore
+ships opt-in as `--bridge-rephase`, with phase telemetry and
+determinism tests, while default results remain unchanged. The
+remaining blocker is not candidate visibility alone: the selected
+minimal re-phased cover still loses to a heavier fully connected
+random repair under the production acceptance key.

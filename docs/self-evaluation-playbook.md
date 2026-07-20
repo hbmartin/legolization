@@ -141,9 +141,9 @@ weights (`ObjectiveWeights`) worth reporting.
 - Progress lines print only when stderr is a TTY; background runs are
   silent until done. Check the scorecard file, not the console.
 
-## 9. Current state (2026-07-18, end of day)
+## 9. Current state (2026-07-20)
 
-- Baseline scope: synthetic corpus (11 shapes incl. `topple-arm` and
+- Baseline scope: synthetic corpus (13 shapes incl. `topple-arm` and
   `letter-h-bicolour` physics pins), committed at
   `eval/baselines/scorecard.json`. A full mesh sweep (manifest sizes
   reduced to 16–24 studs per the profiling data) runs overnight; widen
@@ -180,7 +180,8 @@ so drift stays visible:
 
       uv run python scripts/eval_corpus.py --kind mesh
       uv run python scripts/eval_corpus.py --kind mesh --write-baseline  # clean runs only
-      uv run python scripts/eval_corpus.py --seeds 0,1,2 --only thin-shell
+      uv run python scripts/corpus.py generate
+      uv run python scripts/eval_corpus.py --seeds 0,1,2 --models thin-shell
       uv run python scripts/check_instructions.py data/examples/heart.vox --insertion-check
       uv run python scripts/check_instructions.py data/corpus/synthetic/mushroom.npy --insertion-check
       uv run python scripts/check_instructions.py data/corpus/synthetic/press-tower.npy --insertion-check

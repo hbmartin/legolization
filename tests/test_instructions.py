@@ -14,6 +14,7 @@ from legolization.instructions import (
     InstructionPlan,
     InstructionsConfig,
     InstructionsError,
+    Subassembly,
     bill_of_materials,
     plan_instructions,
     verify_plan,
@@ -544,6 +545,80 @@ def test_verify_plan_requires_exactly_one_attach():
     )
     violations = verify_plan(layout, doubled, config=config)
     assert any("attached 2 time" in v for v in violations)
+
+
+def _stable_subassembly_plan(
+    *,
+    fragile_sub_step: bool = False,
+    fragile_attach_step: bool = False,
+) -> tuple[Layout, InstructionPlan, InstructionsConfig]:
+    """Two stacked 2x2s whose table-build and seated presses are stable."""
+    layout = Layout(catalog=default_catalog())
+    base = layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    unit = layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    plan = InstructionPlan(
+        steps=(
+            BuildStep(
+                index=1,
+                brick_ids=(base.brick_id,),
+                prefix_stable=True,
+                prefix_max_score=0.0,
+            ),
+            BuildStep(
+                index=2,
+                brick_ids=(unit.brick_id,),
+                prefix_stable=True,
+                prefix_max_score=0.0,
+                submodel="sub-1",
+                insertion_fragile=fragile_sub_step,
+            ),
+            BuildStep(
+                index=3,
+                brick_ids=(),
+                prefix_stable=True,
+                prefix_max_score=0.0,
+                attaches="sub-1",
+                insertion_fragile=fragile_attach_step,
+            ),
+        ),
+        warnings=(),
+        bom=bill_of_materials(layout),
+        subassemblies=(
+            Subassembly(
+                name="sub-1",
+                brick_ids=(unit.brick_id,),
+                anchor_layer=3,
+            ),
+        ),
+    )
+    config = InstructionsConfig(
+        rotstep=False,
+        subassemblies=True,
+        insertion_check=True,
+    )
+    return layout, plan, config
+
+
+def test_verify_plan_rejects_false_fragile_sub_build_mark() -> None:
+    layout, plan, config = _stable_subassembly_plan(fragile_sub_step=True)
+
+    violations = verify_plan(layout, plan, config=config)
+
+    assert any(
+        "step 2: flagged insertion-fragile but the press verdict is stable" in violation
+        for violation in violations
+    )
+
+
+def test_verify_plan_rejects_false_fragile_attach_mark() -> None:
+    layout, plan, config = _stable_subassembly_plan(fragile_attach_step=True)
+
+    violations = verify_plan(layout, plan, config=config)
+
+    assert any(
+        "step 3: flagged insertion-fragile but the press verdict is stable" in violation
+        for violation in violations
+    )
 
 
 def test_strict_policy_judged_after_subassembly_rewrite():

@@ -421,12 +421,13 @@ def _regenerate_warnings(
     ]
     regenerated: list[str] = []
     for step in steps:
-        if step.insertion_fragile and step.submodel is None:
-            what = (
-                f"seating subassembly {step.attaches} "
-                if step.attaches is not None
-                else ""
-            )
+        if step.insertion_fragile:
+            if step.submodel is not None:
+                what = f"building subassembly {step.submodel} "
+            elif step.attaches is not None:
+                what = f"seating subassembly {step.attaches} "
+            else:
+                what = ""
             regenerated.append(
                 f"step {step.index}: insertion-fragile ({what}under press); "
                 "press bricks home gently and support the joint"
