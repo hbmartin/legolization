@@ -37,7 +37,9 @@ shell's venv hook aborts them) — use absolute paths.
   synthetic fast scope. It writes one atomic artifact per
   model/strategy/seed plus a collection manifest, reuses exact successful
   commit/source/config/input identities, and retries failures. Use
-  `--fresh` only when an exact success should be ignored.
+  `--fresh` only when an exact success should be ignored. A sweep covers
+  exactly one kind per run (mixed-kind sweeps no longer exist); naming a
+  mesh model without `--kind mesh` fails with a hint.
 - **Scorecard assembly**: `scripts/assemble_eval.py COLLECTION_MANIFEST`
   validates the complete expected matrix and assembles
   `scorecard.{json,md}` without running placement. Baseline comparison

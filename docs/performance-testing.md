@@ -236,6 +236,11 @@ The re-phased bridge ablation makes this especially important: phases
 0, 1, and 2 share one deadline, cheap per-slab candidates are gathered
 before flow escalation, and promising phases run first. Telemetry
 records the attempted and accepted phases plus candidate/arc counts.
+This holds on the default phase-0 path too (intentional, PR #22): a
+per-slab cover that merely reduces the component count no longer
+preempts flow escalation — the flow candidate competes on the same
+(components, bricks) key, so the default path can spend bounded extra
+MILP time to return a strictly better-connected bridge.
 Do not raise the 600-candidate / 8_000-arc flow defaults from a single
 partial result: mushroom already measured 2_322 candidates / 44_162
 arcs at the larger envelope without an end-to-end win.

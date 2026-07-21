@@ -125,6 +125,63 @@ def test_rephase_selects_best_phase_deterministically(
     assert session.values["connectivity.bridge.phase_accepted"] == [2.0]
 
 
+def test_default_path_flow_competes_with_partial_per_slab_cover(
+    catalog,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # PR #22 review pin: a per-slab cover that merely reduces the
+    # component count (3 -> 2 here) no longer preempts flow escalation.
+    # The flow candidate competes on the same (components, bricks) key
+    # in the default phase-0 path and wins when it fully connects.
+    def partial_per_slab(  # noqa: PLR0913
+        self: BridgeSynthesizer,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+        *,
+        phase: int = 0,
+    ) -> Layout | None:
+        del self, layout, region, grid, deadline, before, phase
+        candidate = Layout(catalog=default_catalog())
+        candidate.add("brick_2x2", 0, 0, 0, 0, 4)
+        candidate.add("brick_2x2", 10, 10, 0, 0, 4)
+        return candidate
+
+    def connected_flow(  # noqa: PLR0913
+        self: BridgeSynthesizer,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+        *,
+        phase: int = 0,
+    ) -> Layout | None:
+        del self, layout, region, grid, deadline, before, phase
+        candidate = Layout(catalog=default_catalog())
+        candidate.add("brick_2x2", 0, 0, 0, 0, 4)
+        return candidate
+
+    monkeypatch.setattr(BridgeSynthesizer, "_per_slab_candidate", partial_per_slab)
+    monkeypatch.setattr(BridgeSynthesizer, "_flow_candidate", connected_flow)
+    _, grid = _towers()
+    three_towers = Layout(catalog=default_catalog())
+    for x in (0, 4, 8):
+        three_towers.add("brick_2x2", x, 0, 0, 0, 4)
+    with telemetry.record() as session:
+        chosen = BridgeSynthesizer(catalog=catalog)(
+            three_towers,
+            set(three_towers.bricks),
+            grid,
+        )
+    assert chosen is not None
+    assert ConnectionGraph.from_layout(chosen).component_count() == 1
+    assert len(chosen) == 1
+    assert "connectivity.bridge_flow" in session.spans
+
+
 def test_bridge_decline_matches_random_only(catalog):
     # When the synthesizer declines, the rng stream and outcome must be
     # byte-identical to bridge=None — the fallback contract.

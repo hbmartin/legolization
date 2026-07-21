@@ -703,10 +703,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.traits is not None:
         wanted = {trait.strip() for trait in args.traits.split(",")}
         models = [m for m in models if wanted & set(m.traits)]
+    excluded_kinds = sorted({m.kind for m in models})
     if args.kind is not None:
         models = [m for m in models if m.kind == args.kind]
     if not models:
-        print("error: no corpus models selected", file=sys.stderr)
+        hint = (
+            f"; the selection matched only kind {', '.join(excluded_kinds)}"
+            f" - pass --kind {excluded_kinds[0]}"
+            if excluded_kinds and args.kind is not None
+            else ""
+        )
+        print(f"error: no corpus models selected{hint}", file=sys.stderr)
         return 1
     identity = source_identity(_REPO)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")

@@ -458,6 +458,19 @@ def test_single_seed_row_has_no_spread(evaluator: _EvaluatorModule) -> None:
     assert "seeds" not in row
 
 
+def test_kind_filtered_selection_hints_the_kind_flag(
+    evaluator: _EvaluatorModule,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A mesh model named without --kind mesh must fail with a hint, not
+    # the bare "no corpus models selected" (PR #22 review).
+    exit_code = evaluator.main(argv=["--models", "suzanne"])
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "no corpus models selected" in err
+    assert "--kind mesh" in err
+
+
 def test_multi_seed_skips_baseline_diff(
     evaluator: _EvaluatorModule,
     tmp_path: Path,
