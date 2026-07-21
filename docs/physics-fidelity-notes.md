@@ -54,6 +54,27 @@ switch; dual-engine plan equality is pinned with `torque_z` on.
 `links.py` reads the row layout from the model it builds, so a future
 default flip cannot desynchronize the artificial-link QP.
 
+### v7 consistency corrections
+
+`build_model_from_config(layout, config)` is now the production
+construction boundary for every cold RBE consumer. `analyze`,
+candidate maximin scoring, Luo's capacity gate, link localization, and
+direct removal rescue can no longer silently fall back to
+`build_model` defaults. The low-level builder remains available for
+tests and deliberate release-physics experiments; production callers
+must provide their effective `SolverConfig`. Rotation-invariance and
+table-mode rescue regressions enforce the boundary.
+
+The side-contact transverse interval now describes physical face
+edges, not occupied-cell centers: a face spanning transverse columns
+`lo..hi` carries `t_lo = lo - 0.5` and `t_hi = hi + 0.5`. This matters
+only when `torque_z` asks for four face-corner generators, but it is
+load-bearing there: a one-cell-wide face now has two distinct yaw
+levers instead of duplicate zero-width generators. The recalibrated
+`torsion-bridge` fixture (18-cell dog-leg arm) pins a nontrivial
+seed-0 kollsker score move, 0.202533 → 0.227176, when the yaw row is
+enabled.
+
 ## 2. BrickFEM assessment (Pletz & Drvoderic 2023, engrXiv 10.31224/2898)
 
 Read in full for this workstream. What it is: an MIT-licensed Python

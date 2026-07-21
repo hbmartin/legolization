@@ -274,10 +274,41 @@ def test_import_cli_rejects_placement_flags(tmp_path):
         ["-o", str(tmp_path / "x.ldr"), "--colour", "soft"],
         ["-o", str(tmp_path / "x.ldr"), "--shell-plates", "2"],
         ["-o", str(tmp_path / "x.ldr"), "--stability-weight", "2.0"],
+        ["-o", str(tmp_path / "x.ldr"), "--bridge-rephase"],
     ):
         with pytest.raises(SystemExit) as excinfo:
             main([str(source), *extra])
         assert excinfo.value.code == 2
+
+
+@pytest.mark.parametrize("suffix", [".ldr", ".mpd"])
+@pytest.mark.parametrize(
+    "race_flag",
+    [
+        ("--seeds", "7"),
+        ("--restarts", "3"),
+        ("--jobs", "0"),
+        ("--timeout", "5"),
+    ],
+)
+def test_import_cli_rejects_race_flags(
+    tmp_path,
+    suffix: str,
+    race_flag: tuple[str, str],
+):
+    from legolization.main import main
+
+    source = tmp_path / f"source{suffix}"
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(source),
+                "-o",
+                str(tmp_path / f"out{suffix}"),
+                *race_flag,
+            ]
+        )
+    assert excinfo.value.code == 2
 
 
 def test_import_plain_flat_tiles_roundtrip(layout, tmp_path):

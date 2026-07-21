@@ -8,6 +8,29 @@ from legolization.grid import EMPTY, VoxelGrid
 from legolization.layout import Layout
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Add the explicit gate for tests that are too slow for the inner loop."""
+    parser.addoption(
+        "--run-slow",
+        action="store_true",
+        default=False,
+        help="run slow benchmark, sweep, and real-render integration tests",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
+    """Skip slow tests unless the caller explicitly opts into them."""
+    if config.getoption("--run-slow"):
+        return
+    skip = pytest.mark.skip(reason="slow test; pass --run-slow to include")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip)
+
+
 @pytest.fixture
 def bad_bridge() -> tuple[Layout, VoxelGrid]:
     """Build a bridge whose deck and load courses butt at mid-span."""

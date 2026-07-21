@@ -4,6 +4,95 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v7 progress notes
+
+Living log of the v7 program (PR-19/PR-21 residual remediation,
+re-phased bridge experiment, and the standing mesh baseline).
+
+### 2026-07-20 — WS-R: PR-19 residual correctness remediation
+
+All production cold-model construction now goes through
+`build_model_from_config(layout, config)`: analysis, maximin candidate
+scoring, Luo capacity checks, link localization, and direct removal
+rescue therefore share `rotate_contact_pattern`, `torque_z`,
+`ground_pull`, and external-mass semantics. Rotation-invariance tests
+pin both configured maximin and the underlying solver; direct rescue
+has a table-physics regression. Side-contact transverse extents now
+use the shared face's physical edges (`min - 0.5`, `max + 0.5`) rather
+than cell centers, so a one-stud face supplies two distinct yaw levers.
+The `torsion-bridge` pin was recalibrated to an 18-cell arm after that
+geometry correction: seed-0 kollsker scores 0.202533 without yaw and
+0.227176 with `torque_z` (delta +0.024643); the synthetic baseline's
+intentional 20 → 24 brick move records the corrected fixture.
+
+The remaining configuration and termination defects are closed:
+one-element `--seeds` overrides are honored and profiled as effective
+config, race flags are explicitly rejected for `.ldr`/`.mpd`, bridge
+callbacks must strictly reduce component count before they can reset
+`fail_max`, Kollsker's bond and grounding rewards keep independent
+weights, and rectangle candidates stop incrementally at limit+1 or
+deadline. The bridge shares the placement strategy's absolute
+deadline instead of receiving a fresh ten seconds. CVXPY HiGHS calls
+also pin `threads=1`, preventing its process-global scheduler from
+poisoning a later warm prefix solver.
+
+### 2026-07-20 — WS-B: re-phased bridge experiment (opt-in)
+
+`slab_problems(..., phase=0|1|2)` and
+`PipelineConfig.bridge_rephase` let `BridgeSynthesizer` enumerate all
+three absolute slab phases under one outer deadline. It runs cheap
+per-slab covers first, orders flow escalation by the measured
+`(components, bricks, phase)` promise, chooses deterministically on
+the same key, and exposes attempted/solved/components/bricks/accepted
+telemetry. CLI and trajectory tooling expose the ablation as
+`--bridge-rephase`; imported LDraw models reject it because placement
+has already happened.
+
+The feature remains **off by default** because the end-to-end
+acceptance gate did not improve the two target rows. On mushroom the
+per-phase candidates were phase 0 = 22 components / 112 bricks, phase
+1 = 3 / 196, phase 2 = 4 / 193; phase 1 won inside the synthesizer,
+but the existing random rewrite still won best-of-k at 1 / 267 and the
+final result remained 251 bricks. Thin-shell reached a partial phase-2
+candidate at 17 / 380 while phases 0/1 declined; its final result
+remained 386. Raising the flow envelope did not change that outcome:
+mushroom phase 0 already generated 2_322 candidates / 44_162 arcs,
+and a 60-second-scale larger solve remained uneconomic. Re-phasing is
+therefore implemented and measurable, but not promoted.
+
+### 2026-07-20 — WS-Q: PR-21 post-merge review remediation
+
+The four findings in `docs/pr-21-review.md` are implemented. The
+press-tower regression now generates its fixture from committed source
+under `tmp_path`, so ignored `.npy` files cannot hide a clean-checkout
+failure. `verify_plan` re-derives marked sub-build presses in the
+translated table frame and attachment presses over the complete
+seated unit before commit; false-positive marks for both step kinds
+are pinned. Warning regeneration now covers every marked final step,
+including the subassembly name for table-build context, and booklet
+coverage proves the builder still sees “press bricks home gently.”
+The playbook uses `--models thin-shell`, records 13 synthetic models,
+and generates the ignored corpus before consuming its paths.
+
+### 2026-07-20 — WS-V: fast inner loop; long validation opt-in
+
+Tests marked `slow` now skip by default; `uv run pytest --run-slow`
+is the explicit full-suite gate and CI opts into it. A bare
+`scripts/eval_corpus.py` run now selects synthetics only, while mesh
+evaluation requires `--kind mesh`. This keeps normal implementation
+iterations bounded without deleting the release/performance checks.
+Measured default loop: **609 passed, 4 skipped in 57.22 s**; the
+explicit full collection remains 613 tests.
+
+The idle-machine mesh attempt also disproved the remaining 300-second
+assumption. At a 900-second cap, spot produced five valid strategies,
+Stanford Bunny two, and Teapot seven, but Armadillo still timed out on
+all seven. No baseline was written; Armadillo's failed row guarantees
+the guarded write would have declined it. The user stopped Homer after
+another ten minutes and made the mesh cut an explicit offline/release
+task with a cap above Armadillo's measured floor, not a default
+development gate.
+
 ## v6 progress notes
 
 Living log of the v6 program (PR-18 remediation, pending-measurement

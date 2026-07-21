@@ -40,7 +40,7 @@ from legolization.stability.solver import (
     SolverConfig,
     StabilityResult,
     analyze,
-    build_model,
+    build_model_from_config,
     solve_maximin,
 )
 
@@ -138,7 +138,7 @@ class LuoStrategy:
         """Maximin capacity C_M, or -inf when equilibrium is infeasible."""
         if self.acceptance != "maximin":
             return 0.0
-        result = solve_maximin(build_model(layout))
+        result = solve_maximin(build_model_from_config(layout, self.solver_config))
         return result.capacity if result.feasible else float("-inf")
 
     def _better(

@@ -259,6 +259,23 @@ def test_candidate_metrics_on_real_result() -> None:
     assert metrics.objective_total > 0.0
 
 
+def test_candidate_metrics_uses_configured_maximin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import Mock
+
+    config = SolverConfig(torque_z=True, ground_pull=False)
+    helper = Mock(wraps=legolization.compare.build_model_from_config)
+    monkeypatch.setattr(legolization.compare, "build_model_from_config", helper)
+    candidate_metrics(
+        run(grid=_box_grid(), config=PipelineConfig(seed=0)),
+        weights=ObjectiveWeights(),
+        solver_config=config,
+    )
+    helper.assert_called_once()
+    assert helper.call_args.args[1] is config
+
+
 # --- run_all: sequential, error isolation, parallel ------------------------
 
 
@@ -498,6 +515,26 @@ def test_cli_profile_requires_single_seed(
         main([str(tmp_path / "x.npy"), "--profile", str(tmp_path / "p.json")])
     assert excinfo.value.code == 2
     assert "--restarts 1" in capsys.readouterr().err
+
+
+def test_cli_single_explicit_seed_updates_profile(tmp_path: Path) -> None:
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
+    profile = tmp_path / "profile.json"
+    out = tmp_path / "box.ldr"
+    code = main(
+        [
+            str(npy),
+            "-o",
+            str(out),
+            "--seeds",
+            "7",
+            "--profile",
+            str(profile),
+        ]
+    )
+    assert code == 0
+    assert json.loads(profile.read_text())["seed"] == 7
 
 
 @pytest.mark.parametrize("value", ["", "a,b", "0,,1"])

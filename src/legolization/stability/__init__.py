@@ -8,6 +8,7 @@ from legolization.stability.solver import (
     SolverConfig,
     StabilityResult,
     analyze,
+    build_model_from_config,
     solve_maximin,
     solve_model,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "StabilityResult",
     "analyze",
     "build_model",
+    "build_model_from_config",
     "solve_maximin",
     "solve_model",
 ]

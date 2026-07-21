@@ -277,7 +277,7 @@ def test_torsion_bridge_yaw_row_moves_the_score(corpus: ModuleType) -> None:
     base = analyze(result.layout, SolverConfig())
     yaw = analyze(result.layout, SolverConfig(torque_z=True))
     assert yaw.stable == base.stable  # verdict untouched
-    assert yaw.max_score > base.max_score + 0.005  # measured +0.0194
+    assert yaw.max_score > base.max_score + 0.01  # measured +0.0246
 
 
 def test_press_tower_arms_overhang(corpus: ModuleType) -> None:

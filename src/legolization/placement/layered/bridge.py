@@ -32,10 +32,14 @@ or a grounded non-root chain, so a specific terminal merge is not
 guaranteed — the count never increases, and the best-of-k comparison
 in `improve_connectivity` keeps whichever bridge is leaner.
 
-Re-phasing-only bridges (plate columns joined by `compact_columns`'
-mod-3 vote in the random path) are invisible to an absolute-slab
-re-tiling; the synthesizer returns None for those rings and the random
-fallback still covers them. No rng is consumed on the MILP path, so
+With the opt-in ``rephase`` ablation, the synthesizer tries absolute
+slab phases 0, 1, and 2 under one outer placement deadline. Cheap
+per-slab candidates from every phase are measured before joint-flow
+escalation, promising phases run first, and the deterministic
+``(components, bricks, phase)`` key chooses the result. The production
+default stays phase 0: measured re-phased shell covers reduced the
+intermediate component count but still lost to the random repair's
+fully connected candidate. No rng is consumed on the MILP path, so
 runs stay deterministic and the fallback's draw sequence is unchanged.
 """
 
@@ -251,6 +255,10 @@ class BridgeSynthesizer:
     flow_escalate: bool = True
     """Escalate to the cross-slab flow MILP when the per-slab pass
     declines; False restores the pure per-slab synthesizer."""
+    placement_deadline: float | None = None
+    """Absolute outer placement deadline shared by every bridge attempt."""
+    rephase: bool = False
+    """Try phase 0 only when false; phases 0, 1, and 2 when true."""
 
     def __call__(
         self,
@@ -259,15 +267,137 @@ class BridgeSynthesizer:
         grid: VoxelGrid,
     ) -> Layout | None:
         """Re-tile ``region``'s carvable bricks; None on any failure."""
-        deadline = time.monotonic() + self.total_time_s
-        before = ConnectionGraph.from_layout(layout).component_count()
-        candidate = self._per_slab_candidate(layout, region, grid, deadline, before)
-        if candidate is not None:
-            return candidate
-        if not self.flow_escalate:
+        now = time.monotonic()
+        deadline = now + self.total_time_s
+        if self.placement_deadline is not None:
+            deadline = min(deadline, self.placement_deadline)
+        if now >= deadline:
             return None
-        with telemetry.span("connectivity.bridge_flow"):
-            return self._flow_candidate(layout, region, grid, deadline, before)
+        before = ConnectionGraph.from_layout(layout).component_count()
+        phases = tuple(range(3) if self.rephase else range(1))
+        phase_candidates, phase_keys = self._initial_phase_candidates(
+            layout,
+            region,
+            grid,
+            deadline,
+            before,
+            phases,
+        )
+        self._add_flow_candidates(
+            layout,
+            region,
+            grid,
+            deadline,
+            before,
+            phase_candidates,
+            phase_keys,
+        )
+        return self._choose_phase_candidate(phase_candidates, phases)
+
+    def _initial_phase_candidates(  # noqa: PLR0913 - shared phase state
+        self,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+        phases: tuple[int, ...],
+    ) -> tuple[dict[int, list[Layout]], dict[int, tuple[int, int, int]]]:
+        """Run cheap per-slab covers for every phase before any flow MILP."""
+        phase_candidates: dict[int, list[Layout]] = {}
+        phase_keys: dict[int, tuple[int, int, int]] = {}
+        for phase in phases:
+            if time.monotonic() >= deadline:
+                break
+            telemetry.value("connectivity.bridge.phase_attempted", float(phase))
+            candidate = self._per_slab_candidate(
+                layout,
+                region,
+                grid,
+                deadline,
+                before,
+                phase=phase,
+            )
+            phase_candidates[phase] = [candidate] if candidate is not None else []
+            components = (
+                ConnectionGraph.from_layout(candidate).component_count()
+                if candidate is not None
+                else before
+            )
+            phase_keys[phase] = (
+                components,
+                len(candidate) if candidate is not None else 1 << 60,
+                phase,
+            )
+        return phase_candidates, phase_keys
+
+    def _add_flow_candidates(  # noqa: PLR0913 - shared phase state
+        self,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+        phase_candidates: dict[int, list[Layout]],
+        phase_keys: dict[int, tuple[int, int, int]],
+    ) -> None:
+        """Escalate promising partial phases first under one deadline."""
+        # Spend the joint-flow budget on the most promising re-phasing
+        # first. Phase 0's large shell model otherwise consumes the shared
+        # deadline before the 3-component phase-1 cover gets a chance.
+        for phase in sorted(phase_keys, key=phase_keys.__getitem__):
+            if (
+                not self.flow_escalate
+                or phase_keys[phase][0] <= 1
+                or time.monotonic() >= deadline
+            ):
+                continue
+            with telemetry.span("connectivity.bridge_flow"):
+                flow_candidate = self._flow_candidate(
+                    layout,
+                    region,
+                    grid,
+                    deadline,
+                    before,
+                    phase=phase,
+                )
+            if flow_candidate is not None:
+                phase_candidates[phase].append(flow_candidate)
+
+    def _choose_phase_candidate(
+        self,
+        phase_candidates: dict[int, list[Layout]],
+        phases: tuple[int, ...],
+    ) -> Layout | None:
+        """Choose components, then count, then phase; emit phase evidence."""
+        best: Layout | None = None
+        best_key: tuple[int, int, int] | None = None
+        for phase in phases:
+            candidates = phase_candidates.get(phase, [])
+            candidate = min(
+                candidates,
+                key=lambda item: (
+                    ConnectionGraph.from_layout(item).component_count(),
+                    len(item),
+                ),
+                default=None,
+            )
+            if phase in phase_candidates:
+                telemetry.value(
+                    "connectivity.bridge.phase_solved",
+                    float(candidate is not None),
+                )
+            if candidate is None:
+                continue
+            components = ConnectionGraph.from_layout(candidate).component_count()
+            key = (components, len(candidate), phase)
+            telemetry.value("connectivity.bridge.phase_components", float(components))
+            telemetry.value("connectivity.bridge.phase_bricks", float(len(candidate)))
+            if best_key is None or key < best_key:
+                best, best_key = candidate, key
+        if best_key is not None:
+            telemetry.value("connectivity.bridge.phase_accepted", float(best_key[2]))
+        return best
 
     def _carve(
         self,
@@ -289,19 +419,21 @@ class BridgeSynthesizer:
             return None
         return candidate, cells
 
-    def _per_slab_candidate(
+    def _per_slab_candidate(  # noqa: PLR0913 - one phase attempt is six facts
         self,
         layout: Layout,
         region: set[int],
         grid: VoxelGrid,
         deadline: float,
         before: int,
+        *,
+        phase: int = 0,
     ) -> Layout | None:
         """Run the original slab-at-a-time pass (optimal on clean seams)."""
         if (carved := self._carve(layout, region, grid)) is None:
             return None
         candidate, cells = carved
-        for problem in slab_problems(cells):
+        for problem in slab_problems(cells, phase=phase):
             context = build_context(candidate, problem)
             labels = ConnectionGraph.from_layout(candidate).brick_components()
             chosen: list[Rect2D] = []
@@ -386,7 +518,16 @@ class BridgeSynthesizer:
         """Two-stage lexicographic MILP with a hard bridging floor."""
         if self._budget(deadline) is None:
             return None  # budget already spent: don't pay for enumeration
-        rects = enumerate_layer_rects(problem, component, self.catalog)
+        try:
+            rects = enumerate_layer_rects(
+                problem,
+                component,
+                self.catalog,
+                candidate_limit=self.candidate_limit,
+                deadline=deadline,
+            )
+        except TimeoutError:
+            return None
         if not rects or len(rects) > self.candidate_limit:
             return None
         # Recheck: enumeration itself may have consumed the remainder
@@ -452,20 +593,22 @@ class BridgeSynthesizer:
 
     # --- cross-slab flow escalation ------------------------------------
 
-    def _flow_candidate(
+    def _flow_candidate(  # noqa: PLR0913 - one phase attempt is six facts
         self,
         layout: Layout,
         region: set[int],
         grid: VoxelGrid,
         deadline: float,
         before: int,
+        *,
+        phase: int = 0,
     ) -> Layout | None:
         """One MILP over every slab problem jointly; None on any breach."""
         if (carved := self._carve(layout, region, grid)) is None:
             return None
         candidate, cells = carved
         labels = ConnectionGraph.from_layout(candidate).brick_components()
-        entries = self._gather_entries(candidate, cells, deadline)
+        entries = self._gather_entries(candidate, cells, deadline, phase=phase)
         if entries is None:
             return None
         graph = self._flow_graph(candidate, entries, labels)
@@ -485,6 +628,8 @@ class BridgeSynthesizer:
         candidate: Layout,
         cells: dict[Cell, int],
         deadline: float,
+        *,
+        phase: int = 0,
     ) -> list[_FlowEntry] | None:
         """Build the deterministic global candidate list.
 
@@ -493,18 +638,32 @@ class BridgeSynthesizer:
         """
         entries: list[_FlowEntry] = []
         offset = 0
-        for problem in slab_problems(cells):
+        for problem in slab_problems(cells, phase=phase):
             context = build_context(candidate, problem)
             for component in _components(problem.columns):
                 if self._flow_budget(deadline) is None:
                     return None
-                rects = enumerate_layer_rects(problem, component, self.catalog)
+                try:
+                    rects = enumerate_layer_rects(
+                        problem,
+                        component,
+                        self.catalog,
+                        candidate_limit=self.flow_candidate_limit - offset,
+                        deadline=deadline,
+                    )
+                except TimeoutError:
+                    return None
                 if not rects:
                     return None
                 entries.append(_FlowEntry(problem, context, component, rects, offset))
                 offset += len(rects)
                 if offset > self.flow_candidate_limit:
+                    telemetry.value(
+                        "connectivity.bridge.candidates",
+                        float(offset),
+                    )
                     return None
+        telemetry.value("connectivity.bridge.candidates", float(offset))
         return entries
 
     def _flow_links(
@@ -552,6 +711,7 @@ class BridgeSynthesizer:
         interleaving falls out of the keying, never "z±3" guesses.
         """
         links = self._flow_links(candidate, entries, labels)
+        telemetry.value("connectivity.bridge.arcs", float(len(links)))
         if len(links) > self.flow_arc_limit:
             return None
         counts: dict[int, int] = {}

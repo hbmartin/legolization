@@ -14,6 +14,7 @@ from legolization.stability import (
     SolverConfig,
     analyze,
     build_model,
+    build_model_from_config,
     solve_maximin,
     solve_model,
 )
@@ -216,8 +217,9 @@ def test_milp_fallback_skips_non_optimal_statuses(monkeypatch):
             self.status = "not-started"
             self.solvers: list[str] = []
 
-        def solve(self, *, solver: str) -> None:
+        def solve(self, *, solver: str, **options: object) -> None:
             """Record solver attempts and expose a cvxpy-like status."""
+            assert options == ({"threads": 1} if solver == "HIGHS" else {})
             self.solvers.append(solver)
             self.status = "optimal" if len(self.solvers) == 2 else "infeasible"
 
@@ -238,8 +240,9 @@ def test_milp_fallback_does_not_chain_stale_solver_error(monkeypatch):
             self.status = "not-started"
             self.solvers: list[str] = []
 
-        def solve(self, *, solver: str) -> None:
+        def solve(self, *, solver: str, **options: object) -> None:
             """Raise once, then expose a cvxpy-like non-optimal status."""
+            assert options == ({"threads": 1} if solver == "HIGHS" else {})
             self.solvers.append(solver)
             if len(self.solvers) == 1:
                 raise solver_module.cp.SolverError
@@ -362,13 +365,27 @@ def test_torque_z_preserves_untwisted_verdicts(layout):
 
 
 def test_side_contact_transverse_extent_recorded(layout):
-    # A 1x4 beside a 1x4: shared faces along y have centers at x 0..3.
+    # A 1x4 beside a 1x4: physical edges extend half a stud past centers.
     layout.add("brick_1x4", 0, 0, 0, 0, 4)
     layout.add("brick_1x4", 0, 1, 0, 0, 4)
     graph = ConnectionGraph.from_layout(layout)
     (side,) = graph.side_contacts
     assert side.axis == 1
-    assert (side.t_lo, side.t_hi) == (0.0, 3.0)
+    assert (side.t_lo, side.t_hi) == (-0.5, 3.5)
+
+
+def test_one_wide_side_contact_has_four_physical_corner_generators(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x1", 0, 1, 0, 0, 4)
+    graph = ConnectionGraph.from_layout(layout)
+    (side,) = graph.side_contacts
+    assert (side.t_lo, side.t_hi) == (-0.5, 0.5)
+
+    model = build_model(layout, graph, torque_z=True)
+    side_columns = model.a_matrix[:, -4:].toarray()
+    assert len({tuple(side_columns[:, i]) for i in range(4)}) == 4
+    yaw_rows = side_columns[[5, 11], :]
+    assert (abs(yaw_rows).max(axis=0) > 0.0).all()
 
 
 # --- paper knob rule (Q x X) ---
@@ -377,7 +394,7 @@ def test_side_contact_transverse_extent_recorded(layout):
 def _catalog_with_3x3() -> Catalog:
     from legolization.catalog import DOWN, UP, Category, Connector, Part
 
-    catalog = default_catalog()
+    catalog = Catalog(parts=dict(default_catalog().parts))
     columns = [(dx, dy) for dx in range(3) for dy in range(3)]
     part = Part(
         key="brick_3x3",
@@ -452,6 +469,45 @@ def test_rotate_contact_pattern_restores_rotation_invariance():
     plain = analyze(_single_knob_cantilever(rotated=False)).max_score
     turned = analyze(_single_knob_cantilever(rotated=True)).max_score
     assert plain == pytest.approx(turned, rel=1e-9)
+
+
+def test_configured_maximin_restores_rotation_invariance():
+    config = SolverConfig()
+    plain = solve_maximin(
+        build_model_from_config(_single_knob_cantilever(rotated=False), config)
+    )
+    turned = solve_maximin(
+        build_model_from_config(_single_knob_cantilever(rotated=True), config)
+    )
+    assert plain.feasible
+    assert turned.feasible
+    assert plain.capacity == pytest.approx(turned.capacity, rel=1e-9)
+
+
+def test_model_from_config_maps_every_physics_switch(layout):
+    beam = layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    config = SolverConfig(
+        torque_z=True,
+        paper_knob_rule=True,
+        rotate_contact_pattern=True,
+        ground_pull=False,
+    )
+    configured = build_model_from_config(
+        layout,
+        config,
+        extra_masses={beam.brick_id: 0.25},
+    )
+    explicit = build_model(
+        layout,
+        torque_z=True,
+        paper_knob_rule=True,
+        rotate_contact_pattern=True,
+        ground_pull=False,
+        extra_masses={beam.brick_id: 0.25},
+    )
+    assert configured.rows_per_brick == explicit.rows_per_brick
+    assert (configured.a_matrix != explicit.a_matrix).nnz == 0
+    assert configured.b_vector == pytest.approx(explicit.b_vector)
 
 
 def test_rotate_pattern_moves_only_the_triangle():

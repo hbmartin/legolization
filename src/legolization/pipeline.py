@@ -96,6 +96,13 @@ class PipelineConfig:
     exact-cover synthesizer before falling back to random draws; False
     restores the v4 random-only path (ablation knob)."""
 
+    bridge_rephase: bool = False
+    """Try all three plate phases in exact-cover bridge synthesis.
+
+    Default-off until the mushroom and thin-shell end-to-end acceptance
+    gates close; phase 0 preserves the historical production path.
+    """
+
 
 @dataclass(frozen=True, slots=True)
 class PipelineResult:

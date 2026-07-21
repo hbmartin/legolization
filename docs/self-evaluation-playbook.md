@@ -33,9 +33,10 @@ shell's venv hook aborts them) — use absolute paths.
   --render-dir steps/` — `verify_plan` invariants + per-step floating
   (dangling) and component counts + step PNG dump. Exit 1 = violation
   (always a bug), 2 = warnings.
-- **Corpus sweep**: `scripts/eval_corpus.py` → `eval/runs/<UTC>/
-  scorecard.{json,md}`, diffed against `eval/baselines/scorecard.json`
-  (committed, currently synthetic-only scope).
+- **Corpus sweep**: `scripts/eval_corpus.py` defaults to the synthetic
+  fast scope and writes `eval/runs/<UTC>/scorecard.{json,md}`, diffed
+  against `eval/baselines/scorecard.json`. Meshes are never part of the
+  default inner loop; opt in with `--kind mesh`.
 - **Renderers**: LeoCAD at `/Applications/LeoCAD.app` works headlessly on
   this Mac (LDView's headless snapshot silently writes nothing); LDraw
   parts at `~/Library/Caches/pyldraw3/2018-02/ldraw`. A PNG on disk is the
@@ -141,9 +142,9 @@ weights (`ObjectiveWeights`) worth reporting.
 - Progress lines print only when stderr is a TTY; background runs are
   silent until done. Check the scorecard file, not the console.
 
-## 9. Current state (2026-07-18, end of day)
+## 9. Current state (2026-07-20)
 
-- Baseline scope: synthetic corpus (11 shapes incl. `topple-arm` and
+- Baseline scope: synthetic corpus (13 shapes incl. `topple-arm` and
   `letter-h-bicolour` physics pins), committed at
   `eval/baselines/scorecard.json`. A full mesh sweep (manifest sizes
   reduced to 16–24 studs per the profiling data) runs overnight; widen
@@ -180,7 +181,8 @@ so drift stays visible:
 
       uv run python scripts/eval_corpus.py --kind mesh
       uv run python scripts/eval_corpus.py --kind mesh --write-baseline  # clean runs only
-      uv run python scripts/eval_corpus.py --seeds 0,1,2 --only thin-shell
+      uv run python scripts/corpus.py generate
+      uv run python scripts/eval_corpus.py --seeds 0,1,2 --models thin-shell
       uv run python scripts/check_instructions.py data/examples/heart.vox --insertion-check
       uv run python scripts/check_instructions.py data/corpus/synthetic/mushroom.npy --insertion-check
       uv run python scripts/check_instructions.py data/corpus/synthetic/press-tower.npy --insertion-check

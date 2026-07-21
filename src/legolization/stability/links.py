@@ -25,11 +25,11 @@ from legolization.stability.constants import (
     KNOB_PITCH_M,
     T_CAPACITY_N,
 )
-from legolization.stability.model import StabilityModel, build_model
-from legolization.stability.solver import SolverConfig
+from legolization.stability.solver import SolverConfig, build_model_from_config
 
 if TYPE_CHECKING:
     from legolization.layout import Layout
+    from legolization.stability.model import StabilityModel
 
 _FZ, _TX, _TY = 2, 3, 4
 _QP_SOLVERS = ("OSQP", "CLARABEL")
@@ -79,13 +79,10 @@ def _localize_body(
     """Run the body of :func:`localize_instability` without its telemetry span."""
     graph = graph or ConnectionGraph.from_layout(layout)
     # The QP must judge with the same physics the verdicts use.
-    model = build_model(
+    model = build_model_from_config(
         layout,
+        config,
         graph,
-        torque_z=config.torque_z,
-        paper_knob_rule=config.paper_knob_rule,
-        rotate_contact_pattern=config.rotate_contact_pattern,
-        ground_pull=config.ground_pull,
     )
     if not graph.side_contacts:
         return _no_link_verdict(model)

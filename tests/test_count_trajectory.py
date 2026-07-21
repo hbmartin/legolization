@@ -69,6 +69,26 @@ def test_fail_max_zero_disables_connectivity(
     assert payload["run"]["fail_max"] == 0
 
 
+def test_rephase_ablation_is_recorded(
+    script: ModuleType,
+    tmp_path: Path,
+) -> None:
+    exit_code = script.main(
+        [
+            "letter-t",
+            "--strategy",
+            "bond",
+            "--bridge-rephase",
+            "--out",
+            str(tmp_path),
+        ]
+    )
+    assert exit_code == 0
+    written = next(iter(tmp_path.glob("*-rephase-trajectory.json")))
+    payload = json.loads(written.read_text())
+    assert payload["run"]["bridge_rephase"] is True
+
+
 def test_rows_follow_emission_order(script: ModuleType) -> None:
     # PR #18 P2: repair is emitted before placed inside _place_and_repair,
     # and hollow-restore interleaves pass-two tiling — rows must follow

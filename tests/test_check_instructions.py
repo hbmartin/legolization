@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Protocol, cast
 
+import numpy as np
 import pytest
 
 from legolization.catalog import default_catalog
@@ -16,6 +17,7 @@ from legolization.instructions.sequencer import BuildStep, InstructionPlan
 from legolization.layout import Layout
 
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "check_instructions.py"
+_CORPUS_SCRIPT = Path(__file__).parent.parent / "scripts" / "corpus.py"
 _HEART = Path(__file__).parent.parent / "data" / "examples" / "heart.vox"
 
 
@@ -38,6 +40,14 @@ class _CheckerModule(Protocol):
         ...
 
 
+class _CorpusModule(Protocol):
+    """Typed surface of the dynamically loaded corpus script."""
+
+    def press_tower(self, arms: int = 3) -> np.ndarray:
+        """Return the deterministic insertion-audit fixture."""
+        ...
+
+
 def _load_checker() -> _CheckerModule:
     spec = importlib.util.spec_from_file_location("check_instructions", _SCRIPT)
     assert spec is not None
@@ -46,6 +56,18 @@ def _load_checker() -> _CheckerModule:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return cast("_CheckerModule", module)
+
+
+def _load_corpus() -> _CorpusModule:
+    spec = importlib.util.spec_from_file_location(
+        "corpus_for_instructions", _CORPUS_SCRIPT
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return cast("_CorpusModule", module)
 
 
 @pytest.fixture(scope="module")
@@ -219,11 +241,6 @@ def test_unsupported_ratio_measures_overhang() -> None:
     assert module.unsupported_ratio(None) is None
 
 
-_PRESS_TOWER = (
-    Path(__file__).parent.parent / "data" / "corpus" / "synthetic" / "press-tower.npy"
-)
-
-
 def test_press_tower_pins_the_insertion_audit(
     checker: _CheckerModule,
     tmp_path: Path,
@@ -231,18 +248,19 @@ def test_press_tower_pins_the_insertion_audit(
     # The corpus model built for the audit: statically clean end to end,
     # but the two-knob cantilever arms tear under Liu's 1 kg press —
     # --insertion-check must flag arm steps the plain audit passes.
+    # Build it from the committed generator so an ignored local corpus
+    # artifact cannot make a clean-checkout regression pass by accident.
+    model = tmp_path / "press-tower.npy"
+    np.save(model, _load_corpus().press_tower())
     plain = tmp_path / "plain.json"
-    assert checker.main([str(_PRESS_TOWER), "--json", str(plain)]) == 0
+    assert checker.main([str(model), "--json", str(plain)]) == 0
     plain_rows = json.loads(plain.read_text())["steps"]
     assert not any("unstable" in row["flags"] for row in plain_rows)
     assert not any("insertion-fragile" in row["flags"] for row in plain_rows)
 
     pressed = tmp_path / "pressed.json"
     # Exit 2: flags present without violations — exactly the point.
-    assert (
-        checker.main([str(_PRESS_TOWER), "--json", str(pressed), "--insertion-check"])
-        == 2
-    )
+    assert checker.main([str(model), "--json", str(pressed), "--insertion-check"]) == 2
     pressed_rows = json.loads(pressed.read_text())["steps"]
     assert not any("unstable" in row["flags"] for row in pressed_rows)
     fragile = [r for r in pressed_rows if "insertion-fragile" in r["flags"]]

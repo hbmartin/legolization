@@ -209,7 +209,8 @@ the CLI counterpart (see Usage).
 ## Development
 
 ```sh
-uv run pytest          # analytic physics, placement invariants, golden pins
+uv run pytest          # fast inner loop; slow integrations skip by default
+uv run pytest --run-slow  # full suite, including benchmark/sweep/renderer tests
 uv run ruff format --check . && uv run ruff check .
 uv run ty check src tests
 uv run pyrefly check src tests

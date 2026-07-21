@@ -260,8 +260,8 @@ def _side_contacts(layout: Layout) -> list[SideContact]:
                 centroid=(float(cx), float(cy), float(cz)),
                 z_lo=int(layers.min()),
                 z_hi=int(layers.max()),
-                t_lo=float(transverse.min()),
-                t_hi=float(transverse.max()),
+                t_lo=float(transverse.min() - 0.5),
+                t_hi=float(transverse.max() + 0.5),
             )
         )
     return contacts

@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from legolization import telemetry
 from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
@@ -59,6 +60,67 @@ def test_bridge_is_deterministic(catalog):
     assert run() == run()
 
 
+def test_rephase_keeps_phase_zero_winner_on_clean_seam(catalog):
+    def signature(result: Layout) -> list[tuple[str, int, int, int, int]]:
+        return sorted((b.part_key, b.x, b.y, b.layer, b.yaw) for b in result)
+
+    layout, grid = _towers()
+    phase_zero = BridgeSynthesizer(catalog=catalog, rephase=False)(
+        layout,
+        set(layout.bricks),
+        grid,
+    )
+    rephased = BridgeSynthesizer(catalog=catalog, rephase=True)(
+        layout,
+        set(layout.bricks),
+        grid,
+    )
+    assert phase_zero is not None
+    assert rephased is not None
+    assert signature(rephased) == signature(phase_zero)
+
+
+def test_rephase_selects_best_phase_deterministically(
+    catalog,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def fake_phase_candidate(  # noqa: PLR0913
+        self: BridgeSynthesizer,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+        *,
+        phase: int = 0,
+    ) -> Layout | None:
+        del self, layout, region, grid, deadline, before
+        if phase == 0:
+            return None
+        candidate = Layout(catalog=default_catalog())
+        candidate.add("brick_2x2", 0, 0, 0, 0, 4)
+        if phase == 1:
+            candidate.add("brick_2x2", 0, 0, 3, 0, 4)
+        return candidate
+
+    monkeypatch.setattr(
+        BridgeSynthesizer,
+        "_per_slab_candidate",
+        fake_phase_candidate,
+    )
+    layout, grid = _towers()
+    with telemetry.record() as session:
+        chosen = BridgeSynthesizer(
+            catalog=catalog,
+            flow_escalate=False,
+            rephase=True,
+        )(layout, set(layout.bricks), grid)
+    assert chosen is not None
+    assert len(chosen) == 1
+    assert session.values["connectivity.bridge.phase_attempted"] == [0.0, 1.0, 2.0]
+    assert session.values["connectivity.bridge.phase_accepted"] == [2.0]
+
+
 def test_bridge_decline_matches_random_only(catalog):
     # When the synthesizer declines, the rng stream and outcome must be
     # byte-identical to bridge=None — the fallback contract.
@@ -73,6 +135,48 @@ def test_bridge_decline_matches_random_only(catalog):
         return sorted((b.part_key, b.x, b.y, b.layer, b.yaw) for b in layout)
 
     assert run(declining) == run(None)
+
+
+@pytest.mark.parametrize("mode", ["equal", "worse"])
+def test_non_improving_bridge_callback_consumes_failures(
+    catalog,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+):
+    import legolization.placement.merge as merge_mod
+
+    monkeypatch.setattr(
+        merge_mod,
+        "_best_bridging_draw",
+        lambda *args, **kwargs: (None, None),
+    )
+    calls = 0
+
+    def non_improving(
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+    ) -> Layout:
+        nonlocal calls
+        del region, grid
+        calls += 1
+        candidate = layout.copy()
+        if mode == "worse":
+            candidate.add("brick_1x1", 20, 20, 0, 0, 4)
+        return candidate
+
+    layout, grid = _towers()
+    assert (
+        improve_connectivity(
+            layout,
+            grid,
+            np.random.default_rng(7),
+            fail_max=3,
+            bridge=non_improving,
+        )
+        == 2
+    )
+    assert calls == 3
 
 
 def test_bridge_timeout_returns_none(catalog):
@@ -115,6 +219,22 @@ def test_bridge_expired_budget_skips_enumeration(catalog, monkeypatch):
     monkeypatch.setattr(bridge_mod, "enumerate_layer_rects", failing_enumerate)
     layout, grid = _towers()
     synth = BridgeSynthesizer(catalog=catalog, slab_time_s=1e-9, total_time_s=1e-9)
+    assert synth(layout, set(layout.bricks), grid) is None
+
+
+def test_bridge_outer_deadline_skips_enumeration(catalog, monkeypatch):
+    import legolization.placement.layered.bridge as bridge_mod
+
+    def failing_enumerate(*args: object, **kwargs: object) -> object:
+        msg = "enumeration must not run past the placement deadline"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(bridge_mod, "enumerate_layer_rects", failing_enumerate)
+    layout, grid = _towers()
+    synth = BridgeSynthesizer(
+        catalog=catalog,
+        placement_deadline=0.0,
+    )
     assert synth(layout, set(layout.bricks), grid) is None
 
 

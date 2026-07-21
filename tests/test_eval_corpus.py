@@ -305,7 +305,6 @@ def test_markdown_rendering(evaluator: _EvaluatorModule) -> None:
 @pytest.mark.parametrize(
     "scope_args",
     [
-        [],
         ["--kind", "synthetic", "--models", "cantilever"],
         ["--kind", "synthetic", "--traits", "fast"],
         ["--kind", "synthetic", "--strategies", "greedy"],
@@ -323,6 +322,10 @@ def test_write_baseline_rejects_noncanonical_scope(
         evaluator.main(argv=[*scope_args, "--write-baseline"])
 
 
+def test_default_scope_is_synthetic(evaluator: _EvaluatorModule) -> None:
+    assert evaluator.parse_args([]).kind == "synthetic"
+
+
 def test_baseline_paths_route_by_kind(evaluator: _EvaluatorModule) -> None:
     # Each kind owns one committed baseline file; an explicit --baseline
     # overrides both the write target and the comparison source.
@@ -336,7 +339,7 @@ def test_baseline_paths_route_by_kind(evaluator: _EvaluatorModule) -> None:
     assert evaluator.baseline_write_path(explicit).name == "other.json"
 
 
-def test_baseline_rows_merge_both_kinds(
+def test_baseline_rows_route_by_kind(
     evaluator: _EvaluatorModule,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -350,9 +353,12 @@ def test_baseline_rows_merge_both_kinds(
     monkeypatch.setattr(
         evaluator, "_BASELINE_BY_KIND", {"synthetic": synthetic, "mesh": mesh}
     )
-    merged = evaluator.baseline_rows(evaluator.parse_args([]))
-    assert merged is not None
-    assert {row["model"] for row in merged} == {"cantilever", "suzanne"}
+    default_rows = evaluator.baseline_rows(evaluator.parse_args([]))
+    assert default_rows is not None
+    assert {row["model"] for row in default_rows} == {"cantilever"}
+    mesh_rows = evaluator.baseline_rows(evaluator.parse_args(["--kind", "mesh"]))
+    assert mesh_rows is not None
+    assert {row["model"] for row in mesh_rows} == {"suzanne"}
     # Explicit --baseline restricts to that one file.
     only = evaluator.baseline_rows(evaluator.parse_args(["--baseline", str(mesh)]))
     assert only is not None
@@ -364,7 +370,6 @@ def test_baseline_rows_merge_both_kinds(
         )
     # ... while absent committed defaults still skip the comparison.
     synthetic.unlink()
-    mesh.unlink()
     assert evaluator.baseline_rows(evaluator.parse_args([])) is None
 
 

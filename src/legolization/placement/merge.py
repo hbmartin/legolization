@@ -349,11 +349,12 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
             with telemetry.span("connectivity.bridge_milp"):
                 synthesized = bridge(layout, region, grid)
             if synthesized is not None:
-                best = synthesized
-                best_key = (
-                    ConnectionGraph.from_layout(synthesized).component_count(),
-                    len(synthesized),
-                )
+                synthesized_components = ConnectionGraph.from_layout(
+                    synthesized
+                ).component_count()
+                if synthesized_components < components:
+                    best = synthesized
+                    best_key = (synthesized_components, len(synthesized))
         draw, draw_key = _best_bridging_draw(
             layout,
             grid,

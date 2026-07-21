@@ -723,6 +723,11 @@ class _PlanVerifier:
         seen |= step_set
         sub_layout = self.layout.subset(seen).translated(dz=sub.anchor_layer)
         result = analyze(sub_layout, self.config.solver)
+        self._check_fragile_mark(
+            step,
+            press_ids=step.brick_ids,
+            analysis_layout=sub_layout,
+        )
         if result.stable != step.prefix_stable:
             self.violations.append(
                 f"step {step.index}: sub prefix stability mismatch "
@@ -747,7 +752,13 @@ class _PlanVerifier:
             )
         if any(self.blockers[bid] & self.placed for bid in unit):
             self.violations.append(f"step {step.index}: attach unit vertically blocked")
-        result = self._analyzed(self.placed | unit)
+        seated_layout = self.layout.subset(self.placed | unit)
+        result = analyze(seated_layout, self.config.solver)
+        self._check_fragile_mark(
+            step,
+            press_ids=tuple(sorted(unit)),
+            analysis_layout=seated_layout,
+        )
         floating = {
             bid
             for bid, score in result.scores.items()
@@ -795,11 +806,11 @@ class _PlanVerifier:
                 self.violations.append(f"step {step.index}: vertically blocked insert")
         if self.prefix_solver is not None:
             result = self.prefix_solver.probe(step.brick_ids)
-            self._check_fragile_mark(step)
+            self._check_fragile_mark(step, press_ids=step.brick_ids)
             self.prefix_solver.commit(step.brick_ids)
         else:
             result = self._analyzed(self.placed | step_set)
-            self._check_fragile_mark(step)
+            self._check_fragile_mark(step, press_ids=step.brick_ids)
         if result.stable != step.prefix_stable:
             self.violations.append(
                 f"step {step.index}: prefix stability mismatch "
@@ -807,34 +818,47 @@ class _PlanVerifier:
             )
         self.placed |= step_set
 
-    def _check_fragile_mark(self, step: BuildStep) -> None:
+    def _check_fragile_mark(
+        self,
+        step: BuildStep,
+        *,
+        press_ids: tuple[int, ...],
+        analysis_layout: Layout | None = None,
+    ) -> None:
         """Re-derive the press verdict for steps the sequencer flagged.
 
         One-directional on purpose: a fragile mark must reproduce as
         press-unstable (the flag never lies), but unflagged steps are
         not press-verified — rescue and band orderings are never
         press-scanned during sequencing, so demanding their absence of
-        the flag re-derive would fail valid plans. When the check is
-        off, no press LP runs at all (verify stays byte-identical).
+        the flag re-derive would fail valid plans. ``analysis_layout``
+        supplies the exact non-main frame: table-grounded for a
+        sub-build, or the placed world plus the seated attachment unit.
+        When the check is off, no press LP runs at all (verify stays
+        byte-identical).
         """
         if not (
             self.config.insertion_check
             and step.insertion_fragile
             and step.prefix_stable
-            and step.brick_ids
+            and press_ids
         ):
             return
-        if self.prefix_solver is not None:
+        if analysis_layout is not None:
+            press = analyze(
+                analysis_layout,
+                self.config.solver,
+                extra_masses=dict.fromkeys(press_ids, self.config.insertion_mass_kg),
+            )
+        elif self.prefix_solver is not None:
             press = self.prefix_solver.press_probe(
-                step.brick_ids, self.config.insertion_mass_kg
+                press_ids, self.config.insertion_mass_kg
             )
         else:
             press = analyze(
-                self.layout.subset(self.placed | set(step.brick_ids)),
+                self.layout.subset(self.placed | set(press_ids)),
                 self.config.solver,
-                extra_masses=dict.fromkeys(
-                    step.brick_ids, self.config.insertion_mass_kg
-                ),
+                extra_masses=dict.fromkeys(press_ids, self.config.insertion_mass_kg),
             )
         if press.stable:
             self.violations.append(
