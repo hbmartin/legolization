@@ -275,6 +275,7 @@ def test_import_cli_rejects_placement_flags(tmp_path):
         ["-o", str(tmp_path / "x.ldr"), "--shell-plates", "2"],
         ["-o", str(tmp_path / "x.ldr"), "--stability-weight", "2.0"],
         ["-o", str(tmp_path / "x.ldr"), "--bridge-rephase"],
+        ["-o", str(tmp_path / "x.ldr"), "--hybrid-bridge"],
     ):
         with pytest.raises(SystemExit) as excinfo:
             main([str(source), *extra])

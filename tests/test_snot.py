@@ -12,7 +12,7 @@ from legolization.layout import Layout
 from legolization.ldraw_in import layout_from_ldraw
 from legolization.ldraw_out import piece_for, write_model
 from legolization.placement.snot import apply_snot
-from legolization.stability.prefix import PrefixSolver
+from legolization.stability.prefix import PrefixSolver, RemovalSolver
 from legolization.stability.solver import SolverConfig, analyze
 
 
@@ -110,10 +110,66 @@ def test_clad_tower_is_stable():
     assert not graph.floating_ids()
 
 
-def test_prefix_solver_declines_snot_layouts():
+def test_prefix_solver_warms_snot_layouts():
     layout, grid = _clad_tower()
     apply_snot(layout, grid)
-    assert PrefixSolver.create(layout, SolverConfig()) is None
+    config = SolverConfig()
+    solver = PrefixSolver.create(layout, config)
+    assert solver is not None
+    brackets = tuple(
+        brick.brick_id for brick in layout if "side_stud" in brick.part_key
+    )
+    tiles = tuple(
+        brick.brick_id for brick in layout if brick.part_key.endswith("_snot")
+    )
+    solver.probe(brackets)
+    solver.commit(brackets)
+    warm = solver.probe(tiles)
+    cold = analyze(layout, config)
+    assert warm.stable == cold.stable
+    assert warm.objective == pytest.approx(cold.objective, rel=1e-6, abs=1e-8)
+    pressed = solver.press_probe(tiles, 1.0)
+    cold_pressed = analyze(
+        layout,
+        config,
+        extra_masses=dict.fromkeys(tiles, 1.0),
+    )
+    assert pressed.stable == cold_pressed.stable
+    assert pressed.objective == pytest.approx(
+        cold_pressed.objective,
+        rel=1e-6,
+        abs=1e-8,
+    )
+
+
+@pytest.mark.parametrize("yaw", [0, 90, 180, 270])
+def test_snot_warm_cold_rotation_equivalence(yaw: int) -> None:
+    layout = Layout(catalog=default_catalog())
+    bracket = layout.add("brick_1x1_side_stud", 4, 4, 0, yaw, 4)
+    connector = next(
+        conn
+        for conn in layout.connectors_of(bracket, top=True)
+        if conn.direction[2] == 0
+    )
+    dx, dy, _ = connector.direction
+    tile = layout.add("tile_1x1_snot", 4 + dx, 4 + dy, 0, yaw, 14)
+    config = SolverConfig(torque_z=True, rotate_contact_pattern=True)
+    solver = PrefixSolver.create(layout, config)
+    assert solver is not None
+    warm = solver.probe((bracket.brick_id, tile.brick_id))
+    cold = analyze(layout, config)
+    assert warm.stable == cold.stable
+    assert warm.objective == pytest.approx(cold.objective, rel=1e-6, abs=1e-8)
+    remover = RemovalSolver.create(layout, frozenset(layout.bricks), config)
+    assert remover is not None
+    removed = remover.probe_without((tile.brick_id,))
+    cold_removed = analyze(layout.subset({bracket.brick_id}), config)
+    assert removed.stable == cold_removed.stable
+    assert removed.objective == pytest.approx(
+        cold_removed.objective,
+        rel=1e-6,
+        abs=1e-8,
+    )
 
 
 # --- emission and import ---

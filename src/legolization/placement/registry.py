@@ -101,6 +101,7 @@ def _make_bond(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         progress=config.progress,
         milp_bridge=config.milp_bridge,
         bridge_rephase=config.bridge_rephase,
+        hybrid_bridge=config.hybrid_bridge,
         **_fail_max_override(config),
     )
 
@@ -114,6 +115,7 @@ def _make_fast(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         progress=config.progress,
         milp_bridge=config.milp_bridge,
         bridge_rephase=config.bridge_rephase,
+        hybrid_bridge=config.hybrid_bridge,
         **_fail_max_override(config),
     )
 
@@ -128,6 +130,7 @@ def _make_smga(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         config=SmGaConfig(max_generations=config.ga_generations),
         milp_bridge=config.milp_bridge,
         bridge_rephase=config.bridge_rephase,
+        hybrid_bridge=config.hybrid_bridge,
         **_fail_max_override(config),
     )
 
@@ -142,6 +145,7 @@ def _make_beauty(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         beauty=BeautyWeights.preset(config.beauty_preset),
         milp_bridge=config.milp_bridge,
         bridge_rephase=config.bridge_rephase,
+        hybrid_bridge=config.hybrid_bridge,
         **_fail_max_override(config),
     )
 
@@ -157,6 +161,7 @@ def _make_kollsker(catalog: Catalog, config: PipelineConfig) -> PlacementStrateg
         bond_weight=config.milp_bond_weight,
         milp_bridge=config.milp_bridge,
         bridge_rephase=config.bridge_rephase,
+        hybrid_bridge=config.hybrid_bridge,
         **_fail_max_override(config),
     )
 

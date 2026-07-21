@@ -28,8 +28,8 @@ uv run python scripts/profile_pipeline.py MODEL [--strategy greedy]
 ```
 
 `MODEL` is a file path or a corpus manifest name (`spot`, `suzanne`,
-`letter-t`, ...). Runs the pipeline in-process under
-`telemetry.record()` and writes
+`letter-t`, ...). The command supervises one isolated child process
+under `telemetry.record()` and writes
 `eval/profiles/<UTC>-<name>-<strategy>.json` (schema 1):
 
 - `git_sha` — the exact code state (read from `.git`, no subprocess);
@@ -41,8 +41,61 @@ uv run python scripts/profile_pipeline.py MODEL [--strategy greedy]
 - `total_seconds` and `spans` — per-span calls, seconds, and
   power-of-two `n` buckets.
 
+Voxelization, layer placement, vertical compaction, connectivity repair,
+stability analysis, and stability repair are watched separately. Every
+stage receives a fresh 600-second watchdog; stage transitions print
+immediately and the parent emits a heartbeat every 30 seconds. Override
+these only for a deliberate fixture with `--stage-timeout SECONDS` and
+`--heartbeat SECONDS`. On timeout the parent terminates the child and
+atomically writes a durable JSON artifact containing `active_stage` and
+all telemetry completed before the timeout.
+
 `--cprofile` additionally writes a sibling `.pstats`. cProfile inflates
 wall times; with it on, compare **call counts**, never seconds.
+
+### Armadillo release gate
+
+Armadillo is explicitly outside every inner loop. Profile it on an idle
+machine, one process and one strategy at a time, with layer-only
+instructions:
+
+```
+for strategy in greedy luo bond fast smga beauty kollsker; do
+  uv run python scripts/profile_pipeline.py armadillo \
+    --strategy "$strategy" --steps layer \
+    --stage-timeout 600 --heartbeat 30 \
+    --label "armadillo-isolated-$strategy"
+done
+```
+
+Do not parallelize this loop and do not add it to pytest or the default
+corpus collection. A timed-out artifact is a valid diagnostic result:
+its `active_stage` distinguishes voxelization, tiling, compaction,
+connectivity, stability analysis, and stability repair. The stage
+classification run remains the explicit offline release measurement in
+`docs/v5-pending-measurements.md`.
+
+The sequential idle-machine run on 2026-07-20 used seed 0, layer-only
+instructions, and the 600-second per-stage watchdog. All seven children
+produced timeout artifacts:
+
+| strategy | timeout stage | voxelize (s) | tile (s) | compact (s) | connectivity (s) | completed stability-analysis spans (s) |
+|---|---|---:|---:|---:|---:|---:|
+| greedy | generic placement | 0.191 | — | — | 0.265 | 486.3 |
+| luo | generic placement | 0.181 | — | — | 0.547 | 234.6 |
+| bond | stability repair (second pass) | 0.188 | 1.567 | 0.003 | 9.166 | 1,269.1 |
+| fast | stability repair | 0.187 | 0.921 | 0.001 | 5.124 | 628.8 |
+| smga | stability repair | 0.182 | 20.754 | 0.002 | 7.460 | 567.5 |
+| beauty | stability repair | 0.179 | 36.579 | 0.001 | 4.133 | 581.9 |
+| kollsker | stability repair | 0.172 | 2.325 | 0.001 | 4.419 | 580.7 |
+
+Leaf stability spans overlap their owning placement/repair span and are
+therefore diagnostic totals, not additive wall time. Bond completed one
+596.9-second repair pass before its second repair timed out. The result
+rules out voxelization, layered tiling, compaction, and connectivity as
+the old 900-second wall-time failure: legacy greedy/Luo exceed the cap in
+placement-time stability scoring, while every layered strategy reaches
+stability repair and spends its budget there.
 
 ### `legolization ... --profile out.json` (CLI convenience)
 
@@ -161,13 +214,13 @@ falls back to the legacy chain.
 
 ## 7. Known gaps
 
-- The warm prefix/removal solvers decline SNOT layouts
-  (`stability/prefix.py::_has_lateral_parts`): their contact discovery
-  is z-up-only, so `--snot` models sequence on the cold engine.
-  Revisit when SNOT contact semantics stabilize; the extension needs
-  dual-engine equivalence tests mirroring `tests/test_prefix_solver.py`.
-- Telemetry does not cross spawn workers: `--strategy all` sweeps
-  cannot be profiled; profile single strategies in-process.
+- Prefix sequencing now indexes vertical and lateral knob contacts from
+  `ConnectionGraph`, including rotated SNOT patterns, and remains warm.
+  Disassembly still solves newly encountered contact components through
+  the presolved cold analyzer; its component cache, rather than LP
+  deletion, is the measured optimization.
+- Telemetry does not cross placement sweep workers: `--strategy all` sweeps
+  cannot be profiled; profile each strategy in its own supervised process.
 
 ## 8. Deadline and enumeration guardrails
 

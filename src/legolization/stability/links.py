@@ -116,7 +116,7 @@ def _localize_body(
         constraints.append(forces[model.drag_cols] <= T_CAPACITY_N)
     problem = cp.Problem(cp.Minimize(cp.sum_squares(link_forces)), constraints)
     status = _solve(problem)
-    if link_forces.value is None:
+    if link_forces.value is None or problem.value is None:
         return LinkReport(q=float("inf"), links=(), status=status)
     values = np.asarray(link_forces.value)
     links = tuple(

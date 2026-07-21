@@ -9,6 +9,66 @@ stopped. For the algorithms and formulas each item builds on, see the papers in
 Living log of the v7 program (PR-19/PR-21 residual remediation,
 re-phased bridge experiment, and the standing mesh baseline).
 
+### 2026-07-20 — WS-X: resumable evaluation and targeted quality work
+
+Corpus evaluation is now a two-command transaction. The collector writes
+the full expected manifest before launching work and persists an atomic
+artifact as each model/strategy/seed future finishes. Exact successful
+commit + dirty-source + effective-config + input identities are reused;
+failed, corrupt, missing, or identity-mismatched candidates are retried,
+and `--fresh` bypasses reuse. The separate `assemble_eval.py` command
+never runs placement and refuses an incomplete or mismatched matrix
+before scorecard/baseline output. Dirty baselines are permitted but carry
+the full identity.
+
+`profile_pipeline.py` now supervises an isolated child with fresh
+600-second watchdogs for voxelization, tiling, compaction, connectivity,
+stability analysis, and stability repair. Stage transitions plus
+30-second heartbeats are visible, and a terminated child leaves a durable
+partial telemetry artifact. Armadillo remains an explicit sequential,
+idle-machine release gate; it is not in pytest, default evaluation, or an
+inner-loop command.
+
+The release gate was then run serially for all seven strategies. Greedy
+and Luo timed out in generic placement at 600 seconds; Bond, Fast, SM-GA,
+Beauty, and Kollsker reached stability repair and timed out there. Across
+the layered strategies, voxelization took 0.17–0.19 seconds, tiling
+0.9–36.6 seconds, compaction about 0.001–0.003 seconds, and connectivity
+4.1–9.2 seconds. Bond completed one 596.9-second repair before its second
+repair timed out. The real Armadillo run also exposed and closed a
+watchdog attribution bug: enclosing placement/connectivity/repair stages
+now own nested stability spans, so inner solves cannot reset a parent
+stage indefinitely. The old 900-second wall failure is therefore
+localized to placement-time stability scoring for the legacy strategies
+and stability repair for every layered strategy.
+
+The opt-in hybrid bridge starts independently from mushroom's phase-1
+3-component/196-brick candidate. Bounded component-border k-rings are
+re-covered by exact-cover MILPs with hard no-slack connectivity flow;
+changed placements dominate final count and deterministic rank. The
+measured result is **1 component / 198 bricks** (10 changed placement
+signatures), versus the legacy random completion's 267 intermediate /
+251 final bricks. `--bridge-rephase` remains an independent ablation and
+all candidates still compete by components then count without consuming
+the RNG fallback stream.
+
+Press-aware instruction formation remains default-off and byte-identical
+when disabled. With insertion checking enabled, forced fragile chunks are
+pre-refined only when both halves become press-stable, otherwise bounded
+same/adjacent-band unions (support closure, blocker-safe topological
+order, max-step cap) coalesce ordinary and rescue-tail work while keeping
+truthful warnings. Ordinary/rescue residuals are press-tower **2**,
+cantilever **2**, mushroom **18**, with zero unstable steps, verifier
+violations, or oversized steps; whole-subassembly seating presses remain
+separate truthful checks.
+
+Finally, PrefixSolver and RemovalSolver derive direction-aware knob and
+side contact indexes from `ConnectionGraph`. Warm prefix probes now emit
+the same lateral contact normals, shear/drag forces, reachability, and
+rotated torque patterns as cold construction. Static, press, append,
+rollback, selective split lookahead, removal, and failure recovery are
+pinned to cold results within 1e-6 for 0/90/180/270-degree SNOT fixtures.
+
 ### 2026-07-20 — WS-R: PR-19 residual correctness remediation
 
 All production cold-model construction now goes through

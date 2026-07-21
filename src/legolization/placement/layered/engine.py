@@ -135,6 +135,8 @@ class LayeredStrategy:
     count_trajectory ablation knob."""
     bridge_rephase: bool = False
     """Try all three vertical brick phases during bridge synthesis."""
+    hybrid_bridge: bool = False
+    """Try hard-connectivity completion of the phase-1 partial cover."""
 
     def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
         """Tile every layer problem bottom-up, then repair topology."""
@@ -143,26 +145,28 @@ class LayeredStrategy:
         total = sum(len(problem.columns) for problem in problems) or 1
         deadline = time.monotonic() + self.time_budget_s if self.time_budget_s else None
         done = 0
-        for index, problem in enumerate(problems):
-            context = build_context(layout, problem)
-            share = len(problem.columns) / total
-            sub_deadline = (
-                None
-                if deadline is None
-                else min(
-                    deadline,
-                    time.monotonic() + share * max(deadline - time.monotonic(), 0.0),
+        with telemetry.span("place.tile"):
+            for index, problem in enumerate(problems):
+                context = build_context(layout, problem)
+                share = len(problem.columns) / total
+                sub_deadline = (
+                    None
+                    if deadline is None
+                    else min(
+                        deadline,
+                        time.monotonic()
+                        + share * max(deadline - time.monotonic(), 0.0),
+                    )
                 )
-            )
-            rects = self.tile(problem, context, rng=rng, deadline=sub_deadline)
-            _assert_cover(problem, rects)
-            realize(layout, problem, rects)
-            done += len(problem.columns)
-            if self.progress is not None:
-                self.progress(
-                    f"layer {index + 1}/{len(problems)} "
-                    f"({100 * done // total}% of cells)"
-                )
+                rects = self.tile(problem, context, rng=rng, deadline=sub_deadline)
+                _assert_cover(problem, rects)
+                realize(layout, problem, rects)
+                done += len(problem.columns)
+                if self.progress is not None:
+                    self.progress(
+                        f"layer {index + 1}/{len(problems)} "
+                        f"({100 * done // total}% of cells)"
+                    )
         recording = telemetry.current() is not None
         telemetry.value("place.tiled.bricks", len(layout))
         if recording:  # graph builds only when a session is recording
@@ -170,7 +174,8 @@ class LayeredStrategy:
                 "place.tiled.components",
                 ConnectionGraph.from_layout(layout).component_count(),
             )
-        compact_vertical(layout)
+        with telemetry.span("place.compact"):
+            compact_vertical(layout)
         telemetry.value("place.compacted.bricks", len(layout))
         if recording:
             telemetry.value(
@@ -196,6 +201,7 @@ class LayeredStrategy:
                 catalog=self.catalog,
                 placement_deadline=deadline,
                 rephase=self.bridge_rephase,
+                hybrid=self.hybrid_bridge,
             )
             if self.milp_bridge
             else None,

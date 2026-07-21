@@ -293,6 +293,33 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     deadline: float | None = None,
     bridge: BridgeFn | None = None,
 ) -> int:
+    """Run connectivity repair under one top-level profiling span."""
+    with telemetry.span("place.connectivity"):
+        return _improve_connectivity(
+            layout,
+            grid,
+            rng,
+            fail_max=fail_max,
+            colour_mode=colour_mode,
+            colour_weight=colour_weight,
+            bridge_draws=bridge_draws,
+            deadline=deadline,
+            bridge=bridge,
+        )
+
+
+def _improve_connectivity(  # noqa: PLR0913 - internal implementation
+    layout: Layout,
+    grid: VoxelGrid,
+    rng: np.random.Generator,
+    *,
+    fail_max: int = 30,
+    colour_mode: ColourMode = "hard",
+    colour_weight: float = 1.0,
+    bridge_draws: int = 1,
+    deadline: float | None = None,
+    bridge: BridgeFn | None = None,
+) -> int:
     """Split-remerge around component borders until single-component.
 
     Straight vertical seams (e.g. a 7-wide row split 6+1 on every layer) can

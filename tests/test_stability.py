@@ -382,7 +382,7 @@ def test_one_wide_side_contact_has_four_physical_corner_generators(layout):
     assert (side.t_lo, side.t_hi) == (-0.5, 0.5)
 
     model = build_model(layout, graph, torque_z=True)
-    side_columns = model.a_matrix[:, -4:].toarray()
+    side_columns = model.a_matrix.toarray()[:, -4:]
     assert len({tuple(side_columns[:, i]) for i in range(4)}) == 4
     yaw_rows = side_columns[[5, 11], :]
     assert (abs(yaw_rows).max(axis=0) > 0.0).all()

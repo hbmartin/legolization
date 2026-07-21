@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint
@@ -72,7 +72,14 @@ from legolization.placement.layered.kollsker import (
     _guarded_milp,
     bond_reward,
 )
-from legolization.placement.merge import _MERGEABLE, _cell_code, compact_vertical
+from legolization.placement.merge import (
+    _MERGEABLE,
+    _cell_code,
+    compact_vertical,
+    component_border,
+    k_ring,
+    neighbour_ids,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -135,7 +142,10 @@ def _cover_rows(entries: list[_FlowEntry], builder: _RowBuilder) -> int:
     """Append the block-diagonal exact-cover rows; return the row count."""
     row = 0
     for entry in entries:
-        cover = _cover_matrix(entry.component, entry.rects).tocoo()
+        cover = cast(
+            "coo_matrix",
+            _cover_matrix(entry.component, entry.rects).tocoo(),
+        )
         for r, c, v in zip(cover.row, cover.col, cover.data, strict=True):
             builder.entry(row + int(r), entry.offset + int(c), float(v))
         block_rows = cover.shape[0]
@@ -224,6 +234,62 @@ def _flow_constraints(
     return LinearConstraint(matrix, np.array(builder.lb), np.array(builder.ub))
 
 
+def _hard_flow_constraints(
+    entries: list[_FlowEntry],
+    graph: _FlowGraph,
+    *,
+    n_rects: int,
+    capacity: float,
+) -> LinearConstraint:
+    """Exact cover plus hard connectivity flow, with no slack variables."""
+    builder = _RowBuilder()
+    f_col = n_rects
+    row = _cover_rows(entries, builder)
+    inflow: dict[int, list[int]] = {}
+    outflow: dict[int, list[int]] = {}
+    for arc_index, (tail, head) in enumerate(graph.arcs):
+        outflow.setdefault(tail, []).append(arc_index)
+        inflow.setdefault(head, []).append(arc_index)
+
+    def net_flow(node: int, target_row: int) -> None:
+        for arc_index in inflow.get(node, ()):
+            builder.entry(target_row, f_col + arc_index, 1.0)
+        for arc_index in outflow.get(node, ()):
+            builder.entry(target_row, f_col + arc_index, -1.0)
+
+    terminals = set(graph.terminals)
+    for node_key, node in graph.node_ids.items():
+        if node == graph.root:
+            continue
+        match node_key:
+            case ("r", int(rect_index)):
+                # Every selected placement consumes one unit traceable
+                # to the root. No orphan variable can waive this row.
+                net_flow(node, row)
+                builder.entry(row, rect_index, -1.0)
+                builder.bound(0.0, 0.0)
+                row += 1
+                for arc_index in inflow.get(node, ()):
+                    builder.entry(row, f_col + arc_index, 1.0)
+                builder.entry(row, rect_index, -capacity)
+                builder.bound(-np.inf, 0.0)
+                row += 1
+            case _ if node in terminals:
+                net_flow(node, row)
+                builder.bound(1.0, 1.0)
+                row += 1
+            case _:
+                net_flow(node, row)
+                builder.bound(0.0, 0.0)
+                row += 1
+
+    matrix = coo_matrix(
+        (builder.data, (builder.rows, builder.cols)),
+        shape=(row, n_rects + len(graph.arcs)),
+    )
+    return LinearConstraint(matrix, np.array(builder.lb), np.array(builder.ub))
+
+
 @dataclass(slots=True)
 class BridgeSynthesizer:
     """Exact-cover MILP re-tiling of a connectivity-repair ring.
@@ -259,6 +325,11 @@ class BridgeSynthesizer:
     """Absolute outer placement deadline shared by every bridge attempt."""
     rephase: bool = False
     """Try phase 0 only when false; phases 0, 1, and 2 when true."""
+    hybrid: bool = False
+    """Complete an independent phase-1 partial cover with a bounded,
+    no-slack local connectivity MILP."""
+    hybrid_rings: int = 3
+    """Maximum component-border k-ring grown for local completion."""
 
     def __call__(
         self,
@@ -283,6 +354,11 @@ class BridgeSynthesizer:
             before,
             phases,
         )
+        hybrid_candidate = (
+            self._hybrid_candidate(layout, region, grid, deadline, before)
+            if self.hybrid and time.monotonic() < deadline
+            else None
+        )
         self._add_flow_candidates(
             layout,
             region,
@@ -292,7 +368,21 @@ class BridgeSynthesizer:
             phase_candidates,
             phase_keys,
         )
-        return self._choose_phase_candidate(phase_candidates, phases)
+        legacy = self._choose_phase_candidate(phase_candidates, phases)
+        candidates = [
+            (candidate, rank)
+            for candidate, rank in ((legacy, 0), (hybrid_candidate, 1))
+            if candidate is not None
+        ]
+        return min(
+            candidates,
+            key=lambda item: (
+                ConnectionGraph.from_layout(item[0]).component_count(),
+                len(item[0]),
+                item[1],
+            ),
+            default=(None, 0),
+        )[0]
 
     def _initial_phase_candidates(  # noqa: PLR0913 - shared phase state
         self,
@@ -899,3 +989,238 @@ class BridgeSynthesizer:
                     + self.bond_weight * bond_reward(rect, entry.context)
                 )
         return np.array(rewards)
+
+    # --- phase-1 hybrid completion ------------------------------------
+
+    def _hybrid_candidate(  # noqa: C901 - bounded search phases are explicit
+        self,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+    ) -> Layout | None:
+        """Add the minimum changed local placements to phase 1."""
+        with telemetry.span("connectivity.bridge_hybrid.phase1"):
+            phase_one = self._per_slab_candidate(
+                layout,
+                region,
+                grid,
+                deadline,
+                before,
+                phase=1,
+            )
+        if phase_one is None:
+            return None
+        components = ConnectionGraph.from_layout(phase_one).component_count()
+        telemetry.value("connectivity.bridge.hybrid.phase1_components", components)
+        telemetry.value("connectivity.bridge.hybrid.phase1_bricks", len(phase_one))
+        if components == 1:
+            return phase_one
+        borders = component_border(phase_one)
+        if not borders:
+            return None
+        current = phase_one
+        while ConnectionGraph.from_layout(current).component_count() > 1:
+            best: Layout | None = None
+            best_key: (
+                tuple[int, int, tuple[tuple[str, int, int, int, int, int], ...]] | None
+            ) = None
+            for ring in range(1, self.hybrid_rings + 1):
+                if time.monotonic() >= deadline:
+                    break
+                for local in self._border_windows(current, ring=ring):
+                    if time.monotonic() >= deadline:
+                        break
+                    with telemetry.span("connectivity.bridge_hybrid.flow"):
+                        candidate = self._hard_flow_candidate(
+                            current,
+                            local,
+                            grid,
+                            deadline,
+                            original=current,
+                            phase=1,
+                        )
+                    if candidate is None:
+                        continue
+                    key = (
+                        self._changed_placements(phase_one, candidate),
+                        len(candidate),
+                        self._layout_rank(candidate),
+                    )
+                    if best_key is None or key < best_key:
+                        best, best_key = candidate, key
+                # Prefer the narrowest border windows that admit a hard
+                # connector; wider rings are only a deterministic rescue.
+                if best is not None:
+                    break
+            if best is None:
+                return None
+            current = best
+        changed = self._changed_placements(phase_one, current)
+        telemetry.value("connectivity.bridge.hybrid.changed", changed)
+        telemetry.value("connectivity.bridge.hybrid.bricks", len(current))
+        return current
+
+    @staticmethod
+    def _border_windows(layout: Layout, *, ring: int) -> list[set[int]]:
+        """Small deterministic k-rings around individual component seams."""
+        labels = ConnectionGraph.from_layout(layout).brick_components()
+        seeds: set[tuple[int, int]] = set()
+        for brick in layout:
+            for other_id in neighbour_ids(layout, brick.brick_id):
+                if labels[other_id] == labels[brick.brick_id]:
+                    continue
+                seeds.add(
+                    (
+                        min(brick.brick_id, other_id),
+                        max(brick.brick_id, other_id),
+                    )
+                )
+        windows: dict[frozenset[int], set[int]] = {}
+        for pair in sorted(seeds):
+            window = k_ring(layout, set(pair), ring)
+            windows.setdefault(frozenset(window), window)
+        return [windows[key] for key in sorted(windows, key=sorted)]
+
+    def _hard_flow_candidate(  # noqa: PLR0913 - exact local completion state
+        self,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        *,
+        original: Layout,
+        phase: int,
+    ) -> Layout | None:
+        """Re-cover one local ring under hard flow and lexicographic cost."""
+        if (carved := self._carve(layout, region, grid)) is None:
+            return None
+        candidate, cells = carved
+        labels = ConnectionGraph.from_layout(candidate).brick_components()
+        entries = self._gather_entries(candidate, cells, deadline, phase=phase)
+        if not entries:
+            return None
+        graph = self._flow_graph(candidate, entries, labels)
+        if graph is None:
+            return None
+        n_rects = entries[-1].offset + len(entries[-1].rects)
+        n_arcs = len(graph.arcs)
+        capacity = float(n_rects + len(graph.terminals) + 1)
+        constraints = _hard_flow_constraints(
+            entries,
+            graph,
+            n_rects=n_rects,
+            capacity=capacity,
+        )
+        integrality = np.concatenate([np.ones(n_rects), np.zeros(n_arcs)])
+        bounds = Bounds(
+            np.zeros(n_rects + n_arcs),
+            np.concatenate([np.ones(n_rects), np.full(n_arcs, capacity)]),
+        )
+        original_rects = self._placement_rects(original, region)
+        changed = np.array(
+            [
+                float(self._rect_rank(entry.problem, rect) not in original_rects)
+                for entry in entries
+                for rect in entry.rects
+            ]
+        )
+        # One changed placement dominates every possible brick-count
+        # difference; count dominates the bounded rank epsilon.
+        rank = _RANK_EPS * np.arange(n_rects)
+        cost = np.concatenate(
+            [
+                changed * float(n_rects + 1) + 1.0 + rank,
+                np.zeros(n_arcs),
+            ]
+        )
+        if (budget := self._flow_budget(deadline)) is None:
+            return None
+        solved = _guarded_milp(
+            c=cost,
+            constraints=constraints,
+            integrality=integrality,
+            bounds=bounds,
+            options={"time_limit": budget},
+        )
+        if solved is None or not solved.success or solved.x is None:
+            return None
+        for entry in entries:
+            chosen = [
+                rect
+                for index, rect in enumerate(entry.rects, start=entry.offset)
+                if solved.x[index] > 0.5
+            ]
+            realize(candidate, entry.problem, chosen)
+        compact_vertical(candidate)
+        before_components = ConnectionGraph.from_layout(layout).component_count()
+        after_components = ConnectionGraph.from_layout(candidate).component_count()
+        return candidate if after_components < before_components else None
+
+    @staticmethod
+    def _rect_rank(
+        problem: LayerProblem,
+        rect: Rect2D,
+    ) -> tuple[int, int, int, int, int, int, int]:
+        return (
+            problem.layer,
+            problem.height_plates,
+            rect.x0,
+            rect.y0,
+            rect.x1,
+            rect.y1,
+            rect.colour,
+        )
+
+    def _placement_rects(
+        self,
+        layout: Layout,
+        region: set[int],
+    ) -> set[tuple[int, int, int, int, int, int, int]]:
+        """Canonical mergeable placement ranks inside one local ring."""
+        ranks: set[tuple[int, int, int, int, int, int, int]] = set()
+        for brick_id in sorted(region):
+            brick = layout.bricks.get(brick_id)
+            if brick is None or layout.part_of(brick).category not in _MERGEABLE:
+                continue
+            cells = layout.cells_of(brick)
+            xs = [cell[0] for cell in cells]
+            ys = [cell[1] for cell in cells]
+            zs = [cell[2] for cell in cells]
+            ranks.add(
+                (
+                    min(zs),
+                    max(zs) - min(zs) + 1,
+                    min(xs),
+                    min(ys),
+                    max(xs),
+                    max(ys),
+                    brick.colour_code,
+                )
+            )
+        return ranks
+
+    def _changed_placements(self, before: Layout, after: Layout) -> int:
+        """Symmetric placement difference, used across k-ring solutions."""
+        before_ranks = self._layout_rank(before)
+        after_ranks = self._layout_rank(after)
+        return len(set(before_ranks) ^ set(after_ranks))
+
+    @staticmethod
+    def _layout_rank(
+        layout: Layout,
+    ) -> tuple[tuple[str, int, int, int, int, int], ...]:
+        return tuple(
+            sorted(
+                (
+                    brick.part_key,
+                    brick.x,
+                    brick.y,
+                    brick.layer,
+                    brick.yaw,
+                    brick.colour_code,
+                )
+                for brick in layout
+            )
+        )

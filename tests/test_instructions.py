@@ -801,3 +801,163 @@ def test_insertion_mass_must_be_positive() -> None:
         InstructionsConfig(insertion_mass_kg=0.0)
     with pytest.raises(ValueError, match="insertion_mass_kg"):
         InstructionsConfig(insertion_mass_kg=float("nan"))
+
+
+def test_cross_band_union_constraints_and_dependency_order() -> None:
+    from legolization.instructions.sequencer import (
+        _insertion_order,
+        _press_union_allowed,
+    )
+
+    layout = Layout(catalog=default_catalog())
+    base = layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    middle = layout.add("brick_1x1", 0, 0, 3, 0, 4)
+    upper = layout.add("brick_1x1", 0, 0, 6, 0, 4)
+    top = layout.add("brick_1x1", 0, 0, 9, 0, 4)
+    supports = {
+        base.brick_id: set(),
+        middle.brick_id: {base.brick_id},
+        upper.brick_id: {middle.brick_id},
+        top.brick_id: {upper.brick_id},
+    }
+    blockers = {brick.brick_id: frozenset() for brick in layout}
+    blocks = {brick.brick_id: set() for brick in layout}
+    neighbours = {
+        base.brick_id: {middle.brick_id},
+        middle.brick_id: {base.brick_id, upper.brick_id},
+        upper.brick_id: {middle.brick_id, top.brick_id},
+        top.brick_id: {upper.brick_id},
+    }
+    rank = {0: 0, 3: 1, 6: 2, 9: 3}
+    pair = (upper.brick_id, middle.brick_id)
+    assert _press_union_allowed(
+        layout,
+        pair,
+        placed={base.brick_id},
+        supports=supports,
+        blockers=blockers,
+        blocks=blocks,
+        neighbours=neighbours,
+        band_rank=rank,
+        max_step_size=2,
+    )
+    assert _insertion_order(
+        layout,
+        pair,
+        supports=supports,
+        blockers=blockers,
+    ) == (middle.brick_id, upper.brick_id)
+    assert not _press_union_allowed(
+        layout,
+        (middle.brick_id, upper.brick_id, top.brick_id),
+        placed={base.brick_id},
+        supports=supports,
+        blockers=blockers,
+        blocks=blocks,
+        neighbours=neighbours,
+        band_rank=rank,
+        max_step_size=3,
+    )
+    assert not _press_union_allowed(
+        layout,
+        pair,
+        placed={base.brick_id},
+        supports=supports,
+        blockers=blockers,
+        blocks=blocks,
+        neighbours=neighbours,
+        band_rank=rank,
+        max_step_size=1,
+    )
+
+
+def test_press_union_prefers_stable_then_truthful_fragile_fallback() -> None:
+    from legolization.instructions.sequencer import _best_press_union
+
+    layout = Layout(catalog=default_catalog())
+    base = layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    middle = layout.add("brick_1x1", 0, 0, 3, 0, 4)
+    upper = layout.add("brick_1x1", 0, 0, 6, 0, 4)
+    chunks: list[tuple[int, tuple[int, ...]]] = [
+        (3, (middle.brick_id,)),
+        (6, (upper.brick_id,)),
+    ]
+    supports = {
+        base.brick_id: set(),
+        middle.brick_id: {base.brick_id},
+        upper.brick_id: {middle.brick_id},
+    }
+    blockers = {brick.brick_id: frozenset() for brick in layout}
+    blocks = {brick.brick_id: set() for brick in layout}
+    neighbours = {
+        base.brick_id: {middle.brick_id},
+        middle.brick_id: {base.brick_id, upper.brick_id},
+        upper.brick_id: {middle.brick_id},
+    }
+    static = _verdict(stable=True, score=0.2)
+    fragile = _verdict(stable=False, score=1.2)
+    robust = _verdict(stable=True, score=0.4)
+    common = {
+        "layout": layout,
+        "seed": 0,
+        "pending": [0, 1],
+        "chunks": chunks,
+        "placed": {base.brick_id},
+        "supports": supports,
+        "blockers": blockers,
+        "blocks": blocks,
+        "neighbours": neighbours,
+        "band_rank": {3: 0, 6: 1},
+        "brick_position": {middle.brick_id: 0, upper.brick_id: 1},
+        "max_step_size": 2,
+        "analyze_prefix": lambda _chunk: static,
+    }
+    stable_choice = _best_press_union(
+        **common,
+        press_prefix=lambda chunk: robust if len(chunk) == 2 else fragile,
+    )
+    assert stable_choice is not None
+    assert stable_choice[0] == (0, 1)
+    assert stable_choice[3] is False
+
+    fallback = _best_press_union(
+        **common,
+        press_prefix=lambda _chunk: fragile,
+    )
+    assert fallback is not None
+    assert fallback[0] == (0, 1)
+    assert fallback[3] is True
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    ("name", "fragile_limit"),
+    [("press-tower", 4), ("cantilever", 4), ("mushroom", 19)],
+)
+def test_press_corpus_chunking_acceptance(name: str, fragile_limit: int) -> None:
+    from pathlib import Path
+
+    from legolization.pipeline import PipelineConfig, load_grid, run
+
+    path = (
+        Path(__file__).parent.parent / "data" / "corpus" / "synthetic" / f"{name}.npy"
+    )
+    instructions = InstructionsConfig(insertion_check=True, rotstep=False)
+    result = run(
+        load_grid(path),
+        PipelineConfig(instructions=instructions),
+    )
+    assert result.plan is not None
+    # Chunking cannot change whole-unit subassembly seating; this gate
+    # measures ordinary and rescue chunks, the workstream's scope.
+    fragile = [
+        step
+        for step in result.plan.steps
+        if step.insertion_fragile and step.attaches is None
+    ]
+    assert len(fragile) < fragile_limit
+    assert all(step.prefix_stable for step in result.plan.steps)
+    assert all(
+        len(step.brick_ids) <= instructions.max_step_size for step in result.plan.steps
+    )
+    assert verify_plan(result.layout, result.plan, config=instructions) == []

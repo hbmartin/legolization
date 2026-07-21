@@ -303,13 +303,14 @@ def test_dataclass_positional_layouts_are_stable():
         "colour_mode",
     ]
     config_names = [f.name for f in fields(PipelineConfig)]
-    assert config_names[-6:] == [
+    assert config_names[-7:] == [
         "snot",
         "milp_layer_time_s",
         "milp_bond_weight",
         "connectivity_fail_max",
         "milp_bridge",
         "bridge_rephase",
+        "hybrid_bridge",
     ]
     assert config_names.index("tiles") + 1 == config_names.index("refine")
     result_names = [f.name for f in fields(pipeline_module.PipelineResult)]

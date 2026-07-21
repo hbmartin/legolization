@@ -42,7 +42,7 @@ from legolization.stability import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Collection, Sequence
     from concurrent.futures import Future
 
     from legolization.grid import VoxelGrid
@@ -265,6 +265,8 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     seeds: Sequence[int] | None = None,
     timeout_s: float | None = None,
     progress: Callable[[str], None] | None = None,
+    skip: Collection[tuple[str, int]] = (),
+    on_complete: Callable[[Candidate], None] | None = None,
 ) -> list[Candidate]:
     """Run each (strategy, seed) job; a single failure never kills the sweep.
 
@@ -278,13 +280,17 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     """
     chosen = tuple(names) if names is not None else tuple(strategy_names())
     chosen_seeds = tuple(dict.fromkeys(seeds)) if seeds else (config.seed,)
+    skipped = set(skip)
     configs = {
         (name, seed): _candidate_config(
             config, strategy=name, seed=seed, timeout_s=timeout_s
         )
         for name in chosen
         for seed in chosen_seeds
+        if (name, seed) not in skipped
     }
+    if not configs:
+        return []
     workers = jobs if jobs > 0 else min(len(configs), os.cpu_count() or 1)
     if workers == 1:
         # One monotonic deadline for the whole sequential sweep: stop
@@ -307,6 +313,8 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
                     grid, _restrict_budget(candidate_config, remaining)
                 )
             _report(progress, candidate)
+            if on_complete is not None:
+                on_complete(candidate)
             candidates.append(candidate)
     else:
         candidates = _run_parallel(
@@ -315,6 +323,7 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
             workers=workers,
             timeout_s=timeout_s,
             progress=progress,
+            on_complete=on_complete,
         )
     return sorted(candidates, key=lambda c: (c.strategy, c.seed))
 
@@ -380,13 +389,14 @@ def _run_candidate(grid: VoxelGrid, config: PipelineConfig) -> Candidate:
     )
 
 
-def _run_parallel(
+def _run_parallel(  # noqa: PLR0913
     grid: VoxelGrid,
     configs: dict[tuple[str, int], PipelineConfig],
     *,
     workers: int,
     timeout_s: float | None,
     progress: Callable[[str], None] | None,
+    on_complete: Callable[[Candidate], None] | None,
 ) -> list[Candidate]:
     """Fan out over a spawn pool with a soft, sweep-wide wait deadline.
 
@@ -411,6 +421,8 @@ def _run_parallel(
                 name, seed = pending.pop(future)
                 candidate = _collect(future, strategy=name, seed=seed)
                 _report(progress, candidate)
+                if on_complete is not None:
+                    on_complete(candidate)
                 candidates.append(candidate)
         except TimeoutError:
             pass
@@ -424,6 +436,8 @@ def _run_parallel(
                 error=f"timed out{timeout_text}",
             )
             _report(progress, candidate)
+            if on_complete is not None:
+                on_complete(candidate)
             candidates.append(candidate)
     finally:
         executor.shutdown(wait=False, cancel_futures=True)

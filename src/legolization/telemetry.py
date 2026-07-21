@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 _ACTIVE: ContextVar[Telemetry | None] = ContextVar("legolization_telemetry")
 _NOOP: AbstractContextManager[None] = nullcontext()
@@ -85,6 +85,11 @@ class Telemetry:
     per-name ``values`` lists cannot reconstruct (PR #18 review: phase
     rows printed placed-before-repaired because names were ordered
     independently)."""
+    span_sink: Callable[[str, str, float, Telemetry], None] | None = field(
+        default=None,
+        repr=False,
+    )
+    """Optional best-effort lifecycle sink for isolated profilers."""
 
     def add(self, name: str, seconds: float, n: int | None = None) -> None:
         """Record one finished call of ``name``."""
@@ -129,6 +134,11 @@ class Telemetry:
         """Gauge readings in global emission order (JSON-safe pairs)."""
         return list(self.events)
 
+    def notify_span(self, event: str, name: str) -> None:
+        """Emit a span lifecycle event when a profiler sink is active."""
+        if self.span_sink is not None:
+            self.span_sink(event, name, time.monotonic(), self)
+
 
 class _Span:
     """Timing context manager bound to an active :class:`Telemetry`."""
@@ -143,6 +153,7 @@ class _Span:
 
     def __enter__(self) -> Self:
         self._started = time.perf_counter()
+        self._telemetry.notify_span("start", self._name)
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -152,6 +163,7 @@ class _Span:
             time.perf_counter() - self._started,
             self._n,
         )
+        self._telemetry.notify_span("end", self._name)
 
 
 _SHA_LENGTH = 40
@@ -234,9 +246,12 @@ def current() -> Telemetry | None:
 
 
 @contextmanager
-def record() -> Iterator[Telemetry]:
+def record(
+    *,
+    span_sink: Callable[[str, str, float, Telemetry], None] | None = None,
+) -> Iterator[Telemetry]:
     """Enable span recording for the duration of the block."""
-    telemetry = Telemetry()
+    telemetry = Telemetry(span_sink=span_sink)
     token = _ACTIVE.set(telemetry)
     try:
         yield telemetry

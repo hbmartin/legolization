@@ -43,13 +43,20 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from legolization import telemetry
-from legolization.catalog import Category
-from legolization.graph import GROUND_ID
+from legolization.graph import (
+    GROUND_ID,
+    ConnectionGraph,
+    KnobContact,
+    SideContact,
+)
 from legolization.stability.constants import (
     ALPHA,
     BETA,
+    FOUR_POINT_OFFSETS,
     GRAVITY,
     K_DIRECTIONS,
+    KNOB_PITCH_M,
+    PLATE_HEIGHT_M,
     T_CAPACITY_N,
 )
 from legolization.stability.model import (
@@ -79,19 +86,8 @@ _FZ = 2
 _INF = math.inf
 _UP = (0.0, 0.0, 1.0)
 _DOWN = (0.0, 0.0, -1.0)
-_AXIS_STEPS = ((1, 0), (0, 1))
 
-Cell = tuple[int, int, int]
 _Load = tuple[int, tuple[float, float, float], tuple[float, float, float]]
-
-
-def _has_lateral_parts(layout: Layout) -> bool:
-    """Whether any part mates sideways (SNOT).
-
-    The warm solvers' contact discovery is hard-wired to vertical stud
-    mates; lateral contacts must fall back to the legacy cold engine.
-    """
-    return any(layout.part_of(brick).category is Category.SNOT for brick in layout)
 
 
 def _floating_shortcut(
@@ -202,13 +198,17 @@ class PrefixSolver:
         self._h.setOptionValue("presolve", "off")
         self._h.setOptionValue("solver", "simplex")
         self._h.setOptionValue("threads", 1)
-        # Full-layout lookups, computed once; `present` filters at query time.
-        self._stud_at: dict[Cell, int] = {}
-        self._socket_at: dict[Cell, int] = {}
-        self._top_conns: dict[int, tuple[Cell, ...]] = {}
-        self._bottom_conns: dict[int, tuple[Cell, ...]] = {}
-        self._cells: dict[int, tuple[Cell, ...]] = {}
-        self._cell_owner: dict[Cell, int] = {}
+        # Direction-aware contacts are extracted once; `present` filters
+        # them at append time. Sharing ConnectionGraph with the cold model
+        # prevents vertical-only SNOT mistakes and phantom cladding faces.
+        self._graph = ConnectionGraph.from_layout(layout)
+        self._knobs_by_brick: dict[int, list[KnobContact]] = {
+            bid: [] for bid in layout.bricks
+        }
+        for knob in self._graph.knob_contacts:
+            if knob.below_id != GROUND_ID:
+                self._knobs_by_brick[knob.below_id].append(knob)
+            self._knobs_by_brick[knob.above_id].append(knob)
         self._centroid: dict[int, tuple[float, float, float]] = {}
         self._mass_kg: dict[int, float] = {}
         self._pattern: dict[int, tuple[tuple[float, float], ...]] = {}
@@ -216,25 +216,13 @@ class PrefixSolver:
         self._yaw: dict[int, int] = {}
         for brick in layout:
             bid = brick.brick_id
-            tops = tuple(c.cell for c in layout.connectors_of(brick, top=True))
-            bottoms = tuple(c.cell for c in layout.connectors_of(brick, top=False))
-            self._top_conns[bid] = tops
-            self._bottom_conns[bid] = bottoms
-            for cell in tops:
-                self._stud_at[cell] = bid
-            for cell in bottoms:
-                self._socket_at[cell] = bid
-            cells = tuple(layout.cells_of(brick))
-            self._cells[bid] = cells
-            for cell in cells:
-                self._cell_owner[cell] = bid
             self._centroid[bid] = brick_centroid(layout, bid)
             self._yaw[bid] = brick.yaw
             self._mass_kg[bid] = layout.part_of(brick).mass_g / 1000.0
             self._pattern[bid] = cavity_pattern(layout, bid)
             if config.paper_knob_rule:
                 self._footprint[bid] = footprint_columns(layout, bid)
-        self._build_reachability(layout)
+        self._build_reachability()
         # Canonical append-order index state.
         self.present: set[int] = set()
         self._row_base: dict[int, int] = {}
@@ -258,8 +246,6 @@ class PrefixSolver:
         """Build a solver, or None when the warm engine is unavailable."""
         config = config or SolverConfig()
         if config.mode != "lp" or config.engine != "highspy":
-            return None
-        if _has_lateral_parts(layout):
             return None
         try:
             return cls(layout, config)
@@ -291,6 +277,28 @@ class PrefixSolver:
         size = len(self.present) + len(chunk)
         with telemetry.span("stability.prefix.press", n=size):
             return self._press_body(chunk, extra_mass_kg)
+
+    def press_probe_selection(
+        self,
+        chunk: tuple[int, ...],
+        press_ids: tuple[int, ...],
+        extra_mass_kg: float,
+    ) -> StabilityResult:
+        """Append ``chunk`` while pressing only ``press_ids``.
+
+        Used by press-aware chunk refinement to evaluate the second half
+        of a prospective split without committing the first half.
+        """
+        if not set(press_ids) <= set(chunk):
+            msg = "pressed ids must be a subset of the appended chunk"
+            raise ValueError(msg)
+        size = len(self.present) + len(chunk)
+        with telemetry.span("stability.prefix.press", n=size):
+            return self._press_body(
+                chunk,
+                extra_mass_kg,
+                press_ids=frozenset(press_ids),
+            )
 
     def commit(self, chunk: tuple[int, ...]) -> None:
         """Advance the base by ``chunk`` (zero LP when it was just probed)."""
@@ -350,10 +358,12 @@ class PrefixSolver:
         self,
         chunk: tuple[int, ...],
         extra_mass_kg: float,
+        *,
+        press_ids: frozenset[int] | None = None,
     ) -> StabilityResult:
         wanted = frozenset(chunk) - self.present
         subset = frozenset(self.present | wanted)
-        press_ids = frozenset(chunk)
+        press_ids = press_ids if press_ids is not None else frozenset(chunk)
         if not hasattr(self._h, "changeRowBounds"):
             # Net-new highspy API: older bindings take the cold path.
             return self._cold_press(
@@ -588,20 +598,15 @@ class PrefixSolver:
         )
         self._row_count += len(drag_links)
 
-    def _build_reachability(self, layout: Layout) -> None:
-        """Stud-only reachability data for the LP-free floating shortcut."""
-        self._grounded = frozenset(
-            bid
-            for bid, bottoms in self._bottom_conns.items()
-            if any(cell[2] == 0 for cell in bottoms)
-        )
-        self._stud_adjacent = {bid: set() for bid in layout.bricks}
-        for cell, bid in self._stud_at.items():
-            x, y, z = cell
-            mate = self._socket_at.get((x, y, z + 1))
-            if mate is not None and mate != bid:
-                self._stud_adjacent[bid].add(mate)
-                self._stud_adjacent[mate].add(bid)
+    def _build_reachability(self) -> None:
+        """Direction-aware stud reachability for the floating shortcut."""
+        self._grounded = self._graph.grounded_ids
+        self._stud_adjacent = {bid: set() for bid in self._layout.bricks}
+        for knob in self._graph.knob_contacts:
+            if knob.below_id == GROUND_ID:
+                continue
+            self._stud_adjacent[knob.below_id].add(knob.above_id)
+            self._stud_adjacent[knob.above_id].add(knob.below_id)
 
     def _force_col(
         self,
@@ -631,31 +636,92 @@ class PrefixSolver:
         appendage: _Appendage,
     ) -> None:
         """Emit knob interfaces where ``bid`` is new and involved."""
-        subset_new = chunk
-        for cell in self._bottom_conns[bid]:
-            x, y, z = cell
-            if z == 0:
-                self._emit_knob(
-                    GROUND_ID, bid, x, y, 0.0, chunk, batch, drag_links, appendage
-                )
-            elif (owner := self._stud_at.get((x, y, z - 1))) is not None and (
-                owner in self.present
-            ):
-                self._emit_knob(
-                    owner, bid, x, y, float(z), chunk, batch, drag_links, appendage
-                )
-        # A knob contact is discovered exactly once: via the BELOW brick's
-        # top connector (the above brick's bottom scan only handles studs
-        # already in the base). No id-order guard — ids interleave freely.
-        for cell in self._top_conns[bid]:
-            x, y, z = cell
-            owner = self._socket_at.get((x, y, z + 1))
-            if owner is None or owner == bid:
+        subset = self.present | set(chunk)
+        for knob in self._knobs_by_brick[bid]:
+            endpoints = {knob.above_id}
+            if knob.below_id != GROUND_ID:
+                endpoints.add(knob.below_id)
+            if not endpoints <= subset:
                 continue
-            if owner in subset_new or owner in self.present:
+            new_endpoints = endpoints & chunk
+            if not new_endpoints or bid != min(new_endpoints):
+                continue
+            if knob.normal == (0, 0, 1):
                 self._emit_knob(
-                    bid, owner, x, y, float(z + 1), chunk, batch, drag_links, appendage
+                    knob.below_id,
+                    knob.above_id,
+                    knob.x,
+                    knob.y,
+                    float(knob.interface_layer),
+                    chunk,
+                    batch,
+                    drag_links,
+                    appendage,
                 )
+            else:
+                self._emit_lateral_knob(
+                    knob,
+                    chunk,
+                    batch,
+                    drag_links,
+                    appendage,
+                )
+
+    def _emit_lateral_knob(
+        self,
+        knob: KnobContact,
+        chunk: frozenset[int],
+        batch: _ColumnBatch,
+        drag_links: list[tuple[int, int]],
+        appendage: _Appendage,
+    ) -> None:
+        """Emit the cold model's sideways normal, drag, and shear columns."""
+        nx, ny, _ = knob.normal
+        tx, ty = float(-ny), float(nx)
+        plates_per_stud = KNOB_PITCH_M / PLATE_HEIGHT_M
+        x_pos = knob.x + 0.5 * nx
+        y_pos = knob.y + 0.5 * ny
+        z_center = knob.interface_layer + 0.5
+        outward = (float(nx), float(ny), 0.0)
+        inward = (float(-nx), float(-ny), 0.0)
+        for ox, oy in FOUR_POINT_OFFSETS:
+            position = (
+                x_pos + ox * tx,
+                y_pos + ox * ty,
+                z_center + oy * plates_per_stud,
+            )
+            loads_normal: list[_Load] = [(knob.above_id, outward, position)]
+            loads_drag: list[_Load] = [(knob.above_id, inward, position)]
+            if knob.below_id != GROUND_ID:
+                loads_normal.append((knob.below_id, inward, position))
+                loads_drag.append((knob.below_id, outward, position))
+            self._force_col(batch, 0.0, loads_normal)
+            drag_col = self._force_col(batch, BETA, loads_drag)
+            self._bottom_drag.setdefault(knob.above_id, []).append(drag_col)
+            if knob.above_id not in chunk:
+                appendage.grown_bottom_drag[knob.above_id] = (
+                    appendage.grown_bottom_drag.get(knob.above_id, 0) + 1
+                )
+            drag_links.append((drag_col, knob.above_id))
+            self._contact_pairs.append((knob.below_id, knob.above_id, drag_col))
+        center = (float(x_pos), float(y_pos), float(z_center))
+        directions = (
+            (tx, ty, 0.0),
+            (-tx, -ty, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 0.0, -1.0),
+        )
+        for direction in directions:
+            loads: list[_Load] = [(knob.above_id, direction, center)]
+            if knob.below_id != GROUND_ID:
+                loads.append(
+                    (
+                        knob.below_id,
+                        (-direction[0], -direction[1], -direction[2]),
+                        center,
+                    )
+                )
+            self._force_col(batch, 0.0, loads)
 
     def _emit_knob(  # noqa: PLR0913 - one scalar per knob attribute
         self,
@@ -711,34 +777,17 @@ class PrefixSolver:
         batch: _ColumnBatch,
     ) -> None:
         """Emit side interfaces with at least one new endpoint."""
-        faces: dict[tuple[int, int, int], list[tuple[float, float, float]]] = {}
-        for bid in ordered:
-            for x, y, z in self._cells[bid]:
-                for axis, (dx, dy) in enumerate(_AXIS_STEPS):
-                    plus = self._cell_owner.get((x + dx, y + dy, z))
-                    if (
-                        plus is not None
-                        and plus != bid
-                        and (plus in chunk or plus in self.present)
-                    ):
-                        faces.setdefault((bid, plus, axis), []).append(
-                            (x + dx / 2, y + dy / 2, z + 0.5)
-                        )
-                    minus = self._cell_owner.get((x - dx, y - dy, z))
-                    if minus is not None and minus != bid and minus in self.present:
-                        faces.setdefault((minus, bid, axis), []).append(
-                            (x - dx + dx / 2, y - dy + dy / 2, z + 0.5)
-                        )
-        for (a_id, b_id, axis), centers in sorted(faces.items()):
-            self._emit_side_presses(batch, a_id, b_id, axis, centers)
+        del ordered
+        subset = self.present | set(chunk)
+        for side in self._graph.side_contacts:
+            endpoints = {side.a_id, side.b_id}
+            if endpoints <= subset and endpoints & chunk:
+                self._emit_side_presses(batch, side)
 
     def _emit_side_presses(
         self,
         batch: _ColumnBatch,
-        a_id: int,
-        b_id: int,
-        axis: int,
-        centers: list[tuple[float, float, float]],
+        side: SideContact,
     ) -> None:
         """Press generators for one shared-face pair.
 
@@ -746,26 +795,26 @@ class PrefixSolver:
         without yaw torque, four (transverse, vertical) corners with it
         (same spanning argument).
         """
-        n = len(centers)
-        cx = sum(c[0] for c in centers) / n
-        cy = sum(c[1] for c in centers) / n
-        layers = [c[2] - 0.5 for c in centers]
-        z_lo, z_hi = int(min(layers)), int(max(layers))
-        transverse = [c[1 - axis] for c in centers]
-        unit = (1.0, 0.0, 0.0) if axis == 0 else (0.0, 1.0, 0.0)
-        away = (-unit[0], -unit[1], 0.0)
-        toward = (unit[0], unit[1], 0.0)
-        for z_edge in (float(z_lo), float(z_hi + 1)):
+        unit = (1.0, 0.0, 0.0) if side.axis == 0 else (0.0, 1.0, 0.0)
+        away = (-unit[0] * side.direction, -unit[1] * side.direction, 0.0)
+        toward = (unit[0] * side.direction, unit[1] * side.direction, 0.0)
+        cx, cy, _ = side.centroid
+        for z_edge in (float(side.z_lo), float(side.z_hi + 1)):
             if self._config.torque_z:
-                spots = [min(transverse) - 0.5, max(transverse) + 0.5]
+                spots = [side.t_lo, side.t_hi]
             else:
-                spots = [cy if axis == 0 else cx]
+                spots = [cy if side.axis == 0 else cx]
             for t_coord in spots:
-                position = (cx, t_coord, z_edge) if axis == 0 else (t_coord, cy, z_edge)
+                position = (
+                    (cx, t_coord, z_edge) if side.axis == 0 else (t_coord, cy, z_edge)
+                )
                 self._force_col(
                     batch,
                     0.0,
-                    [(a_id, away, position), (b_id, toward, position)],
+                    [
+                        (side.a_id, away, position),
+                        (side.b_id, toward, position),
+                    ],
                 )
 
     # -- basis + extraction ------------------------------------------------
@@ -853,64 +902,6 @@ class PrefixSolver:
         return result, near
 
 
-def _layout_maps(
-    layout: Layout,
-) -> tuple[
-    dict[Cell, int], dict[Cell, int], dict[int, tuple[Cell, ...]], dict[Cell, int]
-]:
-    """Stud/socket/cell lookup maps over the full layout."""
-    stud_at: dict[Cell, int] = {}
-    socket_at: dict[Cell, int] = {}
-    cells: dict[int, tuple[Cell, ...]] = {}
-    owner_of: dict[Cell, int] = {}
-    for brick in layout:
-        bid = brick.brick_id
-        for conn in layout.connectors_of(brick, top=True):
-            stud_at[conn.cell] = bid
-        for conn in layout.connectors_of(brick, top=False):
-            socket_at[conn.cell] = bid
-        brick_cells = tuple(layout.cells_of(brick))
-        cells[bid] = brick_cells
-        for cell in brick_cells:
-            owner_of[cell] = bid
-    return stud_at, socket_at, cells, owner_of
-
-
-def _stud_adjacency(
-    layout: Layout,
-    stud_at: dict[Cell, int],
-    socket_at: dict[Cell, int],
-) -> dict[int, set[int]]:
-    """Undirected stud-mating adjacency between bricks."""
-    adjacent: dict[int, set[int]] = {bid: set() for bid in layout.bricks}
-    for cell, bid in stud_at.items():
-        x, y, z = cell
-        mate = socket_at.get((x, y, z + 1))
-        if mate is not None and mate != bid:
-            adjacent[bid].add(mate)
-            adjacent[mate].add(bid)
-    return adjacent
-
-
-def _contact_adjacency(
-    layout: Layout,
-    stud_at: dict[Cell, int],
-    socket_at: dict[Cell, int],
-    cells: dict[int, tuple[Cell, ...]],
-    owner_of: dict[Cell, int],
-) -> dict[int, set[int]]:
-    """Knob-or-side contact adjacency (LP coupling) between bricks."""
-    adjacent = _stud_adjacency(layout, stud_at, socket_at)
-    for bid, brick_cells in cells.items():
-        for x, y, z in brick_cells:
-            for dx, dy in _AXIS_STEPS:
-                other = owner_of.get((x + dx, y + dy, z))
-                if other is not None and other != bid:
-                    adjacent[bid].add(other)
-                    adjacent[other].add(bid)
-    return adjacent
-
-
 class RemovalSolver:
     """Component-decomposed analysis for the shrinking disassembly walk.
 
@@ -938,14 +929,20 @@ class RemovalSolver:
         self._layout = layout
         self._config = config
         self.scope: set[int] = set(scope)
-        stud_at, socket_at, cells, owner_of = _layout_maps(layout)
-        self._adjacent = _contact_adjacency(layout, stud_at, socket_at, cells, owner_of)
-        self._grounded = frozenset(
-            brick.brick_id
-            for brick in layout
-            if any(c.cell[2] == 0 for c in layout.connectors_of(brick, top=False))
-        )
-        self._stud_adjacent = _stud_adjacency(layout, stud_at, socket_at)
+        graph = ConnectionGraph.from_layout(layout)
+        self._adjacent = {bid: set() for bid in layout.bricks}
+        self._stud_adjacent = {bid: set() for bid in layout.bricks}
+        for knob in graph.knob_contacts:
+            if knob.below_id == GROUND_ID:
+                continue
+            self._adjacent[knob.below_id].add(knob.above_id)
+            self._adjacent[knob.above_id].add(knob.below_id)
+            self._stud_adjacent[knob.below_id].add(knob.above_id)
+            self._stud_adjacent[knob.above_id].add(knob.below_id)
+        for side in graph.side_contacts:
+            self._adjacent[side.a_id].add(side.b_id)
+            self._adjacent[side.b_id].add(side.a_id)
+        self._grounded = graph.grounded_ids
         self._component_cache: dict[frozenset[int], StabilityResult] = {}
 
     @classmethod
@@ -958,8 +955,6 @@ class RemovalSolver:
         """Build a removal solver, or None when the warm engine is off."""
         config = config or SolverConfig()
         if config.mode != "lp" or config.engine != "highspy":
-            return None
-        if _has_lateral_parts(layout):
             return None
         return cls(layout, scope, config)
 

@@ -230,7 +230,8 @@ def _lp_arrays(
     Shared by the scipy path and the direct-highspy rescue path so both
     engines solve the byte-identical polytope.
     """
-    rows, force_count = model.a_matrix.shape
+    rows, force_count_raw = model.a_matrix.shape
+    force_count = int(force_count_raw)
     dmax_bricks = [bid for bid, cols in model.bottom_drag_cols.items() if cols.size]
     dmax_index = {bid: force_count + rows + i for i, bid in enumerate(dmax_bricks)}
     var_count = force_count + rows + len(dmax_bricks)
@@ -264,7 +265,7 @@ def _lp_arrays(
         )
         rhs.append(np.zeros(len(drag_rows)))
 
-    a_ub = sparse.vstack(blocks, format="csr")
+    a_ub = sparse.csr_matrix(sparse.vstack(blocks, format="csr"))
     b_ub = np.concatenate(rhs)
     return cost, a_ub, b_ub, force_count
 
