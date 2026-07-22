@@ -143,3 +143,26 @@ would buy nothing and cost 2–4× sequencing time.
   15-line `plan_instructions` loop over `InstructionsConfig` variants).
 - Related: `docs/self-evaluation-playbook.md` §6 failure signatures;
   `ROADMAP.md` deferred "MPD subassembly submodels".
+
+## 7. v8 re-measurement: the class is resolved
+
+Re-run 2026-07-22 at the v7 program end (subassembly steps landed in v3
+and hardened through v6/v7; press-aware formation in WS-X), same
+command, seed 0, current defaults:
+
+| model | steps | unstable |
+|---|---:|---:|
+| mushroom | 52 (27 sub) | **0** (was 17) |
+| wide-arch | 16 (4 sub) | **0** (was 2) |
+| cantilever | 16 (3 sub) | **0** (was 1) |
+| heart.vox | 8 | **0** (was 2) |
+| letter-t | 17 | **0** (was 1) |
+| two-towers-bridge | 13 | **0** |
+
+Recommendation 1 (subassemblies) resolved the entire measured class;
+recommendation 3 (honest booklet framing) also landed. Recommendation 2
+(support-aware placement) is therefore **closed without implementation**
+— it changes brick layouts and carries scorecard risk for a failure
+class that no longer exists in the corpus. Reopen it only if a future
+model reintroduces unstable steps that subassembly extraction cannot
+absorb.

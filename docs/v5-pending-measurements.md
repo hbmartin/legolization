@@ -38,6 +38,15 @@ out. The detailed non-additive stability-span totals are recorded in
 `docs/performance-testing.md`. This closes the stage-identification task:
 the remaining mesh baseline is still pending until the placement and
 stability-repair release failures are resolved or explicitly accepted.
+
+v8 gives the release run a working lever: `--time-budget SECONDS` now
+bounds the repair, hollow-restore, and Luo stabilize loops at round
+boundaries (one absolute pipeline deadline; see
+`docs/performance-testing.md`), so an Armadillo run can complete with a
+partially repaired verdict instead of a watchdog kill. Whether such a
+budget-truncated row is acceptable as the mesh baseline reference — or
+whether Armadillo waits for incremental re-analysis to land — is the
+explicit release decision to make at the next attempt.
 Then collect and assemble it with:
 
     uv run python scripts/eval_corpus.py --kind mesh --timeout SECONDS

@@ -101,6 +101,44 @@ the old 900-second wall-time failure: legacy greedy/Luo exceed the cap in
 placement-time stability scoring, while every layered strategy reaches
 stability repair and spends its budget there.
 
+### The v8 follow-up: where a cold analyze actually goes
+
+Measured 2026-07-22 on hollow-shell greedy layouts (seed 0, default
+`SolverConfig`), one cold `analyze` per row:
+
+| bricks | LP variables | `build_model` | LP solve (`highs`) | `highs-ipm` | ipm no-crossover |
+|---:|---:|---:|---:|---:|---:|
+| 348 | 20,677 | — | 0.874 s | 1.905 s | 1.567 s |
+| 505 | 30,434 | — | 2.830 s | 3.457 s | 3.006 s |
+| 712 | 41,362 | — | 6.487 s | 6.631 s | 5.747 s |
+| 902 | 52,911 | 0.12 s | 12.391 s | 10.244 s | 8.724 s |
+
+Three conclusions, each closing a backlog hypothesis:
+
+- **The LP solve is ~99% of a cold analyze.** Vectorizing `build_model`
+  (the old backlog item) is a measured dead end: 0.12 s of a 12.5 s
+  call at 902 bricks. The scipy wrapper is also not the cost — the
+  direct highspy path solves the identical polytope in the same 13 s
+  with zero per-brick score drift.
+- **Cost scales ~n^2.8 in brick count.** Armadillo-class layouts
+  (2,000+ bricks) pay minutes per full-structure solve, so any loop
+  that re-solves the whole structure per candidate round (ALNS repair,
+  Luo's split-remerge, hollow-restore) is unbounded in practice.
+- **There is no cheap solver-level win.** `highs-ipm` is at best 1.4x
+  with crossover off, and its solutions drift at 1e-9 in the
+  objective — below the exactness bar for a default swap.
+
+The v8 response is budget enforcement, not a faster LP:
+`PipelineConfig.time_budget_s` now derives ONE absolute monotonic
+deadline at `run()` start, honoured at round boundaries by ALNS
+`repair_stability`, the hollow-restore loop, and Luo's `_stabilize`
+(telemetry: `repair.deadline_stop`, `pipeline.hollow_restore.deadline_stop`,
+`luo.stabilize.deadline_stop`). A running solve is never interrupted;
+`time_budget_s=None` keeps every historical byte. The real per-solve
+fix remains the incremental re-analysis workstream (warm append-only
+scoring, frozen-boundary ring analysis with exact-on-accept), which
+must clear the section-3 gates before it can ship.
+
 ### `legolization ... --profile out.json` (CLI convenience)
 
 Writes a leaner schema-2 payload (`source: "cli"`, `git_sha`, input,

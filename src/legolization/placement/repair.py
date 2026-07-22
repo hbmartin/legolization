@@ -12,6 +12,7 @@ falling back to the hollow-restore loop, which adds material.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -19,6 +20,7 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
+from legolization import telemetry
 from legolization.catalog import Category, rotate_offset
 from legolization.grid import EMPTY, merge_colour
 from legolization.placement.merge import (
@@ -69,8 +71,17 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
     solver_config: SolverConfig | None = None,
     rng: np.random.Generator,
     config: RepairConfig | None = None,
+    deadline: float | None = None,
 ) -> RepairReport:
-    """Destroy-and-repair around the strongest artificial links, in place."""
+    """Destroy-and-repair around the strongest artificial links, in place.
+
+    ``deadline`` (absolute monotonic seconds) is the pipeline's shared
+    budget, checked at round boundaries only — a running localize/refill
+    is never interrupted, and ``None`` keeps the historical unbounded
+    behaviour byte-identical. Every full-structure localization costs
+    ~n^2.8 in brick count (measured v8), so unbudgeted rounds are what
+    turned Armadillo-class repairs into 600-second walls.
+    """
     config = config or RepairConfig()
     report = _localize(layout, solver_config, config)
     q_history = [report.q]
@@ -78,6 +89,9 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
     rebuilt = 0
     escalation = 0
     while report.q > _Q_TOLERANCE and rounds < config.max_rounds:
+        if deadline is not None and time.monotonic() >= deadline:
+            telemetry.value("repair.deadline_stop", float(rounds))
+            break
         rounds += 1
         victims = _destroy_set(layout, report, config, escalation)
         if not victims:

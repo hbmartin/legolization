@@ -15,6 +15,7 @@ layer, which doubles as buildable stud-up instructions.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from pathlib import PurePath
 from typing import TYPE_CHECKING
 
@@ -22,12 +23,13 @@ from ldraw.geometry import Identity, Matrix, Vector, YAxis
 from ldraw.pieces import Piece
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
     from pathlib import Path
 
     from legolization.catalog import Part
     from legolization.instructions.sequencer import InstructionPlan
     from legolization.layout import Layout, PlacedBrick
+    from legolization.stability.solver import BrickScore
 
 STUD_LDU = 20.0
 PLATE_LDU = 8.0
@@ -271,6 +273,49 @@ def write_model(
                 lines.extend(_submodel_lines(layout, plan, sub.name))
                 lines.append("0 NOFILE")
     path.write_text("\n".join(lines) + "\n")
+
+
+_HEATMAP_RAMP: tuple[tuple[float, int], ...] = (
+    (0.125, 0),  # black: at rest
+    (0.375, 320),  # dark red
+    (0.625, 4),  # red
+    (0.875, 12),  # light red
+    (float("inf"), 15),  # white: at or beyond capacity
+)
+
+
+def heatmap_colour(score: float) -> int:
+    """LDraw palette code for one stability score.
+
+    StableLego's ramp — black (at rest) through red to white (at or
+    beyond capacity) — quantized to five stock palette codes because the
+    working headless renderer (LeoCAD) draws LDraw direct colours
+    (``0x2RRGGBB``) as unresolved grey.
+    """
+    return next(
+        code for threshold, code in _HEATMAP_RAMP if max(score, 0.0) < threshold
+    )
+
+
+def write_heatmap(
+    layout: Layout,
+    scores: Mapping[int, BrickScore],
+    path: Path,
+) -> None:
+    """Write a copy of ``layout`` recoloured by per-brick stability score.
+
+    Bricks absent from ``scores`` (an empty result's trivial verdict)
+    render as score 0. The copy carries no plan or steps — the heatmap
+    is a diagnostic view, not a build document.
+    """
+    heat = layout.copy()
+    for brick_id, brick in heat.bricks.items():
+        entry = scores.get(brick_id)
+        heat.bricks[brick_id] = replace(
+            brick,
+            colour_code=heatmap_colour(entry.score if entry is not None else 0.0),
+        )
+    write_model(heat, path, steps=False)
 
 
 def _rotated_footprint(

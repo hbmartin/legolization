@@ -20,11 +20,13 @@ importance sampling (weighted by ``colour_weight``).
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
+from legolization import telemetry
 from legolization.catalog import default_catalog
 from legolization.placement.merge import (
     ColourMode,
@@ -63,9 +65,19 @@ class LuoStrategy:
     colour_mode: ColourMode = "hard"
     colour_weight: float = 1.0
     refine: bool = True
+    time_budget_s: float | None = None
+    """Soft place() budget: the stability split-remerge loop stops at
+    round boundaries once spent (each round costs two full ~n^2.8 RBE
+    solves — the measured Armadillo wall). None = unbounded (historical
+    behaviour, byte-identical)."""
 
     def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
         """Produce a merged layout, refined for connectivity then stability."""
+        deadline = (
+            time.monotonic() + self.time_budget_s
+            if self.time_budget_s is not None
+            else None
+        )
         layout = atomize(grid, self.catalog)
         maximal_random_merge(
             layout,
@@ -82,7 +94,7 @@ class LuoStrategy:
                 colour_mode=self.colour_mode,
                 colour_weight=self.colour_weight,
             )
-            self._stabilize(layout, grid, rng)
+            self._stabilize(layout, grid, rng, deadline=deadline)
         compact_vertical(layout)
         return layout
 
@@ -91,12 +103,17 @@ class LuoStrategy:
         layout: Layout,
         grid: VoxelGrid,
         rng: np.random.Generator,
+        *,
+        deadline: float | None = None,
     ) -> None:
         """Phase 2: split-remerge around the weakest bricks until stable."""
         result = analyze(layout, self.solver_config)
         capacity = self._capacity(layout)
         failures = 0
         while not result.stable and failures < self.fail_max:
+            if deadline is not None and time.monotonic() >= deadline:
+                telemetry.value("luo.stabilize.deadline_stop", float(failures))
+                return
             seeds = self._seeds(result, rng)
             if not seeds:
                 return

@@ -4,7 +4,13 @@ import pytest
 
 from legolization.catalog import default_catalog
 from legolization.layout import Layout
-from legolization.ldraw_out import model_lines, piece_for, write_model
+from legolization.ldraw_out import (
+    heatmap_colour,
+    model_lines,
+    piece_for,
+    write_heatmap,
+    write_model,
+)
 
 
 @pytest.fixture
@@ -254,6 +260,98 @@ def test_import_cli_end_to_end(tmp_path):
     assert main([str(source), "-o", str(out), "--bom", str(bom)]) == 0
     assert out.read_text() != ""
     assert bom.read_text().startswith("{")
+
+
+def test_heatmap_colour_ramp_endpoints():
+    # StableLego's black -> red -> white scheme quantized to stock
+    # palette codes (the headless renderer draws direct colours grey).
+    assert heatmap_colour(0.0) == 0  # black: at rest
+    assert heatmap_colour(0.5) == 4  # red: mid-load
+    assert heatmap_colour(1.0) == 15  # white: at capacity
+    assert heatmap_colour(-3.0) == 0  # clamped
+    assert heatmap_colour(9.9) == 15  # clamped
+    assert heatmap_colour(0.25) == 320  # dark red
+    assert heatmap_colour(0.75) == 12  # light red
+
+
+def test_write_heatmap_recolours_without_touching_the_source(layout, tmp_path):
+    from legolization.stability import analyze
+
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    layout.add("brick_2x4", 0, 0, 3, 0, 4)
+    result = analyze(layout)
+    path = tmp_path / "heat.ldr"
+
+    write_heatmap(layout, result.scores, path)
+
+    lines = _type1_lines(path.read_text().splitlines())
+    assert len(lines) == 2
+    ramp_codes = {0, 320, 4, 12, 15}
+    assert {int(line.split()[1]) for line in lines} <= ramp_codes
+    # The source layout keeps its original colours.
+    assert {b.colour_code for b in layout} == {4}
+
+
+def test_cli_heatmap_writes_direct_colour_model(tmp_path):
+    import numpy as np
+
+    from legolization.main import main
+
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
+    heat = tmp_path / "heat.ldr"
+    code = main(
+        [
+            str(npy),
+            "-o",
+            str(tmp_path / "box.ldr"),
+            "--restarts",
+            "1",
+            "--heatmap",
+            str(heat),
+        ]
+    )
+    assert code == 0
+    lines = _type1_lines(heat.read_text().splitlines())
+    assert lines
+    assert all(int(line.split()[1]) in {0, 320, 4, 12, 15} for line in lines)
+    # The import path analyzes too: a heatmap of the generated model.
+    reheat = tmp_path / "reheat.ldr"
+    assert (
+        main(
+            [
+                str(tmp_path / "box.ldr"),
+                "-o",
+                str(tmp_path / "roundtrip.ldr"),
+                "--heatmap",
+                str(reheat),
+            ]
+        )
+        == 0
+    )
+    assert _type1_lines(reheat.read_text().splitlines())
+
+
+def test_cli_heatmap_rejected_for_sweeps(tmp_path):
+    import numpy as np
+
+    from legolization.main import main
+
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(npy),
+                "-o",
+                str(tmp_path / "box.ldr"),
+                "--strategy",
+                "all",
+                "--heatmap",
+                str(tmp_path / "heat.ldr"),
+            ]
+        )
+    assert excinfo.value.code == 2
 
 
 def test_import_cli_rejects_placement_flags(tmp_path):

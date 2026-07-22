@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal
 
@@ -158,6 +159,14 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     config = config or PipelineConfig()
     catalog = default_catalog()
     rng = np.random.default_rng(config.seed)
+    # One absolute deadline for every budgeted pipeline phase; strategies
+    # keep their own place-scoped budget, but the repair and restore
+    # loops must not each start a fresh unbounded tail (v8 guardrail).
+    deadline = (
+        time.monotonic() + config.time_budget_s
+        if config.time_budget_s is not None
+        else None
+    )
     with telemetry.span("phase.hollow"):
         working = (
             hollow_grid(
@@ -171,12 +180,15 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         if config.ignore_interior:
             working = _ignore_interior(working)
 
-    layout, stability = _place_and_repair(working, catalog, config, rng)
+    layout, stability = _place_and_repair(working, catalog, config, rng, deadline)
     _phase_gauge("pipeline.placed", layout, stability)
     if config.hollow:
         with telemetry.span("phase.hollow_restore"):
             rounds = 0
             while not stability.stable and rounds < config.hollow_rounds:
+                if deadline is not None and time.monotonic() >= deadline:
+                    telemetry.value("pipeline.hollow_restore.deadline_stop", rounds)
+                    break
                 trouble = {
                     cell
                     for brick_id in stability.unstable_ids
@@ -191,7 +203,9 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
                 if restored is working:
                     break
                 working = restored
-                layout, stability = _place_and_repair(working, catalog, config, rng)
+                layout, stability = _place_and_repair(
+                    working, catalog, config, rng, deadline
+                )
                 rounds += 1
                 telemetry.value("pipeline.hollow_restore.round", rounds)
                 _phase_gauge("pipeline.restored", layout, stability)
@@ -479,6 +493,7 @@ def _place_and_repair(
     catalog: Catalog,
     config: PipelineConfig,
     rng: np.random.Generator,
+    deadline: float | None = None,
 ) -> tuple[Layout, StabilityResult]:
     """Place, then rearrange at constant volume before any material is added."""
     strategy = _strategy(catalog, config)
@@ -494,6 +509,7 @@ def _place_and_repair(
                 solver_config=config.solver,
                 rng=rng,
                 config=config.repair_config,
+                deadline=deadline,
             )
             stability = analyze(layout, config.solver)
             _phase_gauge("pipeline.repaired", layout, stability)

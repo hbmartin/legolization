@@ -45,6 +45,17 @@ shell's venv hook aborts them) — use absolute paths.
   `scorecard.{json,md}` without running placement. Baseline comparison
   and `--write-baseline` live here. Meshes are never part of the default
   inner loop; opt in with `--kind mesh`.
+- **Stability heatmap**: add `--heatmap heat.ldr` to any single-strategy
+  or import run, then render it (render-ldraw skill) — black bricks are
+  at rest, dark red → red → light red rising stress, white at/beyond
+  capacity. Palette-quantized on purpose: headless LeoCAD draws LDraw
+  direct colours as grey.
+- **StableLego verdict sweep**: `scripts/stablelego_sweep.py --dataset
+  DIR` compares our verdicts against the released 50k-object dataset's
+  per-object scores (deterministic sample, agreement report under
+  `eval/stablelego/`). The dataset downloads from the StableLego
+  release's Google Drive link; the nine vendored fixtures stay the
+  committed regression.
 - **Renderers**: LeoCAD at `/Applications/LeoCAD.app` works headlessly on
   this Mac (LDView's headless snapshot silently writes nothing); LDraw
   parts at `~/Library/Caches/pyldraw3/2018-02/ldraw`. A PNG on disk is the

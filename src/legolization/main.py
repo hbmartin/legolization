@@ -22,7 +22,7 @@ from legolization.compare import (
 from legolization.graph import ConnectionGraph
 from legolization.instructions.sequencer import InstructionsConfig, plan_instructions
 from legolization.ldraw_in import LdrawImportError, layout_from_ldraw
-from legolization.ldraw_out import write_model
+from legolization.ldraw_out import write_heatmap, write_model
 from legolization.mesh import DEFAULT_MESH_COLOUR, MESH_SUFFIXES, MeshOptions
 from legolization.pipeline import (
     PipelineConfig,
@@ -403,6 +403,16 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--heatmap",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "also write the model recoloured by per-brick stability score "
+            "(black -> red -> white, StableLego-style) as an .ldr"
+        ),
+    )
+    parser.add_argument(
         "--stability-weight",
         type=float,
         default=4.0,
@@ -452,6 +462,11 @@ def _validate_sweep_args(
         parser.error(
             "--profile requires a single seed (telemetry does not cross "
             "restart workers); pass --restarts 1"
+        )
+    if args.heatmap is not None and args.strategy == "all":
+        parser.error(
+            "--heatmap requires a single strategy; sweep candidates land "
+            "in --keep-candidates instead"
         )
 
 
@@ -647,7 +662,16 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    _write_heatmap_output(args, result)
     return _print_result(result, output, instructions_path=args.instructions)
+
+
+def _write_heatmap_output(args: argparse.Namespace, result: PipelineResult) -> None:
+    """Write the score-recoloured diagnostic model when requested."""
+    if args.heatmap is None:
+        return
+    write_heatmap(result.layout, result.stability.scores, args.heatmap)
+    print(f"wrote {args.heatmap}")
 
 
 def _validate_ldraw_args(
@@ -760,6 +784,7 @@ def _run_import(
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    _write_heatmap_output(args, result)
     return _print_result(result, output, instructions_path=args.instructions)
 
 

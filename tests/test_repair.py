@@ -1,11 +1,13 @@
 """ALNS stability repair: QP localization, destroy/refill, convergence."""
 
+import time
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from scipy.sparse import issparse
 
+from legolization import telemetry
 from legolization.catalog import default_catalog
 from legolization.grid import VoxelGrid
 from legolization.layout import Layout
@@ -87,6 +89,52 @@ def test_repair_stabilizes_bridge(bad_bridge):
     # Accepted rounds strictly improve the deficit.
     accepted = [q for q in report.q_history if q is not None]
     assert accepted[-1] < accepted[0]
+
+
+def test_repair_expired_deadline_skips_every_round(bad_bridge):
+    # v8: repair shares the pipeline's absolute budget. An expired
+    # deadline means zero destroy/refill rounds — only the initial
+    # localization and the final verdict run.
+    layout, grid = bad_bridge
+    before = {(b.part_key, b.x, b.y, b.layer) for b in layout}
+    with telemetry.record() as session:
+        report = repair_stability(
+            layout,
+            grid,
+            catalog=default_catalog(),
+            solver_config=None,
+            rng=np.random.default_rng(0),
+            deadline=0.0,
+        )
+    assert report.rounds == 0
+    assert not report.stable
+    assert {(b.part_key, b.x, b.y, b.layer) for b in layout} == before
+    assert session.values["repair.deadline_stop"] == [0.0]
+
+
+def test_repair_future_deadline_is_byte_identical(bad_bridge):
+    # A generous deadline must not perturb the rng stream or the result.
+    unbounded_layout, grid = bad_bridge
+    bounded_layout = unbounded_layout.copy()
+    unbounded = repair_stability(
+        unbounded_layout,
+        grid,
+        catalog=default_catalog(),
+        solver_config=None,
+        rng=np.random.default_rng(0),
+    )
+    bounded = repair_stability(
+        bounded_layout,
+        grid,
+        catalog=default_catalog(),
+        solver_config=None,
+        rng=np.random.default_rng(0),
+        deadline=time.monotonic() + 3_600.0,
+    )
+    assert bounded == unbounded
+    assert {(b.part_key, b.x, b.y, b.layer) for b in bounded_layout} == {
+        (b.part_key, b.x, b.y, b.layer) for b in unbounded_layout
+    }
 
 
 def test_repair_rbe_localizer_also_converges(bad_bridge):
