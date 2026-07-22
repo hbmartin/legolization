@@ -19,10 +19,30 @@ No baseline was written; Armadillo's failed row guarantees the guarded
 write would have declined it. The user stopped Homer after another ten
 minutes and made these runs opt-in by policy: default pytest skips
 `slow` tests, and bare `eval_corpus.py` selects synthetics. Finish the
-mesh cut only as an explicit offline/release run on an idle machine,
-with a cap above Armadillo's measured floor:
+mesh cut only as an explicit offline/release run on an idle machine.
 
-    uv run python scripts/eval_corpus.py --kind mesh --timeout SECONDS --write-baseline
+Armadillo stage triage completed sequentially on an idle machine on
+2026-07-20, with layer-only instructions and a fresh 600-second watchdog
+per top-level stage:
+
+- greedy and Luo timed out in generic placement, whose internal
+  stability-scoring calls no longer reset the parent watchdog;
+- bond, fast, SM-GA, beauty, and Kollsker completed voxelization,
+  layered tiling, compaction, connectivity, and initial stability
+  analysis, then timed out in stability repair;
+- layered tiling ranged from 0.9 to 36.6 seconds, connectivity from 4.1
+  to 9.2 seconds, and voxelization from 0.17 to 0.19 seconds.
+
+Bond completed one 596.9-second repair pass before a second repair timed
+out. The detailed non-additive stability-span totals are recorded in
+`docs/performance-testing.md`. This closes the stage-identification task:
+the remaining mesh baseline is still pending until the placement and
+stability-repair release failures are resolved or explicitly accepted.
+Then collect and assemble it with:
+
+    uv run python scripts/eval_corpus.py --kind mesh --timeout SECONDS
+    uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json
+    uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json --write-baseline
 
 Run it after any change that moves placement or physics, on the state
 you want as the reference. Do not share the machine with other sweeps,

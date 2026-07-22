@@ -85,6 +85,12 @@ markers = [
 [tool.ty.src]
 exclude = ['papers\ PDFs']
 
+[tool.pyrefly]
+project-includes = [
+    "src/**/*.py",
+    "scripts/**/*.py",
+]
+
 [tool.deptry]
 known_first_party = ["legolization"]
 extend_exclude = ["papers PDFs"]

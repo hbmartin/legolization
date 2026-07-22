@@ -7,14 +7,19 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Protocol, cast
 
+import numpy as np
 import pytest
 
+from legolization.compare import Candidate, CandidateMetrics
+from legolization.eval_artifacts import SourceIdentity
 from legolization.mesh import MeshOptions
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Callable
 
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "eval_corpus.py"
 
@@ -96,6 +101,33 @@ class _EvaluatorModule(Protocol):
 
     def baseline_rows(self, args: argparse.Namespace) -> list[dict] | None:
         """Baseline rows to diff against, or None when none exist."""
+        ...
+
+    def _assess_rows(self, rows: list[dict]) -> tuple[int, list[dict]]:
+        """Assess already assembled legacy scorecard rows."""
+        ...
+
+    def _initial_manifest(
+        self,
+        models: list[_FakeModel],
+        args: argparse.Namespace,
+        *,
+        identity: SourceIdentity,
+        stamp: str,
+    ) -> dict:
+        """Create the expected candidate matrix."""
+        ...
+
+    def _collect_model(  # noqa: PLR0913 - mirrors collector seam
+        self,
+        corpus: object,
+        model: _FakeModel,
+        args: argparse.Namespace,
+        manifest: dict,
+        manifest_path: Path,
+        identity: SourceIdentity,
+    ) -> bool:
+        """Collect or resume one model."""
         ...
 
 
@@ -318,7 +350,7 @@ def test_write_baseline_rejects_noncanonical_scope(
     evaluator: _EvaluatorModule,
     scope_args: list[str],
 ) -> None:
-    with pytest.raises(SystemExit, match="unfiltered --kind synthetic"):
+    with pytest.raises(SystemExit, match=r"assemble_eval\.py"):
         evaluator.main(argv=[*scope_args, "--write-baseline"])
 
 
@@ -426,44 +458,45 @@ def test_single_seed_row_has_no_spread(evaluator: _EvaluatorModule) -> None:
     assert "seeds" not in row
 
 
+def test_kind_filtered_selection_hints_the_kind_flag(
+    evaluator: _EvaluatorModule,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A mesh model named without --kind mesh must fail with a hint, not
+    # the bare "no corpus models selected" (PR #22 review).
+    exit_code = evaluator.main(argv=["--models", "suzanne"])
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "no corpus models selected" in err
+    assert "--kind mesh" in err
+
+
 def test_multi_seed_skips_baseline_diff(
     evaluator: _EvaluatorModule,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    baseline = tmp_path / "baseline.json"
-    baseline.write_text(json.dumps({"models": []}))
-    rows = [
-        evaluator.build_row(
-            model=_FakeModel(),
-            report_dict=_multi_seed_report(objectives={0: 0.9, 1: 0.5}),
-            status="ok",
-        )
-    ]
-
-    def fake_sweep(
-        _corpus: object,
-        _models: object,
-        _args: object,
-    ) -> list[dict]:
-        return rows
-
-    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
+    del monkeypatch, capsys
     exit_code = evaluator.main(
         argv=[
             "--models",
             "cantilever",
             "--seeds",
             "0,1",
+            "--strategies",
+            "greedy",
+            "--jobs",
+            "1",
             "--out",
             str(tmp_path / "runs"),
-            "--baseline",
-            str(baseline),
         ]
     )
     assert exit_code == 0
-    assert "baseline comparison skipped" in capsys.readouterr().out
+    manifest_path = next((tmp_path / "runs" / "collections").glob("*.json"))
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["scope"]["seeds"] == [0, 1]
+    assert len(manifest["models"][0]["candidates"]) == 2
 
 
 def test_skips_are_unevaluated_but_errors_fail(
@@ -472,6 +505,7 @@ def test_skips_are_unevaluated_but_errors_fail(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    del tmp_path, monkeypatch, capsys
     rows = [
         evaluator.build_row(
             model=_FakeModel(name="missing-mesh", expect_min_buildable=1),
@@ -485,31 +519,9 @@ def test_skips_are_unevaluated_but_errors_fail(
         ),
     ]
 
-    def fake_sweep(
-        _corpus: object,
-        _models: object,
-        _args: object,
-    ) -> list[dict]:
-        return rows
-
-    empty_baseline = tmp_path / "empty-baseline.json"
-    empty_baseline.write_text(json.dumps({"models": []}))
-    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
-    exit_code = evaluator.main(
-        argv=[
-            "--models",
-            "cantilever",
-            "--out",
-            str(tmp_path / "runs"),
-            "--baseline",
-            str(empty_baseline),
-        ]
-    )
-
+    exit_code, successful = evaluator._assess_rows(rows)  # noqa: SLF001
     assert exit_code == 1
-    output = capsys.readouterr().out
-    assert "evaluation failures: expected-unbuildable" in output
-    assert "expectation failures: missing-mesh" not in output
+    assert successful == []
 
 
 def test_failed_sweep_does_not_replace_baseline(
@@ -519,35 +531,19 @@ def test_failed_sweep_does_not_replace_baseline(
 ) -> None:
     baseline = tmp_path / "baseline.json"
     baseline.write_text("existing baseline\n")
-    rows = [
-        evaluator.build_row(
-            model=_FakeModel(name="expected-unbuildable", expect_min_buildable=0),
-            report_dict=None,
-            status="error: all failed",
+    del monkeypatch
+    with pytest.raises(SystemExit, match=r"assemble_eval\.py"):
+        evaluator.main(
+            argv=[
+                "--kind",
+                "synthetic",
+                "--out",
+                str(tmp_path / "runs"),
+                "--baseline",
+                str(baseline),
+                "--write-baseline",
+            ]
         )
-    ]
-
-    def fake_sweep(
-        _corpus: object,
-        _models: object,
-        _args: object,
-    ) -> list[dict]:
-        return rows
-
-    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
-    exit_code = evaluator.main(
-        argv=[
-            "--kind",
-            "synthetic",
-            "--out",
-            str(tmp_path / "runs"),
-            "--baseline",
-            str(baseline),
-            "--write-baseline",
-        ]
-    )
-
-    assert exit_code == 1
     assert baseline.read_text() == "existing baseline\n"
 
 
@@ -557,36 +553,20 @@ def test_clean_canonical_sweep_writes_baseline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     baseline = tmp_path / "baseline.json"
-    rows = [
-        evaluator.build_row(
-            model=_FakeModel(),
-            report_dict=_report_dict(),
-            status="ok",
+    del monkeypatch
+    with pytest.raises(SystemExit, match=r"assemble_eval\.py"):
+        evaluator.main(
+            argv=[
+                "--kind",
+                "synthetic",
+                "--out",
+                str(tmp_path / "runs"),
+                "--baseline",
+                str(baseline),
+                "--write-baseline",
+            ]
         )
-    ]
-
-    def fake_sweep(
-        _corpus: object,
-        _models: object,
-        _args: object,
-    ) -> list[dict]:
-        return rows
-
-    monkeypatch.setattr(evaluator, "_sweep", fake_sweep)
-    exit_code = evaluator.main(
-        argv=[
-            "--kind",
-            "synthetic",
-            "--out",
-            str(tmp_path / "runs"),
-            "--baseline",
-            str(baseline),
-            "--write-baseline",
-        ]
-    )
-
-    assert exit_code == 0
-    assert baseline.exists()
+    assert not baseline.exists()
 
 
 @pytest.mark.slow
@@ -594,8 +574,6 @@ def test_smoke_sweep_two_models(
     evaluator: _EvaluatorModule,
     tmp_path: Path,
 ) -> None:
-    baseline = tmp_path / "baseline.json"
-    baseline.write_text(json.dumps({"models": []}))
     exit_code = evaluator.main(
         argv=[
             "--models",
@@ -606,16 +584,13 @@ def test_smoke_sweep_two_models(
             "1",
             "--out",
             str(tmp_path / "runs"),
-            "--baseline",
-            str(baseline),
         ]
     )
     assert exit_code == 0
-    # Without --write-baseline the explicit file is never touched.
-    assert json.loads(baseline.read_text()) == {"models": []}
-    runs = list((tmp_path / "runs").iterdir())
-    assert len(runs) == 1
-    assert (runs[0] / "scorecard.md").exists()
+    manifests = list((tmp_path / "runs" / "collections").glob("*.json"))
+    assert len(manifests) == 1
+    payload = json.loads(manifests[0].read_text())
+    assert payload["status"] == "complete"
 
 
 def test_model_mesh_options_reports_manifest_resolution(
@@ -632,3 +607,101 @@ def test_model_mesh_options_reports_manifest_resolution(
     defaulted = evaluator.model_mesh_options(_FakeModel(kind="mesh"))
     assert defaulted == MeshOptions(target_studs=32, up="z", keep_largest=False)
     assert evaluator.model_mesh_options(_FakeModel()) is None
+
+
+def test_interrupted_collection_reuses_success_and_retries_failure(
+    evaluator: _EvaluatorModule,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A durable success is skipped while the failed sibling runs again."""
+    args = evaluator.parse_args(
+        [
+            "--models",
+            "cantilever",
+            "--strategies",
+            "greedy,bond",
+            "--jobs",
+            "1",
+            "--out",
+            str(tmp_path),
+        ]
+    )
+    identity = SourceIdentity(git_sha="a" * 40, source_hash="b" * 64, dirty=True)
+    model = _FakeModel()
+    manifest = evaluator._initial_manifest(  # noqa: SLF001
+        [model],
+        args,
+        identity=identity,
+        stamp="collection",
+    )
+    manifest_path = tmp_path / "collections" / "collection.json"
+    corpus = SimpleNamespace(
+        GENERATORS={"cantilever": lambda: np.full((2, 2, 2), 4, dtype=np.int16)}
+    )
+    metrics = CandidateMetrics(
+        buildable=True,
+        stable=True,
+        component_count=1,
+        floating_count=0,
+        objective_total=1.0,
+        maximin_feasible=True,
+        maximin_capacity=1.0,
+        max_score=0.1,
+        min_capacity=1.0,
+        brick_count=2,
+        mass_g=3.0,
+        step_count=1,
+        cost=0.5,
+        aesthetics=0.0,
+        colour_error=0.0,
+        perpendicularity=0.0,
+        symmetry=0.0,
+    )
+    calls: list[set[tuple[str, int]]] = []
+
+    def first_run(*_args: object, **kwargs: object) -> list[Candidate]:
+        calls.append(set(cast("set[tuple[str, int]]", kwargs["skip"])))
+        candidates = [
+            Candidate("greedy", 0.1, metrics=metrics),
+            Candidate("bond", 0.1, error="interrupted"),
+        ]
+        callback = cast("Callable[[Candidate], None]", kwargs["on_complete"])
+        for candidate in candidates:
+            callback(candidate)
+        return candidates
+
+    monkeypatch.setattr(evaluator, "run_all", first_run)
+    assert evaluator._collect_model(  # noqa: SLF001
+        corpus,
+        model,
+        args,
+        manifest,
+        manifest_path,
+        identity,
+    )
+
+    def resumed_run(*_args: object, **kwargs: object) -> list[Candidate]:
+        skipped = set(cast("set[tuple[str, int]]", kwargs["skip"]))
+        calls.append(skipped)
+        assert skipped == {("greedy", 0)}
+        candidate = Candidate("bond", 0.1, metrics=metrics)
+        callback = cast("Callable[[Candidate], None]", kwargs["on_complete"])
+        callback(candidate)
+        return [candidate]
+
+    monkeypatch.setattr(evaluator, "run_all", resumed_run)
+    assert evaluator._collect_model(  # noqa: SLF001
+        corpus,
+        model,
+        args,
+        manifest,
+        manifest_path,
+        identity,
+    )
+    assert calls == [set(), {("greedy", 0)}]
+    statuses = {
+        candidate["strategy"]: candidate["status"]
+        for candidate in manifest["models"][0]["candidates"]
+    }
+    assert statuses == {"greedy": "reused", "bond": "ok"}

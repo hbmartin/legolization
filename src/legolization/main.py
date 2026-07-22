@@ -247,6 +247,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="experimentally try all three exact-cover bridge slab phases",
     )
     parser.add_argument(
+        "--hybrid-bridge",
+        action="store_true",
+        help="complete the phase-1 bridge candidate with a local hard-flow MILP",
+    )
+    parser.add_argument(
         "--milp",
         action="store_true",
         help="debug cross-check of the exact LP with MILP complementarity (slower)",
@@ -565,6 +570,7 @@ def main(argv: list[str] | None = None) -> int:
         refine=not args.no_refine,
         repair=not args.no_repair,
         bridge_rephase=args.bridge_rephase,
+        hybrid_bridge=args.hybrid_bridge,
         seed=args.seed,
         plates_per_voxel=(
             args.plates_per_voxel if args.plates_per_voxel is not None else 3
@@ -666,6 +672,7 @@ def _validate_ldraw_args(
             ("--no-refine", args.no_refine),
             ("--no-repair", args.no_repair),
             ("--bridge-rephase", args.bridge_rephase),
+            ("--hybrid-bridge", args.hybrid_bridge),
             ("--milp", args.milp),
             ("--plates-per-voxel", args.plates_per_voxel is not None),
             ("--aspect-correct", args.aspect_correct),

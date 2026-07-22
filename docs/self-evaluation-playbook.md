@@ -33,10 +33,18 @@ shell's venv hook aborts them) — use absolute paths.
   --render-dir steps/` — `verify_plan` invariants + per-step floating
   (dangling) and component counts + step PNG dump. Exit 1 = violation
   (always a bug), 2 = warnings.
-- **Corpus sweep**: `scripts/eval_corpus.py` defaults to the synthetic
-  fast scope and writes `eval/runs/<UTC>/scorecard.{json,md}`, diffed
-  against `eval/baselines/scorecard.json`. Meshes are never part of the
-  default inner loop; opt in with `--kind mesh`.
+- **Corpus collection**: `scripts/eval_corpus.py` defaults to the
+  synthetic fast scope. It writes one atomic artifact per
+  model/strategy/seed plus a collection manifest, reuses exact successful
+  commit/source/config/input identities, and retries failures. Use
+  `--fresh` only when an exact success should be ignored. A sweep covers
+  exactly one kind per run (mixed-kind sweeps no longer exist); naming a
+  mesh model without `--kind mesh` fails with a hint.
+- **Scorecard assembly**: `scripts/assemble_eval.py COLLECTION_MANIFEST`
+  validates the complete expected matrix and assembles
+  `scorecard.{json,md}` without running placement. Baseline comparison
+  and `--write-baseline` live here. Meshes are never part of the default
+  inner loop; opt in with `--kind mesh`.
 - **Renderers**: LeoCAD at `/Applications/LeoCAD.app` works headlessly on
   this Mac (LDView's headless snapshot silently writes nothing); LDraw
   parts at `~/Library/Caches/pyldraw3/2018-02/ldraw`. A PNG on disk is the
@@ -83,8 +91,10 @@ weights (`ObjectiveWeights`) worth reporting.
 ## 5. The improvement loop
 
 1. `scripts/corpus.py verify` — corpus present and honest.
-2. `scripts/eval_corpus.py --kind synthetic` (add meshes in a background
-   run when the change could affect them).
+2. `scripts/eval_corpus.py --kind synthetic`, then
+   `scripts/assemble_eval.py eval/runs/collections/COLLECTION.json`
+   (add meshes in an isolated offline run when the change could affect
+   them).
 3. Pick the worst row: expectation FAIL you didn't expect, lowest
    buildable_count, or highest winner objective.
 4. Drill in: `compare-strategies` on that model (all six, rendered), then
@@ -93,7 +103,8 @@ weights (`ObjectiveWeights`) worth reporting.
 6. Re-run the slice, then the synthetic sweep. Improvements should show as
    higher buildable_count / lower objective; regressions elsewhere exit 1.
 7. If the change *intentionally* moved placement output:
-   - refresh the baseline: `--kind synthetic --write-baseline`, commit it
+   - collect the full synthetic scope, then refresh the baseline with
+     `scripts/assemble_eval.py COLLECTION --write-baseline`; commit it
      with the code change;
    - regenerate the example goldens exactly as
      `tests/test_examples_regression.py` prescribes (counts and shipped
@@ -180,7 +191,8 @@ so drift stays visible:
   commands, copy-pasteable (PR #20 review):
 
       uv run python scripts/eval_corpus.py --kind mesh
-      uv run python scripts/eval_corpus.py --kind mesh --write-baseline  # clean runs only
+      uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json
+      uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json --write-baseline
       uv run python scripts/corpus.py generate
       uv run python scripts/eval_corpus.py --seeds 0,1,2 --models thin-shell
       uv run python scripts/check_instructions.py data/examples/heart.vox --insertion-check

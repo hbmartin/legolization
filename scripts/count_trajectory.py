@@ -147,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fail-max", type=_non_negative_int, default=None, metavar="N")
     parser.add_argument("--no-milp-bridge", action="store_true")
     parser.add_argument("--bridge-rephase", action="store_true")
+    parser.add_argument("--hybrid-bridge", action="store_true")
     parser.add_argument("--target-studs", type=_positive_int, default=32, metavar="N")
     parser.add_argument("--out", type=Path, default=_REPO / "eval" / "profiles")
     args = parser.parse_args(argv)
@@ -160,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         connectivity_fail_max=args.fail_max,
         milp_bridge=not args.no_milp_bridge,
         bridge_rephase=args.bridge_rephase,
+        hybrid_bridge=args.hybrid_bridge,
         instructions=InstructionsConfig(mode="layer"),
         mesh=MeshOptions(target_studs=args.target_studs),
     )
@@ -188,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             "fail_max": args.fail_max,
             "milp_bridge": config.milp_bridge,
             "bridge_rephase": config.bridge_rephase,
+            "hybrid_bridge": config.hybrid_bridge,
         },
         "result": {
             "brick_count": result.brick_count,
@@ -211,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             (f"-fm{args.fail_max}", args.fail_max is not None),
             ("-nobridge", args.no_milp_bridge),
             ("-rephase", args.bridge_rephase),
+            ("-hybrid", args.hybrid_bridge),
         )
         if active
     )

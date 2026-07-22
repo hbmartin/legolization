@@ -158,7 +158,10 @@ def chunk_ready(
     chunk_set = set(chunk)
     settled = placed | chunk_set
     for brick_id in chunk:
-        if not supports[brick_id] <= placed:
+        # A press-aware composite step may span two adjacent bands. Its
+        # lower members are inserted first, so supports within the same
+        # dependency-closed chunk are valid.
+        if not supports[brick_id] <= settled:
             return False
         if blockers[brick_id] & placed:
             return False

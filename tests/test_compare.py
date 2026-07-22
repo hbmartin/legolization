@@ -5,6 +5,7 @@ import string
 from concurrent.futures import Future
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -53,8 +54,8 @@ _BASE_METRICS = CandidateMetrics(
 )
 
 
-def _metrics(**overrides: float) -> CandidateMetrics:
-    return replace(_BASE_METRICS, **overrides)
+def _metrics(**overrides: object) -> CandidateMetrics:
+    return replace(_BASE_METRICS, **cast("dict[str, Any]", overrides))
 
 
 def _candidate(
@@ -361,6 +362,76 @@ def test_parallel_matches_sequential() -> None:
     assert par_winner is not None
     assert seq_winner.strategy == par_winner.strategy
     assert select_best(sequential).reason == select_best(parallel).reason
+
+
+def test_run_all_exact_skip_and_completion_callback() -> None:
+    completed: list[tuple[str, int]] = []
+    candidates = run_all(
+        _box_grid(),
+        PipelineConfig(seed=0),
+        jobs=1,
+        names=("greedy", "bond"),
+        skip={("greedy", 0)},
+        on_complete=lambda candidate: completed.append(
+            (candidate.strategy, candidate.seed)
+        ),
+    )
+    assert [(candidate.strategy, candidate.seed) for candidate in candidates] == [
+        ("bond", 0)
+    ]
+    assert completed == [("bond", 0)]
+
+
+def test_parallel_callback_runs_in_completion_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    futures: list[Future[Candidate]] = []
+
+    class FakeExecutor:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def submit(
+            self,
+            _function: object,
+            _grid: VoxelGrid,
+            config: PipelineConfig,
+        ) -> Future[Candidate]:
+            future: Future[Candidate] = Future()
+            future.set_result(
+                Candidate(
+                    strategy=config.strategy,
+                    seconds=0.1,
+                    seed=config.seed,
+                    metrics=_metrics(),
+                )
+            )
+            futures.append(future)
+            return future
+
+        def shutdown(self, **_kwargs: object) -> None:
+            pass
+
+    monkeypatch.setattr(legolization.compare, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(
+        legolization.compare,
+        "as_completed",
+        lambda _pending, timeout: iter(reversed(futures)),
+    )
+    configs = {
+        ("greedy", 0): PipelineConfig(strategy="greedy", seed=0),
+        ("bond", 0): PipelineConfig(strategy="bond", seed=0),
+    }
+    completed: list[str] = []
+    legolization.compare._run_parallel(  # noqa: SLF001 - completion unit seam
+        _box_grid(),
+        configs,
+        workers=2,
+        timeout_s=2.0,
+        progress=None,
+        on_complete=lambda candidate: completed.append(candidate.strategy),
+    )
+    assert completed == ["bond", "greedy"]
 
 
 # --- multi-seed restarts ---------------------------------------------------

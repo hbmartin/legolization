@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Protocol, Self, cast
 
 import numpy as np
 import trimesh
@@ -37,6 +37,18 @@ _MAX_GRID_CELLS = 16_000_000
 _HORIZONTAL_AXES = 2
 # 6-connectivity for the largest-component filter, matching grid semantics.
 _FACE_STRUCTURE = ndimage.generate_binary_structure(rank=3, connectivity=1)
+
+
+class _VoxelGridLike(Protocol):
+    """Typed boundary for the subset of Trimesh voxel APIs used here."""
+
+    matrix: np.ndarray
+
+    def fill(self) -> Self:
+        """Return a filled voxel grid."""
+
+    def indices_to_points(self, indices: np.ndarray) -> np.ndarray:
+        """Map integer voxel indices to model-space centres."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +125,10 @@ def grid_from_mesh(
     pitch = _stud_pitch(working, options)
     working.apply_scale((1.0, 1.0, _PLATES_PER_STUD))
     _check_grid_dims(working, pitch)
-    voxels = working.voxelized(pitch=pitch)
+    voxels = cast(
+        "_VoxelGridLike",
+        working.voxelized(pitch=pitch),
+    )
     if options.fill:
         voxels = voxels.fill()
     mask = np.asarray(voxels.matrix, dtype=bool)
@@ -166,7 +181,7 @@ def _vertex_colours(mesh: trimesh.Trimesh) -> np.ndarray | None:
 
 def _sampled_rgba(
     working: trimesh.Trimesh,
-    voxels: trimesh.voxel.VoxelGrid,
+    voxels: _VoxelGridLike,
     mask: np.ndarray,
     colours: np.ndarray,
 ) -> np.ndarray:

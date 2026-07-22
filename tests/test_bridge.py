@@ -1,5 +1,7 @@
 """Bridge synthesizer: MILP ring re-tiling for the connectivity pass."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -7,7 +9,9 @@ from legolization import telemetry
 from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
+from legolization.instructions.sequencer import InstructionsConfig
 from legolization.layout import Layout
+from legolization.pipeline import PipelineConfig, load_grid, run
 from legolization.placement.layered.bridge import BridgeSynthesizer
 from legolization.placement.merge import improve_connectivity
 
@@ -119,6 +123,63 @@ def test_rephase_selects_best_phase_deterministically(
     assert len(chosen) == 1
     assert session.values["connectivity.bridge.phase_attempted"] == [0.0, 1.0, 2.0]
     assert session.values["connectivity.bridge.phase_accepted"] == [2.0]
+
+
+def test_default_path_flow_competes_with_partial_per_slab_cover(
+    catalog,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # PR #22 review pin: a per-slab cover that merely reduces the
+    # component count (3 -> 2 here) no longer preempts flow escalation.
+    # The flow candidate competes on the same (components, bricks) key
+    # in the default phase-0 path and wins when it fully connects.
+    def partial_per_slab(  # noqa: PLR0913
+        self: BridgeSynthesizer,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+        *,
+        phase: int = 0,
+    ) -> Layout | None:
+        del self, layout, region, grid, deadline, before, phase
+        candidate = Layout(catalog=default_catalog())
+        candidate.add("brick_2x2", 0, 0, 0, 0, 4)
+        candidate.add("brick_2x2", 10, 10, 0, 0, 4)
+        return candidate
+
+    def connected_flow(  # noqa: PLR0913
+        self: BridgeSynthesizer,
+        layout: Layout,
+        region: set[int],
+        grid: VoxelGrid,
+        deadline: float,
+        before: int,
+        *,
+        phase: int = 0,
+    ) -> Layout | None:
+        del self, layout, region, grid, deadline, before, phase
+        candidate = Layout(catalog=default_catalog())
+        candidate.add("brick_2x2", 0, 0, 0, 0, 4)
+        return candidate
+
+    monkeypatch.setattr(BridgeSynthesizer, "_per_slab_candidate", partial_per_slab)
+    monkeypatch.setattr(BridgeSynthesizer, "_flow_candidate", connected_flow)
+    _, grid = _towers()
+    three_towers = Layout(catalog=default_catalog())
+    for x in (0, 4, 8):
+        three_towers.add("brick_2x2", x, 0, 0, 0, 4)
+    with telemetry.record() as session:
+        chosen = BridgeSynthesizer(catalog=catalog)(
+            three_towers,
+            set(three_towers.bricks),
+            grid,
+        )
+    assert chosen is not None
+    assert ConnectionGraph.from_layout(chosen).component_count() == 1
+    assert len(chosen) == 1
+    assert "connectivity.bridge_flow" in session.spans
 
 
 def test_bridge_decline_matches_random_only(catalog):
@@ -394,3 +455,28 @@ def test_flow_decline_still_preserves_rng(catalog):
         (b.part_key, b.x, b.y, b.layer) for b in lo.bricks.values()
     )
     assert sig(layout_a) == sig(layout_b)
+
+
+@pytest.mark.slow
+def test_hybrid_mushroom_completes_phase_one_minimally_and_exactly() -> None:
+    path = (
+        Path(__file__).parent.parent / "data" / "corpus" / "synthetic" / "mushroom.npy"
+    )
+    config = PipelineConfig(
+        strategy="kollsker",
+        hybrid_bridge=True,
+        instructions=InstructionsConfig(mode="layer"),
+    )
+    with telemetry.record() as session:
+        result = run(load_grid(path, config), config)
+    assert result.component_count == 1
+    assert result.brick_count == 198
+    assert session.values["connectivity.bridge.hybrid.phase1_components"] == [3.0]
+    assert session.values["connectivity.bridge.hybrid.phase1_bricks"] == [196.0]
+    assert session.values["connectivity.bridge.hybrid.changed"] == [10.0]
+    assert result.grid is not None
+    target_cells = {
+        tuple(int(value) for value in coordinate)
+        for coordinate in np.argwhere(result.grid.filled_mask)
+    }
+    assert set(result.layout.occupancy) == target_cells

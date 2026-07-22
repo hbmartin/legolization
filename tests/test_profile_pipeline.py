@@ -1,14 +1,19 @@
 """Profiling script tests."""
 
+from __future__ import annotations
+
 import hashlib
 import importlib.util
 import json
 import pstats
+import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
+
+from legolization.telemetry import Telemetry
 
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "profile_pipeline.py"
 _HEART = Path(__file__).parent.parent / "data" / "examples" / "heart.vox"
@@ -95,3 +100,101 @@ def test_corpus_synthetic_name_resolves(profiler: ModuleType, tmp_path: Path) ->
     assert payload["run"]["input_hash"] == "generator:letter_t"
     assert payload["run"]["target_studs"] is None
     assert payload["result"]["brick_count"] > 0
+
+
+def test_stage_transition_resets_watchdog_checkpoint(
+    profiler: ModuleType,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "running.json"
+    lifecycle = profiler._Lifecycle.create(path, "fixture")  # noqa: SLF001
+    session = Telemetry()
+    lifecycle("start", "phase.voxelize", 10.0, session)
+    assert json.loads(path.read_text())["stage_started"] == 10.0
+    lifecycle("end", "phase.voxelize", 12.0, session)
+    lifecycle("start", "place.tile", 20.0, session)
+    payload = json.loads(path.read_text())
+    assert payload["active_stage"] == "place.tile"
+    assert payload["stage_started"] == 20.0
+
+
+def test_enclosing_repair_stage_owns_nested_stability(
+    profiler: ModuleType,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "running.json"
+    lifecycle = profiler._Lifecycle.create(path, "fixture")  # noqa: SLF001
+    session = Telemetry()
+    lifecycle("start", "phase.place", 10.0, session)
+    lifecycle("start", "stability.analyze", 15.0, session)
+    payload = json.loads(path.read_text())
+    assert payload["active_stage"] == "phase.place"
+    assert payload["stage_started"] == 10.0
+    lifecycle("end", "stability.analyze", 16.0, session)
+    lifecycle("start", "place.connectivity", 20.0, session)
+    lifecycle("start", "stability.analyze", 30.0, session)
+    payload = json.loads(path.read_text())
+    assert payload["active_stage"] == "place.connectivity"
+    assert payload["stage_started"] == 20.0
+    lifecycle("end", "stability.analyze", 40.0, session)
+    payload = json.loads(path.read_text())
+    assert payload["active_stage"] == "place.connectivity"
+    assert payload["stage_started"] == 20.0
+
+    lifecycle("end", "place.connectivity", 50.0, session)
+    lifecycle("end", "phase.place", 51.0, session)
+    lifecycle("start", "phase.repair", 60.0, session)
+    lifecycle("start", "stability.analyze", 70.0, session)
+    payload = json.loads(path.read_text())
+    assert payload["active_stage"] == "phase.repair"
+    assert payload["stage_started"] == 60.0
+
+
+def test_monitor_terminates_child_and_recovers_timeout_artifact(
+    profiler: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    events = tmp_path / "profile.running.json"
+    base = tmp_path / "profile"
+    code = (
+        "import json,sys,time\n"
+        "from pathlib import Path\n"
+        "Path(sys.argv[1]).write_text(json.dumps({"
+        "'active_stage':'place.connectivity',"
+        "'stage_started':time.monotonic(),"
+        "'spans':{'place.tile':{'calls':1,'seconds':0.01,'buckets':{}}}}))\n"
+        "print('worker checkpoint', flush=True)\n"
+        "time.sleep(30)\n"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", code, str(events)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    args = SimpleNamespace(
+        heartbeat=0.01,
+        stage_timeout=0.05,
+        model="fixture",
+        strategy="greedy",
+        seed=0,
+        steps="layer",
+    )
+    assert (
+        profiler._monitor(  # noqa: SLF001
+            process,
+            args=args,
+            base=base,
+            events_path=events,
+        )
+        == 124
+    )
+    assert process.poll() is not None
+    artifact = json.loads(base.with_suffix(".json").read_text())
+    assert artifact["status"] == "timed_out"
+    assert artifact["active_stage"] == "place.connectivity"
+    assert artifact["spans"]["place.tile"]["calls"] == 1
+    captured = capsys.readouterr()
+    assert "stage: place.connectivity" in captured.err
+    assert "timed out place.connectivity" in captured.err
+    assert "worker checkpoint" in captured.out

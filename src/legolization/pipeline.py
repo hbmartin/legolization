@@ -103,6 +103,12 @@ class PipelineConfig:
     gates close; phase 0 preserves the historical production path.
     """
 
+    hybrid_bridge: bool = False
+    """Complete the deterministic phase-1 bridge candidate with a
+    bounded hard-connectivity local MILP. Independent of ``bridge_rephase``
+    and opt-in while its corpus acceptance gates mature.
+    """
+
 
 @dataclass(frozen=True, slots=True)
 class PipelineResult:

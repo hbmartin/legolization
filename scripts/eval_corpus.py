@@ -1,37 +1,47 @@
-"""Sweep the evaluation corpus through every strategy and score the field.
+"""Collect resumable model/strategy/seed evaluation artifacts.
 
-For each selected manifest model (see ``scripts/corpus.py``) this runs the full
-``--strategy all`` machinery in-process (``compare.run_all`` +
-``select_best``), collects a scorecard row, and writes
-``eval/runs/<UTC>/scorecard.{json,md}``. With a committed baseline
-(``eval/baselines/scorecard.json``) it also reports regressions: a drop in
-buildable-strategy count, a newly failed manifest expectation, or a winner
-objective that worsened beyond ``--tolerance`` are HARD regressions (exit
-1); winner identity and brick-count drift are informational.
+Before launching placement, this command writes a collection manifest with
+every expected candidate. Each completion is then persisted immediately as an
+atomic, identity-stamped JSON artifact. Exact successful artifacts are reused;
+failed, missing, corrupt, or identity-mismatched candidates are retried.
+
+Collection deliberately does not assemble a scorecard or write a baseline.
+Pass its emitted manifest to ``scripts/assemble_eval.py`` after collection.
 
 Usage::
 
     uv run python scripts/eval_corpus.py [--models a,b] [--traits fast]
         [--kind mesh|synthetic] [--strategies greedy,fast] [--jobs 0]
-        [--timeout 300] [--seed 0] [--write-baseline] [--tolerance 0.05]
+        [--timeout 300] [--seeds 0,1] [--fresh]
 
-Timings are never compared. Synthetic models are regenerated in memory
-(never stale) and are the default fast scope. Mesh evaluation is
-deliberately opt-in via ``--kind mesh``; run ``scripts/corpus.py
-download`` first for full coverage.
+Synthetic models are regenerated in memory and are the default fast scope.
+Mesh evaluation is deliberately opt-in via ``--kind mesh``; run
+``scripts/corpus.py download`` first for full coverage.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-from legolization.compare import run_all, select_best
+from legolization.compare import Candidate, run_all, select_best
+from legolization.eval_artifacts import (
+    SourceIdentity,
+    atomic_json,
+    candidate_path,
+    candidate_payload,
+    configuration_hash,
+    input_sha256,
+    matching_candidate,
+    source_identity,
+)
 from legolization.grid import VoxelGrid
 from legolization.mesh import MeshOptions, mesh_to_grid
 from legolization.pipeline import PipelineConfig
@@ -322,6 +332,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seeds", type=_seed_list, default=None, metavar="N,N,...")
     parser.add_argument("--out", type=Path, default=RUNS)
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="ignore exact successful artifacts and rerun selected candidates",
+    )
+    # Retained only to give existing automation a useful migration error.
     parser.add_argument("--baseline", type=Path, default=None)
     parser.add_argument("--write-baseline", action="store_true")
     parser.add_argument("--tolerance", type=float, default=0.05)
@@ -439,79 +455,287 @@ def _write_baseline(
     print(f"wrote {target}")
 
 
-def _sweep(
-    corpus: ModuleType,
+def _grid_hash(grid: VoxelGrid) -> str:
+    """Hash a generated grid's exact shape, dtype, and colour codes."""
+    digest = hashlib.sha256()
+    digest.update(str(grid.codes.dtype).encode())
+    digest.update(repr(grid.shape).encode())
+    digest.update(grid.codes.tobytes(order="C"))
+    return digest.hexdigest()
+
+
+def _model_input_hash(model: CorpusModelLike, grid: VoxelGrid) -> str:
+    """Return source-byte identity for meshes and exact grid identity otherwise."""
+    if model.kind == "mesh":
+        return input_sha256(model.abs_path)
+    return _grid_hash(grid)
+
+
+def _effective_config(
+    args: argparse.Namespace,
+    *,
+    strategy: str,
+    seed: int,
+) -> PipelineConfig:
+    """Mirror compare.run_all's result-affecting per-candidate config."""
+    return replace(
+        PipelineConfig(seed=args.seed),
+        strategy=strategy,
+        seed=seed,
+        progress=None,
+        time_budget_s=args.timeout,
+    )
+
+
+def _model_config(model: CorpusModelLike) -> dict[str, object]:
+    """Return manifest settings that affect materialized model geometry."""
+    mesh = model_mesh_options(model)
+    return {
+        "kind": model.kind,
+        "plates_per_voxel": model.plates_per_voxel,
+        "generator": model.generator,
+        "mesh": mesh,
+    }
+
+
+def _selected_names(args: argparse.Namespace) -> tuple[str, ...]:
+    if args.strategies is not None:
+        return tuple(name.strip() for name in args.strategies.split(","))
+    from legolization.placement.registry import strategy_names  # noqa: PLC0415
+
+    return tuple(strategy_names())
+
+
+def _selected_seeds(args: argparse.Namespace) -> tuple[int, ...]:
+    return tuple(dict.fromkeys(args.seeds)) if args.seeds else (args.seed,)
+
+
+def _initial_manifest(
     models: list[CorpusModelLike],
     args: argparse.Namespace,
-) -> list[dict]:
-    """Run the strategy sweep for every selected model."""
-    names = (
-        tuple(name.strip() for name in args.strategies.split(","))
-        if args.strategies is not None
-        else None
+    *,
+    identity: SourceIdentity,
+    stamp: str,
+) -> dict[str, object]:
+    """Build the complete expected collection matrix before work starts."""
+    names = _selected_names(args)
+    seeds = _selected_seeds(args)
+    return {
+        "schema": 1,
+        "collection_id": stamp,
+        "generated": stamp,
+        "identity": identity.to_dict(),
+        "scope": {
+            "kind": args.kind,
+            "models": [model.name for model in models],
+            "strategies": list(names),
+            "seeds": list(seeds),
+            "timeout_s": args.timeout,
+        },
+        "models": [
+            {
+                "model": model.name,
+                "kind": model.kind,
+                "traits": list(model.traits),
+                "expect_min_buildable": model.expect_min_buildable,
+                "status": "pending",
+                "unsupported_ratio": None,
+                "input_hash": None,
+                "candidates": [
+                    {
+                        "strategy": strategy,
+                        "seed": seed,
+                        "status": "pending",
+                        "config_hash": None,
+                        "artifact": None,
+                    }
+                    for strategy in names
+                    for seed in seeds
+                ],
+            }
+            for model in models
+        ],
+    }
+
+
+def _manifest_model(manifest: dict[str, object], name: str) -> dict[str, object]:
+    models = cast("list[dict[str, object]]", manifest["models"])
+    return next(model for model in models if model["model"] == name)
+
+
+def _manifest_candidate(
+    model_entry: dict[str, object],
+    strategy: str,
+    seed: int,
+) -> dict[str, object]:
+    candidates = cast("list[dict[str, object]]", model_entry["candidates"])
+    return next(
+        candidate
+        for candidate in candidates
+        if candidate["strategy"] == strategy and candidate["seed"] == seed
     )
-    rows: list[dict] = []
-    for model in models:
-        print(f"=== {model.name}", file=sys.stderr)
-        try:
-            grid = model_grid(corpus, model)
-        except ValueError as error:
-            rows.append(build_row(model, None, f"error: {error}"))
-            continue
-        if grid is None:
-            rows.append(build_row(model, None, "skipped: mesh not on disk (download)"))
-            continue
-        candidates = run_all(
-            grid,
-            PipelineConfig(seed=args.seed),
-            jobs=args.jobs,
-            names=names,
-            seeds=args.seeds,
-            timeout_s=args.timeout,
-            progress=lambda message: print(f"  {message}", file=sys.stderr),
+
+
+def _relative(path: Path) -> str:
+    try:
+        return path.relative_to(_REPO).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _collect_model(  # noqa: PLR0913 - one model needs all collection state
+    corpus: ModuleType,
+    model: CorpusModelLike,
+    args: argparse.Namespace,
+    manifest: dict[str, object],
+    manifest_path: Path,
+    identity: SourceIdentity,
+) -> bool:
+    """Materialize, resume, and persist one model's candidate matrix."""
+    print(f"=== {model.name}", file=sys.stderr)
+    model_entry = _manifest_model(manifest, model.name)
+    try:
+        grid = model_grid(corpus, model)
+    except ValueError as error:
+        model_entry["status"] = f"error: {error}"
+        atomic_json(manifest_path, manifest)
+        return False
+    if grid is None:
+        model_entry["status"] = "skipped: mesh not on disk (download)"
+        atomic_json(manifest_path, manifest)
+        return False
+
+    input_hash = _model_input_hash(model, grid)
+    model_entry["input_hash"] = input_hash
+    model_entry["unsupported_ratio"] = unsupported_ratio(grid)
+    model_entry["status"] = "collecting"
+    names = _selected_names(args)
+    seeds = _selected_seeds(args)
+    cached: list[Candidate] = []
+    skipped: set[tuple[str, int]] = set()
+    paths: dict[tuple[str, int], Path] = {}
+    hashes: dict[tuple[str, int], str] = {}
+
+    for strategy in names:
+        for seed in seeds:
+            key = (strategy, seed)
+            config_hash = configuration_hash(
+                {"evaluation_schema": 1},
+                _effective_config(args, strategy=strategy, seed=seed),
+                _model_config(model),
+            )
+            path = candidate_path(
+                args.out,
+                model=model.name,
+                strategy=strategy,
+                seed=seed,
+                identity=identity,
+                config_hash=config_hash,
+                input_hash=input_hash,
+            )
+            paths[key] = path
+            hashes[key] = config_hash
+            entry = _manifest_candidate(model_entry, strategy, seed)
+            entry["config_hash"] = config_hash
+            entry["artifact"] = _relative(path)
+            hit = (
+                None
+                if args.fresh
+                else matching_candidate(
+                    path,
+                    identity=identity,
+                    config_hash=config_hash,
+                    input_hash=input_hash,
+                    model=model.name,
+                    strategy=strategy,
+                    seed=seed,
+                )
+            )
+            if hit is not None:
+                entry["status"] = "reused"
+                cached.append(hit)
+                skipped.add(key)
+    atomic_json(manifest_path, manifest)
+
+    def completed(candidate: Candidate) -> None:
+        key = (candidate.strategy, candidate.seed)
+        payload = candidate_payload(
+            candidate,
+            identity=identity,
+            config_hash=hashes[key],
+            input_hash=input_hash,
+            model=model.name,
         )
-        report = select_best(candidates)
-        status = "ok" if report.winner is not None else "error: all failed"
-        rows.append(build_row(model, report.to_dict(), status, grid=grid))
-    return rows
+        atomic_json(paths[key], payload)
+        entry = _manifest_candidate(model_entry, *key)
+        entry["status"] = "ok" if candidate.ok else "error"
+        atomic_json(manifest_path, manifest)
+
+    fresh = run_all(
+        grid,
+        PipelineConfig(seed=args.seed),
+        jobs=args.jobs,
+        names=names,
+        seeds=seeds,
+        timeout_s=args.timeout,
+        progress=lambda message: print(f"  {message}", file=sys.stderr),
+        skip=skipped,
+        on_complete=completed,
+    )
+    candidates = [*cached, *fresh]
+    report = select_best(candidates)
+    model_entry["status"] = "ok" if report.winner is not None else "error: all failed"
+    atomic_json(manifest_path, manifest)
+    return report.winner is not None
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry point."""
+    """Collect candidate artifacts; scorecard assembly is a separate command."""
     args = parse_args(argv)
-    _validate_baseline_scope(args)
+    if args.write_baseline or args.baseline is not None:
+        msg = (
+            "baseline assembly moved to scripts/assemble_eval.py; "
+            "pass it the collection manifest written by this command"
+        )
+        raise SystemExit(msg)
     corpus = load_corpus_module()
     models = corpus.select_models(corpus.load_manifest(), args.models)
     if args.traits is not None:
         wanted = {trait.strip() for trait in args.traits.split(",")}
         models = [m for m in models if wanted & set(m.traits)]
+    excluded_kinds = sorted({m.kind for m in models})
     if args.kind is not None:
         models = [m for m in models if m.kind == args.kind]
     if not models:
-        print("error: no corpus models selected", file=sys.stderr)
+        hint = (
+            f"; the selection matched only kind {', '.join(excluded_kinds)}"
+            f" - pass --kind {excluded_kinds[0]}"
+            if excluded_kinds and args.kind is not None
+            else ""
+        )
+        print(f"error: no corpus models selected{hint}", file=sys.stderr)
         return 1
-    rows = _sweep(corpus, models, args)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = args.out / stamp
-    out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "seed": args.seed,
-        "seeds": list(args.seeds) if args.seeds is not None else None,
-        "generated": stamp,
-        "models": rows,
-    }
-    (out_dir / "scorecard.json").write_text(json.dumps(payload, indent=2) + "\n")
-    (out_dir / "scorecard.md").write_text(to_markdown(rows) + "\n")
-    print(f"wrote {out_dir / 'scorecard.json'}")
-    print(to_markdown(rows))
-
-    exit_code, successful_rows = _assess_rows(rows)
-    exit_code = max(
-        exit_code,
-        _baseline_regression_status(args=args, rows=successful_rows),
-    )
-    _write_baseline(args=args, payload=payload, exit_code=exit_code)
-    return exit_code
+    identity = source_identity(_REPO)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    manifest = _initial_manifest(models, args, identity=identity, stamp=stamp)
+    manifest_path = args.out / "collections" / f"{stamp}.json"
+    atomic_json(manifest_path, manifest)
+    outcomes = [
+        _collect_model(
+            corpus,
+            model,
+            args,
+            manifest,
+            manifest_path,
+            identity,
+        )
+        for model in models
+    ]
+    success = all(outcomes)
+    manifest["status"] = "complete" if success else "incomplete"
+    atomic_json(manifest_path, manifest)
+    print(f"collection manifest: {manifest_path}")
+    return 0 if success else 1
 
 
 if __name__ == "__main__":

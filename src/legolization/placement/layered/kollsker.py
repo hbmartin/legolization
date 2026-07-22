@@ -22,11 +22,11 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, OptimizeResult, milp
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, csc_matrix
 
 from legolization.placement.layered.bond import BondStrategy
 from legolization.placement.layered.engine import (
@@ -251,7 +251,7 @@ def _components(columns: frozenset[Column]) -> list[list[Column]]:
 def _cover_matrix(
     component: Iterable[Column],
     candidates: list[Rect2D],
-) -> coo_matrix:
+) -> csc_matrix:
     """Sparse exact-cover matrix: one row per column, one col per candidate."""
     cell_index = {cell: i for i, cell in enumerate(sorted(component))}
     rows: list[int] = []
@@ -260,7 +260,10 @@ def _cover_matrix(
         for cell in rect.columns():
             rows.append(cell_index[cell])
             cols.append(col)
-    return coo_matrix(
-        (np.ones(len(rows)), (rows, cols)),
-        shape=(len(cell_index), len(candidates)),
-    ).tocsc()
+    return cast(
+        "csc_matrix",
+        coo_matrix(
+            (np.ones(len(rows)), (rows, cols)),
+            shape=(len(cell_index), len(candidates)),
+        ).tocsc(),
+    )

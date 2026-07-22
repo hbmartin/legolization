@@ -22,7 +22,7 @@ centroid).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
@@ -476,10 +476,13 @@ def _build_model_body(  # noqa: PLR0913 - mirrors build_model's switches
         mass_kg += extra.get(brick_id, 0.0)
         b_vector[rpb * asm.index[brick_id] + _FZ] = -mass_kg * GRAVITY
 
-    a_matrix = coo_matrix(
-        (asm.data, (asm.rows, asm.cols)),
-        shape=(rpb * len(asm.brick_ids), max(asm.var_count, 1)),
-    ).tocsr()
+    a_matrix = cast(
+        "csr_matrix",
+        coo_matrix(
+            (asm.data, (asm.rows, asm.cols)),
+            shape=(rpb * len(asm.brick_ids), max(asm.var_count, 1)),
+        ).tocsr(),
+    )
     return StabilityModel(
         brick_ids=asm.brick_ids,
         a_matrix=a_matrix,

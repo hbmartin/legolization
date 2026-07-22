@@ -427,6 +427,31 @@ def test_press_probe_scipy_engine_goes_cold():
     assert PrefixSolver.create(layout, SolverConfig(engine="scipy")) is None
 
 
+def test_selective_press_probe_matches_cold_split_lookahead() -> None:
+    layout, ids = _tower_layout()
+    solver = PrefixSolver.create(layout, _WARM)
+    assert solver is not None
+    solver.probe((ids[0],))
+    solver.commit((ids[0],))
+    appended = (ids[1], ids[2])
+    pressed = (ids[2],)
+    warm = solver.press_probe_selection(appended, pressed, 1.0)
+    cold = analyze(
+        layout.subset(ids[:3]),
+        _WARM,
+        extra_masses={ids[2]: 1.0},
+    )
+    assert warm.stable == cold.stable
+    assert _score_drift(warm, cold) <= 1e-6
+    # The selective lookahead stays pending and ordinary commit semantics
+    # remain intact.
+    solver.commit(appended)
+    committed = solver.probe(())
+    expected = analyze(layout.subset(ids[:3]), _WARM)
+    assert committed.stable == expected.stable
+    assert _score_drift(committed, expected) <= 1e-6
+
+
 def test_torque_z_warm_path_stays_warm():
     # PR #20 review (severity 3): the near-boundary zip hard-coded five
     # tolerances, so torque_z's sixth residual raised inside the broad
