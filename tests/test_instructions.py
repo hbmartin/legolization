@@ -685,6 +685,40 @@ def _verdict(*, stable: bool, score: float) -> StabilityResult:
     )
 
 
+def test_press_subset_skips_remainder_solve_for_unstable_press() -> None:
+    from legolization.instructions.sequencer import _best_press_subset
+
+    layout = Layout(catalog=default_catalog())
+    chunk = tuple(layout.add("brick_1x1", x, 0, 0, 0, 4).brick_id for x in range(2))
+    static = _verdict(stable=True, score=0.2)
+    unstable = _verdict(stable=False, score=1.2)
+    remainder_calls = 0
+
+    def press_selection(
+        _chunk: tuple[int, ...],
+        _remainder: tuple[int, ...],
+    ) -> StabilityResult:
+        nonlocal remainder_calls
+        remainder_calls += 1
+        return static
+
+    result = _best_press_subset(
+        layout,
+        chunk,
+        placed=set(),
+        supports={brick_id: set() for brick_id in chunk},
+        blockers=dict.fromkeys(chunk, frozenset()),
+        blocks={brick_id: set() for brick_id in chunk},
+        max_step_size=2,
+        analyze_prefix=lambda _subset: static,
+        press_prefix=lambda _subset: unstable,
+        press_selection=press_selection,
+    )
+
+    assert result is None
+    assert remainder_calls == 0
+
+
 def test_scan_window_defers_press_fragile_candidates() -> None:
     # WS-I: with the check on, a statically-stable-but-press-fragile
     # candidate is skipped when the window holds a press-stable

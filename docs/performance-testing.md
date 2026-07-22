@@ -51,7 +51,11 @@ atomically writes a durable JSON artifact containing `active_stage` and
 all telemetry completed before the timeout.
 
 `--cprofile` additionally writes a sibling `.pstats`. cProfile inflates
-wall times; with it on, compare **call counts**, never seconds.
+wall times; with it on, compare **call counts**, never seconds. Supervised
+runs also execute watchdog checkpointing synchronously around spans, so
+their timings are not strictly comparable with historical unsupervised
+profiles even though a span's own start notification is excluded from its
+measured duration.
 
 ### Armadillo release gate
 
@@ -59,7 +63,7 @@ Armadillo is explicitly outside every inner loop. Profile it on an idle
 machine, one process and one strategy at a time, with layer-only
 instructions:
 
-```
+```bash
 for strategy in greedy luo bond fast smga beauty kollsker; do
   uv run python scripts/profile_pipeline.py armadillo \
     --strategy "$strategy" --steps layer \

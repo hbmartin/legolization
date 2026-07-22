@@ -20,7 +20,7 @@ so ``compare.run_all`` workers record nothing — profile in-process
 from __future__ import annotations
 
 import time
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -136,7 +136,9 @@ class Telemetry:
 
     def notify_span(self, event: str, name: str) -> None:
         """Emit a span lifecycle event when a profiler sink is active."""
-        if self.span_sink is not None:
+        if self.span_sink is None:
+            return
+        with suppress(Exception):  # lifecycle sinks are best-effort
             self.span_sink(event, name, time.monotonic(), self)
 
 
@@ -152,8 +154,8 @@ class _Span:
         self._started = 0.0
 
     def __enter__(self) -> Self:
-        self._started = time.perf_counter()
         self._telemetry.notify_span("start", self._name)
+        self._started = time.perf_counter()
         return self
 
     def __exit__(self, *exc_info: object) -> None:

@@ -60,6 +60,40 @@ def test_exception_still_records_and_propagates() -> None:
     assert session.spans["failing"].calls == 1
 
 
+def test_span_sink_failures_are_best_effort_and_preserve_body_error() -> None:
+    def broken_sink(*_args: object) -> None:
+        msg = "checkpoint failed"
+        raise OSError(msg)
+
+    with (
+        telemetry.record(span_sink=broken_sink) as session,
+        pytest.raises(ValueError, match="boom"),
+    ):
+        _raise_inside_span()
+    assert session.spans["failing"].calls == 1
+
+
+def test_span_start_notification_precedes_its_timer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    ticks = iter((10.0, 12.0))
+
+    def sink(event: str, *_args: object) -> None:
+        events.append(event)
+
+    def perf_counter() -> float:
+        events.append("clock")
+        return next(ticks)
+
+    monkeypatch.setattr(telemetry.time, "perf_counter", perf_counter)
+    with telemetry.record(span_sink=sink) as session, telemetry.span("timed"):
+        pass
+
+    assert events == ["start", "clock", "clock", "end"]
+    assert session.spans["timed"].seconds == 2.0
+
+
 def test_sequential_sessions_are_independent() -> None:
     with telemetry.record() as first, telemetry.span("x"):
         pass
