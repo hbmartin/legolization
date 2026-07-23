@@ -1,5 +1,7 @@
 """LDraw emission: coordinates, rotation, steps, and file structure."""
 
+from pathlib import Path
+
 import pytest
 
 from legolization.catalog import default_catalog
@@ -352,6 +354,140 @@ def test_cli_heatmap_rejected_for_sweeps(tmp_path):
             ]
         )
     assert excinfo.value.code == 2
+
+
+def test_cli_heatmap_rejects_output_collision(tmp_path: Path) -> None:
+    import numpy as np
+
+    from legolization.main import main
+
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
+    output = tmp_path / "box.ldr"
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(npy),
+                "-o",
+                str(output),
+                "--heatmap",
+                str(output),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_heatmap_rejects_case_folded_output_collision(tmp_path: Path) -> None:
+    # The default macOS filesystem is case-insensitive: BOX.LDR would
+    # overwrite box.ldr there, so the guard folds case on every platform.
+    import numpy as np
+
+    from legolization.main import main
+
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(npy),
+                "-o",
+                str(tmp_path / "box.ldr"),
+                "--heatmap",
+                str(tmp_path / "BOX.LDR"),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_heatmap_rejects_input_collision(tmp_path: Path) -> None:
+    from legolization.main import main
+
+    source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(source),
+                "-o",
+                str(tmp_path / "roundtrip.ldr"),
+                "--heatmap",
+                str(source),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_heatmap_requires_ldr_suffix(tmp_path: Path) -> None:
+    import numpy as np
+
+    from legolization.main import main
+
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
+
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(npy), "--heatmap", str(tmp_path / "heat.mpd")])
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_heatmap_write_error_is_reported(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import numpy as np
+
+    from legolization.main import main
+
+    npy = tmp_path / "box.npy"
+    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
+
+    code = main(
+        [
+            str(npy),
+            "-o",
+            str(tmp_path / "box.ldr"),
+            "--restarts",
+            "1",
+            "--heatmap",
+            str(tmp_path / "missing" / "heat.ldr"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "error:" in captured.err
+    assert "already written" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_import_cli_heatmap_write_error_is_reported(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from legolization.main import main
+
+    source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
+    code = main(
+        [
+            str(source),
+            "-o",
+            str(tmp_path / "roundtrip.ldr"),
+            "--heatmap",
+            str(tmp_path / "missing" / "heat.ldr"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "error:" in captured.err
+    assert "already written" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_import_cli_rejects_placement_flags(tmp_path):

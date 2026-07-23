@@ -71,13 +71,23 @@ class LuoStrategy:
     solves — the measured Armadillo wall). None = unbounded (historical
     behaviour, byte-identical)."""
 
-    def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
+    def place(
+        self,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None = None,
+    ) -> Layout:
         """Produce a merged layout, refined for connectivity then stability."""
-        deadline = (
+        local_deadline = (
             time.monotonic() + self.time_budget_s
             if self.time_budget_s is not None
             else None
         )
+        if local_deadline is not None:
+            deadline = (
+                local_deadline if deadline is None else min(deadline, local_deadline)
+            )
         layout = atomize(grid, self.catalog)
         maximal_random_merge(
             layout,
@@ -93,6 +103,7 @@ class LuoStrategy:
                 fail_max=self.fail_max,
                 colour_mode=self.colour_mode,
                 colour_weight=self.colour_weight,
+                deadline=deadline,
             )
             self._stabilize(layout, grid, rng, deadline=deadline)
         compact_vertical(layout)
@@ -107,7 +118,15 @@ class LuoStrategy:
         deadline: float | None = None,
     ) -> None:
         """Phase 2: split-remerge around the weakest bricks until stable."""
+        if deadline is not None and time.monotonic() >= deadline:
+            telemetry.value("luo.stabilize.deadline_stop", 0.0)
+            return
         result = analyze(layout, self.solver_config)
+        if result.stable:
+            return
+        if deadline is not None and time.monotonic() >= deadline:
+            telemetry.value("luo.stabilize.deadline_stop", 0.0)
+            return
         capacity = self._capacity(layout)
         failures = 0
         while not result.stable and failures < self.fail_max:

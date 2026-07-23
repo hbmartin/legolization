@@ -138,12 +138,28 @@ class LayeredStrategy:
     hybrid_bridge: bool = False
     """Try hard-connectivity completion of the phase-1 partial cover."""
 
-    def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
+    def place(
+        self,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None = None,
+    ) -> Layout:
         """Tile every layer problem bottom-up, then repair topology."""
         layout = Layout(catalog=self.catalog)
         problems = slab_decompose(grid)
         total = sum(len(problem.columns) for problem in problems) or 1
-        deadline = time.monotonic() + self.time_budget_s if self.time_budget_s else None
+        # `is not None`, not truthiness: a zero budget means an instant
+        # deadline, matching Luo — 0 as "disabled" was an inconsistency.
+        local_deadline = (
+            time.monotonic() + self.time_budget_s
+            if self.time_budget_s is not None
+            else None
+        )
+        if local_deadline is not None:
+            deadline = (
+                local_deadline if deadline is None else min(deadline, local_deadline)
+            )
         done = 0
         with telemetry.span("place.tile"):
             for index, problem in enumerate(problems):

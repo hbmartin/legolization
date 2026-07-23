@@ -1,17 +1,16 @@
 """Sweep StableLego dataset objects and compare verdicts with the release.
 
 The StableLego dataset (Liu et al., RA-L 2024; Google Drive link in the
-release README) ships one directory per object holding ``task_graph.json``
-and a per-brick ``stability_score.npy``. This harness loads a deterministic
-sample, runs our RBE ``analyze`` on each layout, derives the release's
-verdict from its score file, and writes an agreement report — the scaled
-extension of the nine vendored fixture pins in
-``tests/test_stablelego_cross.py``.
+release README) nests each object as ``category/object/models`` with a
+``task_graph.json`` and a 20x20x20 ``stability_score.npy`` voxel heatmap.
+This harness loads a deterministic sample, runs our RBE ``analyze`` on each
+layout, derives the release's verdict from its heatmap, and writes an
+agreement report — the scaled extension of the nine vendored fixture pins
+in ``tests/test_stablelego_cross.py``.
 
-Release verdict convention (documented assumption, counted separately when
-a file defies it): an object stands iff every per-brick score is finite and
-strictly below 1.0. Score files whose length does not match the layout's
-brick count are recorded as skipped, never guessed at.
+Release verdict convention (documented assumption): an object stands iff
+every voxel score is finite and strictly below 1.0. Malformed task graphs or
+score files are recorded as skipped, never guessed at.
 
 Usage::
 
@@ -57,6 +56,10 @@ class ObjectRow:
     ours_max_score: float
     theirs_stable: bool
     theirs_max_score: float
+    theirs_all_zero: bool = False
+    """Whether the release heatmap was entirely zero — a "stands" verdict
+    read from such a file is pure convention, so these are tallied
+    separately (appended for positional compatibility)."""
 
     @property
     def agree(self) -> bool:
@@ -77,13 +80,24 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def discover_objects(dataset: Path) -> list[Path]:
-    """Every object directory carrying the release's two files, sorted."""
+    """Every release ``models`` directory carrying both required files."""
     return sorted(
-        path
-        for path in dataset.iterdir()
-        if (path / "task_graph.json").exists()
-        and (path / "stability_score.npy").exists()
+        task_graph.parent
+        for task_graph in dataset.rglob("task_graph.json")
+        if (task_graph.parent / "stability_score.npy").is_file()
     )
+
+
+def object_name(path: Path, dataset: Path) -> str:
+    """Stable category/object identity relative to the selected dataset root.
+
+    Pointing ``--dataset`` at an object (or its ``models``) directory
+    leaves no relative parts; fall back to the object directory's own
+    name rather than the meaningless literal ``models``.
+    """
+    relative = path.relative_to(dataset)
+    parts = relative.parts[:-1] if relative.name == "models" else relative.parts
+    return "/".join(parts) or path.resolve().parent.name
 
 
 def sample_objects(objects: list[Path], sample: int, seed: int) -> list[Path]:
@@ -105,10 +119,12 @@ def release_verdict(scores: np.ndarray) -> tuple[bool, float]:
 def evaluate_object(
     path: Path,
     *,
+    name: str | None = None,
     library: Library,
     config: SolverConfig,
 ) -> ObjectRow | str:
     """One comparison row, or a skip reason string."""
+    label = name or path.name
     try:
         entries = load_task_graph(path / "task_graph.json")
         layout = layout_from_task_graph(
@@ -116,20 +132,25 @@ def evaluate_object(
             catalog=stablelego_catalog(library),
             library=library,
         )
-    except (ValueError, KeyError, json.JSONDecodeError) as error:
-        return f"{path.name}: load failed: {error}"
-    theirs = np.asarray(np.load(path / "stability_score.npy"), dtype=float).ravel()
-    if theirs.size != len(layout):
-        return f"{path.name}: score length {theirs.size} != {len(layout)} bricks"
+        # The release stores a 20x20x20 voxel heatmap, not one score per
+        # brick. Empty voxels are zero, so its global max still carries the
+        # documented stand/collapse verdict without a shape conversion.
+        theirs = np.asarray(
+            np.load(path / "stability_score.npy", allow_pickle=False),
+            dtype=float,
+        )
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        return f"{label}: load failed: {error}"
     theirs_stable, theirs_max = release_verdict(theirs)
     ours = analyze(layout, config)
     return ObjectRow(
-        name=path.name,
+        name=label,
         bricks=len(layout),
         ours_stable=ours.stable,
         ours_max_score=round(ours.max_score, 9),
         theirs_stable=theirs_stable,
         theirs_max_score=round(theirs_max, 9) if np.isfinite(theirs_max) else 1.0e9,
+        theirs_all_zero=bool(np.all(theirs == 0.0)),
     )
 
 
@@ -137,11 +158,20 @@ def to_markdown(rows: list[ObjectRow], skipped: list[str]) -> str:
     """Human-readable report: disagreements first, then the tallies."""
     lines = ["# StableLego verdict sweep", ""]
     disagreements = [row for row in rows if not row.agree]
+    all_zero = sum(row.theirs_all_zero for row in rows)
     lines.append(
         f"objects={len(rows)} agree={len(rows) - len(disagreements)} "
-        f"disagree={len(disagreements)} skipped={len(skipped)}"
+        f"disagree={len(disagreements)} skipped={len(skipped)} "
+        f"all-zero-heatmaps={all_zero}"
     )
     lines.append("")
+    if all_zero:
+        lines.append(
+            f"CAUTION: {all_zero} heatmap(s) are entirely zero; their "
+            '"stands" verdicts are pure convention. Verify how the release '
+            "encodes infeasible objects before trusting the agreement rate."
+        )
+        lines.append("")
     if disagreements:
         lines.append("| object | bricks | ours | ours max | theirs | theirs max |")
         lines.append("|---|---:|---|---:|---|---:|")
@@ -178,7 +208,12 @@ def main(argv: list[str] | None = None) -> int:
     rows: list[ObjectRow] = []
     skipped: list[str] = []
     for index, path in enumerate(chosen, start=1):
-        outcome = evaluate_object(path, library=library, config=config)
+        outcome = evaluate_object(
+            path,
+            name=object_name(path, args.dataset),
+            library=library,
+            config=config,
+        )
         if isinstance(outcome, str):
             skipped.append(outcome)
         else:
@@ -201,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         "release_parity": args.release_parity,
         "agree": sum(row.agree for row in rows),
         "disagree": sum(not row.agree for row in rows),
+        "all_zero_heatmaps": sum(row.theirs_all_zero for row in rows),
         "skipped": skipped,
         "rows": [dict(asdict(row), agree=row.agree) for row in rows],
     }

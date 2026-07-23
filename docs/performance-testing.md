@@ -131,8 +131,11 @@ Three conclusions, each closing a backlog hypothesis:
 The v8 response is budget enforcement, not a faster LP:
 `PipelineConfig.time_budget_s` now derives ONE absolute monotonic
 deadline at `run()` start, honoured at round boundaries by ALNS
-`repair_stability`, the hollow-restore loop, and Luo's `_stabilize`
-(telemetry: `repair.deadline_stop`, `pipeline.hollow_restore.deadline_stop`,
+`repair_stability`, the hollow-restore loop, and Luo's `_stabilize`.
+Repair and Luo also check it before their first full-structure solve,
+and repair reuses the pipeline's existing exact verdict when no layout
+change was accepted (telemetry: `repair.deadline_stop`,
+`pipeline.hollow_restore.deadline_stop`,
 `luo.stabilize.deadline_stop`). A running solve is never interrupted;
 `time_budget_s=None` keeps every historical byte. The real per-solve
 fix remains the incremental re-analysis workstream (warm append-only

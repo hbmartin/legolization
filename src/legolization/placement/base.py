@@ -98,8 +98,9 @@ class PlacementStrategy(Protocol):
         grid: VoxelGrid,
         *,
         rng: np.random.Generator,
+        deadline: float | None = None,
     ) -> Layout:
-        """Produce a layout covering every filled voxel of ``grid``."""
+        """Produce a layout, honoring an absolute deadline when supported."""
         ...
 
 

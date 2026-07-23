@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from legolization.catalog import Catalog, Cell
     from legolization.grid import VoxelGrid
     from legolization.layout import Layout
-    from legolization.stability.solver import SolverConfig
+    from legolization.stability.solver import SolverConfig, StabilityResult
 
 _Q_TOLERANCE = 1e-9
 
@@ -61,6 +61,8 @@ class RepairReport:
     rounds: int
     q_history: tuple[float, ...]
     bricks_rebuilt: int
+    result: StabilityResult | None = None
+    """Final exact verdict, appended for positional compatibility."""
 
 
 def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline state
@@ -72,17 +74,32 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
     rng: np.random.Generator,
     config: RepairConfig | None = None,
     deadline: float | None = None,
+    initial_stability: StabilityResult | None = None,
 ) -> RepairReport:
     """Destroy-and-repair around the strongest artificial links, in place.
 
     ``deadline`` (absolute monotonic seconds) is the pipeline's shared
-    budget, checked at round boundaries only — a running localize/refill
-    is never interrupted, and ``None`` keeps the historical unbounded
-    behaviour byte-identical. Every full-structure localization costs
-    ~n^2.8 in brick count (measured v8), so unbudgeted rounds are what
-    turned Armadillo-class repairs into 600-second walls.
+    budget, checked before localization and at round boundaries — a running
+    localize/refill is never interrupted, and ``None`` keeps the historical
+    unbounded behaviour byte-identical. ``initial_stability`` lets the
+    pipeline return its already-computed verdict without another solve when
+    no repair is allowed or accepted.
     """
     config = config or RepairConfig()
+    if deadline is not None and time.monotonic() >= deadline:
+        telemetry.value("repair.deadline_stop", 0.0)
+        stability = (
+            initial_stability
+            if initial_stability is not None
+            else analyze(layout, solver_config)
+        )
+        return RepairReport(
+            stable=stability.stable,
+            rounds=0,
+            q_history=(),
+            bricks_rebuilt=0,
+            result=stability,
+        )
     report = _localize(layout, solver_config, config)
     q_history = [report.q]
     rounds = 0
@@ -108,12 +125,17 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
         else:
             escalation += 1
         q_history.append(report.q)
-    stable = analyze(layout, solver_config).stable
+    stability = (
+        initial_stability
+        if rebuilt == 0 and initial_stability is not None
+        else analyze(layout, solver_config)
+    )
     return RepairReport(
-        stable=stable,
+        stable=stability.stable,
         rounds=rounds,
         q_history=tuple(q_history),
         bricks_rebuilt=rebuilt,
+        result=stability,
     )
 
 

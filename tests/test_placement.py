@@ -527,19 +527,15 @@ def test_luo_maximin_uses_strategy_physics(
 def test_luo_stabilize_stops_at_expired_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # v8: each stabilize round costs two full ~n^2.8 RBE solves; an
-    # expired budget must stop the loop before any candidate is built.
+    # v8: an expired shared budget must stop before the initial full RBE
+    # and capacity solves, not merely before candidate construction.
     import legolization.placement.luo as luo_module
 
-    candidate_rounds = 0
+    def unexpected_solve(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("expired stabilization must not start a full solve")
 
-    def counting_split(*args: object, **kwargs: object) -> set[int]:
-        nonlocal candidate_rounds
-        candidate_rounds += 1
-        del args, kwargs
-        return set()
-
-    monkeypatch.setattr(luo_module, "split_to_atoms", counting_split)
+    monkeypatch.setattr(luo_module, "analyze", unexpected_solve)
+    monkeypatch.setattr(luo_module.LuoStrategy, "_capacity", unexpected_solve)
     layout = Layout(catalog=default_catalog())
     layout.add("brick_2x4", 0, 0, 9, 0, 4)  # floating: analyze is unstable
     grid = VoxelGrid(codes=np.full((2, 4, 12), 4, dtype=np.int16))
@@ -550,7 +546,60 @@ def test_luo_stabilize_stops_at_expired_deadline(
         np.random.default_rng(0),
         deadline=0.0,
     )
-    assert candidate_rounds == 0
+
+
+def test_luo_place_does_not_restart_outer_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.placement.luo as luo_module
+
+    captured: list[float | None] = []
+    monkeypatch.setattr(luo_module.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(luo_module, "improve_connectivity", lambda *_args, **_kwargs: 1)
+
+    def capture_stabilize(
+        _self: LuoStrategy,
+        _layout: Layout,
+        _grid: VoxelGrid,
+        _rng: np.random.Generator,
+        *,
+        deadline: float | None = None,
+    ) -> None:
+        captured.append(deadline)
+
+    monkeypatch.setattr(LuoStrategy, "_stabilize", capture_stabilize)
+    grid = VoxelGrid(codes=np.full((2, 4, 3), 4, dtype=np.int16))
+
+    LuoStrategy(time_budget_s=20.0).place(
+        grid,
+        rng=np.random.default_rng(0),
+        deadline=15.0,
+    )
+
+    assert captured == [15.0]
+
+
+def test_layered_zero_budget_is_an_instant_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # time_budget_s=0 used to read as "disabled" in the layered engine
+    # while Luo treated it as an instant deadline; both now mean instant.
+    import legolization.placement.layered.engine as engine_mod
+    from legolization.placement.layered.bond import BondStrategy
+
+    captured: list[object] = []
+
+    def capture_connectivity(*_args: object, **kwargs: object) -> int:
+        captured.append(kwargs["deadline"])
+        return 1
+
+    monkeypatch.setattr(engine_mod, "improve_connectivity", capture_connectivity)
+    grid = VoxelGrid(codes=np.full((2, 4, 3), 4, dtype=np.int16))
+
+    BondStrategy(time_budget_s=0.0).place(grid, rng=np.random.default_rng(0))
+
+    assert len(captured) == 1
+    assert captured[0] is not None
 
 
 def test_greedy_sweeps_layers_bottom_up():

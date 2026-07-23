@@ -27,6 +27,74 @@ def test_run_solid_box_is_buildable():
     assert result.stability.stable
 
 
+def test_place_and_repair_shares_deadline_and_reuses_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from legolization.catalog import default_catalog
+    from legolization.layout import Layout
+    from legolization.placement.repair import RepairReport
+    from legolization.stability import StabilityResult
+
+    grid = VoxelGrid(codes=np.full((1, 1, 1), 4, dtype=np.int16))
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    initial = StabilityResult(stable=False)
+    repaired = StabilityResult(stable=True)
+    seen_deadlines: list[float | None] = []
+
+    class FakeStrategy:
+        def place(
+            self,
+            grid: VoxelGrid,
+            *,
+            rng: np.random.Generator,
+            deadline: float | None = None,
+        ) -> Layout:
+            del grid, rng
+            seen_deadlines.append(deadline)
+            return layout
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "_strategy",
+        lambda catalog, config: FakeStrategy(),
+    )
+    analyze_calls = 0
+
+    def fake_analyze(*args, **kwargs) -> StabilityResult:
+        nonlocal analyze_calls
+        del args, kwargs
+        analyze_calls += 1
+        return initial
+
+    def fake_repair(*args, **kwargs) -> RepairReport:
+        del args
+        assert kwargs["deadline"] == 123.0
+        assert kwargs["initial_stability"] is initial
+        return RepairReport(
+            stable=True,
+            rounds=1,
+            q_history=(0.0,),
+            bricks_rebuilt=1,
+            result=repaired,
+        )
+
+    monkeypatch.setattr(pipeline_module, "analyze", fake_analyze)
+    monkeypatch.setattr(pipeline_module, "repair_stability", fake_repair)
+
+    _, result = pipeline_module._place_and_repair(  # noqa: SLF001 - regression seam
+        grid,
+        default_catalog(),
+        PipelineConfig(hollow=False),
+        np.random.default_rng(0),
+        123.0,
+    )
+
+    assert seen_deadlines == [123.0]
+    assert result is repaired
+    assert analyze_calls == 1
+
+
 def test_run_rejects_empty_grid():
     grid = VoxelGrid(codes=np.full((1, 1, 1), EMPTY, dtype=np.int16))
 
