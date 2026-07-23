@@ -7,7 +7,7 @@ from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.layout import Layout
-from legolization.placement.base import _seam_alignment, evaluate
+from legolization.placement.base import ObjectiveReport, _seam_alignment, evaluate
 from legolization.placement.greedy import (
     GreedyStrategy,
     _grid_component_count,
@@ -453,6 +453,74 @@ def test_reinforce_accepts_disjoint_grid_islands(monkeypatch):
     assert not graph.floating_ids()
 
 
+def test_greedy_reinforce_propagates_deadline_to_connectivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.placement.greedy as greedy_module
+
+    seen_deadlines: list[object] = []
+
+    def monotonic() -> float:
+        return 0.0
+
+    def always_floating(_layout: Layout) -> bool:
+        return True
+
+    def capture_connectivity(*_args: object, **kwargs: object) -> int:
+        seen_deadlines.append(kwargs["deadline"])
+        return 1
+
+    monkeypatch.setattr(greedy_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(greedy_module, "_floating", always_floating)
+    monkeypatch.setattr(greedy_module, "improve_connectivity", capture_connectivity)
+    grid = VoxelGrid(codes=np.full((1, 1, 3), 4, dtype=np.int16))
+
+    GreedyStrategy().place(
+        grid,
+        rng=np.random.default_rng(0),
+        deadline=10.0,
+    )
+
+    assert seen_deadlines == [10.0]
+
+
+def test_greedy_reinforce_rechecks_deadline_before_candidate_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.placement.greedy as greedy_module
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x4", 0, 0, 9, 0, 4)
+    grid = VoxelGrid(codes=np.full((2, 4, 12), 4, dtype=np.int16))
+    initial_report = evaluate(layout, grid)
+    clock = iter((0.0, 0.0, 0.0, 10.0))
+    evaluate_calls = 0
+
+    def monotonic() -> float:
+        return next(clock)
+
+    def skip_connectivity(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def capture_evaluate(*_args: object, **_kwargs: object) -> ObjectiveReport:
+        nonlocal evaluate_calls
+        evaluate_calls += 1
+        return initial_report
+
+    monkeypatch.setattr(greedy_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(greedy_module, "improve_connectivity", skip_connectivity)
+    monkeypatch.setattr(greedy_module, "evaluate", capture_evaluate)
+
+    GreedyStrategy()._reinforce(  # noqa: SLF001 - deadline regression seam
+        layout,
+        grid,
+        np.random.default_rng(0),
+        deadline=5.0,
+    )
+
+    assert evaluate_calls == 1
+
+
 def test_hollow_sphere_brick_count_regression():
     # The audit's F3 case: repaired hollow shells used to carry ~3x the
     # parts as permanent plate rafts. Guard the reclaimed count.
@@ -548,14 +616,75 @@ def test_luo_stabilize_stops_at_expired_deadline(
     )
 
 
+@pytest.mark.parametrize(
+    ("clock_values", "expected_analyze_calls"),
+    [
+        ((0.0, 0.0, 0.0, 10.0), 1),
+        ((0.0, 0.0, 0.0, 0.0, 10.0), 2),
+    ],
+)
+def test_luo_stabilize_rechecks_deadline_before_candidate_solves(
+    monkeypatch: pytest.MonkeyPatch,
+    clock_values: tuple[float, ...],
+    expected_analyze_calls: int,
+) -> None:
+    import legolization.placement.luo as luo_module
+    from legolization.stability import SolverConfig, StabilityResult, analyze
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x4", 0, 0, 9, 0, 4)
+    grid = VoxelGrid(codes=np.full((2, 4, 12), 4, dtype=np.int16))
+    initial = analyze(layout)
+    clock = iter(clock_values)
+    analyze_calls = 0
+    capacity_calls = 0
+
+    def monotonic() -> float:
+        return next(clock)
+
+    def capture_analyze(
+        _layout: Layout,
+        _config: SolverConfig,
+    ) -> StabilityResult:
+        nonlocal analyze_calls
+        analyze_calls += 1
+        return initial
+
+    def capture_capacity(_self: LuoStrategy, _layout: Layout) -> float:
+        nonlocal capacity_calls
+        capacity_calls += 1
+        return 0.0
+
+    monkeypatch.setattr(luo_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(luo_module, "analyze", capture_analyze)
+    monkeypatch.setattr(LuoStrategy, "_capacity", capture_capacity)
+
+    LuoStrategy(acceptance="rbe")._stabilize(  # noqa: SLF001
+        layout,
+        grid,
+        np.random.default_rng(0),
+        deadline=5.0,
+    )
+
+    assert analyze_calls == expected_analyze_calls
+    assert capacity_calls == 1
+
+
 def test_luo_place_does_not_restart_outer_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import legolization.placement.luo as luo_module
 
     captured: list[float | None] = []
-    monkeypatch.setattr(luo_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(luo_module, "improve_connectivity", lambda *_args, **_kwargs: 1)
+
+    def monotonic() -> float:
+        return 10.0
+
+    def fake_improve_connectivity(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    monkeypatch.setattr(luo_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(luo_module, "improve_connectivity", fake_improve_connectivity)
 
     def capture_stabilize(
         _self: LuoStrategy,

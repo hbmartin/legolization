@@ -30,7 +30,7 @@ def test_run_solid_box_is_buildable():
 def test_place_and_repair_shares_deadline_and_reuses_verdict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from legolization.catalog import default_catalog
+    from legolization.catalog import Catalog, default_catalog
     from legolization.layout import Layout
     from legolization.placement.repair import RepairReport
     from legolization.stability import StabilityResult
@@ -54,20 +54,19 @@ def test_place_and_repair_shares_deadline_and_reuses_verdict(
             seen_deadlines.append(deadline)
             return layout
 
-    monkeypatch.setattr(
-        pipeline_module,
-        "_strategy",
-        lambda catalog, config: FakeStrategy(),
-    )
+    def fake_strategy(_catalog: Catalog, _config: PipelineConfig) -> FakeStrategy:
+        return FakeStrategy()
+
+    monkeypatch.setattr(pipeline_module, "_strategy", fake_strategy)
     analyze_calls = 0
 
-    def fake_analyze(*args, **kwargs) -> StabilityResult:
+    def fake_analyze(*args: object, **kwargs: object) -> StabilityResult:
         nonlocal analyze_calls
         del args, kwargs
         analyze_calls += 1
         return initial
 
-    def fake_repair(*args, **kwargs) -> RepairReport:
+    def fake_repair(*args: object, **kwargs: object) -> RepairReport:
         del args
         assert kwargs["deadline"] == 123.0
         assert kwargs["initial_stability"] is initial

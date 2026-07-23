@@ -92,9 +92,9 @@ def test_repair_stabilizes_bridge(bad_bridge):
 
 
 def test_repair_expired_deadline_skips_every_solve(
-    bad_bridge,
+    bad_bridge: tuple[Layout, VoxelGrid],
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     # The pipeline already owns an exact verdict. Once its shared deadline
     # expires, repair must reuse that result without starting localization.
     import legolization.placement.repair as repair_module

@@ -146,7 +146,13 @@ class LuoStrategy:
                 colour_mode=self.colour_mode,
                 colour_weight=self.colour_weight,
             )
+            if deadline is not None and time.monotonic() >= deadline:
+                telemetry.value("luo.stabilize.deadline_stop", float(failures))
+                break
             candidate_result = analyze(candidate, self.solver_config)
+            if deadline is not None and time.monotonic() >= deadline:
+                telemetry.value("luo.stabilize.deadline_stop", float(failures))
+                break
             candidate_capacity = self._capacity(candidate)
             if self._better(candidate_result, result, candidate_capacity, capacity):
                 layout.replace_with(candidate)

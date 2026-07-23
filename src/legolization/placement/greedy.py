@@ -16,6 +16,7 @@ keeping changes only when the weighted objective improves.
 from __future__ import annotations
 
 import math
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
@@ -96,7 +97,6 @@ class GreedyStrategy:
         deadline: float | None = None,
     ) -> Layout:
         """Cover the grid greedily, then reinforce until stable or exhausted."""
-        del deadline  # greedy's historical refinement remains iteration-bounded
         layout = Layout(catalog=self.catalog)
         uncovered = {
             (int(x), int(y), int(z))
@@ -104,7 +104,7 @@ class GreedyStrategy:
         }
         self._fill(layout, grid, uncovered, rng)
         if self.refine:
-            self._reinforce(layout, grid, rng)
+            self._reinforce(layout, grid, rng, deadline=deadline)
             compact_vertical(layout)
         return layout
 
@@ -212,14 +212,19 @@ class GreedyStrategy:
         bond_penalty = self.weights.bond_alpha1 * penalty / borders if borders else 0.0
         return len(below) - bond_penalty
 
-    def _reinforce(
+    def _reinforce(  # noqa: C901, PLR0912 - explicit deadline-guarded phases
         self,
         layout: Layout,
         grid: VoxelGrid,
         rng: np.random.Generator,
+        *,
+        deadline: float | None = None,
     ) -> None:
-        """Repair connectivity, then delete-and-rebuild until stable."""
+        """Repair connectivity, then rebuild until stable or out of time."""
         from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
+
+        if deadline is not None and time.monotonic() >= deadline:
+            return
 
         # Straight seams can strand towers no greedy refill bridges (the
         # largest-first fill would just recreate them); random remerging
@@ -228,10 +233,20 @@ class GreedyStrategy:
         # the grid's own island count, not one component.
         component_target = _grid_component_count(grid)
         if _floating(layout) or _component_count(layout) > component_target:
-            improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
+            improve_connectivity(
+                layout,
+                grid,
+                rng,
+                fail_max=self.fail_max,
+                deadline=deadline,
+            )
+        if deadline is not None and time.monotonic() >= deadline:
+            return
         report = evaluate(layout, grid, self.weights, self.solver_config)
         failures = 0
         while failures < self.fail_max:
+            if deadline is not None and time.monotonic() >= deadline:
+                return
             stability = report.stability
             graph = ConnectionGraph.from_layout(layout)
             floating = set(graph.floating_ids())
@@ -255,6 +270,8 @@ class GreedyStrategy:
                 candidate_layout.remove(brick_id)
             freed = {c for c in freed if _is_filled(grid, c)}
             self._fill(candidate_layout, grid, freed, rng, shuffle_within_layers=True)
+            if deadline is not None and time.monotonic() >= deadline:
+                return
             candidate_report = evaluate(
                 candidate_layout, grid, self.weights, self.solver_config
             )
