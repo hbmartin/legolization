@@ -79,6 +79,24 @@ def test_probe_matches_cold_analyze():
         solver.commit(chunk)
 
 
+def test_side_contacts_are_indexed_once_and_used_without_graph_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout, ids = _tower_layout()
+    solver = _warm_prefix(layout)
+    sides_by_brick = solver._sides_by_brick  # noqa: SLF001
+    graph = solver._graph  # noqa: SLF001
+    indexed = [side for contacts in sides_by_brick.values() for side in contacts]
+    assert len(indexed) == 2 * len(graph.side_contacts)
+    assert graph.side_contacts
+
+    monkeypatch.setattr(solver, "_graph", None)
+    warm = solver.probe(tuple(ids))
+    cold = analyze(layout, _WARM)
+    assert warm.stable == cold.stable
+    assert _score_drift(warm, cold) < 1e-9
+
+
 def test_probe_rollback_restores_base():
     layout, ids = _tower_layout()
     solver = _warm_prefix(layout)

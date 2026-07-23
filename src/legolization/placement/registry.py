@@ -88,6 +88,7 @@ def _make_luo(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
         colour_mode=config.colour_mode,
         colour_weight=config.colour_weight,
         refine=config.refine,
+        time_budget_s=config.time_budget_s,
         **_fail_max_override(config),
     )
 

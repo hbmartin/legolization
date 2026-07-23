@@ -354,11 +354,7 @@ class BridgeSynthesizer:
             before,
             phases,
         )
-        hybrid_candidate = (
-            self._hybrid_candidate(layout, region, grid, deadline, before)
-            if self.hybrid and time.monotonic() < deadline
-            else None
-        )
+        phase_one = next(iter(phase_candidates.get(1, ())), None)
         self._add_flow_candidates(
             layout,
             region,
@@ -367,6 +363,18 @@ class BridgeSynthesizer:
             before,
             phase_candidates,
             phase_keys,
+        )
+        hybrid_candidate = (
+            self._hybrid_candidate(
+                layout,
+                region,
+                grid,
+                deadline,
+                before,
+                phase_one=phase_one,
+            )
+            if self.hybrid and time.monotonic() < deadline
+            else None
         )
         legacy = self._choose_phase_candidate(phase_candidates, phases)
         candidates = [
@@ -992,24 +1000,27 @@ class BridgeSynthesizer:
 
     # --- phase-1 hybrid completion ------------------------------------
 
-    def _hybrid_candidate(  # noqa: C901 - bounded search phases are explicit
+    def _hybrid_candidate(  # noqa: C901, PLR0912, PLR0913 - explicit phases
         self,
         layout: Layout,
         region: set[int],
         grid: VoxelGrid,
         deadline: float,
         before: int,
+        *,
+        phase_one: Layout | None = None,
     ) -> Layout | None:
         """Add the minimum changed local placements to phase 1."""
-        with telemetry.span("connectivity.bridge_hybrid.phase1"):
-            phase_one = self._per_slab_candidate(
-                layout,
-                region,
-                grid,
-                deadline,
-                before,
-                phase=1,
-            )
+        if phase_one is None:
+            with telemetry.span("connectivity.bridge_hybrid.phase1"):
+                phase_one = self._per_slab_candidate(
+                    layout,
+                    region,
+                    grid,
+                    deadline,
+                    before,
+                    phase=1,
+                )
         if phase_one is None:
             return None
         components = ConnectionGraph.from_layout(phase_one).component_count()

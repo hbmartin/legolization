@@ -666,9 +666,11 @@ def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
             if not static.stable:
                 continue
             press = press_prefix(subset)
+            if not press.stable:
+                continue
             remainder = tuple(brick_id for brick_id in chunk if brick_id not in subset)
             remainder_press = press_selection(chunk, remainder)
-            if press.stable and remainder_press.stable:
+            if remainder_press.stable:
                 candidates.append(
                     (-size, press.max_score, tuple(sorted(subset)), static.max_score)
                 )

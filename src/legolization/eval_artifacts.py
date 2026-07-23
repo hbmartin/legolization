@@ -266,7 +266,8 @@ def matching_candidate(  # noqa: PLR0913
     try:
         payload = json.loads(path.read_text())
         if (
-            payload.get("schema") != 1
+            not isinstance(payload, dict)
+            or payload.get("schema") != 1
             or payload.get("identity") != identity.to_dict()
             or payload.get("config_hash") != config_hash
             or payload.get("input_hash") != input_hash
@@ -286,7 +287,8 @@ def all_successful(paths: Iterable[Path]) -> bool:
     """Return whether every artifact path contains a successful result."""
     for path in paths:
         try:
-            if json.loads(path.read_text()).get("status") != "ok":
+            payload = json.loads(path.read_text())
+            if not isinstance(payload, dict) or payload.get("status") != "ok":
                 return False
         except (OSError, json.JSONDecodeError):
             return False

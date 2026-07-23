@@ -364,8 +364,22 @@ def test_parallel_matches_sequential() -> None:
     assert select_best(sequential).reason == select_best(parallel).reason
 
 
-def test_run_all_exact_skip_and_completion_callback() -> None:
+def test_run_all_exact_skip_and_completion_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     completed: list[tuple[str, int]] = []
+    launched: list[tuple[str, int]] = []
+
+    def fake_run_candidate(_grid: VoxelGrid, config: PipelineConfig) -> Candidate:
+        launched.append((config.strategy, config.seed))
+        return Candidate(
+            strategy=config.strategy,
+            seconds=0.1,
+            metrics=_metrics(),
+            seed=config.seed,
+        )
+
+    monkeypatch.setattr(legolization.compare, "_run_candidate", fake_run_candidate)
     candidates = run_all(
         _box_grid(),
         PipelineConfig(seed=0),
@@ -380,6 +394,7 @@ def test_run_all_exact_skip_and_completion_callback() -> None:
         ("bond", 0)
     ]
     assert completed == [("bond", 0)]
+    assert launched == [("bond", 0)]
 
 
 def test_parallel_callback_runs_in_completion_order(

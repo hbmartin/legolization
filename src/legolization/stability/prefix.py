@@ -209,6 +209,12 @@ class PrefixSolver:
             if knob.below_id != GROUND_ID:
                 self._knobs_by_brick[knob.below_id].append(knob)
             self._knobs_by_brick[knob.above_id].append(knob)
+        self._sides_by_brick: dict[int, list[SideContact]] = {
+            bid: [] for bid in layout.bricks
+        }
+        for side in self._graph.side_contacts:
+            self._sides_by_brick[side.a_id].append(side)
+            self._sides_by_brick[side.b_id].append(side)
         self._centroid: dict[int, tuple[float, float, float]] = {}
         self._mass_kg: dict[int, float] = {}
         self._pattern: dict[int, tuple[tuple[float, float], ...]] = {}
@@ -777,12 +783,13 @@ class PrefixSolver:
         batch: _ColumnBatch,
     ) -> None:
         """Emit side interfaces with at least one new endpoint."""
-        del ordered
-        subset = self.present | set(chunk)
-        for side in self._graph.side_contacts:
-            endpoints = {side.a_id, side.b_id}
-            if endpoints <= subset and endpoints & chunk:
-                self._emit_side_presses(batch, side)
+        subset = self.present | chunk
+        for bid in ordered:
+            for side in self._sides_by_brick[bid]:
+                endpoints = {side.a_id, side.b_id}
+                new_endpoints = endpoints & chunk
+                if endpoints <= subset and new_endpoints and bid == min(new_endpoints):
+                    self._emit_side_presses(batch, side)
 
     def _emit_side_presses(
         self,

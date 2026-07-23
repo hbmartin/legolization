@@ -198,3 +198,42 @@ def test_monitor_terminates_child_and_recovers_timeout_artifact(
     assert "stage: place.connectivity" in captured.err
     assert "timed out place.connectivity" in captured.err
     assert "worker checkpoint" in captured.out
+
+
+def test_monitor_times_out_worker_that_hangs_during_startup(
+    profiler: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    events = tmp_path / "profile.running.json"
+    base = tmp_path / "profile"
+    code = "import time; print('starting', flush=True); time.sleep(30)"
+    process = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    args = SimpleNamespace(
+        heartbeat=0.01,
+        stage_timeout=0.05,
+        model="fixture",
+        strategy="greedy",
+        seed=0,
+        steps="layer",
+    )
+
+    assert (
+        profiler._monitor(  # noqa: SLF001
+            process,
+            args=args,
+            base=base,
+            events_path=events,
+        )
+        == 124
+    )
+    artifact = json.loads(base.with_suffix(".json").read_text())
+    assert artifact["active_stage"] == "startup"
+    captured = capsys.readouterr()
+    assert "stage: startup" in captured.err
+    assert "timed out startup" in captured.err
+    assert "starting" in captured.out

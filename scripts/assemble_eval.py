@@ -61,6 +61,8 @@ def _load_candidate(
         payload = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as error:
         return None, f"{label}: unreadable artifact ({error})"
+    if not isinstance(payload, dict):
+        return None, f"{label}: invalid payload structure"
     expected = {
         "identity": identity,
         "config_hash": candidate_entry.get("config_hash"),
@@ -72,8 +74,6 @@ def _load_candidate(
     mismatched = [key for key, value in expected.items() if payload.get(key) != value]
     if mismatched:
         return None, f"{label}: identity mismatch ({', '.join(mismatched)})"
-    if payload.get("status") != "ok":
-        return None, f"{label}: {payload.get('error') or 'candidate failed'}"
     try:
         return candidate_from_payload(payload), None
     except (KeyError, TypeError, ValueError) as error:

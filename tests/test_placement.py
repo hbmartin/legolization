@@ -524,6 +524,35 @@ def test_luo_maximin_uses_strategy_physics(
     assert helper.call_args.args[1] is config
 
 
+def test_luo_stabilize_stops_at_expired_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # v8: each stabilize round costs two full ~n^2.8 RBE solves; an
+    # expired budget must stop the loop before any candidate is built.
+    import legolization.placement.luo as luo_module
+
+    candidate_rounds = 0
+
+    def counting_split(*args: object, **kwargs: object) -> set[int]:
+        nonlocal candidate_rounds
+        candidate_rounds += 1
+        del args, kwargs
+        return set()
+
+    monkeypatch.setattr(luo_module, "split_to_atoms", counting_split)
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x4", 0, 0, 9, 0, 4)  # floating: analyze is unstable
+    grid = VoxelGrid(codes=np.full((2, 4, 12), 4, dtype=np.int16))
+    strategy = LuoStrategy(acceptance="rbe")
+    strategy._stabilize(  # noqa: SLF001
+        layout,
+        grid,
+        np.random.default_rng(0),
+        deadline=0.0,
+    )
+    assert candidate_rounds == 0
+
+
 def test_greedy_sweeps_layers_bottom_up():
     codes = np.full((2, 1, 6), EMPTY, dtype=np.int16)
     codes[0, 0, 5] = 4

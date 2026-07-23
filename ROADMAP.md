@@ -4,6 +4,50 @@ Future work for legolization, picking up where the initial implementation
 stopped. For the algorithms and formulas each item builds on, see the papers in
 `references/` and the design notes in `CLAUDE.md`.
 
+## v8 progress notes
+
+Living log of the v8 program (post-PR-23: the stability-perf
+measurement campaign, budget guardrails, and the diagnostic tooling
+from the phase plan).
+
+### 2026-07-22 — WS-P: where the Armadillo wall actually is
+
+Three measurements closed the perf-backlog hypotheses
+(`docs/performance-testing.md`, "where a cold analyze actually goes"):
+`build_model` is 0.12 s of a 12.5 s cold analyze at 902 bricks
+(vectorizing it is a dead end), the LP solve scales ~n^2.8 and is
+bit-identical between the scipy wrapper and direct highspy (no wrapper
+overhead), and `highs-ipm` is at best 1.4x with 1e-9 objective drift
+(no cheap solver swap). The response is budget enforcement:
+`time_budget_s` now derives one absolute deadline at `run()` start,
+honoured at round boundaries by ALNS `repair_stability`, the
+hollow-restore loop, and Luo's `_stabilize`, each with a
+`*.deadline_stop` telemetry value. `None` keeps every historical byte;
+the real per-solve fix is re-scoped under "Incremental re-analysis".
+
+### 2026-07-22 — WS-U: the unstable-step class is resolved
+
+Re-measured every row of `docs/unstable-prefix-report.md` §7 at
+current defaults: zero unstable steps across mushroom (was 17),
+wide-arch, cantilever, heart, letter-t, and two-towers-bridge.
+Support-aware placement (the report's recommendation 2) is closed
+without implementation — it would risk scorecard drift for a failure
+class subassembly extraction already eliminated.
+
+### 2026-07-22 — WS-H: stability heatmap + StableLego at scale
+
+`--heatmap out.ldr` writes the model recoloured by per-brick score on
+both generation and import paths. The ramp is quantized to five stock
+palette codes after measuring that headless LeoCAD renders LDraw
+direct colours (`0x2RRGGBB`, both decimal and hex forms) as
+unresolved grey; stair_19's black→red→white gradient is the visual
+pin. The StableLego release loaders moved into
+`legolization.stablelego` (the cross-validation test now consumes
+them), and `scripts/stablelego_sweep.py` compares our verdicts against
+the released dataset's per-object `stability_score.npy` under a
+documented convention (stands iff all scores finite and < 1.0), with
+deterministic sampling and an agreement report.
+
 ## v7 progress notes
 
 Living log of the v7 program (PR-19/PR-21 residual remediation,
@@ -1195,7 +1239,12 @@ tests confirm a side-stud connection transmits the expected friction load.
 - ~~**Cross-validation.**~~ **Done:** all nine StableLego release fixtures are
   vendored under `tests/data/stablelego/` and every verdict reproduces
   (`tests/test_stablelego_cross.py`), alongside closed-form golden pins for
-  the single-stud cantilever and the maximin capacity.
+  the single-stud cantilever and the maximin capacity. **v8 extension:**
+  the release-format loaders moved to `legolization.stablelego` and
+  `scripts/stablelego_sweep.py` scales the comparison to the released
+  50k-object dataset (deterministic sampling, per-object verdict
+  agreement report); running it needs the dataset downloaded from the
+  release's Google Drive link.
 - **Targeted MILP.** `--milp` currently solves the whole model. Reserve the
   complementarity MILP for the k-ring around the weakest contacts and stitch
   it to the LP solution elsewhere — exactness where it matters, LP speed
@@ -1229,13 +1278,20 @@ tests confirm a side-stud connection transmits the expected friction load.
 
 ## Performance backlog
 
-- **Vectorize `build_model`.** Contact assembly is Python loops over knobs ×
-  points; batching into numpy per contact-type would cut model build time,
-  which now rivals the LP solve on large layouts.
-- **Incremental re-analysis.** Refinement changes a k-ring but re-solves the
-  whole structure. Either warm-start HiGHS with the previous basis or analyze
-  the modified subgraph with boundary forces frozen (approximate but fine for
-  accept/reject decisions, with a full solve on acceptance).
+- ~~**Vectorize `build_model`.**~~ **Closed as a measured dead end (v8):**
+  model build is 0.12 s of a 12.5 s cold analyze at 902 bricks — the LP
+  solve is ~99% of the cost and scales ~n^2.8
+  (`docs/performance-testing.md`, "where a cold analyze actually goes").
+- **Incremental re-analysis** — now THE stability-perf workstream.
+  Refinement changes a k-ring but re-solves the whole structure at
+  ~n^2.8; v8 measured that no solver-level swap helps (direct highspy
+  identical, IPM ≤1.4x with 1e-9 drift). Design directions, in order:
+  warm append-only scoring through `PrefixSolver` for placement-time
+  verdicts; frozen-boundary ring analysis for ALNS/Luo accept/reject
+  with a full exact solve on acceptance. Both must clear the golden,
+  scorecard, and dual-engine gates. Until then the v8 budget guardrail
+  (`time_budget_s` → one pipeline deadline honoured by repair,
+  hollow-restore, and Luo stabilize) bounds the tails.
 - **Candidate caching in greedy `_fill`.** `_placements` recomputes rotations
   and validity per seed; memoize per (part, yaw) footprints and test cells
   against numpy masks instead of Python sets.
@@ -1264,9 +1320,12 @@ tests confirm a side-stud connection transmits the expected friction load.
   harness must configure `-LDrawDir` explicitly and assert the file appears.
   Once working, add golden-image (or at least golden-geometry) checks for the
   three `data/examples/` models.
-- **Stability heatmap export.** Per-brick scores already exist; add
-  `--heatmap out.ldr` that recolours bricks by score (black → red → white,
-  matching StableLego's visualization) for debugging weak structures.
+- ~~**Stability heatmap export.**~~ **Done (v8):** `--heatmap out.ldr`
+  recolours bricks by score on both the generation and import paths
+  (black → dark red → red → light red → white, quantized to stock
+  palette codes because headless LeoCAD renders LDraw direct colours as
+  unresolved grey — measured, not assumed). Verified visually on
+  stair_19's near-collapse gradient.
 - **`.vox` robustness.** Embed the documented default MagicaVoxel palette so
   paletteless files load; support multi-model scenes (currently first model
   only). Malformed chunks and out-of-bounds voxels already fail cleanly.

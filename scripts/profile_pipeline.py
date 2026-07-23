@@ -51,6 +51,8 @@ from legolization.mesh import MeshOptions
 from legolization.pipeline import PipelineConfig, PipelineResult, load_grid, run
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from legolization.grid import VoxelGrid
 
 _SCRIPTS = Path(__file__).resolve().parent
@@ -124,6 +126,21 @@ def _sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _load_eval_corpus_module() -> ModuleType:
+    """Load the corpus CLI module shared by validation and grid resolution."""
+    spec = importlib.util.spec_from_file_location(
+        "eval_corpus_script",
+        _SCRIPTS / "eval_corpus.py",
+    )
+    if spec is None or spec.loader is None:
+        msg = "cannot load scripts/eval_corpus.py"
+        raise RuntimeError(msg)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def _resolve_grid(
     model: str,
     config: PipelineConfig,
@@ -139,16 +156,7 @@ def _resolve_grid(
             mesh=config.mesh,
             input_hash=_sha256_of(path),
         )
-    spec_path = _SCRIPTS / "eval_corpus.py"
-    import importlib.util  # noqa: PLC0415 - only needed for corpus names
-
-    spec = importlib.util.spec_from_file_location("eval_corpus_script", spec_path)
-    if spec is None or spec.loader is None:
-        msg = "cannot load scripts/eval_corpus.py"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    module = _load_eval_corpus_module()
     corpus = module.load_corpus_module()
     matches = [m for m in corpus.load_manifest() if m.name == model]
     if not matches:
@@ -349,16 +357,7 @@ def _validate_model_reference(model: str) -> None:
     path = Path(model)
     if path.suffix and path.exists():
         return
-    spec = importlib.util.spec_from_file_location(
-        "eval_corpus_script_for_profile_validation",
-        _SCRIPTS / "eval_corpus.py",
-    )
-    if spec is None or spec.loader is None:
-        msg = "cannot load scripts/eval_corpus.py"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    module = _load_eval_corpus_module()
     corpus = module.load_corpus_module()
     if model not in {entry.name for entry in corpus.load_manifest()}:
         msg = f"{model!r} is neither an existing input file nor a corpus model"
@@ -375,23 +374,32 @@ def _monitor(  # noqa: C901 - lifecycle loop keeps timeout state together
     """Print stage progress and terminate a child that exceeds its stage cap."""
     active: str | None = None
     last_heartbeat = time.monotonic()
+    loop_started = time.monotonic()
+    stage_seen = False
     latest: dict[str, object] = {}
     while process.poll() is None:
         time.sleep(0.25)
         try:
-            latest = json.loads(events_path.read_text())
+            payload = json.loads(events_path.read_text())
         except (OSError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            latest = payload
+        stage = latest.get("active_stage") if payload is not None else None
+        started = latest.get("stage_started") if payload is not None else None
+        if stage is not None and isinstance(started, int | float):
+            stage_name = str(stage)
+            stage_seen = True
+        elif not stage_seen:
+            stage_name = "startup"
+            started = loop_started
+        else:
             continue
-        stage = latest.get("active_stage")
-        stage_name = str(stage) if stage is not None else None
         if stage_name != active:
             active = stage_name
-            if active is not None:
-                print(f"  stage: {active}", file=sys.stderr)
+            print(f"  stage: {active}", file=sys.stderr)
             last_heartbeat = time.monotonic()
-        started = latest.get("stage_started")
-        if active is None or not isinstance(started, int | float):
-            continue
+        assert isinstance(started, int | float)  # noqa: S101 - narrowed above
         elapsed = time.monotonic() - float(started)
         if time.monotonic() - last_heartbeat >= args.heartbeat:
             print(f"  {active}: {elapsed:.0f}s elapsed", file=sys.stderr)

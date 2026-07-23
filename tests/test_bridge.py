@@ -182,6 +182,62 @@ def test_default_path_flow_competes_with_partial_per_slab_cover(
     assert "connectivity.bridge_flow" in session.spans
 
 
+def test_hybrid_runs_after_flow_and_reuses_phase_one(
+    catalog,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order: list[str] = []
+    phase_one, grid = _towers()
+
+    def initial_candidates(
+        _self: BridgeSynthesizer,
+        _layout: Layout,
+        _region: set[int],
+        _grid: VoxelGrid,
+        _deadline: float,
+        before: int,
+        phases: tuple[int, ...],
+    ) -> tuple[dict[int, list[Layout]], dict[int, tuple[int, int, int]]]:
+        assert phases == (0, 1, 2)
+        return (
+            {0: [], 1: [phase_one], 2: []},
+            {phase: (before, len(phase_one), phase) for phase in phases},
+        )
+
+    def add_flow(*_args: object, **_kwargs: object) -> None:
+        order.append("flow")
+
+    def hybrid(
+        _self: BridgeSynthesizer,
+        _layout: Layout,
+        _region: set[int],
+        _grid: VoxelGrid,
+        _deadline: float,
+        _before: int,
+        *,
+        phase_one: Layout | None = None,
+    ) -> Layout | None:
+        order.append("hybrid")
+        assert phase_one is not None
+        return None
+
+    monkeypatch.setattr(
+        BridgeSynthesizer,
+        "_initial_phase_candidates",
+        initial_candidates,
+    )
+    monkeypatch.setattr(BridgeSynthesizer, "_add_flow_candidates", add_flow)
+    monkeypatch.setattr(BridgeSynthesizer, "_hybrid_candidate", hybrid)
+
+    BridgeSynthesizer(
+        catalog=catalog,
+        rephase=True,
+        hybrid=True,
+    )(phase_one, set(phase_one.bricks), grid)
+
+    assert order == ["flow", "hybrid"]
+
+
 def test_bridge_decline_matches_random_only(catalog):
     # When the synthesizer declines, the rng stream and outcome must be
     # byte-identical to bridge=None — the fallback contract.
