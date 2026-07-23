@@ -56,6 +56,10 @@ class ObjectRow:
     ours_max_score: float
     theirs_stable: bool
     theirs_max_score: float
+    theirs_all_zero: bool = False
+    """Whether the release heatmap was entirely zero — a "stands" verdict
+    read from such a file is pure convention, so these are tallied
+    separately (appended for positional compatibility)."""
 
     @property
     def agree(self) -> bool:
@@ -85,10 +89,15 @@ def discover_objects(dataset: Path) -> list[Path]:
 
 
 def object_name(path: Path, dataset: Path) -> str:
-    """Stable category/object identity relative to the selected dataset root."""
+    """Stable category/object identity relative to the selected dataset root.
+
+    Pointing ``--dataset`` at an object (or its ``models``) directory
+    leaves no relative parts; fall back to the object directory's own
+    name rather than the meaningless literal ``models``.
+    """
     relative = path.relative_to(dataset)
     parts = relative.parts[:-1] if relative.name == "models" else relative.parts
-    return "/".join(parts)
+    return "/".join(parts) or path.resolve().parent.name
 
 
 def sample_objects(objects: list[Path], sample: int, seed: int) -> list[Path]:
@@ -141,6 +150,7 @@ def evaluate_object(
         ours_max_score=round(ours.max_score, 9),
         theirs_stable=theirs_stable,
         theirs_max_score=round(theirs_max, 9) if np.isfinite(theirs_max) else 1.0e9,
+        theirs_all_zero=bool(np.all(theirs == 0.0)),
     )
 
 
@@ -148,11 +158,20 @@ def to_markdown(rows: list[ObjectRow], skipped: list[str]) -> str:
     """Human-readable report: disagreements first, then the tallies."""
     lines = ["# StableLego verdict sweep", ""]
     disagreements = [row for row in rows if not row.agree]
+    all_zero = sum(row.theirs_all_zero for row in rows)
     lines.append(
         f"objects={len(rows)} agree={len(rows) - len(disagreements)} "
-        f"disagree={len(disagreements)} skipped={len(skipped)}"
+        f"disagree={len(disagreements)} skipped={len(skipped)} "
+        f"all-zero-heatmaps={all_zero}"
     )
     lines.append("")
+    if all_zero:
+        lines.append(
+            f"CAUTION: {all_zero} heatmap(s) are entirely zero; their "
+            '"stands" verdicts are pure convention. Verify how the release '
+            "encodes infeasible objects before trusting the agreement rate."
+        )
+        lines.append("")
     if disagreements:
         lines.append("| object | bricks | ours | ours max | theirs | theirs max |")
         lines.append("|---|---:|---|---:|---|---:|")
@@ -217,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         "release_parity": args.release_parity,
         "agree": sum(row.agree for row in rows),
         "disagree": sum(not row.agree for row in rows),
+        "all_zero_heatmaps": sum(row.theirs_all_zero for row in rows),
         "skipped": skipped,
         "rows": [dict(asdict(row), agree=row.agree) for row in rows],
     }

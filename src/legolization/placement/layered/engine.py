@@ -149,8 +149,12 @@ class LayeredStrategy:
         layout = Layout(catalog=self.catalog)
         problems = slab_decompose(grid)
         total = sum(len(problem.columns) for problem in problems) or 1
+        # `is not None`, not truthiness: a zero budget means an instant
+        # deadline, matching Luo — 0 as "disabled" was an inconsistency.
         local_deadline = (
-            time.monotonic() + self.time_budget_s if self.time_budget_s else None
+            time.monotonic() + self.time_budget_s
+            if self.time_budget_s is not None
+            else None
         )
         if local_deadline is not None:
             deadline = (

@@ -32,6 +32,10 @@ class _SweepModule(Protocol):
         """Find release object model directories recursively."""
         ...
 
+    def object_name(self, path: Path, dataset: Path) -> str:
+        """Stable object identity relative to the dataset root."""
+        ...
+
 
 @pytest.fixture(scope="module")
 def sweep() -> _SweepModule:
@@ -67,12 +71,15 @@ def dataset(tmp_path: Path) -> Path:
         "stick_light",
         np.zeros((20, 20, 20)),
     )
-    # stair_20 collapses for us; an all-clear score file disagrees.
+    # stair_20 collapses for us; a below-capacity heatmap disagrees
+    # (non-zero, so only agree_stable trips the all-zero tally).
+    disagree_scores = np.zeros((20, 20, 20))
+    disagree_scores[1, 2, 3] = 0.4
     _write_object(
         root,
         "disagree",
         "stair_20",
-        np.zeros((20, 20, 20)),
+        disagree_scores,
     )
     # A malformed task graph must be skipped without aborting the sweep.
     malformed = _write_object(
@@ -138,15 +145,31 @@ def test_sweep_reports_agreement_and_skips(
     assert report["disagree"] == 1
     assert len(report["skipped"]) == 1
     assert "malformed" in report["skipped"][0]
+    assert report["all_zero_heatmaps"] == 1
     by_name = {row["name"]: row for row in report["rows"]}
     assert by_name["02691156/agree_stable"]["agree"] is True
+    assert by_name["02691156/agree_stable"]["theirs_all_zero"] is True
     assert by_name["02691156/disagree"]["ours_stable"] is False
     assert by_name["02691156/disagree"]["theirs_stable"] is True
+    assert by_name["02691156/disagree"]["theirs_all_zero"] is False
     markdown = next(out.glob("*/report.md")).read_text()
     assert "| 02691156/disagree |" in markdown
     assert "collapses" in markdown
-    assert "objects=2 agree=1 disagree=1 skipped=1" in markdown
+    assert "objects=2 agree=1 disagree=1 skipped=1 all-zero-heatmaps=1" in markdown
+    assert "CAUTION" in markdown
     assert "wrote" in capsys.readouterr().out
+
+
+def test_object_name_falls_back_when_dataset_is_the_object(
+    sweep: _SweepModule,
+    dataset: Path,
+) -> None:
+    # Pointing --dataset at an object (or its models dir) leaves no
+    # relative parts; the label must be the object's own name, never
+    # the literal "models".
+    models = dataset / "02691156" / "agree_stable" / "models"
+    assert sweep.object_name(models, models.parent) == "agree_stable"
+    assert sweep.object_name(models, models) == "agree_stable"
 
 
 def test_sweep_rejects_missing_dataset(

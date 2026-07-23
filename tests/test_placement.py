@@ -579,6 +579,29 @@ def test_luo_place_does_not_restart_outer_deadline(
     assert captured == [15.0]
 
 
+def test_layered_zero_budget_is_an_instant_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # time_budget_s=0 used to read as "disabled" in the layered engine
+    # while Luo treated it as an instant deadline; both now mean instant.
+    import legolization.placement.layered.engine as engine_mod
+    from legolization.placement.layered.bond import BondStrategy
+
+    captured: list[object] = []
+
+    def capture_connectivity(*_args: object, **kwargs: object) -> int:
+        captured.append(kwargs["deadline"])
+        return 1
+
+    monkeypatch.setattr(engine_mod, "improve_connectivity", capture_connectivity)
+    grid = VoxelGrid(codes=np.full((2, 4, 3), 4, dtype=np.int16))
+
+    BondStrategy(time_budget_s=0.0).place(grid, rng=np.random.default_rng(0))
+
+    assert len(captured) == 1
+    assert captured[0] is not None
+
+
 def test_greedy_sweeps_layers_bottom_up():
     codes = np.full((2, 1, 6), EMPTY, dtype=np.int16)
     codes[0, 0, 5] = 4
