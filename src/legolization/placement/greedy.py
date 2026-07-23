@@ -88,8 +88,15 @@ class GreedyStrategy:
     refine: bool = True
     fail_max: int = 20
 
-    def place(self, grid: VoxelGrid, *, rng: np.random.Generator) -> Layout:
+    def place(
+        self,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None = None,
+    ) -> Layout:
         """Cover the grid greedily, then reinforce until stable or exhausted."""
+        del deadline  # greedy's historical refinement remains iteration-bounded
         layout = Layout(catalog=self.catalog)
         uncovered = {
             (int(x), int(y), int(z))

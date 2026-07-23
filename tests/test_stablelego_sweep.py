@@ -28,6 +28,10 @@ class _SweepModule(Protocol):
         """Verdict from a release score file."""
         ...
 
+    def discover_objects(self, dataset: Path) -> list[Path]:
+        """Find release object model directories recursively."""
+        ...
+
 
 @pytest.fixture(scope="module")
 def sweep() -> _SweepModule:
@@ -45,15 +49,12 @@ def _write_object(
     name: str,
     fixture: str,
     scores: np.ndarray,
-) -> None:
-    obj = root / name
+) -> Path:
+    obj = root / "02691156" / name / "models"
     obj.mkdir(parents=True)
     (obj / "task_graph.json").write_text((_DATA / f"{fixture}.json").read_text())
     np.save(obj / "stability_score.npy", scores)
-
-
-def _fixture_brick_count(fixture: str) -> int:
-    return len(json.loads((_DATA / f"{fixture}.json").read_text()))
+    return obj
 
 
 @pytest.fixture
@@ -64,28 +65,45 @@ def dataset(tmp_path: Path) -> Path:
         root,
         "agree_stable",
         "stick_light",
-        np.zeros(_fixture_brick_count("stick_light")),
+        np.zeros((20, 20, 20)),
     )
     # stair_20 collapses for us; an all-clear score file disagrees.
     _write_object(
         root,
         "disagree",
         "stair_20",
-        np.zeros(_fixture_brick_count("stair_20")),
+        np.zeros((20, 20, 20)),
     )
-    # A score file with the wrong length must be skipped, never guessed.
-    _write_object(root, "malformed", "stick_light", np.zeros(3))
+    # A malformed task graph must be skipped without aborting the sweep.
+    malformed = _write_object(
+        root,
+        "malformed",
+        "stick_light",
+        np.zeros((20, 20, 20)),
+    )
+    (malformed / "task_graph.json").write_text("{")
     # A directory without the release files is not an object.
     (root / "not_an_object").mkdir()
     return root
 
 
 def test_release_verdict_convention(sweep: _SweepModule) -> None:
-    stands, max_score = sweep.release_verdict(np.array([0.2, 0.9]))
+    scores = np.zeros((20, 20, 20))
+    scores[3, 4, 5] = 0.9
+    stands, max_score = sweep.release_verdict(scores)
     assert stands
     assert max_score == pytest.approx(0.9)
     assert not sweep.release_verdict(np.array([0.2, 1.0]))[0]
     assert not sweep.release_verdict(np.array([0.2, np.inf]))[0]
+
+
+def test_discovery_matches_release_category_object_models_layout(
+    sweep: _SweepModule,
+    dataset: Path,
+) -> None:
+    objects = sweep.discover_objects(dataset)
+    assert [path.name for path in objects] == ["models", "models", "models"]
+    assert all(path.parent.parent.name == "02691156" for path in objects)
 
 
 def test_sampling_is_deterministic_and_sorted(sweep: _SweepModule) -> None:
@@ -121,11 +139,11 @@ def test_sweep_reports_agreement_and_skips(
     assert len(report["skipped"]) == 1
     assert "malformed" in report["skipped"][0]
     by_name = {row["name"]: row for row in report["rows"]}
-    assert by_name["agree_stable"]["agree"] is True
-    assert by_name["disagree"]["ours_stable"] is False
-    assert by_name["disagree"]["theirs_stable"] is True
+    assert by_name["02691156/agree_stable"]["agree"] is True
+    assert by_name["02691156/disagree"]["ours_stable"] is False
+    assert by_name["02691156/disagree"]["theirs_stable"] is True
     markdown = next(out.glob("*/report.md")).read_text()
-    assert "| disagree |" in markdown
+    assert "| 02691156/disagree |" in markdown
     assert "collapses" in markdown
     assert "objects=2 agree=1 disagree=1 skipped=1" in markdown
     assert "wrote" in capsys.readouterr().out

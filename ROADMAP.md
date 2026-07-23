@@ -22,8 +22,12 @@ overhead), and `highs-ipm` is at best 1.4x with 1e-9 objective drift
 `time_budget_s` now derives one absolute deadline at `run()` start,
 honoured at round boundaries by ALNS `repair_stability`, the
 hollow-restore loop, and Luo's `_stabilize`, each with a
-`*.deadline_stop` telemetry value. `None` keeps every historical byte;
-the real per-solve fix is re-scoped under "Incremental re-analysis".
+`*.deadline_stop` telemetry value. In addition,
+repair and Luo now also stop before their initial full solve when the
+shared deadline has already expired, and repair reuses the pipeline's
+exact verdict when it accepted no layout change. `None` keeps every
+historical byte; the real per-solve fix is re-scoped under
+"Incremental re-analysis".
 
 ### 2026-07-22 — WS-U: the unstable-step class is resolved
 

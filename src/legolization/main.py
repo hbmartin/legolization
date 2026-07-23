@@ -569,6 +569,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     _validate_args(parser, args)
     output: Path = args.output or args.input.with_suffix(".ldr")
+    _validate_heatmap_path(parser, args, output=output)
     progress = (
         (lambda message: print(f"  {message}", file=sys.stderr, flush=True))
         if sys.stderr.isatty()
@@ -659,10 +660,10 @@ def main(argv: list[str] | None = None) -> int:
                 instructions_path=args.instructions,
                 grid=raced_grid,
             )
+        _write_heatmap_output(args, result)
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    _write_heatmap_output(args, result)
     return _print_result(result, output, instructions_path=args.instructions)
 
 
@@ -672,6 +673,31 @@ def _write_heatmap_output(args: argparse.Namespace, result: PipelineResult) -> N
         return
     write_heatmap(result.layout, result.stability.scores, args.heatmap)
     print(f"wrote {args.heatmap}")
+
+
+def _validate_heatmap_path(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    *,
+    output: Path,
+) -> None:
+    """Require a distinct LDraw destination for diagnostic output."""
+    if args.heatmap is None:
+        return
+    if args.heatmap.suffix.lower() != ".ldr":
+        parser.error("--heatmap must end in .ldr")
+
+    heatmap = args.heatmap.resolve()
+    reserved = (
+        args.input,
+        output,
+        args.bom,
+        args.instructions,
+        args.profile,
+        args.report,
+    )
+    if any(path is not None and path.resolve() == heatmap for path in reserved):
+        parser.error("--heatmap must be distinct from the input and other outputs")
 
 
 def _validate_ldraw_args(
@@ -781,10 +807,10 @@ def _run_import(
             instructions_path=args.instructions,
             progress=progress,
         )
+        _write_heatmap_output(args, result)
     except (ValueError, OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    _write_heatmap_output(args, result)
     return _print_result(result, output, instructions_path=args.instructions)
 
 

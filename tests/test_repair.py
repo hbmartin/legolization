@@ -91,12 +91,22 @@ def test_repair_stabilizes_bridge(bad_bridge):
     assert accepted[-1] < accepted[0]
 
 
-def test_repair_expired_deadline_skips_every_round(bad_bridge):
-    # v8: repair shares the pipeline's absolute budget. An expired
-    # deadline means zero destroy/refill rounds — only the initial
-    # localization and the final verdict run.
+def test_repair_expired_deadline_skips_every_solve(
+    bad_bridge,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # The pipeline already owns an exact verdict. Once its shared deadline
+    # expires, repair must reuse that result without starting localization.
+    import legolization.placement.repair as repair_module
+
     layout, grid = bad_bridge
+    initial = analyze(layout)
     before = {(b.part_key, b.x, b.y, b.layer) for b in layout}
+
+    def unexpected_localize(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("expired repair must not start localization")
+
+    monkeypatch.setattr(repair_module, "_localize", unexpected_localize)
     with telemetry.record() as session:
         report = repair_stability(
             layout,
@@ -105,9 +115,12 @@ def test_repair_expired_deadline_skips_every_round(bad_bridge):
             solver_config=None,
             rng=np.random.default_rng(0),
             deadline=0.0,
+            initial_stability=initial,
         )
     assert report.rounds == 0
     assert not report.stable
+    assert report.result is initial
+    assert report.q_history == ()
     assert {(b.part_key, b.x, b.y, b.layer) for b in layout} == before
     assert session.values["repair.deadline_stop"] == [0.0]
 

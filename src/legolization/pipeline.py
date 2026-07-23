@@ -159,9 +159,9 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
     config = config or PipelineConfig()
     catalog = default_catalog()
     rng = np.random.default_rng(config.seed)
-    # One absolute deadline for every budgeted pipeline phase; strategies
-    # keep their own place-scoped budget, but the repair and restore
-    # loops must not each start a fresh unbounded tail (v8 guardrail).
+    # One absolute deadline for every budgeted pipeline phase. Strategy-local
+    # caps may tighten it, but cannot restart it after hollowing; repair and
+    # restore likewise share this same monotonic timestamp (v8 guardrail).
     deadline = (
         time.monotonic() + config.time_budget_s
         if config.time_budget_s is not None
@@ -498,11 +498,11 @@ def _place_and_repair(
     """Place, then rearrange at constant volume before any material is added."""
     strategy = _strategy(catalog, config)
     with telemetry.span("phase.place"):
-        layout = strategy.place(grid, rng=rng)
+        layout = strategy.place(grid, rng=rng, deadline=deadline)
     stability = analyze(layout, config.solver)
     if config.repair and not stability.stable:
         with telemetry.span("phase.repair"):
-            repair_stability(
+            report = repair_stability(
                 layout,
                 grid,
                 catalog=catalog,
@@ -510,8 +510,13 @@ def _place_and_repair(
                 rng=rng,
                 config=config.repair_config,
                 deadline=deadline,
+                initial_stability=stability,
             )
-            stability = analyze(layout, config.solver)
+            stability = (
+                report.result
+                if report.result is not None
+                else analyze(layout, config.solver)
+            )
             _phase_gauge("pipeline.repaired", layout, stability)
     return layout, stability
 
