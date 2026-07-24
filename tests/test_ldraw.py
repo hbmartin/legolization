@@ -43,12 +43,24 @@ def test_stacked_plate_y(layout):
     assert line.split()[3] == "-48"  # top face at -8·(5+1)
 
 
-def test_yaw_rotation_matrix(layout):
-    brick = layout.add("brick_1x4", 2, 3, 0, 90, 4)
+@pytest.mark.parametrize(
+    ("yaw", "expected_z", "expected_matrix"),
+    [
+        (90, "90", ("0", "0", "-1", "0", "1", "0", "1", "0", "0")),
+        (270, "30", ("0", "0", "1", "0", "1", "0", "-1", "0", "0")),
+    ],
+)
+def test_yaw_rotation_matrix_preserves_grid_convention(
+    layout,
+    yaw: int,
+    expected_z: str,
+    expected_matrix: tuple[str, ...],
+):
+    brick = layout.add("brick_1x4", 2, 3, 0, yaw, 4)
     fields = piece_for(layout, brick).to_ldraw().split()
-    # Footprint occupies (2,3)..(2,6): center x=2 → 40, y=4.5 → 90.
-    assert fields[2:5] == ["40", "-24", "90"]
-    assert fields[5:14] == ["0", "0", "-1", "0", "1", "0", "1", "0", "0"]
+    # Logical grid yaw advances/reverses the local +X footprint along Z.
+    assert fields[2:5] == ["40", "-24", expected_z]
+    assert tuple(fields[5:14]) == expected_matrix
 
 
 def test_slope_origin_lands_on_stud_cell(layout):

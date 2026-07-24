@@ -29,7 +29,8 @@ if TYPE_CHECKING:
 
 _GRID_EPS = 1e-6
 
-# LDraw rotation rows for each supported yaw (Identity().rotate(yaw, YAxis)).
+# Raw LDraw rows for each logical grid yaw. Since pyldraw3 1.3 corrected its
+# positive Y rotation, emission produces these with rotate(-yaw, YAxis).
 _YAW_MATRICES: dict[tuple[int, ...], int] = {
     (1, 0, 0, 0, 1, 0, 0, 0, 1): 0,
     (0, 0, -1, 0, 1, 0, 1, 0, 0): 90,

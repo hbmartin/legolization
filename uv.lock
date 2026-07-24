@@ -527,7 +527,7 @@ requires-dist = [
     { name = "highspy", specifier = ">=1.15.1" },
     { name = "numpy", specifier = ">=2.5.1" },
     { name = "osqp", specifier = ">=1.1.3" },
-    { name = "pyldraw3", specifier = ">=1.0.0" },
+    { name = "pyldraw3", specifier = ">=1.3.0" },
     { name = "reportlab", specifier = ">=4.2" },
     { name = "scipy", specifier = ">=1.18.0" },
     { name = "scs", specifier = ">=3.2.11" },
@@ -856,7 +856,7 @@ wheels = [
 
 [[package]]
 name = "pyldraw3"
-version = "1.2.0"
+version = "1.3.0"
 source = { registry = "https://pkgs.safetycli.com/repository/independent-3c890/pypi/simple/" }
 dependencies = [
     { name = "numpy" },
@@ -866,9 +866,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
 ]
-sdist = { url = "https://pkgs.safetycli.com/package/independent-3c890/pypi/packages/77/70/f51f6784d960f0ddfc6d816d6c1e30e0519d93234d310931df63dd02e631/pyldraw3-1.2.0.tar.gz", hash = "sha256:f2f96133d8459fb44930991493bd024d201019f812a921261aea3f777e6d92d2", size = 63255, upload-time = "2026-07-09T16:26:52.42Z" }
+sdist = { url = "https://pkgs.safetycli.com/package/independent-3c890/pypi/packages/3b/13/84cef55f24d54b1ecfedd7a3572c764a197bb447f47822af7f6eac383628/pyldraw3-1.3.0.tar.gz", hash = "sha256:ca8b30b8586b32f58ab14382c561da5d23d316a3768f123685ceaa56d25eb057", size = 87833, upload-time = "2026-07-18T20:25:53.852Z" }
 wheels = [
-    { url = "https://pkgs.safetycli.com/package/independent-3c890/pypi/packages/6d/9b/ec2809f9b5ad74a386f55530bd519cb3047bc0af1288a8d0f8bf0fec451f/pyldraw3-1.2.0-py3-none-any.whl", hash = "sha256:d429a626519be9142af3c691ce336145da585447597c15303b830d52628dce11", size = 78506, upload-time = "2026-07-09T16:26:51.184Z" },
+    { url = "https://pkgs.safetycli.com/package/independent-3c890/pypi/packages/69/dc/1140bac622f346d0ca3cfa8373b71a7733fad74ae1872cbf6f65bdac120e/pyldraw3-1.3.0-py3-none-any.whl", hash = "sha256:470efb9c51e7d602b3dfc4fe6722bfa531e9164df8e47e573d01a6422c0ebad0", size = 98444, upload-time = "2026-07-18T20:25:52.636Z" },
 ]
 
 [[package]]

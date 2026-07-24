@@ -98,9 +98,9 @@ class Part:
 
     mount_matrices: tuple[tuple[tuple[int, int], tuple[int, ...]], ...] = ()
     """Cladding emission rotations: ``((outward_xy, 9 row-major ints),
-    ...)`` per outward grid direction, pinned as catalog data (probed
-    against pyldraw3's rotation sign convention, not composed at
-    runtime). Empty for non-cladding parts."""
+    ...)`` per outward grid direction, pinned as raw LDraw transform data
+    rather than composed through pyldraw3's rotation convention at runtime.
+    Empty for non-cladding parts."""
 
     mount_offset_ldu: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """Cladding origin offset in LDU along ``(outward, vertical,
