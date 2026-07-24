@@ -61,7 +61,10 @@ def piece_for(layout: Layout, brick: PlacedBrick) -> Piece:
         STUD_LDU * center_y + rotated_oz,
     )
     emit_yaw = (brick.yaw + part.emit_yaw_offset) % 360
-    matrix = Identity().rotate(emit_yaw, YAxis) if emit_yaw else Identity()
+    # Grid yaw maps local +X toward +Z. pyldraw3 1.3's corrected positive
+    # Y rotation maps +Z toward +X, so the LDraw boundary negates the logical
+    # grid yaw while preserving the established serialized matrices.
+    matrix = Identity().rotate(-emit_yaw, YAxis) if emit_yaw else Identity()
     return Piece(
         colour=brick.colour_code,
         position=position,
