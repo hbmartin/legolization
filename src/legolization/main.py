@@ -796,7 +796,7 @@ def _run_import(
     """
     solver = SolverConfig()
     try:
-        layout = layout_from_ldraw(args.input)
+        layout = layout_from_ldraw(args.input, ground=True)
     except (LdrawImportError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

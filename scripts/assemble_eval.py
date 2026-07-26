@@ -11,10 +11,10 @@ import argparse
 import importlib.util
 import json
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from typing import Any
+from typing import Any, Protocol, cast
 
 from legolization.compare import Candidate, select_best
 from legolization.eval_artifacts import atomic_json, candidate_from_payload
@@ -25,7 +25,60 @@ _REPO = _SCRIPTS.parent
 _ASSEMBLED = _REPO / "eval" / "runs" / "assembled"
 
 
-def _load_evaluator() -> ModuleType:
+class _CorpusModel(Protocol):
+    """Corpus model fields needed for canonical-scope validation."""
+
+    name: str
+    kind: str
+
+
+class _CorpusModule(Protocol):
+    """Dynamically loaded corpus module surface used by the assembler."""
+
+    def load_manifest(self) -> list[_CorpusModel]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _ModelSummary:
+    """Typed model projection consumed by the evaluator's row builder."""
+
+    name: str
+    kind: str
+    traits: tuple[str, ...]
+    expect_min_buildable: int
+
+
+class _Evaluator(Protocol):
+    """Checked surface of the dynamically loaded evaluation module."""
+
+    BASELINE: Path
+    MESH_BASELINE: Path
+
+    def build_row(
+        self,
+        model: _ModelSummary,
+        report_dict: dict[str, Any],
+        status: str,
+    ) -> dict[str, Any]: ...
+
+    def load_corpus_module(self) -> _CorpusModule: ...
+
+    def to_markdown(self, rows: list[dict[str, Any]]) -> str: ...
+
+    def compare_to_baseline(
+        self,
+        *,
+        rows: list[dict[str, Any]],
+        baseline_rows: list[dict[str, Any]],
+        tolerance: float,
+    ) -> tuple[list[str], list[str]]: ...
+
+
+class ManifestError(ValueError):
+    """A collection manifest is structurally invalid or incomplete."""
+
+
+def _load_evaluator() -> _Evaluator:
     spec = importlib.util.spec_from_file_location(
         "eval_corpus_script_for_assembly",
         _SCRIPTS / "eval_corpus.py",
@@ -36,7 +89,105 @@ def _load_evaluator() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module
+    return cast("_Evaluator", module)
+
+
+def _validate_manifest(  # noqa: C901, PLR0912, PLR0915 - schema validation
+    payload: object,
+) -> dict[str, Any]:
+    """Return a complete collection manifest or raise a clean validation error."""
+    if not isinstance(payload, dict):
+        msg = "manifest root must be an object"
+        raise ManifestError(msg)
+    manifest = cast("dict[str, Any]", payload)
+    if manifest.get("schema") != 1:
+        msg = "unsupported collection manifest schema"
+        raise ManifestError(msg)
+    if manifest.get("status") != "complete":
+        msg = "collection status is not complete"
+        raise ManifestError(msg)
+    if not isinstance(manifest.get("collection_id"), str):
+        msg = "collection_id must be a string"
+        raise ManifestError(msg)
+    if not isinstance(manifest.get("identity"), dict):
+        msg = "identity must be an object"
+        raise ManifestError(msg)
+    scope = manifest.get("scope")
+    models = manifest.get("models")
+    if not isinstance(scope, dict) or not isinstance(models, list):
+        msg = "scope must be an object and models must be a list"
+        raise ManifestError(msg)
+
+    scope_models = scope.get("models")
+    strategies = scope.get("strategies")
+    seeds = scope.get("seeds")
+    if (
+        not isinstance(scope.get("kind"), str)
+        or not isinstance(scope_models, list)
+        or not all(isinstance(name, str) for name in scope_models)
+        or not isinstance(strategies, list)
+        or not all(isinstance(strategy, str) for strategy in strategies)
+        or not isinstance(seeds, list)
+        or not all(isinstance(seed, int) for seed in seeds)
+    ):
+        msg = "scope kind/models/strategies/seeds have invalid structure"
+        raise ManifestError(msg)
+
+    expected_candidates = {
+        (strategy, seed) for strategy in strategies for seed in seeds
+    }
+    actual_models: list[str] = []
+    for index, raw_model in enumerate(models):
+        if not isinstance(raw_model, dict):
+            msg = f"models[{index}] must be an object"
+            raise ManifestError(msg)
+        model = cast("dict[str, Any]", raw_model)
+        name = model.get("model")
+        candidates = model.get("candidates")
+        if (
+            not isinstance(name, str)
+            or not isinstance(model.get("kind"), str)
+            or not isinstance(model.get("traits"), list)
+            or not all(isinstance(trait, str) for trait in model["traits"])
+            or not isinstance(model.get("expect_min_buildable"), int)
+            or not isinstance(model.get("input_hash"), str)
+            or not isinstance(candidates, list)
+        ):
+            msg = f"models[{index}] has invalid required fields"
+            raise ManifestError(msg)
+        actual_models.append(name)
+        actual_candidates: list[tuple[str, int]] = []
+        for candidate_index, raw_candidate in enumerate(candidates):
+            if not isinstance(raw_candidate, dict):
+                msg = f"models[{index}].candidates[{candidate_index}] must be an object"
+                raise ManifestError(msg)
+            strategy = raw_candidate.get("strategy")
+            seed = raw_candidate.get("seed")
+            if (
+                not isinstance(strategy, str)
+                or not isinstance(seed, int)
+                or not isinstance(raw_candidate.get("config_hash"), str)
+                or not isinstance(raw_candidate.get("artifact"), str)
+            ):
+                msg = (
+                    f"models[{index}].candidates[{candidate_index}] has invalid "
+                    "required fields"
+                )
+                raise ManifestError(msg)
+            actual_candidates.append((strategy, seed))
+        if (
+            len(actual_candidates) != len(expected_candidates)
+            or set(actual_candidates) != expected_candidates
+        ):
+            msg = f"model {name!r} does not contain the complete candidate matrix"
+            raise ManifestError(msg)
+
+    if len(actual_models) != len(scope_models) or set(actual_models) != set(
+        scope_models
+    ):
+        msg = "models entries do not match the complete scope model set"
+        raise ManifestError(msg)
+    return manifest
 
 
 def _artifact_path(raw: str) -> Path:
@@ -81,7 +232,7 @@ def _load_candidate(
 
 
 def _rows(
-    evaluator: ModuleType,
+    evaluator: _Evaluator,
     manifest: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     rows: list[dict[str, Any]] = []
@@ -91,9 +242,9 @@ def _rows(
         candidates: list[Candidate] = []
         for candidate_entry in model_entry["candidates"]:
             candidate, error = _load_candidate(
-                candidate_entry,
-                model_entry,
-                identity,
+                candidate_entry=candidate_entry,
+                model_entry=model_entry,
+                identity=identity,
             )
             if error is not None:
                 errors.append(error)
@@ -102,16 +253,16 @@ def _rows(
         if len(candidates) != len(model_entry["candidates"]):
             continue
         report = select_best(candidates)
-        model = SimpleNamespace(
+        model = _ModelSummary(
             name=model_entry["model"],
             kind=model_entry["kind"],
             traits=tuple(model_entry["traits"]),
             expect_min_buildable=model_entry["expect_min_buildable"],
         )
         row = evaluator.build_row(
-            model,
-            report.to_dict(),
-            "ok" if report.winner is not None else "error: all failed",
+            model=model,
+            report_dict=report.to_dict(),
+            status="ok" if report.winner is not None else "error: all failed",
         )
         row["unsupported_ratio"] = model_entry.get("unsupported_ratio")
         rows.append(row)
@@ -119,7 +270,7 @@ def _rows(
 
 
 def _canonical_scope(
-    evaluator: ModuleType,
+    evaluator: _Evaluator,
     manifest: dict[str, Any],
 ) -> bool:
     scope = manifest["scope"]
@@ -135,7 +286,7 @@ def _canonical_scope(
 
 
 def _baseline_path(
-    evaluator: ModuleType,
+    evaluator: _Evaluator,
     manifest: dict[str, Any],
     explicit: Path | None,
 ) -> Path:
@@ -199,20 +350,25 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     args = parse_args(argv)
     evaluator = _load_evaluator()
     try:
-        manifest = json.loads(args.collection.read_text())
+        payload = json.loads(args.collection.read_text())
     except (OSError, json.JSONDecodeError) as error:
         print(f"error: cannot read collection: {error}", file=sys.stderr)
         return 1
-    if manifest.get("schema") != 1:
-        print("error: unsupported collection manifest schema", file=sys.stderr)
+    try:
+        manifest = _validate_manifest(payload)
+    except ManifestError as error:
+        print(f"error: malformed collection manifest: {error}", file=sys.stderr)
         return 1
-    rows, errors = _rows(evaluator, manifest)
+    rows, errors = _rows(evaluator=evaluator, manifest=manifest)
     if errors:
         print("collection is incomplete:", file=sys.stderr)
         for error in errors:
             print(f"  {error}", file=sys.stderr)
         return 1
-    if args.write_baseline and not _canonical_scope(evaluator, manifest):
+    if args.write_baseline and not _canonical_scope(
+        evaluator=evaluator,
+        manifest=manifest,
+    ):
         print(
             "error: baseline assembly requires the full kind, every strategy, "
             "and seed 0",
@@ -230,7 +386,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
 
     exit_code, successful_rows = _assess(rows)
     seeds = manifest["scope"]["seeds"]
-    baseline = _baseline_path(evaluator, manifest, args.baseline)
+    baseline = _baseline_path(
+        evaluator=evaluator,
+        manifest=manifest,
+        explicit=args.baseline,
+    )
     comparable_scope = len(seeds) == 1 and set(manifest["scope"]["strategies"]) == set(
         strategy_names()
     )

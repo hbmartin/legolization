@@ -67,8 +67,8 @@ class SideContact:
     z_hi: int
     t_lo: float = 0.0
     t_hi: float = 0.0
-    """Transverse extent of the shared faces (face-center min/max along
-    the horizontal axis perpendicular to ``axis``, grid units) — the
+    """Transverse edge bounds of the shared faces along the horizontal
+    axis perpendicular to ``axis`` (grid units) — the
     yaw-torque model presses at the four (transverse, vertical) corners
     so side forces can carry every modelled torque axis."""
 

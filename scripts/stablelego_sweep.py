@@ -29,6 +29,7 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -40,6 +41,9 @@ from legolization.stablelego import (
     load_task_graph,
     stablelego_catalog,
 )
+
+if TYPE_CHECKING:
+    from legolization.catalog import Catalog
 
 _REPO = Path(__file__).parent.parent
 
@@ -120,6 +124,7 @@ def evaluate_object(
     path: Path,
     *,
     name: str | None = None,
+    catalog: Catalog,
     library: Library,
     config: SolverConfig,
 ) -> ObjectRow | str:
@@ -129,7 +134,7 @@ def evaluate_object(
         entries = load_task_graph(path / "task_graph.json")
         layout = layout_from_task_graph(
             entries,
-            catalog=stablelego_catalog(library),
+            catalog=catalog,
             library=library,
         )
         # The release stores a 20x20x20 voxel heatmap, not one score per
@@ -139,7 +144,7 @@ def evaluate_object(
             np.load(path / "stability_score.npy", allow_pickle=False),
             dtype=float,
         )
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         return f"{label}: load failed: {error}"
     theirs_stable, theirs_max = release_verdict(theirs)
     ours = analyze(layout, config)
@@ -198,8 +203,9 @@ def main(argv: list[str] | None = None) -> int:
     if not objects:
         print("error: no objects with task_graph.json found", file=sys.stderr)
         return 1
-    chosen = sample_objects(objects, args.sample, args.seed)
+    chosen = sample_objects(objects, sample=args.sample, seed=args.seed)
     library = load_library(args.library)
+    catalog = stablelego_catalog(library)
     config = (
         SolverConfig(rotate_contact_pattern=False)
         if args.release_parity
@@ -210,7 +216,8 @@ def main(argv: list[str] | None = None) -> int:
     for index, path in enumerate(chosen, start=1):
         outcome = evaluate_object(
             path,
-            name=object_name(path, args.dataset),
+            name=object_name(path, dataset=args.dataset),
+            catalog=catalog,
             library=library,
             config=config,
         )

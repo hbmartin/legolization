@@ -151,9 +151,10 @@ def chunk_ready(
 ) -> bool:
     """Whether a chunk can be inserted onto ``placed`` right now.
 
-    Ready means every member's supports are placed, no placed brick blocks
-    its vertical insertion, and — pull-forward safety — placing it cannot
-    strand a still-unplaced brick under a new overhang.
+    Ready means every member's supports are settled either in ``placed`` or
+    earlier in the chunk's insertion order, no placed brick blocks its
+    vertical insertion, and — pull-forward safety — placing it cannot strand
+    a still-unplaced brick under a new overhang.
     """
     chunk_set = set(chunk)
     settled = placed | chunk_set

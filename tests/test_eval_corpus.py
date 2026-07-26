@@ -471,13 +471,10 @@ def test_kind_filtered_selection_hints_the_kind_flag(
     assert "--kind mesh" in err
 
 
-def test_multi_seed_skips_baseline_diff(
+def test_multi_seed_manifest_records_seed_scope(
     evaluator: _EvaluatorModule,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    del monkeypatch, capsys
     exit_code = evaluator.main(
         argv=[
             "--models",

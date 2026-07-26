@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 from itertools import combinations
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.instructions.blocking import chunk_ready, vertical_blockers
@@ -53,6 +53,9 @@ _ROTATE_THRESHOLD_DEG = 120.0
 _ROTATE_GAIN_DEG = 45.0
 _CENTRE_DEAD_ZONE_STUDS = 2.0
 _DEFAULT_VIEW_AZIMUTH_DEG = 45.0  # LDraw viewers default to a front-right view
+_PRESS_SUBSET_PROBE_LIMIT: Final[int] = 128
+_PRESS_UNION_SPATIAL_FANOUT: Final[int] = 4
+_PRESS_UNION_STATE_LIMIT: Final[int] = 128
 
 
 class InstructionsError(ValueError):
@@ -204,10 +207,10 @@ def plan_instructions(
         layout,
         sequencing_config,
         chunks,
-        supports,
-        blockers,
-        blocks,
-        neighbours,
+        supports=supports,
+        blockers=blockers,
+        blocks=blocks,
+        neighbours=neighbours,
     )
     plan = InstructionPlan(
         steps=tuple(ordered_steps),
@@ -248,6 +251,7 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - sequencing state
     layout: Layout,
     config: InstructionsConfig,
     chunks: list[tuple[int, tuple[int, ...]]],
+    *,
     supports: dict[int, set[int]],
     blockers: dict[int, frozenset[int]],
     blocks: dict[int, set[int]],
@@ -633,7 +637,7 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - sequencing state
     return steps, warnings
 
 
-def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
+def _best_press_subset(  # noqa: C901, PLR0913 - explicit refinement constraints
     layout: Layout,
     chunk: tuple[int, ...],
     *,
@@ -651,6 +655,8 @@ def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
 ) -> tuple[tuple[int, ...], float] | None:
     """Pre-refine a forced fragile base chunk using warm probes."""
     candidates: list[tuple[int, float, tuple[int, ...], float]] = []
+    probes = 0
+    exhausted = False
     for size in range(min(len(chunk) - 1, max_step_size), 0, -1):
         for subset in combinations(chunk, size):
             if not chunk_ready(subset, placed, supports, blockers, blocks):
@@ -662,6 +668,10 @@ def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
                 blockers=blockers,
             ):
                 continue
+            if probes >= _PRESS_SUBSET_PROBE_LIMIT:
+                exhausted = True
+                break
+            probes += 1
             static = analyze_prefix(subset)
             if not static.stable:
                 continue
@@ -674,7 +684,7 @@ def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
                 candidates.append(
                     (-size, press.max_score, tuple(sorted(subset)), static.max_score)
                 )
-        if candidates:
+        if candidates or exhausted:
             break
     if not candidates:
         return None
@@ -777,7 +787,7 @@ def _press_union_allowed(  # noqa: PLR0913 - explicit union constraints
     )
 
 
-def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
+def _best_press_union(  # noqa: C901, PLR0913 - candidate state
     layout: Layout,
     *,
     seed: int,
@@ -823,7 +833,7 @@ def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
             float,
         ]
     ] = []
-    while queue and len(seen) <= 128:
+    while queue and len(seen) <= _PRESS_UNION_STATE_LIMIT:
         positions = queue.pop(0)
         adjacent = _adjacent_chunk_positions(
             positions=positions,
@@ -885,7 +895,7 @@ def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
                 continue
             static = analyze_prefix(union)
             press = press_prefix(union)
-            if static.stable and press.stable:
+            if static.stable:
                 seed_x, seed_y = centroids[seed]
                 distance = sum(
                     (centroids[position][0] - seed_x) ** 2
@@ -893,36 +903,16 @@ def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
                     for position in state
                     if position != seed
                 )
-                ranked.append(
-                    (
-                        len(union),
-                        press.max_score,
-                        distance,
-                        tuple(sorted(union)),
-                        tuple(sorted(state)),
-                        union,
-                        static.max_score,
-                    )
+                entry = (
+                    len(union),
+                    press.max_score,
+                    distance,
+                    tuple(sorted(union)),
+                    tuple(sorted(state)),
+                    union,
+                    static.max_score,
                 )
-            elif static.stable:
-                seed_x, seed_y = centroids[seed]
-                distance = sum(
-                    (centroids[position][0] - seed_x) ** 2
-                    + (centroids[position][1] - seed_y) ** 2
-                    for position in state
-                    if position != seed
-                )
-                fragile_ranked.append(
-                    (
-                        len(union),
-                        press.max_score,
-                        distance,
-                        tuple(sorted(union)),
-                        tuple(sorted(state)),
-                        union,
-                        static.max_score,
-                    )
-                )
+                (ranked if press.stable else fragile_ranked).append(entry)
             queue.append(state)
     if not ranked and not fragile_ranked:
         return None
@@ -958,7 +948,7 @@ def _adjacent_chunk_positions(
             chunks[position][0],
             position,
         ),
-    )[:4]
+    )[:_PRESS_UNION_SPATIAL_FANOUT]
     return sorted(contact | set(spatial))
 
 

@@ -90,6 +90,19 @@ _DOWN = (0.0, 0.0, -1.0)
 _Load = tuple[int, tuple[float, float, float], tuple[float, float, float]]
 
 
+def _stud_adjacency(
+    graph: ConnectionGraph,
+) -> tuple[dict[int, set[int]], frozenset[int]]:
+    """Return direction-independent stud adjacency and grounded ids."""
+    adjacent: dict[int, set[int]] = {brick_id: set() for brick_id in graph.brick_ids}
+    for knob in graph.knob_contacts:
+        if knob.below_id == GROUND_ID:
+            continue
+        adjacent[knob.below_id].add(knob.above_id)
+        adjacent[knob.above_id].add(knob.below_id)
+    return adjacent, graph.grounded_ids
+
+
 def _floating_shortcut(
     subset: frozenset[int],
     floating: set[int],
@@ -606,13 +619,7 @@ class PrefixSolver:
 
     def _build_reachability(self) -> None:
         """Direction-aware stud reachability for the floating shortcut."""
-        self._grounded = self._graph.grounded_ids
-        self._stud_adjacent = {bid: set() for bid in self._layout.bricks}
-        for knob in self._graph.knob_contacts:
-            if knob.below_id == GROUND_ID:
-                continue
-            self._stud_adjacent[knob.below_id].add(knob.above_id)
-            self._stud_adjacent[knob.above_id].add(knob.below_id)
+        self._stud_adjacent, self._grounded = _stud_adjacency(self._graph)
 
     def _force_col(
         self,
@@ -937,19 +944,14 @@ class RemovalSolver:
         self._config = config
         self.scope: set[int] = set(scope)
         graph = ConnectionGraph.from_layout(layout)
-        self._adjacent = {bid: set() for bid in layout.bricks}
-        self._stud_adjacent = {bid: set() for bid in layout.bricks}
-        for knob in graph.knob_contacts:
-            if knob.below_id == GROUND_ID:
-                continue
-            self._adjacent[knob.below_id].add(knob.above_id)
-            self._adjacent[knob.above_id].add(knob.below_id)
-            self._stud_adjacent[knob.below_id].add(knob.above_id)
-            self._stud_adjacent[knob.above_id].add(knob.below_id)
+        self._stud_adjacent, self._grounded = _stud_adjacency(graph)
+        self._adjacent = {
+            brick_id: set(adjacent)
+            for brick_id, adjacent in self._stud_adjacent.items()
+        }
         for side in graph.side_contacts:
             self._adjacent[side.a_id].add(side.b_id)
             self._adjacent[side.b_id].add(side.a_id)
-        self._grounded = graph.grounded_ids
         self._component_cache: dict[frozenset[int], StabilityResult] = {}
 
     @classmethod

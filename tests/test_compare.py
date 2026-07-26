@@ -17,8 +17,8 @@ import legolization.main as main_module
 from legolization.compare import (
     Candidate,
     CandidateMetrics,
-    _candidate_config,
     _collect,
+    candidate_config,
     candidate_metrics,
     run_all,
     select_best,
@@ -342,7 +342,7 @@ def test_collect_converts_future_exception_to_candidate() -> None:
 @pytest.mark.parametrize("strategy", ["greedy", "bond"])
 def test_candidate_config_strips_progress_and_sets_strategy(strategy: str) -> None:
     config = PipelineConfig(progress=print, time_budget_s=9.0)
-    clone = _candidate_config(config, strategy=strategy, seed=3, timeout_s=4.0)
+    clone = candidate_config(config, strategy=strategy, seed=3, timeout_s=4.0)
     assert clone.strategy == strategy
     assert clone.progress is None
     assert clone.time_budget_s == 4.0
@@ -447,6 +447,43 @@ def test_parallel_callback_runs_in_completion_order(
         on_complete=lambda candidate: completed.append(candidate.strategy),
     )
     assert completed == ["bond", "greedy"]
+
+
+def test_parallel_timeout_candidates_invoke_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeExecutor:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def submit(self, *_args: object) -> Future[Candidate]:
+            return Future()
+
+        def shutdown(self, **_kwargs: object) -> None:
+            pass
+
+    def time_out(
+        _pending: object,
+        *,
+        timeout: float | None,
+    ) -> object:
+        del timeout
+        raise TimeoutError
+
+    monkeypatch.setattr(legolization.compare, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(legolization.compare, "as_completed", time_out)
+    completed: list[Candidate] = []
+    candidates = legolization.compare._run_parallel(  # noqa: SLF001 - seam
+        _box_grid(),
+        {("greedy", 0): PipelineConfig(strategy="greedy", seed=0)},
+        workers=1,
+        timeout_s=2.0,
+        progress=None,
+        on_complete=completed.append,
+    )
+
+    assert completed == candidates
+    assert candidates[0].error == "timed out after 2s"
 
 
 # --- multi-seed restarts ---------------------------------------------------

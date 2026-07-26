@@ -186,6 +186,26 @@ def test_end_to_end_json_stdout(
     assert payload["input"].endswith("heart.vox")
 
 
+def test_end_to_end_ldraw_input(
+    checker: _CheckerModule,
+    tmp_path: Path,
+) -> None:
+    from legolization.ldraw_out import write_model
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    source = tmp_path / "tower.ldr"
+    report = tmp_path / "tower.json"
+    write_model(layout, source)
+
+    assert checker.main([str(source), "--json", str(report)]) == 0
+    payload = json.loads(report.read_text())
+    assert payload["brick_count"] == 2
+    assert payload["violations"] == []
+    assert len(payload["steps"]) >= 1
+
+
 def test_insertion_check_flags_press_fragile_steps(checker: _CheckerModule) -> None:
     # The single-stud cantilever holds statically but collapses under a
     # 1 kg press on the beam (Liu et al. 2024's virtual-brick model).

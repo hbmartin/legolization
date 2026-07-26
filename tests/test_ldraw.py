@@ -43,12 +43,24 @@ def test_stacked_plate_y(layout):
     assert line.split()[3] == "-48"  # top face at -8·(5+1)
 
 
-def test_yaw_rotation_matrix(layout):
-    brick = layout.add("brick_1x4", 2, 3, 0, 90, 4)
+@pytest.mark.parametrize(
+    ("yaw", "expected_z", "expected_matrix"),
+    [
+        (90, "90", ("0", "0", "-1", "0", "1", "0", "1", "0", "0")),
+        (270, "30", ("0", "0", "1", "0", "1", "0", "-1", "0", "0")),
+    ],
+)
+def test_yaw_rotation_matrix_preserves_grid_convention(
+    layout,
+    yaw: int,
+    expected_z: str,
+    expected_matrix: tuple[str, ...],
+):
+    brick = layout.add("brick_1x4", 2, 3, 0, yaw, 4)
     fields = piece_for(layout, brick).to_ldraw().split()
-    # Footprint occupies (2,3)..(2,6): center x=2 → 40, y=4.5 → 90.
-    assert fields[2:5] == ["40", "-24", "90"]
-    assert fields[5:14] == ["0", "0", "-1", "0", "1", "0", "1", "0", "0"]
+    # Logical grid yaw advances/reverses the local +X footprint along Z.
+    assert fields[2:5] == ["40", "-24", expected_z]
+    assert tuple(fields[5:14]) == expected_matrix
 
 
 def test_slope_origin_lands_on_stud_cell(layout):
@@ -249,6 +261,52 @@ def test_import_strict_reports_every_problem(tmp_path):
     assert "not in the solid palette" in problems
     assert "not a yaw multiple" in problems
     assert "collides" in problems
+
+
+def test_import_accepts_studio_transform_noise(tmp_path):
+    from legolization.ldraw_in import layout_from_ldraw
+
+    path = tmp_path / "studio-noise.ldr"
+    path.write_text(
+        "0 studio noise\n"
+        "1 4 0.16 -24.00002 0 1.000004 0 0 0 1 0 0 0 1.000004 3005.dat\n"
+    )
+    imported = layout_from_ldraw(path)
+    assert _brick_key(imported) == [("brick_1x1", 0, 0, 0, 0, 4)]
+
+
+def test_import_can_ground_an_elevated_model(layout, tmp_path):
+    from legolization.ldraw_in import layout_from_ldraw
+
+    layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    path = tmp_path / "elevated.ldr"
+    write_model(layout, path)
+
+    preserved = layout_from_ldraw(path)
+    grounded = layout_from_ldraw(path, ground=True)
+    assert min(brick.layer for brick in preserved) == 3
+    assert min(brick.layer for brick in grounded) == 0
+    assert {(brick.x, brick.y, brick.layer) for brick in grounded} == {(0, 0, 0)}
+
+
+def test_import_roundtrips_special_and_legacy_parts(layout, tmp_path):
+    from legolization.ldraw_in import layout_from_ldraw
+
+    layout.add("brick_corner_2x2", 0, 0, 0, 0, 4)
+    layout.add("plate_corner_2x2", 4, 0, 0, 90, 4)
+    layout.add("brick_1x10_import", 0, 4, 0, 0, 4)
+    layout.add("brick_1x2_legacy", 0, 6, 0, 0, 4)
+    layout.add("brick_2x10_import", 0, 8, 0, 0, 4)
+    layout.add("plate_1x10_import", 0, 11, 0, 0, 4)
+    layout.add("plate_1x8_half_offset", 0, 13, 0, 0, 4)
+    layout.add("plate_1x2_legacy", 0, 15, 0, 0, 4)
+    layout.add("plate_quarter_cutout_4x4", 12, 0, 0, 0, 4)
+    layout.add("brick_1x1_headlight", 20, 0, 3, 180, 4)
+    layout.add("dish_3x3_inverted_snot", 19, -1, 1, 0, 4)
+
+    path = tmp_path / "specials.ldr"
+    write_model(layout, path)
+    assert _brick_key(layout_from_ldraw(path)) == _brick_key(layout)
 
 
 def test_import_cli_end_to_end(tmp_path):

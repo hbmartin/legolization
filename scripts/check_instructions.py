@@ -1,10 +1,11 @@
 """Machine-check a model's build instructions for sensibility.
 
-Re-runs the (deterministic) pipeline on an input, then audits the resulting
-instruction plan: ``verify_plan`` invariants, ``plan_quality`` aggregates,
-and a per-step after-state — floating (dangling) bricks and component count
-of every prefix — that the plan's own verdicts don't cover. Optionally dumps
-per-step PNGs so the steps can be inspected visually.
+Re-runs the deterministic pipeline on a voxel/mesh input, or imports and
+resequences an existing LDraw model, then audits the resulting instruction
+plan: ``verify_plan`` invariants, ``plan_quality`` aggregates, and a per-step
+after-state — floating (dangling) bricks and component count of every prefix —
+that the plan's own verdicts don't cover. Optionally dumps per-step PNGs so the
+steps can be inspected visually.
 
 Usage::
 
@@ -32,8 +33,10 @@ from legolization.instructions.metrics import plan_quality
 from legolization.instructions.render import RenderConfig, render_step_images
 from legolization.instructions.sequencer import (
     InstructionsConfig,
+    plan_instructions,
     verify_plan,
 )
+from legolization.ldraw_in import layout_from_ldraw
 from legolization.ldraw_out import write_model
 from legolization.mesh import MeshOptions
 from legolization.pipeline import PipelineConfig, PipelineResult, load_grid, run
@@ -44,6 +47,8 @@ if TYPE_CHECKING:
 
     from legolization.instructions.sequencer import InstructionPlan
     from legolization.layout import Layout
+
+_LDRAW_SUFFIXES = {".ldr", ".mpd"}
 
 
 def check_steps(
@@ -167,6 +172,33 @@ def _positive_mass(text: str) -> float:
     return value
 
 
+def _result_for_input(input_path: Path, config: PipelineConfig) -> PipelineResult:
+    """Run placement inputs or import and resequence an existing LDraw model."""
+    if input_path.suffix.lower() not in _LDRAW_SUFFIXES:
+        return run(load_grid(input_path, config), config)
+
+    layout = layout_from_ldraw(input_path, ground=True)
+    solver = config.solver
+    stability = analyze(layout, solver)
+    instructions = (
+        config.instructions
+        if config.instructions.solver is not None
+        else replace(config.instructions, solver=solver)
+    )
+    plan = plan_instructions(layout, config=instructions)
+    graph = ConnectionGraph.from_layout(layout)
+    return PipelineResult(
+        layout=layout,
+        stability=stability,
+        grid=None,
+        brick_count=len(layout),
+        mass_g=layout.total_mass_g(),
+        component_count=graph.component_count(),
+        floating_count=len(graph.floating_ids()),
+        plan=plan,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -216,8 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         mesh=MeshOptions(target_studs=args.target_studs, up=args.up),
         progress=progress,
     )
-    grid = load_grid(args.input, config)
-    result = run(grid, config)
+    result = _result_for_input(args.input, config)
     if result.plan is None:
         print("error: pipeline produced no instruction plan", file=sys.stderr)
         return 1

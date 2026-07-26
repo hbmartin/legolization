@@ -26,12 +26,11 @@ import hashlib
 import importlib.util
 import json
 import sys
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-from legolization.compare import Candidate, run_all, select_best
+from legolization.compare import Candidate, candidate_config, run_all, select_best
 from legolization.eval_artifacts import (
     SourceIdentity,
     atomic_json,
@@ -477,13 +476,12 @@ def _effective_config(
     strategy: str,
     seed: int,
 ) -> PipelineConfig:
-    """Mirror compare.run_all's result-affecting per-candidate config."""
-    return replace(
+    """Return the result-affecting per-candidate configuration."""
+    return candidate_config(
         PipelineConfig(seed=args.seed),
         strategy=strategy,
         seed=seed,
-        progress=None,
-        time_budget_s=args.timeout,
+        timeout_s=args.timeout,
     )
 
 

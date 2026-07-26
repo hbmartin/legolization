@@ -161,23 +161,24 @@ class LayeredStrategy:
                 local_deadline if deadline is None else min(deadline, local_deadline)
             )
         done = 0
+        remaining_columns = total
         with telemetry.span("place.tile"):
             for index, problem in enumerate(problems):
                 context = build_context(layout, problem)
-                share = len(problem.columns) / total
+                share = len(problem.columns) / remaining_columns
                 sub_deadline = (
                     None
                     if deadline is None
                     else min(
                         deadline,
-                        time.monotonic()
-                        + share * max(deadline - time.monotonic(), 0.0),
+                        (now := time.monotonic()) + share * max(deadline - now, 0.0),
                     )
                 )
                 rects = self.tile(problem, context, rng=rng, deadline=sub_deadline)
                 _assert_cover(problem, rects)
                 realize(layout, problem, rects)
                 done += len(problem.columns)
+                remaining_columns -= len(problem.columns)
                 if self.progress is not None:
                     self.progress(
                         f"layer {index + 1}/{len(problems)} "

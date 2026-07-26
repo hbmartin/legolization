@@ -134,6 +134,54 @@ def test_incomplete_collection_cannot_write_baseline(
     assert baseline.read_text() == "preserve\n"
 
 
+def test_scope_with_missing_model_entry_cannot_write_baseline(
+    assembler: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    identity = SourceIdentity(git_sha="a" * 40, source_hash="b" * 64, dirty=True)
+    collection = _manifest(
+        tmp_path,
+        artifact=tmp_path / "unused.json",
+        identity=identity,
+    )
+    payload = json.loads(collection.read_text())
+    payload["scope"]["models"].append("missing-model")
+    atomic_json(collection, payload)
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text("preserve\n")
+
+    assert (
+        assembler.main(
+            [
+                str(collection),
+                "--write-baseline",
+                "--baseline",
+                str(baseline),
+                "--out",
+                str(tmp_path / "assembled"),
+            ]
+        )
+        == 1
+    )
+    assert "complete scope model set" in capsys.readouterr().err
+    assert baseline.read_text() == "preserve\n"
+
+
+@pytest.mark.parametrize("payload", [None, [], {"schema": 1, "status": "complete"}])
+def test_malformed_collection_reports_clean_cli_error(
+    assembler: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    payload: object,
+) -> None:
+    collection = tmp_path / "malformed.json"
+    atomic_json(collection, payload)
+
+    assert assembler.main([str(collection), "--out", str(tmp_path / "out")]) == 1
+    assert "error: malformed collection manifest:" in capsys.readouterr().err
+
+
 def test_identity_mismatch_blocks_assembly(
     assembler: ModuleType,
     tmp_path: Path,

@@ -42,7 +42,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from legolization import telemetry
 from legolization.eval_artifacts import atomic_json
@@ -58,17 +58,6 @@ if TYPE_CHECKING:
 _SCRIPTS = Path(__file__).resolve().parent
 _REPO = _SCRIPTS.parent
 PROFILES = _REPO / "eval" / "profiles"
-_WATCHED_STAGES = frozenset(
-    {
-        "phase.voxelize",
-        "phase.place",
-        "place.tile",
-        "place.compact",
-        "place.connectivity",
-        "stability.analyze",
-        "phase.repair",
-    }
-)
 # These enclosing stages own any stability solves they invoke. Without this
 # ordering, a nested ``stability.analyze`` repeatedly resets the watchdog for
 # a long connectivity or stability-repair pass and misattributes its time.
@@ -81,6 +70,7 @@ _STAGE_OWNERSHIP = (
     "phase.place",
     "stability.analyze",
 )
+_WATCHED_STAGES = frozenset(_STAGE_OWNERSHIP)
 
 
 git_sha = telemetry.git_sha
@@ -212,7 +202,7 @@ class _Lifecycle:
     last_write: float = 0.0
 
     @classmethod
-    def create(cls, path: Path, model: str) -> _Lifecycle:
+    def create(cls, path: Path, model: str) -> Self:
         return cls(path=path, model=model, stack=[])
 
     def __call__(
@@ -234,7 +224,7 @@ class _Lifecycle:
             span_name for span_name, _ in self.stack if span_name in _WATCHED_STAGES
         }
         active = next(
-            (name for name in _STAGE_OWNERSHIP if name in present),
+            (owner for owner in _STAGE_OWNERSHIP if owner in present),
             None,
         )
         changed = active != self.active_stage
@@ -279,7 +269,7 @@ def _profile_worker(
         progress=lambda message: print(f"  {message}", file=sys.stderr),
     )
     pstats_path = base.with_suffix(".pstats") if args.cprofile else None
-    lifecycle = _Lifecycle.create(events_path, args.model)
+    lifecycle = _Lifecycle.create(path=events_path, model=args.model)
     profiler = cProfile.Profile() if args.cprofile else None
     started = time.perf_counter()
     with telemetry.record(span_sink=lifecycle) as session:
@@ -364,7 +354,29 @@ def _validate_model_reference(model: str) -> None:
         raise SystemExit(msg)
 
 
-def _monitor(  # noqa: C901 - lifecycle loop keeps timeout state together
+def _monitor(
+    process: subprocess.Popen[str],
+    *,
+    args: argparse.Namespace,
+    base: Path,
+    events_path: Path,
+) -> int:
+    """Supervise the worker and guarantee child/checkpoint cleanup."""
+    try:
+        return _monitor_loop(
+            process,
+            args=args,
+            base=base,
+            events_path=events_path,
+        )
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        events_path.unlink(missing_ok=True)
+
+
+def _monitor_loop(  # noqa: C901, PLR0912, PLR0915 - lifecycle state
     process: subprocess.Popen[str],
     *,
     args: argparse.Namespace,
@@ -430,6 +442,7 @@ def _monitor(  # noqa: C901 - lifecycle loop keeps timeout state together
             "active_stage": active,
             "active_stage_seconds": round(elapsed, 3),
             "stage_timeout_seconds": args.stage_timeout,
+            "telemetry_updated": latest.get("updated"),
             "spans": latest.get("spans", {}),
         }
         atomic_json(base.with_suffix(".json"), payload)
@@ -438,12 +451,34 @@ def _monitor(  # noqa: C901 - lifecycle loop keeps timeout state together
             f"wrote {base.with_suffix('.json')}",
             file=sys.stderr,
         )
-        events_path.unlink(missing_ok=True)
         return 124
     if process.stdout is not None and (output := process.stdout.read()):
         print(output, end="")
-    events_path.unlink(missing_ok=True)
-    return process.returncode or 0
+    return_code = process.returncode or 0
+    normalized_code = 128 - return_code if return_code < 0 else return_code
+    artifact_path = base.with_suffix(".json")
+    if normalized_code and not artifact_path.exists():
+        atomic_json(
+            artifact_path,
+            {
+                "schema": 1,
+                "status": "failed",
+                "generated": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+                "git_sha": git_sha(),
+                "run": {
+                    "model": args.model,
+                    "strategy": args.strategy,
+                    "seed": args.seed,
+                    "steps": args.steps,
+                },
+                "exit_code": normalized_code,
+                "signal": -return_code if return_code < 0 else None,
+                "active_stage": active,
+                "telemetry_updated": latest.get("updated"),
+                "spans": latest.get("spans", {}),
+            },
+        )
+    return normalized_code
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -492,7 +527,6 @@ def main(argv: list[str] | None = None) -> int:
     ]
     process = subprocess.Popen(  # noqa: S603 - fixed current interpreter
         command,
-        stdout=subprocess.PIPE,
         text=True,
     )
     return _monitor(

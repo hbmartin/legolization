@@ -472,14 +472,16 @@ class BridgeSynthesizer:
         best_key: tuple[int, int, int] | None = None
         for phase in phases:
             candidates = phase_candidates.get(phase, [])
-            candidate = min(
-                candidates,
-                key=lambda item: (
-                    ConnectionGraph.from_layout(item).component_count(),
-                    len(item),
-                ),
+            scored = [
+                (ConnectionGraph.from_layout(item).component_count(), len(item), item)
+                for item in candidates
+            ]
+            phase_best = min(
+                scored,
+                key=lambda item: (item[0], item[1]),
                 default=None,
             )
+            candidate = phase_best[2] if phase_best is not None else None
             if phase in phase_candidates:
                 telemetry.value(
                     "connectivity.bridge.phase_solved",
@@ -487,7 +489,8 @@ class BridgeSynthesizer:
                 )
             if candidate is None:
                 continue
-            components = ConnectionGraph.from_layout(candidate).component_count()
+            assert phase_best is not None  # noqa: S101 - narrowed with candidate
+            components = phase_best[0]
             key = (components, len(candidate), phase)
             telemetry.value("connectivity.bridge.phase_components", float(components))
             telemetry.value("connectivity.bridge.phase_bricks", float(len(candidate)))

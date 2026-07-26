@@ -8,6 +8,7 @@ import json
 import pstats
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -37,7 +38,7 @@ def profiler() -> ModuleType:
 def test_smoke_heart(
     profiler: ModuleType,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = profiler.main([str(_HEART), "--out", str(tmp_path)])
     assert exit_code == 0
@@ -57,7 +58,7 @@ def test_smoke_heart(
     assert payload["total_seconds"] > 0
     assert payload["spans"]["stability.analyze"]["calls"] >= 1
     assert payload["cprofile_active"] is False
-    out = capsys.readouterr().out
+    out = capfd.readouterr().out
     assert "stability.analyze" in out
 
 
@@ -157,18 +158,20 @@ def test_monitor_terminates_child_and_recovers_timeout_artifact(
 ) -> None:
     events = tmp_path / "profile.running.json"
     base = tmp_path / "profile"
-    code = (
-        "import json,sys,time\n"
-        "from pathlib import Path\n"
-        "Path(sys.argv[1]).write_text(json.dumps({"
-        "'active_stage':'place.connectivity',"
-        "'stage_started':time.monotonic(),"
-        "'spans':{'place.tile':{'calls':1,'seconds':0.01,'buckets':{}}}}))\n"
-        "print('worker checkpoint', flush=True)\n"
-        "time.sleep(30)\n"
+    updated = time.monotonic()
+    events.write_text(
+        json.dumps(
+            {
+                "active_stage": "place.connectivity",
+                "stage_started": updated,
+                "updated": updated,
+                "spans": {"place.tile": {"calls": 1, "seconds": 0.01, "buckets": {}}},
+            }
+        )
     )
+    code = "print('worker checkpoint', flush=True); import time; time.sleep(30)"
     process = subprocess.Popen(
-        [sys.executable, "-c", code, str(events)],
+        [sys.executable, "-c", code],
         stdout=subprocess.PIPE,
         text=True,
     )
@@ -193,6 +196,7 @@ def test_monitor_terminates_child_and_recovers_timeout_artifact(
     artifact = json.loads(base.with_suffix(".json").read_text())
     assert artifact["status"] == "timed_out"
     assert artifact["active_stage"] == "place.connectivity"
+    assert artifact["telemetry_updated"] == updated
     assert artifact["spans"]["place.tile"]["calls"] == 1
     captured = capsys.readouterr()
     assert "stage: place.connectivity" in captured.err
@@ -237,3 +241,36 @@ def test_monitor_times_out_worker_that_hangs_during_startup(
     assert "stage: startup" in captured.err
     assert "timed out startup" in captured.err
     assert "starting" in captured.out
+
+
+def test_monitor_records_failed_signal_exit(
+    profiler: ModuleType,
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "profile.running.json"
+    base = tmp_path / "profile"
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    process.kill()
+    process.wait()
+    args = SimpleNamespace(
+        heartbeat=1.0,
+        stage_timeout=1.0,
+        model="fixture",
+        strategy="greedy",
+        seed=0,
+        steps="layer",
+    )
+
+    assert (
+        profiler._monitor(  # noqa: SLF001
+            process,
+            args=args,
+            base=base,
+            events_path=events,
+        )
+        == 137
+    )
+    artifact = json.loads(base.with_suffix(".json").read_text())
+    assert artifact["status"] == "failed"
+    assert artifact["exit_code"] == 137
+    assert artifact["signal"] == 9

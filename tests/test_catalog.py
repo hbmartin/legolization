@@ -3,6 +3,7 @@
 import pytest
 
 from legolization.catalog import (
+    Catalog,
     Category,
     default_catalog,
     rotate_offset,
@@ -115,6 +116,24 @@ def test_snot_specs_validate_role(catalog):
         _snot_part({"key": "mystery_bracket", "category": "snot"})
     with pytest.raises(ValueError, match="snot_role"):
         _snot_part({"key": "bad", "category": "snot", "snot_role": "sideways"})
+
+
+def test_import_only_special_parts_stay_out_of_rect_catalog(
+    catalog: Catalog,
+) -> None:
+    corner = catalog["brick_corner_2x2"]
+    assert corner.category is Category.SPECIAL
+    assert corner.cell_count == 9
+    assert corner.stud_count == 3
+    assert catalog.rect_key(2, 2, 3) == "brick_2x2"
+    assert all(
+        part.category is not Category.SPECIAL
+        for part in catalog.by_category(Category.BRICK, Category.PLATE)
+    )
+    assert catalog["brick_1x1_headlight"].category is Category.SPECIAL_SNOT
+    assert catalog["dish_3x3_inverted_snot"].category is Category.SPECIAL_SNOT
+    snot_keys = {part.key for part in catalog.by_category(Category.SNOT)}
+    assert {"brick_1x1_headlight", "dish_3x3_inverted_snot"}.isdisjoint(snot_keys)
 
 
 def test_cladding_mount_matrices_pinned(catalog):

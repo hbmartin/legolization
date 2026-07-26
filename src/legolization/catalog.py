@@ -42,6 +42,12 @@ class Category(StrEnum):
     SNOT = "snot"
     """Sideways parts; excluded from every rect tiler by category."""
 
+    SPECIAL = "special"
+    """Import-only stud-up geometry excluded from placement strategies."""
+
+    SPECIAL_SNOT = "special_snot"
+    """Import-only sideways geometry excluded from the SNOT finishing pass."""
+
 
 @dataclass(frozen=True, slots=True)
 class Connector:
@@ -98,9 +104,9 @@ class Part:
 
     mount_matrices: tuple[tuple[tuple[int, int], tuple[int, ...]], ...] = ()
     """Cladding emission rotations: ``((outward_xy, 9 row-major ints),
-    ...)`` per outward grid direction, pinned as catalog data (probed
-    against pyldraw3's rotation sign convention, not composed at
-    runtime). Empty for non-cladding parts."""
+    ...)`` per outward grid direction, pinned as raw LDraw transform data
+    rather than composed through pyldraw3's rotation convention at runtime.
+    Empty for non-cladding parts."""
 
     mount_offset_ldu: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """Cladding origin offset in LDU along ``(outward, vertical,
@@ -288,7 +294,7 @@ def _carrier_part(spec: dict[str, Any]) -> Part:
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
-        category=Category.SNOT,
+        category=Category(str(spec["category"])),
         occupied_cells=frozenset(
             (dx, dy, dz) for dx, dy in columns for dz in range(height)
         ),
@@ -326,7 +332,7 @@ def _cladding_part(spec: dict[str, Any]) -> Part:
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
-        category=Category.SNOT,
+        category=Category(str(spec["category"])),
         occupied_cells=frozenset(
             (dx, dy, dz) for dx, dy in columns for dz in range(height)
         ),
@@ -354,6 +360,46 @@ def _snot_part(spec: dict[str, Any]) -> Part:
             raise ValueError(msg)
 
 
+def _special_part(spec: dict[str, Any]) -> Part:
+    """Expand import-only stud-up geometry from explicit footprint columns.
+
+    Special parts participate in collision, connectivity, stability, and
+    LDraw round-tripping, but their category keeps them out of the rectangular
+    placement catalog.  This is useful for corner plates, legacy mould aliases,
+    and other parts found in hand-authored models without making the voxel
+    tilers choose them.
+    """
+    height = int(spec["height_plates"])
+    columns = [(int(dx), int(dy)) for dx, dy in spec["occupied_columns"]]
+    top_columns = [(int(dx), int(dy)) for dx, dy in spec.get("top_columns", columns)]
+    bottom_columns = [
+        (int(dx), int(dy)) for dx, dy in spec.get("bottom_columns", columns)
+    ]
+    offset_x, offset_y, offset_z = (
+        float(value) for value in spec.get("origin_offset", (0.0, 0.0, 0.0))
+    )
+    return Part(
+        key=str(spec["key"]),
+        ldraw_part=str(spec["ldraw_part"]),
+        category=Category.SPECIAL,
+        occupied_cells=frozenset(
+            (dx, dy, dz) for dx, dy in columns for dz in range(height)
+        ),
+        top_connectors=tuple(
+            Connector(cell=(dx, dy, height - 1), direction=UP) for dx, dy in top_columns
+        ),
+        bottom_connectors=tuple(
+            Connector(cell=(dx, dy, 0), direction=DOWN) for dx, dy in bottom_columns
+        ),
+        height_plates=height,
+        mass_g=float(spec["mass_g"]),
+        orientations=tuple(
+            int(value) for value in spec.get("orientations", _FULL_YAWS)
+        ),
+        origin_offset=(offset_x, offset_y, offset_z),
+    )
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class Catalog:
     """An immutable collection of :class:`Part` records keyed by ``key``.
@@ -372,8 +418,10 @@ class Catalog:
             match spec["category"]:
                 case Category.SLOPE:
                     part = _slope_part(spec)
-                case Category.SNOT:
+                case Category.SNOT | Category.SPECIAL_SNOT:
                     part = _snot_part(spec)
+                case Category.SPECIAL:
+                    part = _special_part(spec)
                 case _:
                     part = _rect_part(spec)
             parts[part.key] = part

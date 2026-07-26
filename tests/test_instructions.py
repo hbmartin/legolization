@@ -719,6 +719,39 @@ def test_press_subset_skips_remainder_solve_for_unstable_press() -> None:
     assert remainder_calls == 0
 
 
+def test_press_subset_respects_probe_budget() -> None:
+    from legolization.instructions.sequencer import (
+        _PRESS_SUBSET_PROBE_LIMIT,
+        _best_press_subset,
+    )
+
+    layout = Layout(catalog=default_catalog())
+    chunk = tuple(layout.add("brick_1x1", x, 0, 0, 0, 4).brick_id for x in range(10))
+    unstable = _verdict(stable=False, score=1.2)
+    analyze_calls = 0
+
+    def analyze_prefix(_subset: tuple[int, ...]) -> StabilityResult:
+        nonlocal analyze_calls
+        analyze_calls += 1
+        return unstable
+
+    result = _best_press_subset(
+        layout,
+        chunk,
+        placed=set(),
+        supports={brick_id: set() for brick_id in chunk},
+        blockers=dict.fromkeys(chunk, frozenset()),
+        blocks={brick_id: set() for brick_id in chunk},
+        max_step_size=10,
+        analyze_prefix=analyze_prefix,
+        press_prefix=lambda _subset: unstable,
+        press_selection=lambda _chunk, _remainder: unstable,
+    )
+
+    assert result is None
+    assert analyze_calls == _PRESS_SUBSET_PROBE_LIMIT
+
+
 def test_scan_window_defers_press_fragile_candidates() -> None:
     # WS-I: with the check on, a statically-stable-but-press-fragile
     # candidate is skipped when the window holds a press-stable
@@ -931,33 +964,37 @@ def test_press_union_prefers_stable_then_truthful_fragile_fallback() -> None:
     static = _verdict(stable=True, score=0.2)
     fragile = _verdict(stable=False, score=1.2)
     robust = _verdict(stable=True, score=0.4)
-    common = {
-        "layout": layout,
-        "seed": 0,
-        "pending": [0, 1],
-        "chunks": chunks,
-        "placed": {base.brick_id},
-        "supports": supports,
-        "blockers": blockers,
-        "blocks": blocks,
-        "neighbours": neighbours,
-        "band_rank": {3: 0, 6: 1},
-        "brick_position": {middle.brick_id: 0, upper.brick_id: 1},
-        "max_step_size": 2,
-        "analyze_prefix": lambda _chunk: static,
-    }
-    stable_choice = _best_press_union(
-        **common,
-        press_prefix=lambda chunk: robust if len(chunk) == 2 else fragile,
-    )
+
+    def choose(
+        *, stable_union: bool
+    ) -> tuple[tuple[int, ...], tuple[int, ...], float, bool, float] | None:
+        return _best_press_union(
+            layout,
+            seed=0,
+            pending=[0, 1],
+            chunks=chunks,
+            placed={base.brick_id},
+            supports=supports,
+            blockers=blockers,
+            blocks=blocks,
+            neighbours=neighbours,
+            band_rank={3: 0, 6: 1},
+            brick_position={middle.brick_id: 0, upper.brick_id: 1},
+            max_step_size=2,
+            analyze_prefix=lambda _chunk: static,
+            press_prefix=(
+                (lambda chunk: robust if len(chunk) == 2 else fragile)
+                if stable_union
+                else (lambda _chunk: fragile)
+            ),
+        )
+
+    stable_choice = choose(stable_union=True)
     assert stable_choice is not None
     assert stable_choice[0] == (0, 1)
     assert stable_choice[3] is False
 
-    fallback = _best_press_union(
-        **common,
-        press_prefix=lambda _chunk: fragile,
-    )
+    fallback = choose(stable_union=False)
     assert fallback is not None
     assert fallback[0] == (0, 1)
     assert fallback[3] is True

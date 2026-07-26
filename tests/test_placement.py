@@ -731,6 +731,48 @@ def test_layered_zero_budget_is_an_instant_deadline(
     assert captured[0] is not None
 
 
+def test_layered_deadlines_share_remaining_time_by_remaining_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import legolization.placement.layered.engine as engine_mod
+    from legolization.placement.layered.bond import BondStrategy
+    from legolization.placement.layered.engine import LayerContext, LayerProblem, Rect2D
+
+    captured: list[float | None] = []
+    original_tile = BondStrategy.tile
+
+    def capture_tile(
+        self: BondStrategy,
+        problem: LayerProblem,
+        below: LayerContext,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> list[Rect2D]:
+        captured.append(deadline)
+        return original_tile(
+            self,
+            problem=problem,
+            below=below,
+            rng=rng,
+            deadline=deadline,
+        )
+
+    monkeypatch.setattr(engine_mod.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(engine_mod, "improve_connectivity", lambda *_args, **_kw: 1)
+    monkeypatch.setattr(BondStrategy, "tile", capture_tile)
+    codes = np.full((1, 1, 4), EMPTY, dtype=np.int16)
+    codes[0, 0, 0] = 4
+    codes[0, 0, 3] = 4
+
+    BondStrategy(time_budget_s=100.0, milp_bridge=False).place(
+        VoxelGrid(codes=codes),
+        rng=np.random.default_rng(0),
+    )
+
+    assert captured == pytest.approx([50.0, 100.0])
+
+
 def test_greedy_sweeps_layers_bottom_up():
     codes = np.full((2, 1, 6), EMPTY, dtype=np.int16)
     codes[0, 0, 5] = 4

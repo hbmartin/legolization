@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from legolization import telemetry
 from legolization.compare import Candidate, CandidateMetrics
@@ -29,6 +29,7 @@ _RUNTIME_FILES = frozenset(
     }
 )
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]+")
+_GIT_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 def _git_executable() -> str:
@@ -66,6 +67,7 @@ def _git_paths(repo: Path) -> list[Path]:
         cwd=repo,
         check=True,
         capture_output=True,
+        timeout=_GIT_TIMEOUT_SECONDS,
     )
     relative = [Path(raw.decode()) for raw in result.stdout.split(b"\0") if raw]
     return sorted(
@@ -108,6 +110,7 @@ def source_identity(repo: Path) -> SourceIdentity:
         check=True,
         capture_output=True,
         text=True,
+        timeout=_GIT_TIMEOUT_SECONDS,
     )
     dirty = bool(status.stdout.strip())
     return SourceIdentity(

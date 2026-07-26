@@ -10,7 +10,7 @@ every problem, so a user sees the model's full distance to importable.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ldraw.model import read_model
 
@@ -27,9 +27,14 @@ if TYPE_CHECKING:
 
     from legolization.catalog import Catalog, Part
 
-_GRID_EPS = 1e-6
+# Studio exports rigid groups with small accumulated transform noise (seen in
+# real files as 1.000004 matrix entries and positions displaced by <0.2 LDU).
+# Express the tolerance in grid units: 0.01 stud/plate still rejects meaningful
+# offsets such as a half plate or the 7-LDU off-grid fixture in the test suite.
+_GRID_EPS: Final[float] = 1e-2
 
-# LDraw rotation rows for each supported yaw (Identity().rotate(yaw, YAxis)).
+# Raw LDraw rows for each logical grid yaw. Since pyldraw3 1.3 corrected its
+# positive Y rotation, emission produces these with rotate(-yaw, YAxis).
 _YAW_MATRICES: dict[tuple[int, ...], int] = {
     (1, 0, 0, 0, 1, 0, 0, 0, 1): 0,
     (0, 0, -1, 0, 1, 0, 1, 0, 0): 90,
@@ -65,12 +70,19 @@ class LdrawImportError(ValueError):
         )
 
 
-def layout_from_ldraw(path: Path, *, catalog: Catalog | None = None) -> Layout:
+def layout_from_ldraw(
+    path: Path,
+    *,
+    catalog: Catalog | None = None,
+    ground: bool = False,
+) -> Layout:
     """Read an ``.ldr``/``.mpd`` model back into a :class:`Layout`.
 
     Strict: any part outside the catalog, non-yaw rotation, off-grid
     position, out-of-palette colour, collision, or below-ground brick is
-    an error; all problems are reported together.
+    an error; all problems are reported together. ``ground=True`` shifts an
+    otherwise valid elevated model so its lowest occupied layer rests on the
+    analysis ground plane.
     """
     catalog = catalog or default_catalog()
     # Several catalog parts can share one LDraw code (a flat tile and its
@@ -104,6 +116,10 @@ def layout_from_ldraw(path: Path, *, catalog: Catalog | None = None) -> Layout:
             problems.append(f"{prefix}: {error}")
     if problems:
         raise LdrawImportError(problems)
+    if ground and layout.bricks:
+        lowest = min(brick.layer for brick in layout)
+        if lowest:
+            layout = layout.translated(dz=lowest)
     return layout
 
 
@@ -146,7 +162,7 @@ def _decode_occurrence(
     occurrence: ModelOccurrence,
 ) -> tuple[int, int, int, int] | str:
     """Decode one occurrence as ``part``: placement, or the failure reason."""
-    if part.category is Category.SNOT:
+    if part.category in (Category.SNOT, Category.SPECIAL_SNOT):
         if (snot := _decode_snot(part, occurrence)) is None:
             return "sideways part in an unsupported orientation"
         return snot

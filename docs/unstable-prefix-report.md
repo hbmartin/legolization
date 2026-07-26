@@ -144,7 +144,7 @@ would buy nothing and cost 2–4× sequencing time.
 - Related: `docs/self-evaluation-playbook.md` §6 failure signatures;
   `ROADMAP.md` deferred "MPD subassembly submodels".
 
-## 7. v8 re-measurement: the class is resolved
+## 7. v8 re-measurement: the rerun synthetic cases are resolved
 
 Re-run 2026-07-22 at the v7 program end (subassembly steps landed in v3
 and hardened through v6/v7; press-aware formation in WS-X), same
@@ -159,10 +159,11 @@ command, seed 0, current defaults:
 | letter-t | 17 | **0** (was 1) |
 | two-towers-bridge | 13 | **0** |
 
-Recommendation 1 (subassemblies) resolved the entire measured class;
-recommendation 3 (honest booklet framing) also landed. Recommendation 2
-(support-aware placement) is therefore **closed without implementation**
-— it changes brick layouts and carries scorecard risk for a failure
-class that no longer exists in the corpus. Reopen it only if a future
-model reintroduces unstable steps that subassembly extraction cannot
-absorb.
+Recommendation 1 (subassemblies) resolved all six synthetic cases rerun
+above; recommendation 3 (honest booklet framing) also landed. The two mesh
+failures measured in §2 (Suzanne @16 and Spot @24) were not rerun, so this
+does not establish that the entire measured class is gone. Recommendation 2
+(support-aware placement) remains deferred because it changes brick layouts
+and carries scorecard risk. Reconsider it if either omitted mesh case still
+has unstable steps, or if a future model exposes failures that subassembly
+extraction cannot absorb.

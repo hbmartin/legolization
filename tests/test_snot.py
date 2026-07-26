@@ -110,7 +110,7 @@ def test_clad_tower_is_stable():
     assert not graph.floating_ids()
 
 
-def test_prefix_solver_warms_snot_layouts():
+def test_prefix_solver_warms_snot_layouts() -> None:
     layout, grid = _clad_tower()
     apply_snot(layout, grid)
     config = SolverConfig()

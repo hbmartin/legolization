@@ -282,7 +282,7 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     chosen_seeds = tuple(dict.fromkeys(seeds)) if seeds else (config.seed,)
     skipped = set(skip)
     configs = {
-        (name, seed): _candidate_config(
+        (name, seed): candidate_config(
             config, strategy=name, seed=seed, timeout_s=timeout_s
         )
         for name in chosen
@@ -299,7 +299,7 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
         # candidate got a fresh full timeout and the sweep overran).
         deadline = time.monotonic() + timeout_s if timeout_s is not None else None
         candidates = []
-        for (name, seed), candidate_config in configs.items():
+        for (name, seed), job_config in configs.items():
             remaining = None if deadline is None else deadline - time.monotonic()
             if remaining is not None and remaining <= 0:
                 candidate = Candidate(
@@ -310,7 +310,7 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
                 )
             else:
                 candidate = _run_candidate(
-                    grid, _restrict_budget(candidate_config, remaining)
+                    grid, _restrict_budget(job_config, remaining)
                 )
             _report(progress, candidate)
             if on_complete is not None:
@@ -328,7 +328,7 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     return sorted(candidates, key=lambda c: (c.strategy, c.seed))
 
 
-def _candidate_config(
+def candidate_config(
     config: PipelineConfig,
     *,
     strategy: str,
@@ -412,8 +412,8 @@ def _run_parallel(  # noqa: PLR0913
     )
     try:
         pending: dict[Future[Candidate], tuple[str, int]] = {
-            executor.submit(_run_candidate, grid, candidate_config): key
-            for key, candidate_config in configs.items()
+            executor.submit(_run_candidate, grid, job_config): key
+            for key, job_config in configs.items()
         }
         deadline = None if timeout_s is None else timeout_s + _TIMEOUT_SLACK_S
         try:

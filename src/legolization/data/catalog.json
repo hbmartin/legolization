@@ -288,6 +288,82 @@
       "mass_g": 0.5
     },
     {
+      "key": "brick_corner_2x2",
+      "ldraw_part": "2357",
+      "category": "special",
+      "height_plates": 3,
+      "mass_g": 0.9,
+      "occupied_columns": [[0, 0], [1, 0], [0, 1]],
+      "origin_offset": [-6.6666666667, 0.0, -6.6666666667]
+    },
+    {
+      "key": "plate_corner_2x2",
+      "ldraw_part": "2420",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 0.45,
+      "occupied_columns": [[0, 0], [1, 0], [0, 1]],
+      "origin_offset": [-6.6666666667, 0.0, -6.6666666667]
+    },
+    {
+      "key": "brick_1x10_import",
+      "ldraw_part": "6111",
+      "category": "special",
+      "height_plates": 3,
+      "mass_g": 3.78,
+      "occupied_columns": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0]]
+    },
+    {
+      "key": "brick_1x2_legacy",
+      "ldraw_part": "3065",
+      "category": "special",
+      "height_plates": 3,
+      "mass_g": 0.81,
+      "occupied_columns": [[0, 0], [1, 0]]
+    },
+    {
+      "key": "brick_2x10_import",
+      "ldraw_part": "3006",
+      "category": "special",
+      "height_plates": 3,
+      "mass_g": 5.37,
+      "occupied_columns": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1]]
+    },
+    {
+      "key": "plate_1x10_import",
+      "ldraw_part": "4477",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 1.76,
+      "occupied_columns": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0]]
+    },
+    {
+      "key": "plate_1x8_half_offset",
+      "ldraw_part": "3460",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 1.41,
+      "occupied_columns": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0]],
+      "origin_offset": [10.0, 4.0, 0.0]
+    },
+    {
+      "key": "plate_1x2_legacy",
+      "ldraw_part": "3023b",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 0.36,
+      "occupied_columns": [[0, 0], [1, 0]]
+    },
+    {
+      "key": "plate_quarter_cutout_4x4",
+      "ldraw_part": "35044",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 1.1,
+      "occupied_columns": [[0, 0], [0, 1], [0, 2], [0, 3], [1, 3], [2, 3], [3, 3]],
+      "origin_offset": [12.8571428571, 0.0, -12.8571428571]
+    },
+    {
       "key": "slope_45_2x1",
       "ldraw_part": "3040b",
       "category": "slope",
@@ -382,6 +458,46 @@
         }
       ],
       "emit_yaw_offset": 90
+    },
+    {
+      "key": "brick_1x1_headlight",
+      "ldraw_part": "4070",
+      "category": "special_snot",
+      "snot_role": "carrier",
+      "size_studs": [1, 1],
+      "height_plates": 3,
+      "mass_g": 0.55,
+      "lateral_studs": [
+        {
+          "cell": [0, 0, 1],
+          "direction": [0, 1, 0]
+        }
+      ],
+      "emit_yaw_offset": 0
+    },
+    {
+      "key": "dish_3x3_inverted_snot",
+      "ldraw_part": "43898",
+      "category": "special_snot",
+      "snot_role": "cladding",
+      "window_columns": [[0, 0], [1, 0], [2, 0]],
+      "height_plates": 8,
+      "mass_g": 1.2,
+      "mount_normal": [0, 1, 0],
+      "sockets": [
+        {
+          "cell": [1, 0, 3],
+          "direction": [0, 1, 0]
+        }
+      ],
+      "filled_cells": [[1, 0, 3]],
+      "mount_matrices": {
+        "1,0": [0, -1, 0, 1, 0, 0, 0, 0, 1],
+        "-1,0": [0, 1, 0, -1, 0, 0, 0, 0, 1],
+        "0,1": [1, 0, 0, 0, 0, -1, 0, 1, 0],
+        "0,-1": [1, 0, 0, 0, 0, 1, 0, -1, 0]
+      },
+      "mount_offset_ldu": [-10.0, -30.0, 0.0]
     },
     {
       "key": "tile_1x1_snot",

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from legolization.catalog import Catalog, default_catalog
 from legolization.layout import Layout
@@ -42,7 +42,24 @@ def load_library(path: Path) -> Library:
 
 def load_task_graph(path: Path) -> TaskGraph:
     """Read one assembly's ``task_graph.json`` step table."""
-    return json.loads(path.read_text())
+    payload = json.loads(path.read_text())
+    if not isinstance(payload, dict):
+        msg = "task graph root must be an object"
+        raise TypeError(msg)
+    required = frozenset({"brick_id", "x", "y", "z", "ori"})
+    entries: TaskGraph = {}
+    for step, raw_entry in payload.items():
+        if not isinstance(step, str) or not isinstance(raw_entry, dict):
+            msg = "task graph steps must map string ids to objects"
+            raise TypeError(msg)
+        if not required <= raw_entry.keys() or not all(
+            isinstance(field, str) and isinstance(value, int)
+            for field, value in raw_entry.items()
+        ):
+            msg = f"task graph step {step!r} has invalid fields"
+            raise ValueError(msg)
+        entries[step] = cast("dict[str, int]", dict(raw_entry))
+    return entries
 
 
 def _extents(part: Part) -> tuple[int, int]:
@@ -103,8 +120,22 @@ def layout_from_task_graph(
             raise ValueError(msg)
         layer = _PLATES_PER_BRICK * int(entry["z"])
         if _extents(catalog[key]) == (x_extent, y_extent):
-            layout.add(key, entry["x"], entry["y"], layer, 0, _COLOUR)
+            layout.add(
+                key,
+                x=entry["x"],
+                y=entry["y"],
+                layer=layer,
+                yaw=0,
+                colour_code=_COLOUR,
+            )
         else:
             # Yaw 90 rotates (dx, dy) to (-dy, dx): anchor at the max-x cell.
-            layout.add(key, entry["x"] + x_extent - 1, entry["y"], layer, 90, _COLOUR)
+            layout.add(
+                key,
+                x=entry["x"] + x_extent - 1,
+                y=entry["y"],
+                layer=layer,
+                yaw=90,
+                colour_code=_COLOUR,
+            )
     return layout
