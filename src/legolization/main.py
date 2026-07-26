@@ -102,6 +102,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "(.obj, .stl, .ply) into a physically stable LEGO model in LDraw "
             "format with step-by-step instructions."
         ),
+        epilog=(
+            "For feasibility analysis and validated repair of an existing "
+            "LDraw model, use: legolization analyze INPUT"
+        ),
     )
     parser.add_argument(
         "input",
@@ -565,8 +569,13 @@ def _validate_input_kind_args(
 
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI; returns a process exit code."""
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
+    if effective_argv and effective_argv[0] == "analyze":
+        from legolization.analyze_cli import main as analyze_main  # noqa: PLC0415
+
+        return analyze_main(effective_argv[1:])
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(effective_argv)
     _validate_args(parser, args)
     output: Path = args.output or args.input.with_suffix(".ldr")
     _validate_heatmap_path(parser, args, output=output)
