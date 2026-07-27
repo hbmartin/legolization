@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import math
 import queue
 import time
@@ -41,6 +42,10 @@ _TIER_RANK: dict[RepairTier, int] = {
     "interior-support": 1,
     "exterior-support": 2,
 }
+
+# Bound the exterior bridge enumeration; only the nearest same-level stud
+# pairs across components are ever worth validating within the budget.
+_MAX_BRIDGE_PAIRS = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,8 +219,15 @@ def search_repair(  # noqa: C901, PLR0912, PLR0913, PLR0915 - orchestration
         process.join(timeout=0.25)
     while True:
         try:
-            kind, payload = updates.get_nowait()
+            # A short timeout lets the queue's reader thread surface a final
+            # message a just-exited worker flushed but the parent has not yet
+            # deserialized; a worker killed mid-put can also leave a truncated
+            # pickle behind, which must not discard an already-streamed
+            # candidate.
+            kind, payload = updates.get(timeout=0.05)
         except queue.Empty:
+            break
+        except Exception:  # noqa: BLE001 - corrupt tail after a kill
             break
         match kind:
             case "candidate":
@@ -281,7 +293,12 @@ def _search_body(  # noqa: PLR0913
     for tier, layouts in (
         (
             "envelope-retile",
-            _envelope_candidates(original, seed=seed, deadline=deadline),
+            _envelope_candidates(
+                original,
+                seed=seed,
+                deadline=deadline,
+                strict_solver=strict_solver,
+            ),
         ),
         (
             "interior-support",
@@ -324,6 +341,7 @@ def _envelope_candidates(
     *,
     seed: int,
     deadline: float,
+    strict_solver: SolverConfig,
 ) -> Iterable[Layout]:
     replaceable_ids = {
         brick.brick_id
@@ -338,12 +356,12 @@ def _envelope_candidates(
     grid, normalized, offset = _grid_and_normalized_layout(replaceable)
     for round_seed in range(seed, seed + 3):
         candidate = normalized.copy()
-        initial = analyze(candidate, SolverConfig(torque_z=True))
+        initial = analyze(candidate, strict_solver)
         repair_stability(
             candidate,
             grid,
             catalog=candidate.catalog,
-            solver_config=SolverConfig(torque_z=True),
+            solver_config=strict_solver,
             rng=np.random.default_rng(round_seed),
             config=RepairConfig(max_rounds=8),
             deadline=deadline,
@@ -418,15 +436,21 @@ def _exterior_candidates(
             if connector.direction == (0, 0, 1):
                 x, y, z = connector.cell
                 studs.append((brick.brick_id, labels[brick.brick_id], x, y, z))
-    pairs = sorted(
+    # Keep only the nearest bridgeable pairs: nsmallest streams the O(n^2)
+    # generator with O(cap) memory instead of materializing a full sorted
+    # list, and farther bridges than these would never validate best anyway.
+    pairs = heapq.nsmallest(
+        _MAX_BRIDGE_PAIRS,
         (
-            abs(a[2] - b[2]) + abs(a[3] - b[3]),
-            a,
-            b,
-        )
-        for index, a in enumerate(studs)
-        for b in studs[index + 1 :]
-        if a[1] != b[1] and a[4] == b[4] and (a[2] == b[2] or a[3] == b[3])
+            (
+                abs(a[2] - b[2]) + abs(a[3] - b[3]),
+                a,
+                b,
+            )
+            for index, a in enumerate(studs)
+            for b in studs[index + 1 :]
+            if a[1] != b[1] and a[4] == b[4] and (a[2] == b[2] or a[3] == b[3])
+        ),
     )
     for _, a, b in pairs:
         candidate = layout.copy()

@@ -263,6 +263,21 @@ def test_import_strict_reports_every_problem(tmp_path):
     assert "collides" in problems
 
 
+def test_import_snaps_studio_transform_noise(tmp_path):
+    from legolization.ldraw_in import layout_from_ldraw
+
+    path = tmp_path / "noisy.ldr"
+    path.write_text(
+        "0 noisy\n"
+        "1 4 0.15 -24.0001 0.12 "
+        "1.000004 0 0 0 1.000004 0 0 0 1.000004 3005.dat\n"
+    )
+
+    brick = next(iter(layout_from_ldraw(path)))
+
+    assert (brick.x, brick.y, brick.layer, brick.yaw) == (0, 0, 0, 0)
+
+
 def test_import_cli_end_to_end(tmp_path):
     from pathlib import Path
 
