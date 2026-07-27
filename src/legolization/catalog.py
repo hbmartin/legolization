@@ -15,11 +15,12 @@ rotates counterclockwise in the x-y plane (viewed from above) in steps of 90°.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, cast
 
 Cell = tuple[int, int, int]
 """A unit grid cell offset ``(dx, dy, dz)``; ``dz`` counts plate heights."""
@@ -28,6 +29,7 @@ UP: Cell = (0, 0, 1)
 DOWN: Cell = (0, 0, -1)
 
 DEFAULT_CATALOG_PATH = Path(__file__).parent / "data" / "catalog.json"
+CATALOG_SCHEMA = 1
 
 _FULL_YAWS = (0, 90, 180, 270)
 
@@ -41,6 +43,12 @@ class Category(StrEnum):
     SLOPE = "slope"
     SNOT = "snot"
     """Sideways parts; excluded from every rect tiler by category."""
+
+    SPECIAL = "special"
+    """Import-only stud-up geometry excluded from placement strategies."""
+
+    SPECIAL_SNOT = "special_snot"
+    """Import-only sideways geometry excluded from the SNOT finishing pass."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +113,9 @@ class Part:
     mount_offset_ldu: tuple[float, float, float] = (0.0, 0.0, 0.0)
     """Cladding origin offset in LDU along ``(outward, vertical,
     transverse)``; vertical is measured from ``-PLATE_LDU * layer``."""
+
+    replaceable_geometry: bool = False
+    """Whether repair may re-tile this otherwise special part's exact cells."""
 
     def mount_matrix(self, outward: tuple[int, int]) -> tuple[int, ...] | None:
         """Return the pinned emission rotation for ``outward`` claddings."""
@@ -288,7 +299,7 @@ def _carrier_part(spec: dict[str, Any]) -> Part:
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
-        category=Category.SNOT,
+        category=Category(str(spec["category"])),
         occupied_cells=frozenset(
             (dx, dy, dz) for dx, dy in columns for dz in range(height)
         ),
@@ -326,7 +337,7 @@ def _cladding_part(spec: dict[str, Any]) -> Part:
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
-        category=Category.SNOT,
+        category=Category(str(spec["category"])),
         occupied_cells=frozenset(
             (dx, dy, dz) for dx, dy in columns for dz in range(height)
         ),
@@ -354,6 +365,97 @@ def _snot_part(spec: dict[str, Any]) -> Part:
             raise ValueError(msg)
 
 
+def _special_part(spec: dict[str, Any]) -> Part:
+    """Expand import-only stud-up geometry from explicit footprint columns.
+
+    Special parts participate in collision, connectivity, stability, and
+    LDraw round-tripping, but their category keeps them out of the rectangular
+    placement catalog.  This is useful for corner plates, legacy mould aliases,
+    and other parts found in hand-authored models without making the voxel
+    tilers choose them.
+    """
+    height = int(spec["height_plates"])
+    if "size" in spec:
+        width, length = (int(value) for value in spec["size"])
+        columns = [(dx, dy) for dx in range(length) for dy in range(width)]
+    else:
+        columns = [(int(dx), int(dy)) for dx, dy in spec["occupied_columns"]]
+    top_columns = [(int(dx), int(dy)) for dx, dy in spec.get("top_columns", columns)]
+    bottom_columns = [
+        (int(dx), int(dy)) for dx, dy in spec.get("bottom_columns", columns)
+    ]
+    offset_x, offset_y, offset_z = (
+        float(value) for value in spec.get("origin_offset", (0.0, 0.0, 0.0))
+    )
+    return Part(
+        key=str(spec["key"]),
+        ldraw_part=str(spec["ldraw_part"]),
+        category=Category.SPECIAL,
+        occupied_cells=frozenset(
+            (dx, dy, dz) for dx, dy in columns for dz in range(height)
+        ),
+        top_connectors=tuple(
+            Connector(cell=(dx, dy, height - 1), direction=UP) for dx, dy in top_columns
+        ),
+        bottom_connectors=tuple(
+            Connector(cell=(dx, dy, 0), direction=DOWN) for dx, dy in bottom_columns
+        ),
+        height_plates=height,
+        mass_g=float(spec["mass_g"]),
+        orientations=tuple(
+            int(value) for value in spec.get("orientations", _FULL_YAWS)
+        ),
+        origin_offset=(offset_x, offset_y, offset_z),
+        replaceable_geometry="size" in spec,
+    )
+
+
+def _explicit_part(spec: dict[str, Any]) -> Part:
+    """Construct a custom non-rectangular part from trusted full metadata."""
+    origin = _float_triple(spec["origin_offset"])
+    return Part(
+        key=str(spec["key"]),
+        ldraw_part=str(spec["ldraw_part"]),
+        category=Category(str(spec["category"])),
+        occupied_cells=frozenset(_cell(cell) for cell in spec["occupied_cells"]),
+        filled_cells=frozenset(_cell(cell) for cell in spec["filled_cells"]),
+        top_connectors=_connectors(spec["top_connectors"]),
+        bottom_connectors=_connectors(spec["bottom_connectors"]),
+        height_plates=int(spec["height_plates"]),
+        mass_g=float(spec["mass_g"]),
+        orientations=tuple(int(value) for value in spec["orientations"]),
+        origin_offset=origin,
+        mount_normal=(
+            _cell(spec["mount_normal"])
+            if spec.get("mount_normal") is not None
+            else None
+        ),
+        emit_yaw_offset=int(spec.get("emit_yaw_offset", 0)),
+        mount_matrices=_parse_mount_matrices(spec.get("mount_matrices", {})),
+        mount_offset_ldu=_float_triple(spec.get("mount_offset_ldu", (0.0, 0.0, 0.0))),
+        replaceable_geometry=bool(spec.get("replaceable_geometry", False)),
+    )
+
+
+def _float_triple(raw: list[float] | tuple[float, ...]) -> tuple[float, float, float]:
+    """Convert one already schema-validated three-vector to floats."""
+    x, y, z = (float(value) for value in raw)
+    return (x, y, z)
+
+
+def _parse_mount_matrices(
+    raw: dict[str, list[int]],
+) -> tuple[tuple[tuple[int, int], tuple[int, ...]], ...]:
+    """Parse pinned cladding rotations from a JSON mapping."""
+    return tuple(
+        (
+            (int(key.split(",")[0]), int(key.split(",")[1])),
+            tuple(int(value) for value in values),
+        )
+        for key, values in sorted(raw.items())
+    )
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class Catalog:
     """An immutable collection of :class:`Part` records keyed by ``key``.
@@ -364,20 +466,69 @@ class Catalog:
     parts: dict[str, Part]
 
     @classmethod
-    def load(cls, path: Path = DEFAULT_CATALOG_PATH) -> Self:
-        """Load and expand the JSON seed catalog."""
+    def load(
+        cls,
+        path: Path = DEFAULT_CATALOG_PATH,
+        *,
+        require_explicit_nonrect: bool = False,
+    ) -> Self:
+        """Load and validate one versioned catalog document."""
         specs = json.loads(path.read_text())
+        if not isinstance(specs, dict) or specs.get("schema") != CATALOG_SCHEMA:
+            msg = f"catalog {path} must declare schema {CATALOG_SCHEMA}"
+            raise ValueError(msg)
+        raw_parts = specs.get("parts")
+        if not isinstance(raw_parts, list):
+            msg = f"catalog {path} must contain a parts list"
+            raise TypeError(msg)
         parts: dict[str, Part] = {}
-        for spec in specs["parts"]:
-            match spec["category"]:
-                case Category.SLOPE:
-                    part = _slope_part(spec)
-                case Category.SNOT:
-                    part = _snot_part(spec)
-                case _:
-                    part = _rect_part(spec)
+        for index, raw_spec in enumerate(raw_parts, start=1):
+            if not isinstance(raw_spec, dict):
+                msg = f"catalog {path} part {index} must be an object"
+                raise TypeError(msg)
+            spec = cast("dict[str, Any]", raw_spec)
+            _validate_part_spec(
+                spec,
+                path=path,
+                index=index,
+                require_explicit_nonrect=require_explicit_nonrect,
+            )
+            category = Category(str(spec["category"]))
+            if require_explicit_nonrect and category not in _RECT_CATEGORIES:
+                part = _explicit_part(spec)
+            else:
+                match category:
+                    case Category.SLOPE:
+                        part = _slope_part(spec)
+                    case Category.SNOT | Category.SPECIAL_SNOT:
+                        part = _snot_part(spec)
+                    case Category.SPECIAL:
+                        part = _special_part(spec)
+                    case _:
+                        part = _rect_part(spec)
+            _validate_part(part, path=path, index=index)
+            if part.key in parts:
+                msg = f"catalog {path} contains duplicate key {part.key!r}"
+                raise ValueError(msg)
             parts[part.key] = part
-        return cls(parts=parts)
+        catalog = cls(parts=parts)
+        _validate_decode_ambiguity(catalog)
+        return catalog
+
+    def with_extensions(self, paths: tuple[Path, ...] | list[Path]) -> Self:
+        """Return this catalog merged with non-overriding extension files."""
+        merged = dict(self.parts)
+        for path in paths:
+            extension = type(self).load(path, require_explicit_nonrect=True)
+            duplicate = sorted(merged.keys() & extension.parts.keys())
+            if duplicate:
+                listed = ", ".join(duplicate)
+                msg = f"catalog extension {path} duplicates keys: {listed}"
+                raise ValueError(msg)
+            merged.update(extension.parts)
+        catalog = type(self)(parts=merged)
+        _validate_decode_ambiguity(catalog)
+        return catalog
 
     def __getitem__(self, key: str) -> Part:
         return self.parts[key]
@@ -446,3 +597,220 @@ def _footprint_dims(part: Part) -> tuple[int, int]:
 def default_catalog() -> Catalog:
     """Load (once) the catalog packaged in ``data/catalog.json``."""
     return Catalog.load()
+
+
+def load_catalog(*extensions: Path) -> Catalog:
+    """Load the built-in catalog plus optional versioned extensions."""
+    return default_catalog().with_extensions(list(extensions))
+
+
+_RECT_CATEGORIES = frozenset((Category.BRICK, Category.PLATE, Category.TILE))
+_EXPLICIT_GEOMETRY_FIELDS = frozenset(
+    (
+        "occupied_cells",
+        "filled_cells",
+        "top_connectors",
+        "bottom_connectors",
+        "orientations",
+        "origin_offset",
+        "height_plates",
+    )
+)
+
+
+def _validate_part_spec(  # noqa: C901, PLR0912, PLR0915 - schema validation
+    spec: dict[str, Any],
+    *,
+    path: Path,
+    index: int,
+    require_explicit_nonrect: bool,
+) -> None:
+    """Reject incomplete physical metadata before constructing a part."""
+    required = {"key", "ldraw_part", "category", "mass_g"}
+    missing = sorted(required - spec.keys())
+    if missing:
+        msg = f"catalog {path} part {index} is missing {', '.join(missing)}"
+        raise ValueError(msg)
+    try:
+        category = Category(str(spec["category"]))
+        mass_g = float(spec["mass_g"])
+    except (TypeError, ValueError) as error:
+        msg = f"catalog {path} part {index} has invalid category or mass"
+        raise ValueError(msg) from error
+    if not math.isfinite(mass_g) or mass_g <= 0:
+        msg = f"catalog {path} part {index} mass_g must be finite and positive"
+        raise ValueError(msg)
+    if require_explicit_nonrect and category not in _RECT_CATEGORIES:
+        fields = _EXPLICIT_GEOMETRY_FIELDS
+    else:
+        match category:
+            case Category.BRICK | Category.PLATE | Category.TILE:
+                fields = {"size", "height_plates"}
+            case Category.SPECIAL:
+                geometry_field = "size" if "size" in spec else "occupied_columns"
+                fields = {geometry_field, "height_plates"}
+            case Category.SLOPE:
+                fields = {"stud_cells", "slope_cells", "height_plates"}
+            case Category.SNOT | Category.SPECIAL_SNOT:
+                fields = {"snot_role", "height_plates"}
+    missing_geometry = sorted(fields - spec.keys())
+    if missing_geometry:
+        msg = (
+            f"catalog {path} part {index} is missing physical geometry "
+            f"{', '.join(missing_geometry)}"
+        )
+        raise ValueError(msg)
+    try:
+        height = int(spec["height_plates"])
+    except (TypeError, ValueError) as error:
+        msg = f"catalog {path} part {index} has invalid height_plates"
+        raise ValueError(msg) from error
+    if height <= 0 or height != spec["height_plates"]:
+        msg = f"catalog {path} part {index} height_plates must be a positive integer"
+        raise ValueError(msg)
+    if category in _RECT_CATEGORIES or (
+        category is Category.SPECIAL and "size" in spec
+    ):
+        try:
+            size = tuple(int(value) for value in spec["size"])
+        except (TypeError, ValueError) as error:
+            msg = f"catalog {path} part {index} has malformed rectangular size"
+            raise ValueError(msg) from error
+        if len(size) != 2 or min(size, default=0) <= 0:
+            msg = f"catalog {path} part {index} size must contain two positive integers"
+            raise ValueError(msg)
+    orientations = spec.get("orientations", _FULL_YAWS)
+    try:
+        parsed_orientations = tuple(int(value) for value in orientations)
+    except (TypeError, ValueError) as error:
+        msg = f"catalog {path} part {index} has malformed orientations"
+        raise ValueError(msg) from error
+    if (
+        not parsed_orientations
+        or len(parsed_orientations) != len(set(parsed_orientations))
+        or any(value not in _FULL_YAWS for value in parsed_orientations)
+    ):
+        msg = f"catalog {path} part {index} has unsupported rotations"
+        raise ValueError(msg)
+
+
+def _validate_part(part: Part, *, path: Path, index: int) -> None:
+    """Validate expanded cells, connectors, and origin metadata."""
+    label = f"catalog {path} part {index} ({part.key})"
+    if not part.key or not part.ldraw_part:
+        msg = f"{label} must have non-empty key and ldraw_part values"
+        raise ValueError(msg)
+    if not part.occupied_cells or not part.filled_cells <= part.occupied_cells:
+        msg = f"{label} has invalid occupied/filled cell geometry"
+        raise ValueError(msg)
+    if any(
+        cell[2] < 0 or cell[2] >= part.height_plates for cell in part.occupied_cells
+    ):
+        msg = f"{label} has cells outside height_plates"
+        raise ValueError(msg)
+    if any(not math.isfinite(value) for value in part.origin_offset):
+        msg = f"{label} has a non-finite LDraw origin offset"
+        raise ValueError(msg)
+    for connector in (*part.top_connectors, *part.bottom_connectors):
+        if connector.cell not in part.occupied_cells:
+            msg = f"{label} has a connector outside occupied geometry"
+            raise ValueError(msg)
+        if sum(abs(value) for value in connector.direction) != 1:
+            msg = f"{label} has a malformed connector direction"
+            raise ValueError(msg)
+    for _, matrix in part.mount_matrices:
+        if len(matrix) != 9 or any(value not in (-1, 0, 1) for value in matrix):
+            msg = f"{label} has a malformed LDraw mount matrix"
+            raise ValueError(msg)
+
+
+_YAW_ROTATIONS = (
+    (1, 0, 0, 0, 1, 0, 0, 0, 1),
+    (0, 0, -1, 0, 1, 0, 1, 0, 0),
+    (-1, 0, 0, 0, 1, 0, 0, 0, -1),
+    (0, 0, 1, 0, 1, 0, -1, 0, 0),
+)
+
+
+def _decode_cosets(
+    part: Part,
+) -> frozenset[tuple[tuple[int, ...], tuple[float, float, float]]]:
+    """Return accepted rotation and grid-lattice position cosets."""
+    entries: set[tuple[tuple[int, ...], tuple[float, float, float]]] = set()
+    if part.mount_normal is not None:
+        for outward, matrix in part.mount_matrices:
+            if (yaw := _yaw_for_mount(part, outward)) is None:
+                continue
+            ox, oy = outward
+            across_x, across_y = -oy, ox
+            offset_out, offset_up, offset_across = part.mount_offset_ldu
+            columns = [rotate_offset((*cell, 0), yaw) for cell in part.footprint]
+            mean_x = sum(x for x, _, _ in columns) / len(columns)
+            mean_y = sum(y for _, y, _ in columns) / len(columns)
+            position = (
+                20.0 * mean_x + offset_out * ox + offset_across * across_x,
+                offset_up,
+                20.0 * mean_y + offset_out * oy + offset_across * across_y,
+            )
+            entries.add((matrix, _position_coset(position)))
+        return frozenset(entries)
+    for yaw in _FULL_YAWS:
+        emitted_yaw = (yaw + part.emit_yaw_offset) % 360
+        columns = [rotate_offset((*cell, 0), yaw) for cell in part.footprint]
+        mean_x = sum(x for x, _, _ in columns) / len(columns)
+        mean_y = sum(y for _, y, _ in columns) / len(columns)
+        offset_x, offset_y, offset_z = part.origin_offset
+        # Preserve sub-LDU offsets while rotating the exact floating values.
+        match yaw:
+            case 0:
+                rotated_x_f, rotated_z_f = offset_x, offset_z
+            case 90:
+                rotated_x_f, rotated_z_f = -offset_z, offset_x
+            case 180:
+                rotated_x_f, rotated_z_f = -offset_x, -offset_z
+            case 270:
+                rotated_x_f, rotated_z_f = offset_z, -offset_x
+        position = (
+            20.0 * mean_x + rotated_x_f,
+            -8.0 * part.height_plates + offset_y,
+            20.0 * mean_y + rotated_z_f,
+        )
+        entries.add((_YAW_ROTATIONS[emitted_yaw // 90], _position_coset(position)))
+    return frozenset(entries)
+
+
+def _position_coset(position: tuple[float, float, float]) -> tuple[float, float, float]:
+    """Reduce an LDraw origin modulo the stud/plate import lattice."""
+    x, y, z = position
+    return (round(x % 20.0, 8), round(y % 8.0, 8), round(z % 20.0, 8))
+
+
+def _yaw_for_mount(part: Part, outward: tuple[int, int]) -> int | None:
+    """Resolve the logical placement yaw for one cladding outward normal."""
+    if part.mount_normal is None:
+        return None
+    target = (-outward[0], -outward[1], part.mount_normal[2])
+    return next(
+        (
+            yaw
+            for yaw in part.orientations
+            if rotate_offset(part.mount_normal, yaw) == target
+        ),
+        None,
+    )
+
+
+def _validate_decode_ambiguity(catalog: Catalog) -> None:
+    """Reject parts whose LDraw codes accept any of the same rotations."""
+    by_code: dict[str, list[Part]] = {}
+    for part in catalog.parts.values():
+        by_code.setdefault(part.ldraw_part.casefold(), []).append(part)
+    for parts in by_code.values():
+        for index, part in enumerate(parts):
+            for other in parts[index + 1 :]:
+                if _decode_cosets(part) & _decode_cosets(other):
+                    msg = (
+                        f"catalog parts {part.key!r} and {other.key!r} have "
+                        f"ambiguous LDraw decode metadata"
+                    )
+                    raise ValueError(msg)

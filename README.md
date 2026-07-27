@@ -123,8 +123,40 @@ uv run legolization model.vox --milp                # cross-check the exact LP
 uv run legolization model.npy --strategy all --jobs 4 --report report.json
 uv run legolization model.obj --up y --target-studs 24   # mesh input (M6)
 uv run legolization model.ldr -o out.ldr --instructions b.pdf  # LDraw input
+uv run legolization analyze model.ldr                    # physics report + repair
 
 ```
+
+### Analyze an existing LDraw model
+
+`analyze` is the non-generative feasibility workflow. It auto-grounds the
+lowest occupied layer, checks stud connectivity and grounding, solves both the
+StableLego-parity 5-DOF and stricter yaw-torque 6-DOF profiles, computes strict
+maximin friction capacity, and checks explicit `STEP` prefixes. If the finished
+model fails, a killable worker searches deterministic re-tiling, enclosed-fill,
+and exterior-support tiers for one candidate that passes every same check.
+
+```sh
+uv run legolization analyze model.ldr
+uv run legolization analyze assembly.mpd --preserve-origin --no-repair
+uv run legolization analyze model.ldr \
+  --report evidence.json --output repaired.ldr --time-budget 120 --seed 7
+uv run legolization analyze model.ldr --catalog local-parts.json --catalog lab.json
+```
+
+The defaults are `model.analysis.json` and, only when a validated repair is
+found, `model.repaired.ldr`. The input path is always rejected as an artifact
+path. Exit code `0` means the original model is feasible, `2` means the
+original is infeasible (even when a repair was found), and `1` means invalid
+input, solver failure, or an indeterminate result. Source `STEP` warnings are
+informational and do not change the finished-model exit code.
+
+Catalog extensions declare `"schema": 1` and a `parts` list. Rectangular
+bricks, plates, and tiles use explicit `size`, `height_plates`, and measured
+`mass_g`. A custom non-rectangular part must instead declare its complete
+`occupied_cells`, `filled_cells`, `top_connectors`, `bottom_connectors`,
+`orientations`, `origin_offset`, `height_plates`, and measured `mass_g`.
+Extensions cannot override keys or introduce an ambiguous LDraw decode.
 
 Mesh inputs (`.obj`/`.stl`/`.ply`) are voxelized directly at plate
 resolution (always aspect-correct): `--target-studs N` sets the footprint
@@ -173,10 +205,23 @@ Python API:
 
 ```python
 from pathlib import Path
-from legolization import PipelineConfig, VoxelGrid, run, run_file
+from legolization import (
+    AnalysisConfig,
+    PipelineConfig,
+    VoxelGrid,
+    analyze_ldraw,
+    run,
+    run_file,
+)
 
 result = run_file(Path("model.vox"), Path("model.ldr"), PipelineConfig(seed=1))
 print(result.buildable, result.step_count, result.stability.max_score)
+
+analysis = analyze_ldraw(
+    Path("existing.mpd"),
+    AnalysisConfig(repair_time_budget_s=120, seed=7),
+)
+print(analysis.report.verdict, analysis.report.to_json())
 ```
 
 ## How the stability model works

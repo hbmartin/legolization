@@ -10,7 +10,8 @@ every problem, so a user sees the model's full distance to importable.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Final
 
 from ldraw.model import read_model
 
@@ -27,7 +28,11 @@ if TYPE_CHECKING:
 
     from legolization.catalog import Catalog, Part
 
-_GRID_EPS = 1e-6
+# Studio exports rigid groups with small accumulated transform noise (seen in
+# real files as 1.000004 matrix entries and positions displaced by <0.2 LDU).
+# Express the tolerance in grid units: 0.01 stud/plate still rejects meaningful
+# offsets such as a half plate or the 7-LDU off-grid fixture in the test suite.
+_GRID_EPS: Final[float] = 1e-2
 
 # Raw LDraw rows for each logical grid yaw. Since pyldraw3 1.3 corrected its
 # positive Y rotation, emission produces these with rotate(-yaw, YAxis).
@@ -58,21 +63,91 @@ def _yaw_for_outward(part: Part, outward: tuple[int, int]) -> int | None:
 class LdrawImportError(ValueError):
     """The model contains pieces this pipeline cannot represent."""
 
-    def __init__(self, problems: list[str]) -> None:
-        self.problems = tuple(problems)
-        summary = "\n  ".join(problems)
+    def __init__(self, details: list[LdrawImportProblem]) -> None:
+        self.details = tuple(details)
+        self.problems = tuple(problem.summary for problem in details)
+        summary = "\n  ".join(self.problems)
         super().__init__(
-            f"cannot import model ({len(problems)} problem(s)):\n  {summary}"
+            f"cannot import model ({len(details)} problem(s)):\n  {summary}"
         )
 
 
-def layout_from_ldraw(path: Path, *, catalog: Catalog | None = None) -> Layout:
+@dataclass(frozen=True, slots=True)
+class LdrawImportProblem:
+    """One source-addressable problem found during strict import."""
+
+    occurrence: int
+    part_reference: str
+    source_model: str
+    source_line: int | None
+    message: str
+
+    @property
+    def summary(self) -> str:
+        """Render the compatibility error text used by existing callers."""
+        location = (
+            f"{self.source_model}:{self.source_line}"
+            if self.source_line is not None
+            else self.source_model
+        )
+        return (
+            f"piece {self.occurrence} ({self.part_reference}) at "
+            f"{location}: {self.message}"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LdrawSourceRef:
+    """Location of one flattened occurrence in the source LDraw document."""
+
+    occurrence: int
+    source_model: str
+    source_line: int | None
+    source_step: int | None
+    global_step: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ImportedLdrawModel:
+    """An imported layout plus source provenance and grounding metadata."""
+
+    layout: Layout
+    source_refs: dict[int, LdrawSourceRef]
+    ground_offset_layers: int = 0
+
+    @property
+    def has_explicit_steps(self) -> bool:
+        """Whether the source contains more than the implicit first step."""
+        return any(
+            (ref.global_step or ref.source_step or 1) > 1
+            for ref in self.source_refs.values()
+        )
+
+
+def layout_from_ldraw(
+    path: Path,
+    *,
+    catalog: Catalog | None = None,
+    ground: bool = False,
+) -> Layout:
     """Read an ``.ldr``/``.mpd`` model back into a :class:`Layout`.
 
     Strict: any part outside the catalog, non-yaw rotation, off-grid
-    position, out-of-palette colour, collision, or below-ground brick is
-    an error; all problems are reported together.
+    position, out-of-palette colour, or collision is an error; all problems
+    are reported together. ``ground=True`` shifts any vertical origin so the
+    lowest occupied layer rests on the analysis ground plane. With
+    ``ground=False``, below-ground geometry remains invalid.
     """
+    return import_ldraw(path, catalog=catalog, ground=ground).layout
+
+
+def import_ldraw(
+    path: Path,
+    *,
+    catalog: Catalog | None = None,
+    ground: bool = False,
+) -> ImportedLdrawModel:
+    """Read a model with stable source references for every imported brick."""
     catalog = catalog or default_catalog()
     # Several catalog parts can share one LDraw code (a flat tile and its
     # sideways-mounted twin both emit 3070b), so the reverse map carries
@@ -83,29 +158,69 @@ def layout_from_ldraw(path: Path, *, catalog: Catalog | None = None) -> Layout:
     for part in catalog.parts.values():
         reverse.setdefault(part.ldraw_part, []).append(part.key)
     layout = Layout(catalog=catalog)
-    problems: list[str] = []
+    source_refs: dict[int, LdrawSourceRef] = {}
+    problems: list[LdrawImportProblem] = []
+    decoded: list[tuple[int, ModelOccurrence, str, int, int, int, int, int]] = []
     # iter_occurrences composes MPD submodel transforms into world frame;
     # iter_pieces would yield submodel pieces in their local frames.
     for index, occurrence in enumerate(read_model(path).iter_occurrences(), start=1):
-        prefix = f"piece {index} ({occurrence.part_code})"
         if (candidates := reverse.get(str(occurrence.part_code))) is None:
-            problems.append(f"{prefix}: part not in the catalog")
+            problems.append(_problem(index, occurrence, "part not in the catalog"))
             continue
         if (colour := _decode_colour(occurrence.colour)) is None:
-            problems.append(f"{prefix}: colour is not in the solid palette")
+            problems.append(
+                _problem(index, occurrence, "colour is not in the solid palette")
+            )
             continue
         matched = _match_candidates(catalog, candidates, occurrence)
         if isinstance(matched, str):
-            problems.append(f"{prefix}: {matched}")
+            problems.append(_problem(index, occurrence, matched))
             continue
         matched_key, (x, y, layer, yaw) = matched
+        decoded.append((index, occurrence, matched_key, x, y, layer, yaw, colour))
+    ground_offset = min((item[5] for item in decoded), default=0) if ground else 0
+    for index, occurrence, matched_key, x, y, layer, yaw, colour in decoded:
         try:
-            layout.add(matched_key, x, y, layer, yaw, colour)
+            brick = layout.add(
+                matched_key,
+                x,
+                y,
+                layer - ground_offset,
+                yaw,
+                colour,
+            )
         except CollisionError as error:
-            problems.append(f"{prefix}: {error}")
+            problems.append(_problem(index, occurrence, str(error)))
+        else:
+            source_refs[brick.brick_id] = LdrawSourceRef(
+                occurrence=index,
+                source_model=str(occurrence.source_model.name or path.name),
+                source_line=occurrence.source_line,
+                source_step=occurrence.source_step,
+                global_step=occurrence.step,
+            )
     if problems:
         raise LdrawImportError(problems)
-    return layout
+    return ImportedLdrawModel(
+        layout=layout,
+        source_refs=source_refs,
+        ground_offset_layers=ground_offset,
+    )
+
+
+def _problem(
+    index: int,
+    occurrence: ModelOccurrence,
+    message: str,
+) -> LdrawImportProblem:
+    """Capture a strict-import diagnostic with its original source location."""
+    return LdrawImportProblem(
+        occurrence=index,
+        part_reference=str(occurrence.part_code),
+        source_model=str(occurrence.source_model.name),
+        source_line=occurrence.source_line,
+        message=message,
+    )
 
 
 def _match_candidates(
@@ -147,7 +262,7 @@ def _decode_occurrence(
     occurrence: ModelOccurrence,
 ) -> tuple[int, int, int, int] | str:
     """Decode one occurrence as ``part``: placement, or the failure reason."""
-    if part.category is Category.SNOT:
+    if part.category in (Category.SNOT, Category.SPECIAL_SNOT):
         if (snot := _decode_snot(part, occurrence)) is None:
             return "sideways part in an unsupported orientation"
         return snot

@@ -89,7 +89,9 @@ def test_plate_masses_are_realistic(catalog):
     for plate in catalog.by_category(Category.PLATE):
         width, length = _footprint_size(plate)
         brick_key = catalog.rect_key(width, length, 3, category=Category.BRICK)
-        assert brick_key is not None
+        if brick_key is None:
+            # Long plates (2x12/2x16) have no ordinary brick counterpart.
+            continue
         brick = catalog[brick_key]
         assert brick.mass_g / 3 < plate.mass_g < 0.6 * brick.mass_g
 

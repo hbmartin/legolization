@@ -1,4 +1,5 @@
 {
+  "schema": 1,
   "comment": "Seed part catalog. size = [width, length] in studs (length runs along local dx). Masses in grams: bricks from StableLego Table I (1x3/2x3/2x8 interpolated by footprint area); plates/tiles use nominal BrickLink catalog weights (real plates weigh ~0.45-0.55x the same-footprint brick, not exactly one third); slopes estimated from filled volume. Slope specs list stud_cells (full-height columns carrying studs) and slope_cells (columns under the sloped face); the LDraw models descend toward -Z from an origin at the stud-cell centroid.",
   "parts": [
     {
@@ -244,6 +245,38 @@
       "mass_g": 2.3
     },
     {
+      "key": "plate_1x12",
+      "ldraw_part": "60479",
+      "category": "special",
+      "size": [1, 12],
+      "height_plates": 1,
+      "mass_g": 1.95
+    },
+    {
+      "key": "plate_2x10",
+      "ldraw_part": "3832",
+      "category": "special",
+      "size": [2, 10],
+      "height_plates": 1,
+      "mass_g": 2.91
+    },
+    {
+      "key": "plate_2x12",
+      "ldraw_part": "2445",
+      "category": "special",
+      "size": [2, 12],
+      "height_plates": 1,
+      "mass_g": 3.5
+    },
+    {
+      "key": "plate_2x16",
+      "ldraw_part": "4282",
+      "category": "special",
+      "size": [2, 16],
+      "height_plates": 1,
+      "mass_g": 4.5
+    },
+    {
       "key": "tile_1x1",
       "ldraw_part": "3070b",
       "category": "tile",
@@ -277,6 +310,30 @@
       "mass_g": 0.55
     },
     {
+      "key": "tile_1x3",
+      "ldraw_part": "63864",
+      "category": "tile",
+      "size": [1, 3],
+      "height_plates": 1,
+      "mass_g": 0.4
+    },
+    {
+      "key": "tile_1x6",
+      "ldraw_part": "6636",
+      "category": "tile",
+      "size": [1, 6],
+      "height_plates": 1,
+      "mass_g": 0.83
+    },
+    {
+      "key": "tile_1x8",
+      "ldraw_part": "4162",
+      "category": "tile",
+      "size": [1, 8],
+      "height_plates": 1,
+      "mass_g": 1.06
+    },
+    {
       "key": "tile_2x2",
       "ldraw_part": "3068b",
       "category": "tile",
@@ -286,6 +343,114 @@
       ],
       "height_plates": 1,
       "mass_g": 0.5
+    },
+    {
+      "key": "tile_2x4",
+      "ldraw_part": "87079",
+      "category": "tile",
+      "size": [2, 4],
+      "height_plates": 1,
+      "mass_g": 0.9
+    },
+    {
+      "key": "tile_2x6",
+      "ldraw_part": "69729",
+      "category": "tile",
+      "size": [2, 6],
+      "height_plates": 1,
+      "mass_g": 1.35
+    },
+    {
+      "key": "brick_corner_2x2",
+      "ldraw_part": "2357",
+      "category": "special",
+      "height_plates": 3,
+      "mass_g": 0.9,
+      "occupied_columns": [[0, 0], [1, 0], [0, 1]],
+      "origin_offset": [-6.6666666667, 0.0, -6.6666666667]
+    },
+    {
+      "key": "plate_corner_2x2",
+      "ldraw_part": "2420",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 0.45,
+      "occupied_columns": [[0, 0], [1, 0], [0, 1]],
+      "origin_offset": [-6.6666666667, 0.0, -6.6666666667]
+    },
+    {
+      "key": "brick_1x10_import",
+      "ldraw_part": "6111",
+      "category": "special",
+      "size": [1, 10],
+      "height_plates": 3,
+      "mass_g": 3.78
+    },
+    {
+      "key": "brick_1x12",
+      "ldraw_part": "6112",
+      "category": "special",
+      "size": [1, 12],
+      "height_plates": 3,
+      "mass_g": 4.8
+    },
+    {
+      "key": "brick_1x16",
+      "ldraw_part": "2465",
+      "category": "special",
+      "size": [1, 16],
+      "height_plates": 3,
+      "mass_g": 6.2
+    },
+    {
+      "key": "brick_1x2_legacy",
+      "ldraw_part": "3065",
+      "category": "special",
+      "height_plates": 3,
+      "mass_g": 0.81,
+      "occupied_columns": [[0, 0], [1, 0]]
+    },
+    {
+      "key": "brick_2x10_import",
+      "ldraw_part": "3006",
+      "category": "special",
+      "size": [2, 10],
+      "height_plates": 3,
+      "mass_g": 5.37
+    },
+    {
+      "key": "plate_1x10_import",
+      "ldraw_part": "4477",
+      "category": "special",
+      "size": [1, 10],
+      "height_plates": 1,
+      "mass_g": 1.76
+    },
+    {
+      "key": "plate_1x8_half_offset",
+      "ldraw_part": "3460",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 1.41,
+      "occupied_columns": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0]],
+      "origin_offset": [10.0, 4.0, 0.0]
+    },
+    {
+      "key": "plate_1x2_legacy",
+      "ldraw_part": "3023b",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 0.36,
+      "occupied_columns": [[0, 0], [1, 0]]
+    },
+    {
+      "key": "plate_quarter_cutout_4x4",
+      "ldraw_part": "35044",
+      "category": "special",
+      "height_plates": 1,
+      "mass_g": 1.1,
+      "occupied_columns": [[0, 0], [0, 1], [0, 2], [0, 3], [1, 3], [2, 3], [3, 3]],
+      "origin_offset": [12.8571428571, 0.0, -12.8571428571]
     },
     {
       "key": "slope_45_2x1",
@@ -382,6 +547,46 @@
         }
       ],
       "emit_yaw_offset": 90
+    },
+    {
+      "key": "brick_1x1_headlight",
+      "ldraw_part": "4070",
+      "category": "special_snot",
+      "snot_role": "carrier",
+      "size_studs": [1, 1],
+      "height_plates": 3,
+      "mass_g": 0.55,
+      "lateral_studs": [
+        {
+          "cell": [0, 0, 1],
+          "direction": [0, 1, 0]
+        }
+      ],
+      "emit_yaw_offset": 0
+    },
+    {
+      "key": "dish_3x3_inverted_snot",
+      "ldraw_part": "43898",
+      "category": "special_snot",
+      "snot_role": "cladding",
+      "window_columns": [[0, 0], [1, 0], [2, 0]],
+      "height_plates": 8,
+      "mass_g": 1.2,
+      "mount_normal": [0, 1, 0],
+      "sockets": [
+        {
+          "cell": [1, 0, 3],
+          "direction": [0, 1, 0]
+        }
+      ],
+      "filled_cells": [[1, 0, 3]],
+      "mount_matrices": {
+        "1,0": [0, -1, 0, 1, 0, 0, 0, 0, 1],
+        "-1,0": [0, 1, 0, -1, 0, 0, 0, 0, 1],
+        "0,1": [1, 0, 0, 0, 0, -1, 0, 1, 0],
+        "0,-1": [1, 0, 0, 0, 0, 1, 0, -1, 0]
+      },
+      "mount_offset_ldu": [-10.0, -30.0, 0.0]
     },
     {
       "key": "tile_1x1_snot",
