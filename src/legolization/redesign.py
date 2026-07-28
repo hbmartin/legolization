@@ -8,7 +8,7 @@ import queue
 import time
 from dataclasses import asdict, dataclass
 from multiprocessing import get_context
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 from scipy import ndimage
@@ -31,6 +31,7 @@ from legolization.stability.solver import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from multiprocessing.process import BaseProcess
     from multiprocessing.queues import Queue
     from pathlib import Path
 
@@ -46,6 +47,20 @@ _TIER_RANK: dict[RepairTier, int] = {
 # Bound the exterior bridge enumeration; only the nearest same-level stud
 # pairs across components are ever worth validating within the budget.
 _MAX_BRIDGE_PAIRS = 256
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class _BridgeStud:
+    """One upward stud available for a cross-component exterior bridge."""
+
+    brick_id: int
+    component: int
+    x: int
+    y: int
+    z: int
+
+
+_BridgePair = tuple[int, _BridgeStud, _BridgeStud]
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,18 +134,17 @@ class RepairSearchResult:
                     "source": asdict(source) if source is not None else None,
                 }
             )
+        match self.candidate.tier:
+            case "envelope-retile":
+                support_visibility = "none"
+            case "interior-support":
+                support_visibility = "enclosed"
+            case "exterior-support":
+                support_visibility = "visible"
         return {
             "status": "found",
             "tier": self.candidate.tier,
-            "support_visibility": (
-                "none"
-                if self.candidate.tier == "envelope-retile"
-                else (
-                    "enclosed"
-                    if self.candidate.tier == "interior-support"
-                    else "visible"
-                )
-            ),
+            "support_visibility": support_visibility,
             "attempts": self.attempts,
             "elapsed_seconds": self.elapsed_seconds,
             "timed_out": self.timed_out,
@@ -160,7 +174,73 @@ class RepairSearchResult:
         }
 
 
-def search_repair(  # noqa: C901, PLR0912, PLR0913, PLR0915 - orchestration
+@dataclass(slots=True)
+class _WorkerState:
+    """Latest repair-search state streamed from the worker process."""
+
+    candidate: RepairCandidate | None = None
+    attempts: int = 0
+    complete: bool = False
+    timed_out: bool = False
+    error: str | None = None
+
+
+def _apply_worker_update(
+    state: _WorkerState,
+    kind: object,
+    payload: object,
+) -> None:
+    match kind:
+        case "candidate":
+            state.candidate = cast("RepairCandidate", payload)
+        case "progress":
+            state.attempts = int(cast("int | str", payload))
+        case "complete":
+            state.attempts = int(cast("int | str", payload))
+            state.complete = True
+        case "timeout":
+            state.attempts = int(cast("int | str", payload))
+            state.timed_out = True
+        case "error":
+            state.error = str(payload)
+            state.complete = True
+
+
+def _poll_worker_updates(
+    process: BaseProcess,
+    updates: Queue[Any],
+    *,
+    deadline: float,
+) -> _WorkerState:
+    """Collect worker messages until completion or the hard deadline."""
+    state = _WorkerState()
+    while process.is_alive() and (remaining := deadline - time.monotonic()) > 0:
+        try:
+            kind, payload = updates.get(timeout=min(0.1, remaining))
+        except queue.Empty:
+            continue
+        _apply_worker_update(state, kind, payload)
+    return state
+
+
+def _drain_worker_updates(updates: Queue[Any], state: _WorkerState) -> None:
+    """Consume messages flushed as the worker exits without losing a candidate."""
+    while True:
+        try:
+            # A short timeout lets the queue's reader thread surface a final
+            # message a just-exited worker flushed but the parent has not yet
+            # deserialized; a worker killed mid-put can also leave a truncated
+            # pickle behind, which must not discard an already-streamed
+            # candidate.
+            kind, payload = updates.get(timeout=0.05)
+        except queue.Empty:
+            return
+        except Exception:  # noqa: BLE001 - corrupt tail after a kill
+            return
+        _apply_worker_update(state, kind, payload)
+
+
+def search_repair(  # noqa: PLR0913 - public search configuration
     layout: Layout,
     *,
     physics_seed_ids: tuple[int, ...],
@@ -189,70 +269,32 @@ def search_repair(  # noqa: C901, PLR0912, PLR0913, PLR0915 - orchestration
     )
     started = time.monotonic()
     process.start()
-    candidate: RepairCandidate | None = None
-    attempts = 0
-    complete = False
-    error: str | None = None
     deadline = started + time_budget_s
-    while process.is_alive() and (remaining := deadline - time.monotonic()) > 0:
-        try:
-            kind, payload = updates.get(timeout=min(0.1, remaining))
-        except queue.Empty:
-            continue
-        match kind:
-            case "candidate":
-                candidate = payload
-            case "progress":
-                attempts = int(payload)
-            case "complete":
-                attempts = int(payload)
-                complete = True
-            case "error":
-                error = str(payload)
-                complete = True
-    timed_out = process.is_alive()
+    state = _poll_worker_updates(process, updates, deadline=deadline)
+    timed_out = state.timed_out or process.is_alive()
     if timed_out:
         process.terminate()
     process.join(timeout=0.25)
     if process.is_alive():
         process.kill()
         process.join(timeout=0.25)
-    while True:
-        try:
-            # A short timeout lets the queue's reader thread surface a final
-            # message a just-exited worker flushed but the parent has not yet
-            # deserialized; a worker killed mid-put can also leave a truncated
-            # pickle behind, which must not discard an already-streamed
-            # candidate.
-            kind, payload = updates.get(timeout=0.05)
-        except queue.Empty:
-            break
-        except Exception:  # noqa: BLE001 - corrupt tail after a kill
-            break
-        match kind:
-            case "candidate":
-                candidate = payload
-            case "progress" | "complete":
-                attempts = int(payload)
-                complete = complete or kind == "complete"
-            case "error":
-                error = str(payload)
-                complete = True
-    if not timed_out and not complete:
-        error = (
+    _drain_worker_updates(updates, state)
+    timed_out = timed_out or state.timed_out
+    if not timed_out and not state.complete:
+        state.error = (
             f"repair worker exited with code {process.exitcode}"
             if process.exitcode not in (0, None)
             else "repair worker ended without a completion result"
         )
     updates.close()
     return RepairSearchResult(
-        layout=candidate.layout if candidate is not None else None,
-        candidate=candidate,
-        attempts=attempts,
+        layout=state.candidate.layout if state.candidate is not None else None,
+        candidate=state.candidate,
+        attempts=state.attempts,
         elapsed_seconds=round(time.monotonic() - started, 6),
         timed_out=timed_out,
-        complete=complete and not timed_out,
-        error=error,
+        complete=state.complete and not timed_out,
+        error=state.error,
     )
 
 
@@ -310,13 +352,17 @@ def _search_body(  # noqa: PLR0913
         ),
         (
             "exterior-support",
-            _exterior_candidates(original, physics_seed_ids),
+            _exterior_candidates(
+                original,
+                physics_seed_ids,
+                deadline=deadline,
+            ),
         ),
     ):
         best: RepairCandidate | None = None
         for candidate_layout in layouts:
             if time.monotonic() >= deadline:
-                updates.put(("progress", attempts))
+                updates.put(("timeout", attempts))
                 return
             attempts += 1
             updates.put(("progress", attempts))
@@ -346,8 +392,8 @@ def _envelope_candidates(
     replaceable_ids = {
         brick.brick_id
         for brick in layout
-        if layout.part_of(brick).category in (Category.BRICK, Category.PLATE)
-        or layout.part_of(brick).replaceable_geometry
+        if (part := layout.part_of(brick)).category in (Category.BRICK, Category.PLATE)
+        or part.replaceable_geometry
     }
     if not replaceable_ids:
         return
@@ -355,8 +401,10 @@ def _envelope_candidates(
     frozen = layout.subset(set(layout.bricks) - replaceable_ids)
     grid, normalized, offset = _grid_and_normalized_layout(replaceable)
     for round_seed in range(seed, seed + 3):
+        if time.monotonic() >= deadline:
+            return
         candidate = normalized.copy()
-        initial = analyze(candidate, strict_solver)
+        initial = analyze(layout=candidate, config=strict_solver)
         repair_stability(
             candidate,
             grid,
@@ -421,41 +469,76 @@ def _support_candidates(
                 yield candidate
 
 
+def _eligible_bridge_pairs(
+    studs: list[_BridgeStud],
+    *,
+    deadline: float,
+) -> Iterable[_BridgePair]:
+    by_x: dict[tuple[int, int], list[_BridgeStud]] = {}
+    by_y: dict[tuple[int, int], list[_BridgeStud]] = {}
+    for stud in studs:
+        if time.monotonic() >= deadline:
+            return
+        by_x.setdefault((stud.z, stud.x), []).append(stud)
+        by_y.setdefault((stud.z, stud.y), []).append(stud)
+
+    # X buckets cover every shared-x pair. Y buckets skip shared-x pairs so a
+    # coincident coordinate cannot enter the heap twice.
+    for buckets, skip_shared_x in ((by_x.values(), False), (by_y.values(), True)):
+        for bucket in buckets:
+            for index, a in enumerate(bucket):
+                for other_index in range(index + 1, len(bucket)):
+                    if time.monotonic() >= deadline:
+                        return
+                    b = bucket[other_index]
+                    if a.component != b.component and (not skip_shared_x or a.x != b.x):
+                        distance = abs(a.x - b.x) + abs(a.y - b.y)
+                        yield distance, a, b
+
+
 def _exterior_candidates(
     layout: Layout,
     seed_ids: tuple[int, ...],
+    *,
+    deadline: float,
 ) -> Iterable[Layout]:
     yield from _support_candidates(layout, seed_ids, enclosed_only=False)
+    if time.monotonic() >= deadline:
+        return
     graph = ConnectionGraph.from_layout(layout)
     if graph.component_count() <= 1:
         return
     labels = graph.brick_components()
-    studs: list[tuple[int, int, int, int, int]] = []
+    studs: list[_BridgeStud] = []
     for brick in layout:
+        if time.monotonic() >= deadline:
+            return
         for connector in layout.connectors_of(brick, top=True):
             if connector.direction == (0, 0, 1):
                 x, y, z = connector.cell
-                studs.append((brick.brick_id, labels[brick.brick_id], x, y, z))
-    # Keep only the nearest bridgeable pairs: nsmallest streams the O(n^2)
-    # generator with O(cap) memory instead of materializing a full sorted
-    # list, and farther bridges than these would never validate best anyway.
+                studs.append(
+                    _BridgeStud(
+                        brick_id=brick.brick_id,
+                        component=labels[brick.brick_id],
+                        x=x,
+                        y=y,
+                        z=z,
+                    )
+                )
+
+    # Keep only the nearest bridgeable pairs. The source checks the deadline
+    # for every examined pair so nsmallest cannot overrun the repair budget on
+    # a large disconnected model.
     pairs = heapq.nsmallest(
         _MAX_BRIDGE_PAIRS,
-        (
-            (
-                abs(a[2] - b[2]) + abs(a[3] - b[3]),
-                a,
-                b,
-            )
-            for index, a in enumerate(studs)
-            for b in studs[index + 1 :]
-            if a[1] != b[1] and a[4] == b[4] and (a[2] == b[2] or a[3] == b[3])
-        ),
+        _eligible_bridge_pairs(studs, deadline=deadline),
     )
     for _, a, b in pairs:
+        if time.monotonic() >= deadline:
+            return
         candidate = layout.copy()
-        x0, x1 = sorted((a[2], b[2]))
-        y0, y1 = sorted((a[3], b[3]))
+        x0, x1 = sorted((a.x, b.x))
+        y0, y1 = sorted((a.y, b.y))
         try:
             place_rect(
                 candidate,
@@ -463,9 +546,9 @@ def _exterior_candidates(
                 y0,
                 x1,
                 y1,
-                a[4] + 1,
+                a.z + 1,
                 1,
-                layout.bricks[a[0]].colour_code,
+                layout.bricks[a.brick_id].colour_code,
             )
         except (CollisionError, ValueError):
             continue
@@ -497,13 +580,19 @@ def _validate_candidate(  # noqa: PLR0911 - fail-fast validation gates
     graph = ConnectionGraph.from_layout(candidate)
     if graph.component_count() != 1 or graph.floating_ids():
         return None
-    parity = analyze(candidate, parity_solver, graph)
+    parity = analyze(layout=candidate, config=parity_solver, graph=graph)
     if not parity.stable:
         return None
-    strict = analyze(candidate, strict_solver, graph)
+    strict = analyze(layout=candidate, config=strict_solver, graph=graph)
     if not strict.stable:
         return None
-    maximin = solve_maximin(build_model_from_config(candidate, strict_solver, graph))
+    maximin = solve_maximin(
+        build_model_from_config(
+            layout=candidate,
+            config=strict_solver,
+            graph=graph,
+        )
+    )
     if not maximin.feasible or maximin.capacity <= 0.0:
         return None
     removed = tuple(sorted(original_placements - candidate_placements))
@@ -541,12 +630,12 @@ def _grid_and_normalized_layout(
     normalized = Layout(catalog=layout.catalog)
     for brick in layout:
         normalized.add(
-            brick.part_key,
-            brick.x - offset[0],
-            brick.y - offset[1],
-            brick.layer - offset[2],
-            brick.yaw,
-            brick.colour_code,
+            part_key=brick.part_key,
+            x=brick.x - offset[0],
+            y=brick.y - offset[1],
+            layer=brick.layer - offset[2],
+            yaw=brick.yaw,
+            colour_code=brick.colour_code,
         )
         for x, y, z in layout.cells_of(brick):
             codes[x - offset[0], y - offset[1], z - offset[2]] = brick.colour_code
@@ -557,12 +646,12 @@ def _denormalize_layout(layout: Layout, offset: tuple[int, int, int]) -> Layout:
     restored = Layout(catalog=layout.catalog)
     for brick in layout:
         restored.add(
-            brick.part_key,
-            brick.x + offset[0],
-            brick.y + offset[1],
-            brick.layer + offset[2],
-            brick.yaw,
-            brick.colour_code,
+            part_key=brick.part_key,
+            x=brick.x + offset[0],
+            y=brick.y + offset[1],
+            layer=brick.layer + offset[2],
+            yaw=brick.yaw,
+            colour_code=brick.colour_code,
         )
     return restored
 
@@ -577,12 +666,12 @@ def _restore_frozen(
     restored = _denormalize_layout(layout, offset)
     for brick in frozen:
         restored.add(
-            brick.part_key,
-            brick.x,
-            brick.y,
-            brick.layer,
-            brick.yaw,
-            brick.colour_code,
+            part_key=brick.part_key,
+            x=brick.x,
+            y=brick.y,
+            layer=brick.layer,
+            yaw=brick.yaw,
+            colour_code=brick.colour_code,
         )
     return restored
 
@@ -625,10 +714,24 @@ def _add_column(
                     z += 1
                     continue
                 if {z, z + 1, z + 2} <= layers:
-                    layout.add("brick_1x1", x, y, z, 0, colour)
+                    layout.add(
+                        part_key="brick_1x1",
+                        x=x,
+                        y=y,
+                        layer=z,
+                        yaw=0,
+                        colour_code=colour,
+                    )
                     z += 3
                 else:
-                    layout.add("plate_1x1", x, y, z, 0, colour)
+                    layout.add(
+                        part_key="plate_1x1",
+                        x=x,
+                        y=y,
+                        layer=z,
+                        yaw=0,
+                        colour_code=colour,
+                    )
                     z += 1
     except CollisionError:
         return False

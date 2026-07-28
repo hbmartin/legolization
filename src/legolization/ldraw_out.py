@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 from ldraw.geometry import Identity, Matrix, Vector, YAxis
 from ldraw.pieces import Piece
 
+from legolization.ldraw_units import PLATE_LDU, STUD_LDU
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from pathlib import Path
@@ -30,9 +32,6 @@ if TYPE_CHECKING:
     from legolization.instructions.sequencer import InstructionPlan
     from legolization.layout import Layout, PlacedBrick
     from legolization.stability.solver import BrickScore
-
-STUD_LDU = 20.0
-PLATE_LDU = 8.0
 
 _HEADER_LICENSE = "0 !LICENSE Licensed under GPL-3.0-or-later"
 

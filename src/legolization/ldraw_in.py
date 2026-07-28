@@ -10,15 +10,22 @@ every problem, so a user sees the model's full distance to importable.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from ldraw.model import read_model
 
 from legolization.catalog import Category, default_catalog, rotate_offset
 from legolization.color import default_palette
 from legolization.layout import CollisionError, Layout
-from legolization.ldraw_out import PLATE_LDU, STUD_LDU, _rotate_ldu
+from legolization.ldraw_out import _rotate_ldu
+from legolization.ldraw_units import (
+    GRID_TOLERANCE_LDU,
+    PLATE_LDU,
+    ROTATION_TOLERANCE,
+    STUD_LDU,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,12 +34,6 @@ if TYPE_CHECKING:
     from ldraw.model import ModelOccurrence
 
     from legolization.catalog import Catalog, Part
-
-# Studio exports rigid groups with small accumulated transform noise (seen in
-# real files as 1.000004 matrix entries and positions displaced by <0.2 LDU).
-# Express the tolerance in grid units: 0.01 stud/plate still rejects meaningful
-# offsets such as a half plate or the 7-LDU off-grid fixture in the test suite.
-_GRID_EPS: Final[float] = 1e-2
 
 # Raw LDraw rows for each logical grid yaw. Since pyldraw3 1.3 corrected its
 # positive Y rotation, emission produces these with rotate(-yaw, YAxis).
@@ -124,6 +125,20 @@ class ImportedLdrawModel:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _DecodedOccurrence:
+    """One catalogued occurrence decoded into logical grid coordinates."""
+
+    index: int
+    occurrence: ModelOccurrence
+    part_key: str
+    x: int
+    y: int
+    layer: int
+    yaw: int
+    colour: int
+
+
 def layout_from_ldraw(
     path: Path,
     *,
@@ -156,15 +171,15 @@ def import_ldraw(
     # sideways part only its mount matrices (middle row never (0, 1, 0)).
     reverse: dict[str, list[str]] = {}
     for part in catalog.parts.values():
-        reverse.setdefault(part.ldraw_part, []).append(part.key)
+        reverse.setdefault(part.ldraw_part.casefold(), []).append(part.key)
     layout = Layout(catalog=catalog)
     source_refs: dict[int, LdrawSourceRef] = {}
     problems: list[LdrawImportProblem] = []
-    decoded: list[tuple[int, ModelOccurrence, str, int, int, int, int, int]] = []
+    decoded: list[_DecodedOccurrence] = []
     # iter_occurrences composes MPD submodel transforms into world frame;
     # iter_pieces would yield submodel pieces in their local frames.
     for index, occurrence in enumerate(read_model(path).iter_occurrences(), start=1):
-        if (candidates := reverse.get(str(occurrence.part_code))) is None:
+        if (candidates := reverse.get(str(occurrence.part_code).casefold())) is None:
             problems.append(
                 _problem(
                     index,
@@ -191,29 +206,45 @@ def import_ldraw(
             )
             continue
         matched_key, (x, y, layer, yaw) = matched
-        decoded.append((index, occurrence, matched_key, x, y, layer, yaw, colour))
-    ground_offset = min((item[5] for item in decoded), default=0) if ground else 0
-    for index, occurrence, matched_key, x, y, layer, yaw, colour in decoded:
+        decoded.append(
+            _DecodedOccurrence(
+                index=index,
+                occurrence=occurrence,
+                part_key=matched_key,
+                x=x,
+                y=y,
+                layer=layer,
+                yaw=yaw,
+                colour=colour,
+            )
+        )
+    ground_offset = min((item.layer for item in decoded), default=0) if ground else 0
+    for item in decoded:
         try:
             brick = layout.add(
-                matched_key,
-                x,
-                y,
-                layer - ground_offset,
-                yaw,
-                colour,
+                part_key=item.part_key,
+                x=item.x,
+                y=item.y,
+                layer=item.layer - ground_offset,
+                yaw=item.yaw,
+                colour_code=item.colour,
             )
         except CollisionError as error:
             problems.append(
-                _problem(index, occurrence, str(error), default_model=path.name)
+                _problem(
+                    item.index,
+                    item.occurrence,
+                    str(error),
+                    default_model=path.name,
+                )
             )
         else:
             source_refs[brick.brick_id] = LdrawSourceRef(
-                occurrence=index,
-                source_model=str(occurrence.source_model.name or path.name),
-                source_line=occurrence.source_line,
-                source_step=occurrence.source_step,
-                global_step=occurrence.step,
+                occurrence=item.index,
+                source_model=str(item.occurrence.source_model.name or path.name),
+                source_line=item.occurrence.source_line,
+                source_step=item.occurrence.source_step,
+                global_step=item.occurrence.step,
             )
     if problems:
         raise LdrawImportError(problems)
@@ -340,13 +371,8 @@ def _decode_cladding(
         float(position.z) - offset_out * oy - offset_across * across_y
     ) / STUD_LDU - mean_ry
     layer = (offset_up - float(position.y)) / PLATE_LDU
-    coords = []
-    for value in (x, y, layer):
-        rounded = round(value)
-        if abs(value - rounded) > _GRID_EPS:
-            return None
-        coords.append(int(rounded))
-    return (coords[0], coords[1], coords[2], yaw)
+    coords = _grid_coordinates((x, y, layer))
+    return None if coords is None else (*coords, yaw)
 
 
 def _flat_matrix(matrix: Matrix) -> tuple[int, ...] | None:
@@ -355,7 +381,7 @@ def _flat_matrix(matrix: Matrix) -> tuple[int, ...] | None:
     for row in matrix.rows:
         for value in row:
             rounded = round(float(value))
-            if abs(float(value) - rounded) > _GRID_EPS:
+            if abs(float(value) - rounded) > ROTATION_TOLERANCE:
                 return None
             flat.append(int(rounded))
     return tuple(flat)
@@ -393,10 +419,22 @@ def _decode_position(
     x = (float(position.x) - rotated_ox) / STUD_LDU - mean_rx
     y = (float(position.z) - rotated_oz) / STUD_LDU - mean_ry
     layer = -(float(position.y) - offset_y) / PLATE_LDU - part.height_plates
-    coords = []
-    for value in (x, y, layer):
+    return _grid_coordinates((x, y, layer))
+
+
+def _grid_coordinates(
+    values: tuple[float, float, float],
+) -> tuple[int, int, int] | None:
+    """Snap x/z stud units and vertical plate units using one LDU budget."""
+    coords: list[int] = []
+    for value, scale in zip(values, (STUD_LDU, STUD_LDU, PLATE_LDU), strict=True):
         rounded = round(value)
-        if abs(value - rounded) > _GRID_EPS:
+        error_ldu = abs(value - rounded) * scale
+        if error_ldu > GRID_TOLERANCE_LDU and not math.isclose(
+            error_ldu,
+            GRID_TOLERANCE_LDU,
+            abs_tol=1e-9,
+        ):
             return None
         coords.append(int(rounded))
     return (coords[0], coords[1], coords[2])

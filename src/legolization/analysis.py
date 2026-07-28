@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from legolization.catalog import CATALOG_SCHEMA, load_catalog
-from legolization.graph import ConnectionGraph
+from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.ldraw_in import (
     ImportedLdrawModel,
     LdrawImportError,
@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from legolization.layout import Layout
 
 Verdict = Literal["feasible", "infeasible", "indeterminate"]
+_MAX_LOCALIZED_SEED_LINKS = 8
+_MAX_SOURCE_STEPS = 5_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +136,104 @@ class _PhysicsRun:
         )
 
 
+@dataclass(slots=True)
+class _PrefixTopology:
+    """Incremental component and grounding state for source-step prefixes."""
+
+    neighbours: dict[int, set[int]]
+    grounded_ids: frozenset[int]
+    present: set[int] = field(default_factory=set)
+    parent: dict[int, int] = field(default_factory=dict)
+    sizes: dict[int, int] = field(default_factory=dict)
+    grounded_roots: dict[int, bool] = field(default_factory=dict)
+    component_count: int = 0
+    floating_count: int = 0
+
+    @classmethod
+    def from_layout(cls, layout: Layout) -> _PrefixTopology:
+        graph = ConnectionGraph.from_layout(layout)
+        neighbours = {brick_id: set() for brick_id in graph.brick_ids}
+        for contact in graph.knob_contacts:
+            if contact.below_id == GROUND_ID:
+                continue
+            neighbours[contact.below_id].add(contact.above_id)
+            neighbours[contact.above_id].add(contact.below_id)
+        return cls(neighbours=neighbours, grounded_ids=graph.grounded_ids)
+
+    def extend(self, brick_ids: tuple[int, ...]) -> None:
+        """Add a source-step chunk and update topology in near-linear time."""
+        for brick_id in brick_ids:
+            if brick_id in self.present:
+                continue
+            self.present.add(brick_id)
+            self.parent[brick_id] = brick_id
+            self.sizes[brick_id] = 1
+            grounded = brick_id in self.grounded_ids
+            self.grounded_roots[brick_id] = grounded
+            self.component_count += 1
+            self.floating_count += int(not grounded)
+            for neighbour in self.neighbours.get(brick_id, ()):
+                if neighbour in self.present:
+                    self._union(brick_id, neighbour)
+
+    def _find(self, brick_id: int) -> int:
+        root = brick_id
+        while self.parent[root] != root:
+            root = self.parent[root]
+        while self.parent[brick_id] != brick_id:
+            brick_id, self.parent[brick_id] = self.parent[brick_id], root
+        return root
+
+    def _union(self, first: int, second: int) -> None:
+        first_root = self._find(first)
+        second_root = self._find(second)
+        if first_root == second_root:
+            return
+        if self.sizes[first_root] < self.sizes[second_root]:
+            first_root, second_root = second_root, first_root
+        before = self._floating_size(first_root) + self._floating_size(second_root)
+        self.parent[second_root] = first_root
+        self.sizes[first_root] += self.sizes.pop(second_root)
+        self.grounded_roots[first_root] = (
+            self.grounded_roots.pop(second_root) or self.grounded_roots[first_root]
+        )
+        self.floating_count += self._floating_size(first_root) - before
+        self.component_count -= 1
+
+    def _floating_size(self, root: int) -> int:
+        return 0 if self.grounded_roots[root] else self.sizes[root]
+
+
+class _SourceStepLimitError(ValueError):
+    """Source-step analysis was skipped because the document is pathological."""
+
+
+def _error_report(  # noqa: PLR0913 - shared report fields stay explicit
+    *,
+    reason: str,
+    errors: tuple[str, ...],
+    input_info: dict[str, Any],
+    assumptions: dict[str, Any],
+    catalog_info: dict[str, Any],
+    imported: ImportedLdrawModel | None = None,
+    problems: tuple[dict[str, Any], ...] = (),
+) -> AnalysisReport:
+    """Build one consistent indeterminate report for an analysis boundary."""
+    return AnalysisReport(
+        status="error",
+        verdict="indeterminate",
+        input=input_info,
+        assumptions=assumptions,
+        model=_model_summary(imported.layout) if imported is not None else {},
+        topology={},
+        solvers={},
+        catalog=catalog_info,
+        repair={"status": "skipped", "reason": reason},
+        errors=errors,
+        problems=problems,
+    )
+
+
 def analyze_ldraw(
     path: Path,
     config: AnalysisConfig | None = None,
@@ -150,51 +250,48 @@ def analyze_ldraw(
     }
     try:
         catalog = load_catalog(*config.catalog_paths)
-        imported = import_ldraw(path, catalog=catalog, ground=config.auto_ground)
-    except (LdrawImportError, OSError, TypeError, ValueError) as error:
-        problems = (
-            list(error.problems)
-            if isinstance(error, LdrawImportError)
-            else [str(error)]
-        )
+    except (OSError, TypeError, ValueError) as error:
         return AnalysisResult(
-            report=AnalysisReport(
-                status="error",
-                verdict="indeterminate",
-                input=input_info,
+            report=_error_report(
+                reason="catalog loading failed",
+                errors=(f"catalog loading failed: {error}",),
+                input_info=input_info,
                 assumptions=assumptions,
-                model={},
-                topology={},
-                solvers={},
-                catalog=catalog_info,
-                repair={"status": "skipped", "reason": "import failed"},
-                errors=tuple(problems),
-                problems=(
-                    tuple(asdict(problem) for problem in error.details)
-                    if isinstance(error, LdrawImportError)
-                    else ()
-                ),
+                catalog_info=catalog_info,
             )
         )
+    try:
+        imported = import_ldraw(path, catalog=catalog, ground=config.auto_ground)
+    except (LdrawImportError, OSError, ValueError) as error:
+        errors, problems = _import_error_payload(error)
+        return AnalysisResult(
+            report=_error_report(
+                reason="import failed",
+                errors=errors,
+                input_info=input_info,
+                assumptions=assumptions,
+                catalog_info=catalog_info,
+                problems=problems,
+            )
+        )
+
+    grounded_input = {
+        **input_info,
+        "ground_offset_layers": imported.ground_offset_layers,
+        "ground_translation_layers": -imported.ground_offset_layers,
+    }
+    catalog_info = {**catalog_info, "part_count": len(catalog.parts)}
 
     if not imported.layout.bricks:
         return AnalysisResult(
             imported=imported,
-            report=AnalysisReport(
-                status="error",
-                verdict="indeterminate",
-                input={
-                    **input_info,
-                    "ground_offset_layers": imported.ground_offset_layers,
-                    "ground_translation_layers": -imported.ground_offset_layers,
-                },
-                assumptions=assumptions,
-                model=_model_summary(imported.layout),
-                topology={},
-                solvers={},
-                catalog={**catalog_info, "part_count": len(catalog.parts)},
-                repair={"status": "skipped", "reason": "empty model"},
+            report=_error_report(
+                reason="empty model",
                 errors=("model contains no supported pieces",),
+                input_info=grounded_input,
+                assumptions=assumptions,
+                catalog_info=catalog_info,
+                imported=imported,
             ),
         )
 
@@ -203,94 +300,37 @@ def analyze_ldraw(
     except (RuntimeError, ValueError) as error:
         return AnalysisResult(
             imported=imported,
-            report=AnalysisReport(
-                status="error",
-                verdict="indeterminate",
-                input={
-                    **input_info,
-                    "ground_offset_layers": imported.ground_offset_layers,
-                    "ground_translation_layers": -imported.ground_offset_layers,
-                },
-                assumptions=assumptions,
-                model=_model_summary(imported.layout),
-                topology={},
-                solvers={},
-                catalog={**catalog_info, "part_count": len(catalog.parts)},
-                repair={"status": "skipped", "reason": "analysis failed"},
+            report=_error_report(
+                reason="analysis failed",
                 errors=(str(error),),
+                input_info=grounded_input,
+                assumptions=assumptions,
+                catalog_info=catalog_info,
+                imported=imported,
             ),
         )
 
-    step_warnings: list[str] = []
-    try:
-        source_steps = (
-            _analyze_source_steps(imported, config)
-            if config.check_source_steps and imported.has_explicit_steps
-            else ()
-        )
-    except (RuntimeError, ValueError) as error:
-        source_steps = ()
-        step_warnings.append(f"source-step analysis failed: {error}")
-    warnings = tuple(step_warnings) + tuple(
+    source_steps, step_warnings = _source_step_payload(imported, config)
+    warnings = step_warnings + tuple(
         f"source step {row['step']} is not feasible"
         for row in source_steps
         if not bool(row["feasible"])
     )
-    repair_payload: dict[str, Any] = {
-        "status": "not_needed" if physics.feasible else "disabled",
-    }
-    repaired_layout: Layout | None = None
-    if not physics.feasible and config.repair:
-        from legolization.redesign import search_repair  # noqa: PLC0415 - cycle
-
-        try:
-            repair_result = search_repair(
-                imported.layout,
-                physics_seed_ids=_physics_seed_ids(physics),
-                parity_solver=config.parity_solver,
-                strict_solver=config.strict_solver,
-                time_budget_s=config.repair_time_budget_s,
-                seed=config.seed,
-            )
-        except Exception as error:  # noqa: BLE001 - report worker start failures
-            repair_payload = {
-                "status": "error",
-                "error": f"{type(error).__name__}: {error}",
-                "before_metrics": _physics_metrics(physics),
-            }
-        else:
-            repair_payload = {
-                **repair_result.to_report(imported.source_refs),
-                "before_metrics": _physics_metrics(physics),
-            }
-            repaired_layout = repair_result.layout
-
-    # The finished-model verdict is already determined here; a repair-search
-    # failure or timeout only makes the repair evidence incomplete, so it
-    # degrades the status to "partial" rather than masking the verdict.
-    if (
-        repair_payload.get("status") == "error"
-        or repair_payload.get("timed_out") is True
-    ):
-        status: Literal["complete", "partial", "error"] = "partial"
-    else:
-        status = "complete"
+    repair_payload, repaired_layout = _repair_payload(imported, physics, config)
     report = AnalysisReport(
-        status=status,
+        status=_status_for(repair_payload),
         verdict="feasible" if physics.feasible else "infeasible",
         input={
-            **input_info,
+            **grounded_input,
             "catalog_schema": CATALOG_SCHEMA,
             "catalog_parts": len(catalog.parts),
-            "ground_offset_layers": imported.ground_offset_layers,
-            "ground_translation_layers": -imported.ground_offset_layers,
             "elapsed_seconds": round(time.perf_counter() - started, 6),
         },
         assumptions=assumptions,
         model=_model_summary(imported.layout),
         topology=_topology_payload(physics.graph),
         solvers=_solver_payload(physics),
-        catalog={**catalog_info, "part_count": len(catalog.parts)},
+        catalog=catalog_info,
         bricks=_brick_payloads(imported, physics),
         source_steps=source_steps,
         repair=repair_payload,
@@ -303,6 +343,81 @@ def analyze_ldraw(
     )
 
 
+def _import_error_payload(
+    error: LdrawImportError | OSError | ValueError,
+) -> tuple[tuple[str, ...], tuple[dict[str, Any], ...]]:
+    if isinstance(error, LdrawImportError):
+        return (
+            error.problems,
+            tuple(asdict(problem) for problem in error.details),
+        )
+    return ((str(error),), ())
+
+
+def _source_step_payload(
+    imported: ImportedLdrawModel,
+    config: AnalysisConfig,
+) -> tuple[tuple[dict[str, Any], ...], tuple[str, ...]]:
+    if not config.check_source_steps or not imported.has_explicit_steps:
+        return (), ()
+    try:
+        return _analyze_source_steps(imported, config), ()
+    except _SourceStepLimitError as error:
+        return (), (str(error),)
+    except (RuntimeError, ValueError) as error:
+        return (), (f"source-step analysis failed: {error}",)
+
+
+def _repair_payload(
+    imported: ImportedLdrawModel,
+    physics: _PhysicsRun,
+    config: AnalysisConfig,
+) -> tuple[dict[str, Any], Layout | None]:
+    payload: dict[str, Any] = {
+        "status": "not_needed" if physics.feasible else "disabled",
+    }
+    if physics.feasible or not config.repair:
+        return payload, None
+    from legolization.redesign import search_repair  # noqa: PLC0415 - cycle
+
+    try:
+        result = search_repair(
+            imported.layout,
+            physics_seed_ids=_physics_seed_ids(physics),
+            parity_solver=config.parity_solver,
+            strict_solver=config.strict_solver,
+            time_budget_s=config.repair_time_budget_s,
+            seed=config.seed,
+        )
+    except Exception as error:  # noqa: BLE001 - report worker start failures
+        return (
+            {
+                "status": "error",
+                "error": f"{type(error).__name__}: {error}",
+                "before_metrics": _physics_metrics(physics),
+            },
+            None,
+        )
+    return (
+        {
+            **result.to_report(imported.source_refs),
+            "before_metrics": _physics_metrics(physics),
+        },
+        result.layout,
+    )
+
+
+def _status_for(
+    repair_payload: dict[str, Any],
+) -> Literal["complete", "partial"]:
+    """Preserve a determined verdict while marking incomplete repair evidence."""
+    match repair_payload.get("status"), repair_payload.get("timed_out"):
+        case ("error", _) | (_, True):
+            return "partial"
+        case _:
+            return "complete"
+
+
 def write_analysis_report(report: AnalysisReport, path: Path) -> None:
     """Atomically write a JSON report, creating parent directories."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,10 +428,14 @@ def write_analysis_report(report: AnalysisReport, path: Path) -> None:
 
 def _run_physics(layout: Layout, config: AnalysisConfig) -> _PhysicsRun:
     graph = ConnectionGraph.from_layout(layout)
-    parity = analyze(layout, config.parity_solver, graph)
-    strict = analyze(layout, config.strict_solver, graph)
+    parity = analyze(layout=layout, config=config.parity_solver, graph=graph)
+    strict = analyze(layout=layout, config=config.strict_solver, graph=graph)
     maximin = solve_maximin(
-        build_model_from_config(layout, config.strict_solver, graph)
+        build_model_from_config(
+            layout=layout,
+            config=config.strict_solver,
+            graph=graph,
+        )
     )
     official_failure = (
         graph.component_count() != 1
@@ -348,7 +467,7 @@ def _physics_seed_ids(physics: _PhysicsRun) -> tuple[int, ...]:
         if pair is not None:
             seeds |= {brick_id for brick_id in pair if brick_id >= 0}
     if physics.links is not None:
-        for link in physics.links.links[:8]:
+        for link in physics.links.links[:_MAX_LOCALIZED_SEED_LINKS]:
             seeds |= {brick_id for brick_id in (link.a_id, link.b_id) if brick_id >= 0}
     return tuple(sorted(seeds))
 
@@ -361,40 +480,57 @@ def _analyze_source_steps(
     for brick_id, ref in imported.source_refs.items():
         step = ref.global_step or ref.source_step or 1
         grouped.setdefault(step, []).append(brick_id)
-    solver = PrefixSolver.create(imported.layout, config.strict_solver)
-    present: set[int] = set()
+    if len(grouped) > _MAX_SOURCE_STEPS:
+        msg = (
+            f"source-step analysis skipped: {len(grouped):_} steps exceeds "
+            f"the {_MAX_SOURCE_STEPS:_}-step safety limit"
+        )
+        raise _SourceStepLimitError(msg)
+    solver = PrefixSolver.create(layout=imported.layout, config=config.strict_solver)
+    prefix = imported.layout.subset(())
+    topology = _PrefixTopology.from_layout(imported.layout)
     rows: list[dict[str, Any]] = []
     for step, brick_ids in sorted(grouped.items()):
         chunk = tuple(sorted(brick_ids))
+        _extend_prefix_layout(prefix, imported.layout, chunk)
         result = (
             solver.probe(chunk)
             if solver is not None
-            else analyze(
-                imported.layout.subset(present | set(chunk)),
-                config.strict_solver,
-            )
+            else analyze(layout=prefix, config=config.strict_solver)
         )
-        present.update(chunk)
+        topology.extend(chunk)
         if solver is not None:
             solver.commit(chunk)
-        prefix = imported.layout.subset(present)
-        graph = ConnectionGraph.from_layout(prefix)
         feasible = (
-            result.stable and graph.component_count() == 1 and not graph.floating_ids()
+            result.stable
+            and topology.component_count == 1
+            and topology.floating_count == 0
         )
         rows.append(
             {
                 "step": step,
                 "brick_ids": list(chunk),
-                "brick_count": len(present),
+                "brick_count": len(topology.present),
                 "stable": result.stable,
                 "max_score": result.max_score,
-                "component_count": graph.component_count(),
-                "floating_count": len(graph.floating_ids()),
+                "component_count": topology.component_count,
+                "floating_count": topology.floating_count,
                 "feasible": feasible,
             }
         )
     return tuple(rows)
+
+
+def _extend_prefix_layout(
+    prefix: Layout,
+    complete: Layout,
+    brick_ids: tuple[int, ...],
+) -> None:
+    """Append original id-preserving bricks to a growing prefix layout."""
+    for brick_id in brick_ids:
+        brick = complete.bricks[brick_id]
+        prefix.bricks[brick_id] = brick
+        prefix.occupancy.update(dict.fromkeys(complete.cells_of(brick), brick_id))
 
 
 def _brick_payloads(
@@ -478,7 +614,7 @@ def _topology_payload(graph: ConnectionGraph) -> dict[str, Any]:
         "component_count": graph.component_count(),
         "connected": graph.component_count() == 1,
         "ground_reachable": not graph.floating_ids(),
-        "components": [components[label] for label in sorted(components)],
+        "components": [sorted(components[label]) for label in sorted(components)],
         "grounded_brick_ids": sorted(graph.grounded_ids),
         "floating_brick_ids": sorted(graph.floating_ids()),
         "stud_connections": [list(edge) for edge in graph.support_edges()],
