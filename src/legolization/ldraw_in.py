@@ -165,16 +165,30 @@ def import_ldraw(
     # iter_pieces would yield submodel pieces in their local frames.
     for index, occurrence in enumerate(read_model(path).iter_occurrences(), start=1):
         if (candidates := reverse.get(str(occurrence.part_code))) is None:
-            problems.append(_problem(index, occurrence, "part not in the catalog"))
+            problems.append(
+                _problem(
+                    index,
+                    occurrence,
+                    "part not in the catalog",
+                    default_model=path.name,
+                )
+            )
             continue
         if (colour := _decode_colour(occurrence.colour)) is None:
             problems.append(
-                _problem(index, occurrence, "colour is not in the solid palette")
+                _problem(
+                    index,
+                    occurrence,
+                    "colour is not in the solid palette",
+                    default_model=path.name,
+                )
             )
             continue
         matched = _match_candidates(catalog, candidates, occurrence)
         if isinstance(matched, str):
-            problems.append(_problem(index, occurrence, matched))
+            problems.append(
+                _problem(index, occurrence, matched, default_model=path.name)
+            )
             continue
         matched_key, (x, y, layer, yaw) = matched
         decoded.append((index, occurrence, matched_key, x, y, layer, yaw, colour))
@@ -190,7 +204,9 @@ def import_ldraw(
                 colour,
             )
         except CollisionError as error:
-            problems.append(_problem(index, occurrence, str(error)))
+            problems.append(
+                _problem(index, occurrence, str(error), default_model=path.name)
+            )
         else:
             source_refs[brick.brick_id] = LdrawSourceRef(
                 occurrence=index,
@@ -212,12 +228,14 @@ def _problem(
     index: int,
     occurrence: ModelOccurrence,
     message: str,
+    *,
+    default_model: str,
 ) -> LdrawImportProblem:
     """Capture a strict-import diagnostic with its original source location."""
     return LdrawImportProblem(
         occurrence=index,
         part_reference=str(occurrence.part_code),
-        source_model=str(occurrence.source_model.name),
+        source_model=str(occurrence.source_model.name or default_model),
         source_line=occurrence.source_line,
         message=message,
     )

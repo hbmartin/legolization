@@ -265,10 +265,14 @@ def analyze_ldraw(
             }
             repaired_layout = repair_result.layout
 
-    if repair_payload.get("status") == "error":
-        status: Literal["complete", "partial", "error"] = "error"
-    elif repair_payload.get("timed_out") is True:
-        status = "partial"
+    # The finished-model verdict is already determined here; a repair-search
+    # failure or timeout only makes the repair evidence incomplete, so it
+    # degrades the status to "partial" rather than masking the verdict.
+    if (
+        repair_payload.get("status") == "error"
+        or repair_payload.get("timed_out") is True
+    ):
+        status: Literal["complete", "partial", "error"] = "partial"
     else:
         status = "complete"
     report = AnalysisReport(

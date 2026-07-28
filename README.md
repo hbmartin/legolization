@@ -149,7 +149,15 @@ found, `model.repaired.ldr`. The input path is always rejected as an artifact
 path. Exit code `0` means the original model is feasible, `2` means the
 original is infeasible (even when a repair was found), and `1` means invalid
 input, solver failure, or an indeterminate result. Source `STEP` warnings are
-informational and do not change the finished-model exit code.
+informational and do not change the finished-model exit code. Once the
+finished-model verdict is determined, repair-search failures, timeouts, and
+repair-write failures are recorded in the report (status `"partial"`) and
+likewise leave the exit code unchanged.
+
+LDraw import — for both the generation and analyze workflows — snaps
+Studio-style export noise: positions within 0.2 LDU of the stud/plate grid
+and rotations within about half a degree of a yaw multiple are accepted;
+meaningful offsets such as a half plate are still rejected.
 
 Catalog extensions declare `"schema": 1` and a `parts` list. Rectangular
 bricks, plates, and tiles use explicit `size`, `height_plates`, and measured

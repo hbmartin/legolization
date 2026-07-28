@@ -312,24 +312,27 @@
     {
       "key": "tile_1x3",
       "ldraw_part": "63864",
-      "category": "tile",
+      "category": "special",
       "size": [1, 3],
+      "top_columns": [],
       "height_plates": 1,
       "mass_g": 0.4
     },
     {
       "key": "tile_1x6",
       "ldraw_part": "6636",
-      "category": "tile",
+      "category": "special",
       "size": [1, 6],
+      "top_columns": [],
       "height_plates": 1,
       "mass_g": 0.83
     },
     {
       "key": "tile_1x8",
       "ldraw_part": "4162",
-      "category": "tile",
+      "category": "special",
       "size": [1, 8],
+      "top_columns": [],
       "height_plates": 1,
       "mass_g": 1.06
     },
@@ -347,16 +350,18 @@
     {
       "key": "tile_2x4",
       "ldraw_part": "87079",
-      "category": "tile",
+      "category": "special",
       "size": [2, 4],
+      "top_columns": [],
       "height_plates": 1,
       "mass_g": 0.9
     },
     {
       "key": "tile_2x6",
       "ldraw_part": "69729",
-      "category": "tile",
+      "category": "special",
       "size": [2, 6],
+      "top_columns": [],
       "height_plates": 1,
       "mass_g": 1.35
     },

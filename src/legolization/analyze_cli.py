@@ -115,10 +115,11 @@ def main(argv: list[str]) -> int:
             output.parent.mkdir(parents=True, exist_ok=True)
             write_repair_model(result.repaired_layout, output)
         except OSError as error:
+            # The verdict is already determined; losing only the repair
+            # artifact degrades the report instead of masking the verdict.
             report = replace(
                 report,
-                status="error",
-                verdict="indeterminate",
+                status="partial",
                 errors=(*report.errors, f"repair write failed: {error}"),
             )
         else:

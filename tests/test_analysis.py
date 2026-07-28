@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Never
 
 import pytest
 
-from legolization import AnalysisConfig, analyze_ldraw
+from legolization import AnalysisConfig, AnalysisResult, analyze_ldraw
 from legolization.catalog import Category, load_catalog
 from legolization.layout import Layout
 from legolization.ldraw_in import import_ldraw, layout_from_ldraw
@@ -365,12 +365,19 @@ def test_long_structural_parts_roundtrip_without_entering_legacy_placement(
         "brick_1x16",
         "brick_2x10_import",
         "plate_1x10_import",
+        "tile_1x3",
+        "tile_1x6",
+        "tile_1x8",
+        "tile_2x4",
+        "tile_2x6",
     )
     layout = Layout(catalog=load_catalog())
     for index, key in enumerate(keys):
         part = layout.catalog[key]
         assert part.category is Category.SPECIAL
         assert part.replaceable_geometry
+        if key.startswith("tile_"):
+            assert not part.top_connectors
         layout.add(key, 20 * index, 0, 0, 0, 4)
     path = tmp_path / "long-parts.ldr"
     write_model(layout, path)
@@ -449,6 +456,7 @@ def test_envelope_retile_can_repair_bad_bridge(bad_bridge, tmp_path):
         original,
         seed=0,
         deadline=time.monotonic() + 30.0,
+        strict_solver=_STRICT,
     )
 
     validated_layout = next(
@@ -534,3 +542,102 @@ def test_candidate_validation_rejects_changed_original_geometry():
         )
         is None
     )
+
+
+def test_repair_worker_failure_keeps_infeasible_verdict(tmp_path, monkeypatch):
+    layout = Layout(catalog=load_catalog())
+    layout.add("brick_1x1", 0, 0, 3, 0, 4)
+    source = tmp_path / "floating.ldr"
+    write_model(layout, source)
+
+    def boom(*args: object, **kwargs: object) -> Never:
+        message = "simulated worker start failure"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr("legolization.redesign.search_repair", boom)
+
+    code = main(["analyze", str(source), "--preserve-origin"])
+
+    report = json.loads(source.with_suffix(".analysis.json").read_text())
+    assert code == 2
+    assert report["status"] == "partial"
+    assert report["verdict"] == "infeasible"
+    assert report["repair"]["status"] == "error"
+    assert "simulated worker start failure" in report["repair"]["error"]
+
+
+def test_repair_write_failure_keeps_infeasible_exit_code(tmp_path, monkeypatch):
+    layout = Layout(catalog=load_catalog())
+    layout.add("brick_1x1", 0, 0, 3, 0, 4)
+    source = tmp_path / "floating.ldr"
+    write_model(layout, source)
+    real = analyze_ldraw(source, AnalysisConfig(auto_ground=False, repair=False))
+    assert real.imported is not None
+    forged = AnalysisResult(
+        report=real.report,
+        imported=real.imported,
+        repaired_layout=real.imported.layout,
+    )
+    monkeypatch.setattr(
+        "legolization.analyze_cli.analyze_ldraw",
+        lambda *args, **kwargs: forged,
+    )
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("occupied")
+
+    code = main(["analyze", str(source), "-o", str(blocker / "repair.ldr")])
+
+    report = json.loads(source.with_suffix(".analysis.json").read_text())
+    assert code == 2
+    assert report["status"] == "partial"
+    assert report["verdict"] == "infeasible"
+    assert any("repair write failed" in error for error in report["errors"])
+
+
+def test_analyze_cli_stdout_report_keeps_summary_on_stderr(tmp_path, capsys):
+    source = tmp_path / "heart.ldr"
+    source.write_bytes(_HEART.read_bytes())
+
+    code = main(["analyze", str(source), "--no-repair", "--report", "-"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out)["verdict"] == "feasible"
+    assert "analysis: FEASIBLE" in captured.err
+    assert not source.with_suffix(".analysis.json").exists()
+
+
+def test_analyze_cli_rejects_unsafe_artifact_paths(tmp_path):
+    source = tmp_path / "heart.ldr"
+    source.write_bytes(_HEART.read_bytes())
+
+    with pytest.raises(SystemExit):
+        main(["analyze", str(source), "--report", str(tmp_path / "evidence.txt")])
+    with pytest.raises(SystemExit):
+        main(["analyze", str(source), "-o", str(tmp_path / "repair.mpd")])
+    with pytest.raises(SystemExit):
+        main(["analyze", str(source), "-o", str(source)])
+
+
+def test_catalog_extension_cannot_shadow_builtin_key(tmp_path):
+    path = tmp_path / "parts.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "parts": [
+                    {
+                        "key": "brick_1x1",
+                        "ldraw_part": "9990",
+                        "category": "brick",
+                        "size": [1, 1],
+                        "height_plates": 3,
+                        "mass_g": 0.43,
+                    }
+                ],
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="duplicates keys"):
+        load_catalog(path)
