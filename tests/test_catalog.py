@@ -5,6 +5,7 @@ import pytest
 from legolization.catalog import (
     Category,
     default_catalog,
+    load_catalog,
     rotate_offset,
 )
 
@@ -76,6 +77,15 @@ def test_rect_key_lookup(catalog):
     assert catalog.rect_key(3, 3, 3) is None
     assert catalog.rect_key(1, 2, 1, category=Category.TILE) == "tile_1x2"
     assert catalog.rect_key(2, 8, 1, category=Category.TILE) is None
+
+
+def test_load_catalog_without_extensions_reuses_default():
+    assert load_catalog() is default_catalog()
+
+
+@pytest.mark.parametrize("key", ["brick_1x2_legacy", "plate_1x2_legacy"])
+def test_legacy_rectangles_are_explicitly_replaceable(catalog, key):
+    assert catalog[key].replaceable_geometry is True
 
 
 def test_masses_positive(catalog):

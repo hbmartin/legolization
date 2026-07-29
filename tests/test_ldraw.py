@@ -263,19 +263,43 @@ def test_import_strict_reports_every_problem(tmp_path):
     assert "collides" in problems
 
 
-def test_import_snaps_studio_transform_noise(tmp_path):
+def test_import_snaps_studio_transform_noise(tmp_path: Path):
     from legolization.ldraw_in import layout_from_ldraw
 
     path = tmp_path / "noisy.ldr"
     path.write_text(
         "0 noisy\n"
-        "1 4 0.15 -24.0001 0.12 "
+        "1 4 0.15 -24.19 0.12 "
         "1.000004 0 0 0 1.000004 0 0 0 1.000004 3005.dat\n"
     )
 
     brick = next(iter(layout_from_ldraw(path)))
 
     assert (brick.x, brick.y, brick.layer, brick.yaw) == (0, 0, 0, 0)
+
+
+def test_import_rejects_position_beyond_ldu_noise_budget(tmp_path: Path):
+    from legolization.ldraw_in import LdrawImportError, layout_from_ldraw
+
+    path = tmp_path / "too-noisy.ldr"
+    path.write_text("0 noisy\n1 4 0 -24.21 0 1 0 0 0 1 0 0 0 1 3005.dat\n")
+
+    with pytest.raises(LdrawImportError, match="off the stud/plate grid"):
+        layout_from_ldraw(path)
+
+
+def test_import_matches_ldraw_part_codes_case_insensitively(tmp_path: Path):
+    from legolization.ldraw_in import layout_from_ldraw
+
+    source = Layout(catalog=default_catalog())
+    source.add("tile_1x1", 0, 0, 0, 0, 4)
+    path = tmp_path / "uppercase-part.ldr"
+    write_model(source, path)
+    path.write_text(path.read_text().replace("3070b.dat", "3070B.dat"))
+
+    imported = layout_from_ldraw(path)
+
+    assert next(iter(imported)).part_key == "tile_1x1"
 
 
 def test_import_cli_end_to_end(tmp_path):

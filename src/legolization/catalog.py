@@ -22,6 +22,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Self, cast
 
+from legolization.ldraw_units import GRID_TOLERANCE_LDU, PLATE_LDU, STUD_LDU
+
 Cell = tuple[int, int, int]
 """A unit grid cell offset ``(dx, dy, dz)``; ``dz`` counts plate heights."""
 
@@ -406,7 +408,10 @@ def _special_part(spec: dict[str, Any]) -> Part:
             int(value) for value in spec.get("orientations", _FULL_YAWS)
         ),
         origin_offset=(offset_x, offset_y, offset_z),
-        replaceable_geometry="size" in spec,
+        replaceable_geometry=cast(
+            "bool",
+            spec.get("replaceable_geometry", "size" in spec),
+        ),
     )
 
 
@@ -433,7 +438,7 @@ def _explicit_part(spec: dict[str, Any]) -> Part:
         emit_yaw_offset=int(spec.get("emit_yaw_offset", 0)),
         mount_matrices=_parse_mount_matrices(spec.get("mount_matrices", {})),
         mount_offset_ldu=_float_triple(spec.get("mount_offset_ldu", (0.0, 0.0, 0.0))),
-        replaceable_geometry=bool(spec.get("replaceable_geometry", False)),
+        replaceable_geometry=cast("bool", spec.get("replaceable_geometry", False)),
     )
 
 
@@ -517,6 +522,8 @@ class Catalog:
 
     def with_extensions(self, paths: tuple[Path, ...] | list[Path]) -> Self:
         """Return this catalog merged with non-overriding extension files."""
+        if not paths:
+            return self
         merged = dict(self.parts)
         for path in paths:
             extension = type(self).load(path, require_explicit_nonrect=True)
@@ -601,7 +608,8 @@ def default_catalog() -> Catalog:
 
 def load_catalog(*extensions: Path) -> Catalog:
     """Load the built-in catalog plus optional versioned extensions."""
-    return default_catalog().with_extensions(list(extensions))
+    catalog = default_catalog()
+    return catalog if not extensions else catalog.with_extensions(extensions)
 
 
 _RECT_CATEGORIES = frozenset((Category.BRICK, Category.PLATE, Category.TILE))
@@ -618,7 +626,7 @@ _EXPLICIT_GEOMETRY_FIELDS = frozenset(
 )
 
 
-def _validate_part_spec(  # noqa: C901, PLR0912, PLR0915 - schema validation
+def _validate_part_spec(
     spec: dict[str, Any],
     *,
     path: Path,
@@ -631,28 +639,15 @@ def _validate_part_spec(  # noqa: C901, PLR0912, PLR0915 - schema validation
     if missing:
         msg = f"catalog {path} part {index} is missing {', '.join(missing)}"
         raise ValueError(msg)
-    try:
-        category = Category(str(spec["category"]))
-        mass_g = float(spec["mass_g"])
-    except (TypeError, ValueError) as error:
-        msg = f"catalog {path} part {index} has invalid category or mass"
-        raise ValueError(msg) from error
+    category, mass_g = _category_and_mass(spec, path=path, index=index)
     if not math.isfinite(mass_g) or mass_g <= 0:
         msg = f"catalog {path} part {index} mass_g must be finite and positive"
         raise ValueError(msg)
-    if require_explicit_nonrect and category not in _RECT_CATEGORIES:
-        fields = _EXPLICIT_GEOMETRY_FIELDS
-    else:
-        match category:
-            case Category.BRICK | Category.PLATE | Category.TILE:
-                fields = {"size", "height_plates"}
-            case Category.SPECIAL:
-                geometry_field = "size" if "size" in spec else "occupied_columns"
-                fields = {geometry_field, "height_plates"}
-            case Category.SLOPE:
-                fields = {"stud_cells", "slope_cells", "height_plates"}
-            case Category.SNOT | Category.SPECIAL_SNOT:
-                fields = {"snot_role", "height_plates"}
+    fields = _geometry_fields(
+        spec,
+        category=category,
+        require_explicit_nonrect=require_explicit_nonrect,
+    )
     missing_geometry = sorted(fields - spec.keys())
     if missing_geometry:
         msg = (
@@ -660,6 +655,51 @@ def _validate_part_spec(  # noqa: C901, PLR0912, PLR0915 - schema validation
             f"{', '.join(missing_geometry)}"
         )
         raise ValueError(msg)
+    _validate_height(spec, path=path, index=index)
+    _validate_replaceable_geometry(spec, path=path, index=index)
+    if category in _RECT_CATEGORIES or (
+        category is Category.SPECIAL and "size" in spec
+    ):
+        _validate_rect_size(spec, path=path, index=index)
+    _validate_orientations(spec, path=path, index=index)
+
+
+def _category_and_mass(
+    spec: dict[str, Any],
+    *,
+    path: Path,
+    index: int,
+) -> tuple[Category, float]:
+    try:
+        return Category(str(spec["category"])), float(spec["mass_g"])
+    except (TypeError, ValueError) as error:
+        msg = f"catalog {path} part {index} has invalid category or mass"
+        raise ValueError(msg) from error
+
+
+def _geometry_fields(
+    spec: dict[str, Any],
+    *,
+    category: Category,
+    require_explicit_nonrect: bool,
+) -> frozenset[str] | set[str]:
+    if require_explicit_nonrect and category not in _RECT_CATEGORIES:
+        return _EXPLICIT_GEOMETRY_FIELDS
+    match category:
+        case Category.BRICK | Category.PLATE | Category.TILE:
+            return {"size", "height_plates"}
+        case Category.SPECIAL:
+            geometry_field = "size" if "size" in spec else "occupied_columns"
+            return {geometry_field, "height_plates"}
+        case Category.SLOPE:
+            return {"stud_cells", "slope_cells", "height_plates"}
+        case Category.SNOT | Category.SPECIAL_SNOT:
+            return {"snot_role", "height_plates"}
+        case _:
+            return _EXPLICIT_GEOMETRY_FIELDS
+
+
+def _validate_height(spec: dict[str, Any], *, path: Path, index: int) -> None:
     try:
         height = int(spec["height_plates"])
     except (TypeError, ValueError) as error:
@@ -668,17 +708,39 @@ def _validate_part_spec(  # noqa: C901, PLR0912, PLR0915 - schema validation
     if height <= 0 or height != spec["height_plates"]:
         msg = f"catalog {path} part {index} height_plates must be a positive integer"
         raise ValueError(msg)
-    if category in _RECT_CATEGORIES or (
-        category is Category.SPECIAL and "size" in spec
+
+
+def _validate_replaceable_geometry(
+    spec: dict[str, Any],
+    *,
+    path: Path,
+    index: int,
+) -> None:
+    if "replaceable_geometry" in spec and not isinstance(
+        spec["replaceable_geometry"],
+        bool,
     ):
-        try:
-            size = tuple(int(value) for value in spec["size"])
-        except (TypeError, ValueError) as error:
-            msg = f"catalog {path} part {index} has malformed rectangular size"
-            raise ValueError(msg) from error
-        if len(size) != 2 or min(size, default=0) <= 0:
-            msg = f"catalog {path} part {index} size must contain two positive integers"
-            raise ValueError(msg)
+        msg = f"catalog {path} part {index} replaceable_geometry must be boolean"
+        raise ValueError(msg)
+
+
+def _validate_rect_size(spec: dict[str, Any], *, path: Path, index: int) -> None:
+    try:
+        size = tuple(int(value) for value in spec["size"])
+    except (TypeError, ValueError) as error:
+        msg = f"catalog {path} part {index} has malformed rectangular size"
+        raise ValueError(msg) from error
+    if len(size) != 2 or min(size, default=0) <= 0:
+        msg = f"catalog {path} part {index} size must contain two positive integers"
+        raise ValueError(msg)
+
+
+def _validate_orientations(
+    spec: dict[str, Any],
+    *,
+    path: Path,
+    index: int,
+) -> None:
     orientations = spec.get("orientations", _FULL_YAWS)
     try:
         parsed_orientations = tuple(int(value) for value in orientations)
@@ -748,9 +810,9 @@ def _decode_cosets(
             mean_x = sum(x for x, _, _ in columns) / len(columns)
             mean_y = sum(y for _, y, _ in columns) / len(columns)
             position = (
-                20.0 * mean_x + offset_out * ox + offset_across * across_x,
+                STUD_LDU * mean_x + offset_out * ox + offset_across * across_x,
                 offset_up,
-                20.0 * mean_y + offset_out * oy + offset_across * across_y,
+                STUD_LDU * mean_y + offset_out * oy + offset_across * across_y,
             )
             entries.add((matrix, _position_coset(position)))
         return frozenset(entries)
@@ -771,9 +833,9 @@ def _decode_cosets(
             case 270:
                 rotated_x_f, rotated_z_f = offset_z, -offset_x
         position = (
-            20.0 * mean_x + rotated_x_f,
-            -8.0 * part.height_plates + offset_y,
-            20.0 * mean_y + rotated_z_f,
+            STUD_LDU * mean_x + rotated_x_f,
+            -PLATE_LDU * part.height_plates + offset_y,
+            STUD_LDU * mean_y + rotated_z_f,
         )
         entries.add((_YAW_ROTATIONS[emitted_yaw // 90], _position_coset(position)))
     return frozenset(entries)
@@ -782,7 +844,34 @@ def _decode_cosets(
 def _position_coset(position: tuple[float, float, float]) -> tuple[float, float, float]:
     """Reduce an LDraw origin modulo the stud/plate import lattice."""
     x, y, z = position
-    return (round(x % 20.0, 8), round(y % 8.0, 8), round(z % 20.0, 8))
+    return (
+        round(x % STUD_LDU, 8),
+        round(y % PLATE_LDU, 8),
+        round(z % STUD_LDU, 8),
+    )
+
+
+def _cosets_overlap(
+    first: tuple[float, float, float],
+    second: tuple[float, float, float],
+) -> bool:
+    """Whether two decoder tolerance windows overlap on the LDraw lattice."""
+    periods = (STUD_LDU, PLATE_LDU, STUD_LDU)
+    return all(
+        _axis_windows_overlap(a, b, period)
+        for a, b, period in zip(first, second, periods, strict=True)
+    )
+
+
+def _axis_windows_overlap(first: float, second: float, period: float) -> bool:
+    distance = _cyclic_distance(first, second, period)
+    limit = 2.0 * GRID_TOLERANCE_LDU
+    return distance <= limit or math.isclose(distance, limit, abs_tol=1e-9)
+
+
+def _cyclic_distance(first: float, second: float, period: float) -> float:
+    distance = abs(first - second) % period
+    return min(distance, period - distance)
 
 
 def _yaw_for_mount(part: Part, outward: tuple[int, int]) -> int | None:
@@ -801,14 +890,22 @@ def _yaw_for_mount(part: Part, outward: tuple[int, int]) -> int | None:
 
 
 def _validate_decode_ambiguity(catalog: Catalog) -> None:
-    """Reject parts whose LDraw codes accept any of the same rotations."""
+    """Reject shared-code parts with overlapping tolerant decode windows."""
     by_code: dict[str, list[Part]] = {}
     for part in catalog.parts.values():
         by_code.setdefault(part.ldraw_part.casefold(), []).append(part)
     for parts in by_code.values():
         for index, part in enumerate(parts):
             for other in parts[index + 1 :]:
-                if _decode_cosets(part) & _decode_cosets(other):
+                first_cosets = _decode_cosets(part)
+                other_cosets = _decode_cosets(other)
+                ambiguous = any(
+                    first_matrix == other_matrix
+                    and _cosets_overlap(first_position, other_position)
+                    for first_matrix, first_position in first_cosets
+                    for other_matrix, other_position in other_cosets
+                )
+                if ambiguous:
                     msg = (
                         f"catalog parts {part.key!r} and {other.key!r} have "
                         f"ambiguous LDraw decode metadata"

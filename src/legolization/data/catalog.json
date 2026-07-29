@@ -413,6 +413,7 @@
       "category": "special",
       "height_plates": 3,
       "mass_g": 0.81,
+      "replaceable_geometry": true,
       "occupied_columns": [[0, 0], [1, 0]]
     },
     {
@@ -446,6 +447,7 @@
       "category": "special",
       "height_plates": 1,
       "mass_g": 0.36,
+      "replaceable_geometry": true,
       "occupied_columns": [[0, 0], [1, 0]]
     },
     {
