@@ -340,7 +340,7 @@ def _press_walker(
     return world_press, world_commit
 
 
-def _emit_subassembly(  # noqa: PLR0913 - the rewrite hands over all its state
+def _emit_subassembly(  # noqa: PLR0913, PLR0917 - the rewrite hands over all its state
     layout: Layout,
     cluster: _Cluster,
     new_steps: list[BuildStep],

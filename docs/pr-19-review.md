@@ -158,7 +158,7 @@ worse-component bridge can actively regress connectivity.
 A reproduction with two adjacent, non-mergeable `tile_1x1_snot` parts and:
 
 ```python
-bridge=lambda layout, region, grid: layout.copy()
+bridge = lambda layout, region, grid: layout.copy()
 ```
 
 was still running after 0.5 seconds despite `fail_max=1`. The caller should

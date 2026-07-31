@@ -26,11 +26,7 @@ The new `test_press_tower_pins_the_insertion_audit` regression reads:
 
 ```python
 _PRESS_TOWER = (
-    Path(__file__).parent.parent
-    / "data"
-    / "corpus"
-    / "synthetic"
-    / "press-tower.npy"
+    Path(__file__).parent.parent / "data" / "corpus" / "synthetic" / "press-tower.npy"
 )
 ```
 

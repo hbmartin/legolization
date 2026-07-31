@@ -109,7 +109,7 @@ def _chunk_band(
     return [tuple(chunk) for chunk in ordered]
 
 
-def _grow_chunk(  # noqa: PLR0913 - explicit chunk-growth state
+def _grow_chunk(  # noqa: PLR0913, PLR0917 - explicit chunk-growth state
     chunk: list[int],
     unassigned: list[int],
     centroids: dict[int, tuple[float, float]],

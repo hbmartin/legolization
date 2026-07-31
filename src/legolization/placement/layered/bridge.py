@@ -392,7 +392,7 @@ class BridgeSynthesizer:
             default=(None, 0),
         )[0]
 
-    def _initial_phase_candidates(  # noqa: PLR0913 - shared phase state
+    def _initial_phase_candidates(  # noqa: PLR0913, PLR0917 - shared phase state
         self,
         layout: Layout,
         region: set[int],
@@ -429,7 +429,7 @@ class BridgeSynthesizer:
             )
         return phase_candidates, phase_keys
 
-    def _add_flow_candidates(  # noqa: PLR0913 - shared phase state
+    def _add_flow_candidates(  # noqa: PLR0913, PLR0917 - shared phase state
         self,
         layout: Layout,
         region: set[int],
@@ -604,7 +604,7 @@ class BridgeSynthesizer:
             return None
         return budget
 
-    def _solve_component(  # noqa: PLR0913 - one slab component is six facts
+    def _solve_component(  # noqa: PLR0913, PLR0917 - one slab component is six facts
         self,
         candidate: Layout,
         problem: LayerProblem,

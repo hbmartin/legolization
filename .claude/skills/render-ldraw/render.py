@@ -138,7 +138,7 @@ def _detect_ldraw_dir(explicit: Path | None) -> Path | None:
     return None
 
 
-def _render_ldview(  # noqa: PLR0913 - one scalar per render knob
+def _render_ldview(  # noqa: PLR0913, PLR0917 - one scalar per render knob
     executable: str,
     model: Path,
     out: Path,
@@ -163,7 +163,7 @@ def _render_ldview(  # noqa: PLR0913 - one scalar per render knob
     return _run(cmd)
 
 
-def _render_leocad(  # noqa: PLR0913 - one scalar per render knob
+def _render_leocad(  # noqa: PLR0913, PLR0917 - one scalar per render knob
     executable: str,
     model: Path,
     out: Path,

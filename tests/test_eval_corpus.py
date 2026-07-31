@@ -118,7 +118,7 @@ class _EvaluatorModule(Protocol):
         """Create the expected candidate matrix."""
         ...
 
-    def _collect_model(  # noqa: PLR0913 - mirrors collector seam
+    def _collect_model(  # noqa: PLR0913, PLR0917 - mirrors collector seam
         self,
         corpus: object,
         model: _FakeModel,

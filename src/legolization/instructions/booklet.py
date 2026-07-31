@@ -179,13 +179,17 @@ def _aggregate_support_warnings(warnings: tuple[str, ...]) -> tuple[str, ...]:
 _RUN_TEXTS = {
     "support": (
         "step {first}: temporary support needed while building (unstable prefix)",
-        "steps {first}-{last}: temporary support needed while "
-        "building ({count} unstable prefixes)",
+        (
+            "steps {first}-{last}: temporary support needed while "
+            "building ({count} unstable prefixes)"
+        ),
     ),
     "press": (
         "step {first}: press bricks home gently (insertion-fragile)",
-        "steps {first}-{last}: press bricks home gently "
-        "({count} insertion-fragile steps)",
+        (
+            "steps {first}-{last}: press bricks home gently "
+            "({count} insertion-fragile steps)"
+        ),
     ),
 }
 
@@ -353,8 +357,10 @@ def _html_warnings_page(warnings: tuple[str, ...]) -> list[str]:
 def _html_parts_table(rows: tuple[BomEntry, ...]) -> list[str]:
     lines = [
         "<table>",
-        "<thead><tr><th>qty</th><th>part</th><th>ldraw</th>"
-        "<th>colour</th><th>mass</th></tr></thead>",
+        (
+            "<thead><tr><th>qty</th><th>part</th><th>ldraw</th>"
+            "<th>colour</th><th>mass</th></tr></thead>"
+        ),
         "<tbody>",
     ]
     lines.extend(

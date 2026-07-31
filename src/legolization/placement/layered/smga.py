@@ -98,7 +98,7 @@ class SmGaStrategy(LayeredStrategy):
                     break
         return list(best_chromosome)
 
-    def _next_generation(  # noqa: PLR0913 - GA state is naturally wide
+    def _next_generation(  # noqa: PLR0913, PLR0917 - GA state is naturally wide
         self,
         problem: LayerProblem,
         below: LayerContext,
