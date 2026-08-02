@@ -275,9 +275,7 @@ def _instruction_payload(
     section_physics: Mapping[str, tuple[dict[str, Any], ...]],
     issues: tuple[InstructionIssue, ...],
 ) -> dict[str, Any]:
-    error_sections = {
-        issue.section for issue in issues if issue.severity is Severity.ERROR
-    }
+    error_sections = instruction_error_sections(issues)
     return {
         "root": document.root.name,
         "sections": [
@@ -317,6 +315,15 @@ def _instruction_payload(
 def instruction_issues(document: InstructionDocument) -> tuple[InstructionIssue, ...]:
     """Materialize instruction issues once for prefix-analysis policy."""
     return tuple(iter_instruction_issues(document))
+
+
+def instruction_error_sections(
+    issues: tuple[InstructionIssue, ...],
+) -> frozenset[str]:
+    """Name every section whose instruction stream failed validation."""
+    return frozenset(
+        issue.section for issue in issues if issue.severity is Severity.ERROR
+    )
 
 
 def _section_payload(  # noqa: PLR0913 - report fields stay explicit

@@ -10,14 +10,16 @@ from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from ldraw import Severity
+
 from legolization.catalog import CATALOG_SCHEMA, load_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.ldraw_in import (
     ImportedLdrawModel,
     LdrawImportError,
     LdrawSourceRef,
-    _import_occurrences,
     import_ldraw,
+    import_occurrences,
 )
 from legolization.ldraw_report import (
     build_ldraw_payload,
@@ -25,6 +27,7 @@ from legolization.ldraw_report import (
     catalog_error,
     catalog_payload,
     diagnostic_payload,
+    instruction_error_sections,
     instruction_issues,
     prepare_analysis_catalog,
 )
@@ -416,6 +419,7 @@ def analyze_ldraw(
     section_physics, issues, step_warnings = _instruction_section_payload(
         imported,
         config,
+        whole_model_result=physics.strict,
     )
     document = imported.instruction_document
     source_steps = (
@@ -429,12 +433,12 @@ def analyze_ldraw(
         tuple(
             f"pyldraw catalog {diagnostic.code}: {diagnostic.message}"
             for diagnostic in pyldraw_catalog.diagnostics
-            if str(diagnostic.severity) == "warning"
+            if diagnostic.severity is Severity.WARNING
         )
         + tuple(
             f"{diagnostic.code}: {diagnostic.message}"
             for diagnostic in imported.diagnostics
-            if str(diagnostic.severity) == "warning"
+            if diagnostic.severity is Severity.WARNING
         )
         + tuple(
             f"instruction {issue.section}:{issue.line_number or '?'} "
@@ -453,7 +457,7 @@ def analyze_ldraw(
     catalog_errors = tuple(
         f"pyldraw catalog {diagnostic.code}: {diagnostic.message}"
         for diagnostic in pyldraw_catalog.diagnostics
-        if str(diagnostic.severity) == "error"
+        if diagnostic.severity is Severity.ERROR
     )
     report = AnalysisReport(
         status=_status_for(
@@ -495,7 +499,7 @@ def _import_error_payload(
             tuple(
                 diagnostic_payload(diagnostic)
                 for diagnostic in error.diagnostics
-                if str(diagnostic.severity) == "error"
+                if diagnostic.severity is Severity.ERROR
             )
             + tuple(asdict(problem) for problem in error.details),
         )
@@ -505,6 +509,8 @@ def _import_error_payload(
 def _instruction_section_payload(
     imported: ImportedLdrawModel,
     config: AnalysisConfig,
+    *,
+    whole_model_result: StabilityResult | None = None,
 ) -> tuple[
     dict[str, tuple[dict[str, Any], ...]],
     tuple[InstructionIssue, ...],
@@ -524,9 +530,7 @@ def _instruction_section_payload(
             f"the {_MAX_SOURCE_STEPS:_}-step safety limit"
         )
         return {}, issues, (message,)
-    error_sections = {
-        issue.section for issue in issues if str(issue.severity) == "error"
-    }
+    error_sections = instruction_error_sections(issues)
     payload: dict[str, tuple[dict[str, Any], ...]] = {}
     warnings: list[str] = []
     for section in document.sections:
@@ -538,7 +542,12 @@ def _instruction_section_payload(
             continue
         try:
             rows = (
-                _analyze_root_instruction_section(imported, section, config)
+                _analyze_root_instruction_section(
+                    imported,
+                    section,
+                    config,
+                    whole_model_result=whole_model_result,
+                )
                 if section.is_root
                 else _analyze_local_instruction_section(
                     section,
@@ -568,6 +577,8 @@ def _analyze_root_instruction_section(
     imported: ImportedLdrawModel,
     section: InstructionSection,
     config: AnalysisConfig,
+    *,
+    whole_model_result: StabilityResult | None = None,
 ) -> tuple[dict[str, Any], ...]:
     if imported.model_analysis is None:
         return ()
@@ -584,7 +595,12 @@ def _analyze_root_instruction_section(
     ):
         if index not in brick_by_occurrence or not occurrence.path:
             continue
-        step = step_by_outer_piece[id(occurrence.path[0].piece)]
+        # pyldraw attributes every root placement to a step (probed against
+        # NOSTEP, BUFEXCHG, PLI/PART IGN, callout, and GHOST models); if that
+        # ever breaks, degrade to a section warning instead of crashing.
+        if (step := step_by_outer_piece.get(id(occurrence.path[0].piece))) is None:
+            msg = f"occurrence {index} is not attributed to any instruction step"
+            raise ValueError(msg)
         grouped.setdefault(step, []).append(brick_by_occurrence[index])
     groups = tuple(
         (step.number, tuple(grouped.get(step.number, ()))) for step in section.steps
@@ -595,6 +611,7 @@ def _analyze_root_instruction_section(
         section=section.name,
         ground_offset_layers=imported.ground_offset_layers,
         config=config,
+        whole_model_result=whole_model_result,
     )
 
 
@@ -611,7 +628,7 @@ def _analyze_local_instruction_section(
         start = len(occurrences) + 1
         occurrences.extend(added)
         indexes_by_step.append((step.number, tuple(range(start, start + len(added)))))
-    decoded = _import_occurrences(
+    decoded = import_occurrences(
         occurrences,
         catalog=catalog,
         ground=True,
@@ -749,17 +766,25 @@ def _physics_seed_ids(physics: _PhysicsRun) -> tuple[int, ...]:
     return tuple(sorted(seeds))
 
 
-def _analyze_step_groups(
+def _analyze_step_groups(  # noqa: PLR0913 - explicit prefix-analysis state
     layout: Layout,
     groups: tuple[tuple[int, tuple[int, ...]], ...],
     *,
     section: str,
     ground_offset_layers: int,
     config: AnalysisConfig,
+    whole_model_result: StabilityResult | None = None,
 ) -> tuple[dict[str, Any], ...]:
+    # A single step covering every brick is exactly the whole-model strict
+    # solve the caller already ran; reuse that result instead of solving again.
+    reuse_whole_model = (
+        whole_model_result is not None
+        and len(groups) == 1
+        and set(groups[0][1]) == layout.bricks.keys()
+    )
     solver = (
         PrefixSolver.create(layout=layout, config=config.strict_solver)
-        if layout.bricks
+        if layout.bricks and not reuse_whole_model
         else None
     )
     prefix = layout.subset(())
@@ -770,7 +795,9 @@ def _analyze_step_groups(
         chunk = tuple(sorted(brick_ids))
         geometry_changed = bool(chunk)
         if geometry_changed:
-            if solver is None:
+            if reuse_whole_model:
+                result = whole_model_result
+            elif solver is None:
                 _extend_prefix_layout(prefix, layout, chunk)
                 result = analyze(layout=prefix, config=config.strict_solver)
             else:

@@ -57,6 +57,21 @@ def test_quantize_array_shape():
     assert codes[2] == 15
 
 
+def test_achromatic_inputs_stay_on_achromatic_bricks():
+    # Current LDConfig Black is #1B2A34, so an unweighted perceptual distance
+    # drops pure black onto Dark_Brown #352100. The chroma weighting must hold
+    # the achromatic inputs on achromatic bricks.
+    palette = default_palette()
+    assert palette.nearest((0, 0, 0)) == 0  # Black, not Dark_Brown
+    assert palette.nearest((10, 10, 10)) == 0
+    assert palette.nearest((128, 128, 128)) == 315  # Flat_Silver
+
+
+def test_dark_saturated_inputs_keep_their_hue_family():
+    palette = default_palette()
+    assert palette.nearest((0, 0, 64)) == 272  # Dark_Blue, not Black
+
+
 def test_rgb_roundtrip():
     palette = default_palette()
     for code in (0, 1, 4, 14, 15):

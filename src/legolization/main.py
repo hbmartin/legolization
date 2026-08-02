@@ -11,6 +11,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ldraw import Severity
+
 from legolization import telemetry
 from legolization.compare import (
     Candidate,
@@ -36,7 +38,9 @@ from legolization.placement.registry import strategy_names
 from legolization.stability.solver import SolverConfig, analyze
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
+
+    from ldraw import Diagnostic
 
     from legolization.grid import VoxelGrid
 
@@ -792,6 +796,16 @@ def _validate_ldraw_args(
         )
 
 
+def _print_load_warnings(diagnostics: Iterable[Diagnostic]) -> None:
+    """Surface tolerant-load warnings on stderr for import flows."""
+    for diagnostic in diagnostics:
+        if diagnostic.severity is Severity.WARNING:
+            print(
+                f"warning: {diagnostic.code}: {diagnostic.message}",
+                file=sys.stderr,
+            )
+
+
 def _run_import(
     args: argparse.Namespace,
     *,
@@ -806,15 +820,14 @@ def _run_import(
     solver = SolverConfig()
     try:
         imported = import_ldraw(args.input)
-    except (LdrawImportError, OSError, ValueError) as error:
+    except LdrawImportError as error:
+        _print_load_warnings(error.load_diagnostics)
         print(f"error: {error}", file=sys.stderr)
         return 1
-    for diagnostic in imported.diagnostics:
-        if str(diagnostic.severity) == "warning":
-            print(
-                f"warning: {diagnostic.code}: {diagnostic.message}",
-                file=sys.stderr,
-            )
+    except (OSError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    _print_load_warnings(imported.diagnostics)
     layout = imported.layout
     stability = analyze(layout, solver)
     plan = None

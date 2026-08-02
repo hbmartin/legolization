@@ -199,6 +199,36 @@ def test_instruction_error_skips_only_that_section_prefix_physics(tmp_path: Path
     assert child["steps"][0]["inventory"]["status"] == "skipped"
 
 
+def test_stepless_root_section_reuses_the_whole_model_strict_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    path = tmp_path / "stepless.ldr"
+    path.write_text(
+        "0 stepless\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "1 4 0 -48 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+    )
+    from legolization.stability.prefix import PrefixSolver
+
+    def failing_create(*args, **kwargs) -> Never:
+        del args, kwargs
+        pytest.fail("the trivial single-step root section must not solve again")
+
+    monkeypatch.setattr(PrefixSolver, "create", failing_create)
+
+    result = analyze_ldraw(path, AnalysisConfig(repair=False))
+
+    assert result.report.source_steps == ()
+    (root,) = result.report.ldraw["instructions"]["sections"]
+    (row,) = [step["physics"] for step in root["steps"]]
+    strict = result.report.solvers["rbe_6dof"]
+    assert row["evaluated"] is True
+    assert row["stable"] == strict["stable"]
+    assert row["max_score"] == strict["max_score"]
+    assert row["feasible"] is True
+
+
 def test_initial_rotation_only_step_is_preserved_as_unevaluated(tmp_path: Path):
     path = tmp_path / "initial-rotation.ldr"
     path.write_text(
@@ -1005,7 +1035,7 @@ def test_exterior_bridge_discovery_buckets_only_aligned_studs(
     monkeypatch.setattr(redesign_module, "time", FakeTime)
 
     assert list(_eligible_bridge_pairs(studs, deadline=1.0)) == []
-    assert 0 < clock_checks <= 2 * len(studs)
+    assert clock_checks == len(studs)
 
 
 def test_exterior_bridge_discovery_keeps_aligned_cross_component_pairs():
