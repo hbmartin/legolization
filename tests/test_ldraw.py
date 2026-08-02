@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from ldraw import Severity
 
 from legolization.catalog import default_catalog
 from legolization.layout import Layout
@@ -263,9 +264,9 @@ def test_import_strict_reports_every_problem(tmp_path):
     assert "collides" in problems
 
 
-def test_import_rejects_parser_errors_but_preserves_all_valid_occurrences(
+def test_import_reports_parser_errors_with_source_metadata(
     tmp_path: Path,
-):
+) -> None:
     from legolization.ldraw_in import LdrawImportError, import_ldraw
 
     path = tmp_path / "malformed.ldr"
@@ -290,7 +291,7 @@ def test_import_rejects_parser_errors_but_preserves_all_valid_occurrences(
     assert excinfo.value.details == ()
 
 
-def test_import_reports_non_utf8_input_structurally(tmp_path: Path):
+def test_import_reports_non_utf8_input_structurally(tmp_path: Path) -> None:
     from legolization.ldraw_in import LdrawImportError, import_ldraw
 
     path = tmp_path / "binary.ldr"
@@ -299,13 +300,19 @@ def test_import_reports_non_utf8_input_structurally(tmp_path: Path):
     with pytest.raises(LdrawImportError) as excinfo:
         import_ldraw(path)
 
-    assert [str(item.code) for item in excinfo.value.diagnostics] == [
-        "io.decode_failed"
+    error_diagnostics = [
+        item for item in excinfo.value.diagnostics if item.severity is Severity.ERROR
     ]
-    assert excinfo.value.diagnostics[0].path == path
+    assert [str(item.code) for item in error_diagnostics] == ["io.decode_failed"]
+    diagnostic = next(
+        item
+        for item in excinfo.value.diagnostics
+        if str(item.code) == "io.decode_failed"
+    )
+    assert diagnostic.path == path
 
 
-def test_import_reports_unreadable_input_structurally(tmp_path: Path):
+def test_import_reports_unreadable_input_structurally(tmp_path: Path) -> None:
     from legolization.ldraw_in import LdrawImportError, import_ldraw
 
     path = tmp_path / "missing.ldr"
@@ -313,8 +320,14 @@ def test_import_reports_unreadable_input_structurally(tmp_path: Path):
     with pytest.raises(LdrawImportError) as excinfo:
         import_ldraw(path)
 
-    assert [str(item.code) for item in excinfo.value.diagnostics] == ["io.read_failed"]
-    assert excinfo.value.diagnostics[0].path == path
+    error_diagnostics = [
+        item for item in excinfo.value.diagnostics if item.severity is Severity.ERROR
+    ]
+    assert [str(item.code) for item in error_diagnostics] == ["io.read_failed"]
+    diagnostic = next(
+        item for item in excinfo.value.diagnostics if str(item.code) == "io.read_failed"
+    )
+    assert diagnostic.path == path
 
 
 def test_import_preserves_warning_only_load_diagnostics(tmp_path: Path):

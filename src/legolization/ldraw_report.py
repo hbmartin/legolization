@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from functools import lru_cache
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
 from ldraw import (
@@ -33,15 +32,34 @@ if TYPE_CHECKING:
 _CONTACT_OCCURRENCE_LIMIT = 1_000
 
 
-@lru_cache(maxsize=1)
+@dataclass(slots=True)
+class _CatalogPreparationCache:
+    """The last catalog result that passed legolization's usability check."""
+
+    result: CatalogPreparationResult | None = None
+
+
+_ANALYSIS_CATALOG_CACHE = _CatalogPreparationCache()
+
+
+def clear_analysis_catalog_cache() -> None:
+    """Force the next catalog preparation to inspect the configured library."""
+    _ANALYSIS_CATALOG_CACHE.result = None
+
+
 def prepare_analysis_catalog() -> CatalogPreparationResult:
     """Prepare the two pyldraw capabilities legolization actually imports."""
-    return prepare_catalog(
+    if (cached := _ANALYSIS_CATALOG_CACHE.result) is not None:
+        return cached
+    result = prepare_catalog(
         capabilities=(
             LDrawCapability.CATALOG,
             LDrawCapability.GENERATED_MODULES,
         )
     )
+    if catalog_error(result) is None:
+        _ANALYSIS_CATALOG_CACHE.result = result
+    return result
 
 
 def catalog_error(result: CatalogPreparationResult) -> str | None:

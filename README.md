@@ -159,7 +159,15 @@ catalog state, tolerant-load diagnostics, exact transformed bounds, official
 BOM, occurrence provenance, and renderer-neutral instruction sections. Exact
 stud contacts and AABB gaps are included through 1,000 occurrences and marked
 as skipped above that safety limit. The analyze command prepares the configured
-catalog automatically; if the library is missing, run `ldraw download --yes`.
+catalog automatically; if the library is missing, run
+`uv run ldraw download --yes`.
+
+The `source_steps` array describes the root instruction section's cumulative
+build prefixes. In each row, `section` names the source section and
+`geometry_changed` says whether that step added supported bricks. `evaluated`
+says whether a stability result is available for the prefix, including a result
+reused by an unchanged step. `feasible` is a boolean when `evaluated` is true
+and `null` otherwise.
 
 LDraw import — for both the generation and analyze workflows — snaps
 Studio-style export noise: positions within 0.2 LDU of the stud/plate grid

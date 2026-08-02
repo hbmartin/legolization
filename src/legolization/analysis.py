@@ -373,7 +373,12 @@ def analyze_ldraw(
     started = time.perf_counter()
     input_info = _input_info(path)
     assumptions = _assumptions(config)
-    prepared = _prepare_analysis_inputs(path, config, input_info, assumptions)
+    prepared = _prepare_analysis_inputs(
+        path=path,
+        config=config,
+        input_info=input_info,
+        assumptions=assumptions,
+    )
     if isinstance(prepared, AnalysisResult):
         return prepared
     catalog = prepared.catalog
@@ -543,14 +548,14 @@ def _instruction_section_payload(
         try:
             rows = (
                 _analyze_root_instruction_section(
-                    imported,
-                    section,
-                    config,
+                    imported=imported,
+                    section=section,
+                    config=config,
                     whole_model_result=whole_model_result,
                 )
                 if section.is_root
                 else _analyze_local_instruction_section(
-                    section,
+                    section=section,
                     catalog=imported.layout.catalog,
                     config=config,
                 )

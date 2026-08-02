@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Never, cast
 
 import pytest
-from ldraw import Diagnostic, DiagnosticCode, Severity
+from ldraw import CatalogPreparationResult, Diagnostic, DiagnosticCode, Severity
 
 from legolization import AnalysisConfig, AnalysisResult, analyze_ldraw
 from legolization.catalog import Category, load_catalog
@@ -389,9 +389,42 @@ def test_catalog_loading_failure_has_catalog_context(tmp_path: Path):
     assert str(catalog_path) in result.report.catalog["extensions"]
 
 
+def test_failed_catalog_preparation_is_retried_and_success_is_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report_module = import_module("legolization.ldraw_report")
+    prepared = report_module.prepare_analysis_catalog()
+    missing = replace(
+        prepared,
+        parts=None,
+        diagnostics=(
+            Diagnostic(
+                message="configured parts library is missing",
+                severity=Severity.ERROR,
+                code=DiagnosticCode.CATALOG_LIBRARY_MISSING,
+            ),
+        ),
+    )
+    responses = iter((missing, prepared))
+
+    def fake_prepare_catalog(
+        *,
+        capabilities: object,
+    ) -> CatalogPreparationResult:
+        assert capabilities
+        return next(responses)
+
+    report_module.clear_analysis_catalog_cache()
+    monkeypatch.setattr(report_module, "prepare_catalog", fake_prepare_catalog)
+
+    assert report_module.prepare_analysis_catalog() is missing
+    assert report_module.prepare_analysis_catalog() is prepared
+    assert report_module.prepare_analysis_catalog() is prepared
+
+
 def test_missing_pyldraw_catalog_is_fatal_with_setup_hint(
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     analysis_module = import_module("legolization.analysis")
     report_module = import_module("legolization.ldraw_report")
     prepared = report_module.prepare_analysis_catalog()
