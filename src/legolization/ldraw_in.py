@@ -198,7 +198,7 @@ class _DecodedOccurrence:
 
 
 @dataclass(frozen=True, slots=True)
-class _OccurrenceImport:
+class OccurrenceImport:
     """Decoded occurrences before they are wrapped in a document result."""
 
     layout: Layout
@@ -248,7 +248,7 @@ def import_ldraw(
             load_complete=loaded.complete,
         )
     document = loaded.model.instruction_document(parts=parts)
-    imported = _import_occurrences(
+    imported = import_occurrences(
         model_analysis.occurrences,
         catalog=catalog,
         ground=ground,
@@ -274,14 +274,14 @@ def import_ldraw(
     )
 
 
-def _import_occurrences(
+def import_occurrences(
     occurrences: Iterable[ModelOccurrence],
     *,
     catalog: Catalog,
     ground: bool,
     default_model: str,
     allow_main_colour: bool = False,
-) -> _OccurrenceImport:
+) -> OccurrenceImport:
     """Decode an already-materialized occurrence stream into one layout."""
     # Several catalog parts can share one LDraw code (a flat tile and its
     # sideways-mounted twin both emit 3070b), so the reverse map carries
@@ -380,7 +380,7 @@ def _import_occurrences(
                 ),
             )
             occurrence_bricks[item.index] = brick.brick_id
-    return _OccurrenceImport(
+    return OccurrenceImport(
         layout=layout,
         source_refs=source_refs,
         occurrence_bricks=occurrence_bricks,
@@ -537,7 +537,11 @@ def _decode_colour(
     if not isinstance(code, int):
         return None
     if allow_main_colour and code == 16:
-        return 7
+        # Colour 16 means "inherit from the placement", which has no world
+        # value when a submodel section is analyzed standalone. Substitute
+        # neutral Light_Grey — colour never affects physics — and still run
+        # it through the palette check below.
+        code = 7
     try:
         default_palette().name_of(code)
     except ValueError:
