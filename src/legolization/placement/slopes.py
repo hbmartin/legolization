@@ -97,7 +97,7 @@ def _apply_preserve(layout: Layout, grid: VoxelGrid) -> int:
     return placed
 
 
-def _try_preserve(  # noqa: PLR0913 - one candidate placement, locally owned
+def _try_preserve(  # noqa: PLR0913, PLR0917 - one candidate placement, locally owned
     layout: Layout,
     grid: VoxelGrid,
     part_key: str,

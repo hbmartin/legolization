@@ -228,7 +228,7 @@ def render_step_images(
     )
 
 
-def _render_with_subassemblies(  # noqa: PLR0913 - one bag of render state
+def _render_with_subassemblies(  # noqa: PLR0913, PLR0917 - one bag of render state
     model_path: Path,
     plan: InstructionPlan,
     text: str,
@@ -308,7 +308,7 @@ def _extract_submodel(text: str, file_name: str) -> str | None:
     return None
 
 
-def _render_text(  # noqa: PLR0913 - one bag of render state, locally owned
+def _render_text(  # noqa: PLR0913, PLR0917 - one bag of render state, locally owned
     name: str,
     text: str,
     longitudes: tuple[float, ...],

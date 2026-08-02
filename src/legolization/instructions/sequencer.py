@@ -166,13 +166,16 @@ class InstructionPlan:
         return tuple(step for step in self.steps if step.submodel == name)
 
 
-def plan_instructions(
-    layout: Layout,
-    *,
-    config: InstructionsConfig | None = None,
-) -> InstructionPlan:
-    """Sequence the layout into digestible, never-unstable-mid-build steps."""
-    config = config or InstructionsConfig()
+@dataclass(frozen=True, slots=True)
+class _SequencingRelations:
+    supports: dict[int, set[int]]
+    blockers: dict[int, frozenset[int]]
+    blocks: dict[int, set[int]]
+    neighbours: dict[int, set[int]]
+
+
+def _sequencing_relations(layout: Layout) -> _SequencingRelations:
+    """Build the support, blocking, and contact relations used by sequencing."""
     graph = ConnectionGraph.from_layout(layout)
     supports: dict[int, set[int]] = {brick_id: set() for brick_id in layout.bricks}
     neighbours: dict[int, set[int]] = {brick_id: set() for brick_id in layout.bricks}
@@ -189,6 +192,22 @@ def plan_instructions(
     for brick_id, blocked_by in blockers.items():
         for blocker in blocked_by:
             blocks[blocker].add(brick_id)
+    return _SequencingRelations(
+        supports=supports,
+        blockers=blockers,
+        blocks=blocks,
+        neighbours=neighbours,
+    )
+
+
+def plan_instructions(
+    layout: Layout,
+    *,
+    config: InstructionsConfig | None = None,
+) -> InstructionPlan:
+    """Sequence the layout into digestible, never-unstable-mid-build steps."""
+    config = config or InstructionsConfig()
+    relations = _sequencing_relations(layout)
 
     chunks = chunk_bands(layout, config=config, pairs=mirror_pairs(layout))
     # With subassemblies on, strictness is judged AFTER the rewrite: the
@@ -204,10 +223,10 @@ def plan_instructions(
         layout,
         sequencing_config,
         chunks,
-        supports,
-        blockers,
-        blocks,
-        neighbours,
+        relations.supports,
+        relations.blockers,
+        relations.blocks,
+        relations.neighbours,
     )
     plan = InstructionPlan(
         steps=tuple(ordered_steps),
@@ -244,7 +263,7 @@ def _assign_rotsteps_subaware(
     return [step if step.submodel is not None else next(rotated) for step in steps]
 
 
-def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - sequencing state
+def _sequence(  # noqa: PLR0913, PLR0915, PLR0917, C901 - sequencing state
     layout: Layout,
     config: InstructionsConfig,
     chunks: list[tuple[int, tuple[int, ...]]],
@@ -468,6 +487,126 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - sequencing state
             )
         )
 
+    def finish_unready() -> None:
+        """Finish a deadlocked sequence using the configured fallback."""
+        if config.fallback == "disassembly":
+            rescue()
+            return
+        # Legacy escape hatch: pure band order is always insertion-feasible,
+        # but its verdicts go unchecked.
+        disable_warm_engine()
+        warnings.append("sequencer deadlocked; remaining steps follow band order")
+        for position in pending:
+            _, chunk = chunks[position]
+            result = analyze_prefix(chunk)
+            emit_verdicts(
+                [
+                    ChunkVerdict(
+                        chunk=chunk,
+                        stable=result.stable,
+                        max_score=result.max_score,
+                    )
+                ]
+            )
+
+    def order_ready(ready: list[int]) -> list[int]:
+        if not config.spatial_tiebreak or previous_centroid is None:
+            return ready
+        return _spatial_order(ready, chunks, centroids, previous_centroid)
+
+    def resolve_fragile(
+        best_fragile: tuple[float, int, float],
+    ) -> tuple[int, set[int]] | None:
+        """Emit or refine the least-fragile candidate in the ready window."""
+        nonlocal previous_centroid
+        press_score, position, static_score = best_fragile
+        _, chunk = chunks[position]
+        subset = _best_press_subset(
+            layout,
+            chunk,
+            placed=placed,
+            supports=supports,
+            blockers=blockers,
+            blocks=blocks,
+            max_step_size=config.max_step_size,
+            analyze_prefix=analyze_prefix,
+            press_prefix=press_prefix,
+            press_selection=press_selection,
+        )
+        if subset is not None:
+            subset_chunk, subset_score = subset
+            emit(subset_chunk, stable=True, score=subset_score)
+            if prefix_solver is not None:
+                prefix_solver.commit(subset_chunk)
+            remainder = tuple(
+                brick_id for brick_id in chunk if brick_id not in subset_chunk
+            )
+            chunks[position] = (chunks[position][0], remainder)
+            centroids[position] = chunk_centroid(layout, remainder)
+            previous_centroid = chunk_centroid(layout, subset_chunk)
+            return None
+        composite = _best_press_union(
+            layout,
+            seed=position,
+            pending=pending,
+            chunks=chunks,
+            placed=placed,
+            supports=supports,
+            blockers=blockers,
+            blocks=blocks,
+            neighbours=neighbours,
+            band_rank=band_rank,
+            brick_position=brick_position,
+            max_step_size=config.max_step_size,
+            analyze_prefix=analyze_prefix,
+            press_prefix=press_prefix,
+        )
+        if composite is not None:
+            positions, chunk, static_score, fragile, union_press_score = composite
+            if fragile:
+                warnings.append(
+                    f"step {len(steps) + 1}: insertion-fragile "
+                    f"(press score {union_press_score:.2f}); "
+                    "press bricks home gently and support the joint"
+                )
+            emit(chunk, stable=True, score=static_score, fragile=fragile)
+            if prefix_solver is not None:
+                prefix_solver.commit(chunk)
+            return position, set(positions)
+        # No legal adjacent union improves the forced window. Preserve the
+        # warning and least-fragile fallback.
+        warnings.append(
+            f"step {len(steps) + 1}: insertion-fragile "
+            f"(press score {press_score:.2f}); "
+            "press bricks home gently and support the joint"
+        )
+        emit(chunk, stable=True, score=static_score, fragile=True)
+        if prefix_solver is not None:
+            prefix_solver.commit(chunk)
+        return position, {position}
+
+    def resolve_unstable(best: tuple[float, int]) -> tuple[int, set[int]] | None:
+        """Apply the configured fallback for a ready but unstable window."""
+        score, position = best
+        if config.fallback == "disassembly":
+            rescue()
+            return None
+        if config.stability_policy == "strict":
+            msg = (
+                f"no stable ordering at step {len(steps) + 1} "
+                f"(best prefix score {score:.3f})"
+            )
+            raise InstructionsError(msg)
+        _, chunk = chunks[position]
+        warnings.append(
+            f"step {len(steps) + 1}: prefix unstable (score {score:.2f}); "
+            "support the overhang by hand while building"
+        )
+        emit(chunk, stable=False, score=score)
+        if prefix_solver is not None:
+            prefix_solver.commit(chunk)
+        return position, {position}
+
     if config.search == "beam":
         emit_verdicts(
             beam_order(
@@ -495,28 +634,9 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - sequencing state
             limit=config.beam_width,
         )
         if not ready:
-            if config.fallback == "disassembly":
-                rescue()
-                break
-            # Legacy escape hatch: pure band order is always
-            # insertion-feasible, but its verdicts go unchecked.
-            disable_warm_engine()
-            warnings.append("sequencer deadlocked; remaining steps follow band order")
-            for position in pending:
-                _, chunk = chunks[position]
-                result = analyze_prefix(chunk)
-                emit_verdicts(
-                    [
-                        ChunkVerdict(
-                            chunk=chunk,
-                            stable=result.stable,
-                            max_score=result.max_score,
-                        )
-                    ]
-                )
+            finish_unready()
             break
-        if config.spatial_tiebreak and previous_centroid is not None:
-            ready = _spatial_order(ready, chunks, centroids, previous_centroid)
+        ready = order_ready(ready)
 
         chosen, best, best_fragile = _scan_ready_window(
             ready,
@@ -528,104 +648,14 @@ def _sequence(  # noqa: PLR0912, PLR0913, PLR0915, C901 - sequencing state
         )
         consumed = {chosen} if chosen is not None else set()
         if chosen is None and best_fragile is not None:
-            press_score, position, static_score = best_fragile
-            _, chunk = chunks[position]
-            subset = _best_press_subset(
-                layout,
-                chunk,
-                placed=placed,
-                supports=supports,
-                blockers=blockers,
-                blocks=blocks,
-                max_step_size=config.max_step_size,
-                analyze_prefix=analyze_prefix,
-                press_prefix=press_prefix,
-                press_selection=press_selection,
-            )
-            if subset is not None:
-                subset_chunk, subset_score = subset
-                emit(subset_chunk, stable=True, score=subset_score)
-                if prefix_solver is not None:
-                    prefix_solver.commit(subset_chunk)
-                remainder = tuple(
-                    brick_id for brick_id in chunk if brick_id not in subset_chunk
-                )
-                chunks[position] = (chunks[position][0], remainder)
-                centroids[position] = chunk_centroid(layout, remainder)
-                previous_centroid = chunk_centroid(layout, subset_chunk)
+            if (resolved := resolve_fragile(best_fragile)) is None:
                 continue
-            composite = _best_press_union(
-                layout,
-                seed=position,
-                pending=pending,
-                chunks=chunks,
-                placed=placed,
-                supports=supports,
-                blockers=blockers,
-                blocks=blocks,
-                neighbours=neighbours,
-                band_rank=band_rank,
-                brick_position=brick_position,
-                max_step_size=config.max_step_size,
-                analyze_prefix=analyze_prefix,
-                press_prefix=press_prefix,
-            )
-            if composite is not None:
-                positions, chunk, static_score, fragile, union_press_score = composite
-                if fragile:
-                    warnings.append(
-                        f"step {len(steps) + 1}: insertion-fragile "
-                        f"(press score {union_press_score:.2f}); "
-                        "press bricks home gently and support the joint"
-                    )
-                emit(
-                    chunk,
-                    stable=True,
-                    score=static_score,
-                    fragile=fragile,
-                )
-                if prefix_solver is not None:
-                    prefix_solver.commit(chunk)
-                chosen = position
-                consumed = set(positions)
-            else:
-                # No legal adjacent union improves the forced window.
-                # Preserve the warning and least-fragile fallback.
-                warnings.append(
-                    f"step {len(steps) + 1}: insertion-fragile "
-                    f"(press score {press_score:.2f}); "
-                    "press bricks home gently and support the joint"
-                )
-                emit(chunk, stable=True, score=static_score, fragile=True)
-                if prefix_solver is not None:
-                    prefix_solver.commit(chunk)
-                chosen = position
-                consumed = {position}
+            chosen, consumed = resolved
         if chosen is None:
             assert best is not None  # noqa: S101 - ready was non-empty
-            score, position = best
-            if config.fallback == "disassembly":
-                # No stable prefix in the window: re-plan the remainder
-                # along the maximal-stability disassembly path instead of
-                # committing to the least-bad forward pick.
-                rescue()
+            if (resolved := resolve_unstable(best)) is None:
                 break
-            if config.stability_policy == "strict":
-                msg = (
-                    f"no stable ordering at step {len(steps) + 1} "
-                    f"(best prefix score {score:.3f})"
-                )
-                raise InstructionsError(msg)
-            _, chunk = chunks[position]
-            warnings.append(
-                f"step {len(steps) + 1}: prefix unstable (score {score:.2f}); "
-                "support the overhang by hand while building"
-            )
-            emit(chunk, stable=False, score=score)
-            if prefix_solver is not None:
-                prefix_solver.commit(chunk)
-            chosen = position
-            consumed = {position}
+            chosen, consumed = resolved
         emitted_ids = steps[-1].brick_ids
         previous_centroid = chunk_centroid(layout, emitted_ids)
         for position in sorted(consumed):
@@ -777,7 +807,108 @@ def _press_union_allowed(  # noqa: PLR0913 - explicit union constraints
     )
 
 
-def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
+type _PressUnionRank = tuple[
+    int,
+    float,
+    float,
+    tuple[int, ...],
+    tuple[int, ...],
+    tuple[int, ...],
+    float,
+]
+
+
+def _expanded_press_positions(  # noqa: PLR0913 - explicit search state
+    *,
+    positions: frozenset[int],
+    candidate_position: int,
+    pending_set: set[int],
+    chunks: list[tuple[int, tuple[int, ...]]],
+    placed: set[int],
+    supports: dict[int, set[int]],
+    brick_position: dict[int, int],
+) -> frozenset[int] | None:
+    """Add a candidate and close the union over every unplaced support chunk."""
+    expanded = set(positions)
+    expanded.add(candidate_position)
+    changed = True
+    while changed:
+        changed = False
+        expanded_ids = {
+            brick_id for position in expanded for brick_id in chunks[position][1]
+        }
+        missing = {
+            dependency
+            for brick_id in expanded_ids
+            for dependency in supports[brick_id]
+            if dependency not in placed and dependency not in expanded_ids
+        }
+        for dependency in sorted(missing):
+            support_position = brick_position.get(dependency)
+            if support_position is None or support_position not in pending_set:
+                return None
+            if support_position not in expanded:
+                expanded.add(support_position)
+                changed = True
+    return frozenset(expanded)
+
+
+def _evaluate_press_union(  # noqa: PLR0913 - explicit candidate state
+    layout: Layout,
+    *,
+    state: frozenset[int],
+    seed: int,
+    chunks: list[tuple[int, tuple[int, ...]]],
+    centroids: dict[int, tuple[float, float]],
+    placed: set[int],
+    supports: dict[int, set[int]],
+    blockers: dict[int, frozenset[int]],
+    blocks: dict[int, set[int]],
+    neighbours: dict[int, set[int]],
+    band_rank: dict[int, int],
+    max_step_size: int,
+    analyze_prefix: Callable[[tuple[int, ...]], StabilityResult],
+    press_prefix: Callable[[tuple[int, ...]], StabilityResult],
+) -> tuple[_PressUnionRank | None, bool] | None:
+    """Validate and rank one closed press-union state."""
+    union = tuple(
+        brick_id for position in sorted(state) for brick_id in chunks[position][1]
+    )
+    if not _press_union_allowed(
+        layout,
+        union,
+        placed=placed,
+        supports=supports,
+        blockers=blockers,
+        blocks=blocks,
+        neighbours=neighbours,
+        band_rank=band_rank,
+        max_step_size=max_step_size,
+    ):
+        return None
+    static = analyze_prefix(union)
+    press = press_prefix(union)
+    if not static.stable:
+        return None, press.stable
+    seed_x, seed_y = centroids[seed]
+    distance = sum(
+        (centroids[position][0] - seed_x) ** 2 + (centroids[position][1] - seed_y) ** 2
+        for position in state
+        if position != seed
+    )
+    rank = (
+        len(union),
+        press.max_score,
+        distance,
+        tuple(sorted(union)),
+        tuple(sorted(state)),
+        union,
+        static.max_score,
+    )
+    return rank, press.stable
+
+
+def _best_press_union(  # noqa: PLR0913 - candidate state
     layout: Layout,
     *,
     seed: int,
@@ -801,28 +932,8 @@ def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
     }
     queue: list[frozenset[int]] = [frozenset({seed})]
     seen = {queue[0]}
-    ranked: list[
-        tuple[
-            int,
-            float,
-            float,
-            tuple[int, ...],
-            tuple[int, ...],
-            tuple[int, ...],
-            float,
-        ]
-    ] = []
-    fragile_ranked: list[
-        tuple[
-            int,
-            float,
-            float,
-            tuple[int, ...],
-            tuple[int, ...],
-            tuple[int, ...],
-            float,
-        ]
-    ] = []
+    ranked: list[_PressUnionRank] = []
+    fragile_ranked: list[_PressUnionRank] = []
     while queue and len(seen) <= 128:
         positions = queue.pop(0)
         adjacent = _adjacent_chunk_positions(
@@ -833,47 +944,24 @@ def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
             centroids=centroids,
         )
         for candidate_position in adjacent:
-            expanded = set(positions)
-            expanded.add(candidate_position)
-            # Pull in the complete base chunk for every unplaced support.
-            changed = True
-            while changed:
-                changed = False
-                expanded_ids = {
-                    brick_id
-                    for position in expanded
-                    for brick_id in chunks[position][1]
-                }
-                missing = {
-                    dependency
-                    for brick_id in expanded_ids
-                    for dependency in supports[brick_id]
-                    if dependency not in placed and dependency not in expanded_ids
-                }
-                for dependency in sorted(missing):
-                    support_position = brick_position.get(dependency)
-                    if support_position is None or support_position not in pending_set:
-                        expanded = set()
-                        break
-                    if support_position not in expanded:
-                        expanded.add(support_position)
-                        changed = True
-                if not expanded:
-                    break
-            if not expanded:
-                continue
-            state = frozenset(expanded)
-            if state in seen:
+            state = _expanded_press_positions(
+                positions=positions,
+                candidate_position=candidate_position,
+                pending_set=pending_set,
+                chunks=chunks,
+                placed=placed,
+                supports=supports,
+                brick_position=brick_position,
+            )
+            if state is None or state in seen:
                 continue
             seen.add(state)
-            union = tuple(
-                brick_id
-                for position in sorted(state)
-                for brick_id in chunks[position][1]
-            )
-            if not _press_union_allowed(
+            evaluated = _evaluate_press_union(
                 layout,
-                union,
+                state=state,
+                seed=seed,
+                chunks=chunks,
+                centroids=centroids,
                 placed=placed,
                 supports=supports,
                 blockers=blockers,
@@ -881,48 +969,14 @@ def _best_press_union(  # noqa: C901, PLR0912, PLR0913 - candidate state
                 neighbours=neighbours,
                 band_rank=band_rank,
                 max_step_size=max_step_size,
-            ):
+                analyze_prefix=analyze_prefix,
+                press_prefix=press_prefix,
+            )
+            if evaluated is None:
                 continue
-            static = analyze_prefix(union)
-            press = press_prefix(union)
-            if static.stable and press.stable:
-                seed_x, seed_y = centroids[seed]
-                distance = sum(
-                    (centroids[position][0] - seed_x) ** 2
-                    + (centroids[position][1] - seed_y) ** 2
-                    for position in state
-                    if position != seed
-                )
-                ranked.append(
-                    (
-                        len(union),
-                        press.max_score,
-                        distance,
-                        tuple(sorted(union)),
-                        tuple(sorted(state)),
-                        union,
-                        static.max_score,
-                    )
-                )
-            elif static.stable:
-                seed_x, seed_y = centroids[seed]
-                distance = sum(
-                    (centroids[position][0] - seed_x) ** 2
-                    + (centroids[position][1] - seed_y) ** 2
-                    for position in state
-                    if position != seed
-                )
-                fragile_ranked.append(
-                    (
-                        len(union),
-                        press.max_score,
-                        distance,
-                        tuple(sorted(union)),
-                        tuple(sorted(state)),
-                        union,
-                        static.max_score,
-                    )
-                )
+            rank, press_stable = evaluated
+            if rank is not None:
+                (ranked if press_stable else fragile_ranked).append(rank)
             queue.append(state)
     if not ranked and not fragile_ranked:
         return None
@@ -996,7 +1050,7 @@ def _scan_ready_window(  # noqa: PLR0913 - the scan reads the loop's shared stat
     return None, best, best_fragile
 
 
-def _gather_ready(  # noqa: PLR0913 - the readiness scan reads all sequencing state
+def _gather_ready(  # noqa: PLR0913, PLR0917 - the readiness scan reads all sequencing state
     pending: list[int],
     chunks: list[tuple[int, tuple[int, ...]]],
     placed: set[int],

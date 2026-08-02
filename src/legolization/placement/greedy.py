@@ -325,7 +325,7 @@ def _run_length(
     return length
 
 
-def _seam_distance(  # noqa: PLR0913 - a border probe is naturally six scalars
+def _seam_distance(  # noqa: PLR0913, PLR0917 - a border probe is naturally six scalars
     layout: Layout,
     x: int,
     y: int,

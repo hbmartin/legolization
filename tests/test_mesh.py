@@ -23,14 +23,19 @@ def _box() -> trimesh.Trimesh:
 
 
 def _two_components() -> trimesh.Trimesh:
-    return trimesh.util.concatenate(
-        [
-            trimesh.creation.box(extents=(2.0, 2.0, 2.0)),
-            trimesh.creation.box(
-                extents=(1.0, 1.0, 1.0),
-                transform=trimesh.transformations.translation_matrix((5.0, 0.0, 0.0)),
-            ),
-        ]
+    return cast(
+        "trimesh.Trimesh",
+        trimesh.util.concatenate(
+            [
+                trimesh.creation.box(extents=(2.0, 2.0, 2.0)),
+                trimesh.creation.box(
+                    extents=(1.0, 1.0, 1.0),
+                    transform=trimesh.transformations.translation_matrix(
+                        (5.0, 0.0, 0.0)
+                    ),
+                ),
+            ]
+        ),
     )
 
 

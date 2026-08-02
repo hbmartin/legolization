@@ -43,7 +43,7 @@ BRIDGE_DRAWS = 5  # best-of-k candidates per bridging step (layered strategies)
 _FALLBACK_COLOUR = 71  # light bluish gray, for IGNORE bricks with no neighbour
 
 
-def place_rect(  # noqa: PLR0913 - a rect placement is naturally seven scalars
+def place_rect(  # noqa: PLR0913, PLR0917 - a rect placement is naturally seven scalars
     layout: Layout,
     x0: int,
     y0: int,

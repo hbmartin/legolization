@@ -263,6 +263,227 @@ def test_import_strict_reports_every_problem(tmp_path):
     assert "collides" in problems
 
 
+def test_import_rejects_parser_errors_but_preserves_all_valid_occurrences(
+    tmp_path: Path,
+):
+    from legolization.ldraw_in import LdrawImportError, import_ldraw
+
+    path = tmp_path / "malformed.ldr"
+    path.write_text(
+        "0 malformed\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "9 this command is invalid\n"
+        "1 4 40 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+    )
+
+    with pytest.raises(LdrawImportError) as excinfo:
+        import_ldraw(path)
+
+    diagnostic = next(
+        item
+        for item in excinfo.value.diagnostics
+        if str(item.code) == "parse.invalid_line"
+    )
+    assert diagnostic.line_number == 3
+    assert diagnostic.path == path
+    assert diagnostic.section == "malformed.ldr"
+    assert excinfo.value.details == ()
+
+
+def test_import_reports_non_utf8_input_structurally(tmp_path: Path):
+    from legolization.ldraw_in import LdrawImportError, import_ldraw
+
+    path = tmp_path / "binary.ldr"
+    path.write_bytes(b"0 invalid utf-8: \xff\n")
+
+    with pytest.raises(LdrawImportError) as excinfo:
+        import_ldraw(path)
+
+    assert [str(item.code) for item in excinfo.value.diagnostics] == [
+        "io.decode_failed"
+    ]
+    assert excinfo.value.diagnostics[0].path == path
+
+
+def test_import_reports_unreadable_input_structurally(tmp_path: Path):
+    from legolization.ldraw_in import LdrawImportError, import_ldraw
+
+    path = tmp_path / "missing.ldr"
+
+    with pytest.raises(LdrawImportError) as excinfo:
+        import_ldraw(path)
+
+    assert [str(item.code) for item in excinfo.value.diagnostics] == ["io.read_failed"]
+    assert excinfo.value.diagnostics[0].path == path
+
+
+def test_import_preserves_warning_only_load_diagnostics(tmp_path: Path):
+    from legolization.ldraw_in import import_ldraw
+
+    path = tmp_path / "warning.ldr"
+    path.write_text(
+        "0 warning\n0 !UNRECOGNIZED report-me\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+    )
+
+    imported = import_ldraw(path)
+
+    assert imported.load_complete is True
+    assert len(imported.layout) == 1
+    warning = next(
+        item for item in imported.diagnostics if str(item.code) == "model.unknown_meta"
+    )
+    assert str(warning.severity) == "warning"
+    assert warning.line_number == 2
+
+
+def test_import_records_complete_nested_occurrence_paths(tmp_path: Path):
+    from legolization.ldraw_in import import_ldraw
+
+    path = tmp_path / "nested.mpd"
+    path.write_text(
+        "0 FILE nested.mpd\n"
+        "0 nested\n"
+        "1 16 0 0 0 1 0 0 0 1 0 0 0 1 child.ldr\n"
+        "0 STEP\n"
+        "1 4 80 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 NOFILE\n"
+        "0 FILE child.ldr\n"
+        "0 child\n"
+        "1 16 0 0 0 1 0 0 0 1 0 0 0 1 leaf.ldr\n"
+        "0 STEP\n"
+        "1 14 40 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 NOFILE\n"
+        "0 FILE leaf.ldr\n"
+        "0 leaf\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 NOFILE\n"
+    )
+
+    imported = import_ldraw(path)
+    leaf_ref = next(ref for ref in imported.source_refs.values() if len(ref.path) == 3)
+
+    assert [item.source_model for item in leaf_ref.path] == [
+        "nested.mpd",
+        "child.ldr",
+        "leaf.ldr",
+    ]
+    assert [item.reference for item in leaf_ref.path] == [
+        "child.ldr",
+        "leaf.ldr",
+        "3005.dat",
+    ]
+    assert [item.source_line for item in leaf_ref.path] == [3, 9, 15]
+    assert [item.local_step for item in leaf_ref.path] == [1, 1, 1]
+    assert [item.effective_step for item in leaf_ref.path] == [1, 1, 1]
+    assert leaf_ref.source_step == 1
+    assert leaf_ref.global_step == 1
+
+
+@pytest.mark.parametrize(
+    ("contents", "expected_code"),
+    [
+        (
+            (
+                "0 FILE duplicate.mpd\n"
+                "0 root\n"
+                "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+                "0 NOFILE\n"
+                "0 FILE duplicate.mpd\n"
+                "0 duplicate root\n"
+                "0 NOFILE\n"
+            ),
+            "mpd.duplicate_section",
+        ),
+        (
+            (
+                "0 FILE cycle.mpd\n"
+                "0 cycle root\n"
+                "1 16 0 0 0 1 0 0 0 1 0 0 0 1 child.ldr\n"
+                "0 NOFILE\n"
+                "0 FILE child.ldr\n"
+                "0 child\n"
+                "1 16 0 0 0 1 0 0 0 1 0 0 0 1 cycle.mpd\n"
+                "0 NOFILE\n"
+            ),
+            "mpd.cycle",
+        ),
+    ],
+)
+def test_import_rejects_invalid_mpd_structure_with_stable_diagnostics(
+    tmp_path: Path,
+    contents: str,
+    expected_code: str,
+):
+    from legolization.ldraw_in import LdrawImportError, import_ldraw
+
+    path = tmp_path / f"{expected_code}.mpd"
+    path.write_text(contents)
+
+    with pytest.raises(LdrawImportError) as excinfo:
+        import_ldraw(path)
+
+    diagnostic = next(
+        item for item in excinfo.value.diagnostics if str(item.code) == expected_code
+    )
+    assert str(diagnostic.severity) == "error"
+    assert diagnostic.path == path
+    assert diagnostic.section is not None
+
+
+def test_import_retains_unresolved_submodel_warning_with_placement_error(
+    tmp_path: Path,
+):
+    from legolization.ldraw_in import LdrawImportError, import_ldraw
+
+    path = tmp_path / "unresolved.mpd"
+    path.write_text(
+        "0 FILE unresolved.mpd\n"
+        "0 unresolved\n"
+        "1 16 0 0 0 1 0 0 0 1 0 0 0 1 missing.ldr\n"
+        "0 NOFILE\n"
+    )
+
+    with pytest.raises(LdrawImportError) as excinfo:
+        import_ldraw(path)
+
+    warning = next(
+        item
+        for item in excinfo.value.diagnostics
+        if str(item.code) == "mpd.unresolved_submodel"
+    )
+    assert str(warning.severity) == "warning"
+    assert warning.line_number == 3
+    assert len(excinfo.value.details) == 1
+    assert "part not in the catalog" in excinfo.value.details[0].message
+
+
+def test_instruction_document_separates_orphans_and_embedded_dat_dependencies(
+    tmp_path: Path,
+):
+    from legolization.ldraw_in import import_ldraw
+
+    path = tmp_path / "sections.mpd"
+    path.write_text(
+        "0 FILE sections.mpd\n"
+        "0 root\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 NOFILE\n"
+        "0 FILE orphan.ldr\n"
+        "0 orphan\n"
+        "1 4 40 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 NOFILE\n"
+        "0 FILE custom.dat\n"
+        "0 embedded dependency\n"
+        "0 NOFILE\n"
+    )
+
+    document = import_ldraw(path).instruction_document
+
+    assert document is not None
+    assert [section.name for section in document.sections] == ["sections.mpd"]
+    assert [section.name for section in document.orphan_sections] == ["orphan.ldr"]
+
+
 def test_import_snaps_studio_transform_noise(tmp_path: Path):
     from legolization.ldraw_in import layout_from_ldraw
 

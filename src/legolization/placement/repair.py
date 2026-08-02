@@ -211,7 +211,7 @@ def _remove(layout: Layout, victims: set[int], grid: VoxelGrid) -> set[Cell]:
     }
 
 
-def _refill(  # noqa: PLR0913 - the filler owns the whole pipeline state
+def _refill(  # noqa: PLR0913, PLR0917 - the filler owns the whole pipeline state
     layout: Layout,
     freed: set[Cell],
     grid: VoxelGrid,

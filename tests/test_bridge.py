@@ -88,7 +88,7 @@ def test_rephase_selects_best_phase_deterministically(
     catalog,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    def fake_phase_candidate(  # noqa: PLR0913
+    def fake_phase_candidate(  # noqa: PLR0913, PLR0917
         self: BridgeSynthesizer,
         layout: Layout,
         region: set[int],
@@ -133,7 +133,7 @@ def test_default_path_flow_competes_with_partial_per_slab_cover(
     # component count (3 -> 2 here) no longer preempts flow escalation.
     # The flow candidate competes on the same (components, bricks) key
     # in the default phase-0 path and wins when it fully connects.
-    def partial_per_slab(  # noqa: PLR0913
+    def partial_per_slab(  # noqa: PLR0913, PLR0917
         self: BridgeSynthesizer,
         layout: Layout,
         region: set[int],
@@ -149,7 +149,7 @@ def test_default_path_flow_competes_with_partial_per_slab_cover(
         candidate.add("brick_2x2", 10, 10, 0, 0, 4)
         return candidate
 
-    def connected_flow(  # noqa: PLR0913
+    def connected_flow(  # noqa: PLR0913, PLR0917
         self: BridgeSynthesizer,
         layout: Layout,
         region: set[int],

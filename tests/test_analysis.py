@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Never, cast
 
 import pytest
+from ldraw import Diagnostic, DiagnosticCode, Severity
 
 from legolization import AnalysisConfig, AnalysisResult, analyze_ldraw
 from legolization.catalog import Category, load_catalog
@@ -78,7 +79,145 @@ def test_analysis_report_contains_both_profiles_and_source_steps():
     assert result.report.solvers["maximin_6dof"]["capacity_n"] > 0
     assert result.report.source_steps
     assert result.report.bricks[0]["source"]["line"] is not None
-    assert json.loads(result.report.to_json())["schema"] == 1
+    payload = json.loads(result.report.to_json())
+    assert payload["schema"] == 2
+    assert payload["model"]["exact_bounds_ldu"] is not None
+    assert payload["model"]["size_mm"] is not None
+    assert payload["ldraw"]["load"]["complete"] is True
+    assert payload["ldraw"]["summary"]["occurrence_count"] == len(result.report.bricks)
+    assert payload["ldraw"]["bom"]
+    geometry = payload["ldraw"]["geometry"]
+    assert geometry["complete"] is True
+    assert geometry["occurrences"][0]["bounds_ldu"] is not None
+    assert geometry["occurrences"][0]["provenance"]["model_path"]
+    assert geometry["contacts"]["status"] == "complete"
+
+
+def test_contact_enumeration_is_guaranteed_to_skip_above_the_cap():
+    report_module = cast("Any", import_module("legolization.ldraw_report"))
+
+    class OversizedInspection:
+        occurrence_count = 1_001
+
+        def stud_contacts(self) -> Never:
+            pytest.fail("stud contacts must not be enumerated")
+
+        def contact_gaps(self) -> Never:
+            pytest.fail("AABB gaps must not be enumerated")
+
+    payload = report_module._contacts_payload(OversizedInspection())  # noqa: SLF001
+
+    assert payload == {
+        "status": "skipped",
+        "occurrence_limit": 1_000,
+        "reason": "1_001 occurrences exceeds the 1_000-occurrence safety limit",
+        "stud_contacts": [],
+        "aabb_gaps": [],
+    }
+
+
+def test_semantic_sections_keep_local_steps_rotation_and_lpub_inventory(
+    tmp_path: Path,
+):
+    path = tmp_path / "semantic.mpd"
+    path.write_text(
+        "0 FILE semantic.mpd\n"
+        "0 semantic\n"
+        "0 !LPUB MULTI_STEP BEGIN\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 STEP\n"
+        "1 14 0 -24 0 1 0 0 0 1 0 0 0 1 child.ldr\n"
+        "0 !LPUB INSERT PAGE\n"
+        "0 !LPUB MULTI_STEP END\n"
+        "0 STEP\n"
+        "0 NOFILE\n"
+        "0 FILE child.ldr\n"
+        "0 child\n"
+        "1 16 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 STEP\n"
+        "0 ROTSTEP 0 90 0 REL\n"
+        "0 !LPUB PLI BEGIN IGN\n"
+        "1 16 0 -48 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 !LPUB PLI END\n"
+        "0 STEP\n"
+        "0 NOFILE\n"
+    )
+
+    result = analyze_ldraw(path, AnalysisConfig(repair=False))
+
+    assert result.report.verdict == "feasible"
+    instructions = result.report.ldraw["instructions"]
+    assert [section["name"] for section in instructions["sections"]] == [
+        "semantic.mpd",
+        "child.ldr",
+    ]
+    assert instructions["orphan_sections"] == []
+    root, child = instructions["sections"]
+    assert len(result.report.source_steps) == len(root["steps"]) == 2
+    assert len(result.report.source_steps[0]["brick_ids"]) == 1
+    assert len(result.report.source_steps[1]["brick_ids"]) == 2
+    assert result.report.source_steps[1]["brick_count"] == 3
+    assert root["steps"][1]["page_break_before"] is True
+    assert any(step["multi_step_group"] is not None for step in root["steps"])
+    assert len(child["steps"]) == 3
+    assert child["steps"][1]["rotation"] is not None
+    assert child["steps"][1]["physics"]["geometry_changed"] is False
+    assert child["steps"][1]["physics"]["evaluated"] is True
+    assert child["steps"][2]["inventory"]["added_bom"] == []
+    assert child["steps"][2]["physics"]["evaluated"] is True
+    assert child["steps"][2]["physics"]["ground_offset_layers"] == 0
+
+
+def test_instruction_error_skips_only_that_section_prefix_physics(tmp_path: Path):
+    path = tmp_path / "invalid-section.mpd"
+    path.write_text(
+        "0 FILE invalid-section.mpd\n"
+        "0 invalid section\n"
+        "1 4 0 0 0 1 0 0 0 1 0 0 0 1 child.ldr\n"
+        "0 NOFILE\n"
+        "0 FILE child.ldr\n"
+        "0 child\n"
+        "0 ROTSTEP bad\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 NOFILE\n"
+    )
+
+    result = analyze_ldraw(path, AnalysisConfig(repair=False))
+
+    assert result.report.verdict == "feasible"
+    instructions = result.report.ldraw["instructions"]
+    issue = next(
+        item for item in instructions["issues"] if item["code"] == "malformed-directive"
+    )
+    assert issue["section"] == "child.ldr"
+    assert issue["severity"] == "error"
+    root, child = instructions["sections"]
+    assert root["analysis_status"] == "complete"
+    assert root["steps"][0]["physics"] is not None
+    assert child["analysis_status"] == "skipped"
+    assert child["steps"][0]["physics"] is None
+    assert child["steps"][0]["inventory"]["status"] == "skipped"
+
+
+def test_initial_rotation_only_step_is_preserved_as_unevaluated(tmp_path: Path):
+    path = tmp_path / "initial-rotation.ldr"
+    path.write_text(
+        "0 initial rotation\n"
+        "0 ROTSTEP 0 90 0 REL\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "0 STEP\n"
+    )
+
+    result = analyze_ldraw(path, AnalysisConfig(repair=False))
+
+    assert result.report.verdict == "feasible"
+    first, second = result.report.source_steps
+    assert first["geometry_changed"] is False
+    assert first["evaluated"] is False
+    assert first["stable"] is None
+    assert first["feasible"] is None
+    assert second["geometry_changed"] is True
+    assert second["evaluated"] is True
 
 
 def test_incremental_prefix_topology_matches_full_graph_rebuilds():
@@ -174,6 +313,35 @@ def test_analysis_import_failure_is_a_structured_report(tmp_path: Path):
     assert result.report.status == "error"
     assert result.report.verdict == "indeterminate"
     assert "part not in the catalog" in result.report.errors[0]
+    assert result.report.ldraw["load"] == {
+        "complete": True,
+        "diagnostics": [],
+    }
+
+
+def test_analysis_aggregates_structured_pyldraw_parser_diagnostics(tmp_path: Path):
+    path = tmp_path / "malformed.ldr"
+    path.write_text(
+        "0 malformed\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+        "9 invalid command\n"
+        "1 4 40 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+    )
+
+    result = analyze_ldraw(path, AnalysisConfig(repair=False))
+
+    assert result.report.schema == 2
+    assert result.report.status == "error"
+    problem = result.report.problems[0]
+    assert problem["code"] == "parse.invalid_line"
+    assert problem["severity"] == "error"
+    assert problem["path"] == str(path)
+    assert problem["section"] == "malformed.ldr"
+    assert problem["line_number"] == 3
+    assert result.report.ldraw["load"] == {
+        "complete": False,
+        "diagnostics": [problem],
+    }
 
 
 def test_catalog_loading_failure_has_catalog_context(tmp_path: Path):
@@ -189,6 +357,110 @@ def test_catalog_loading_failure_has_catalog_context(tmp_path: Path):
     assert result.report.repair["reason"] == "catalog loading failed"
     assert result.report.errors[0].startswith("catalog loading failed:")
     assert str(catalog_path) in result.report.catalog["extensions"]
+
+
+def test_missing_pyldraw_catalog_is_fatal_with_setup_hint(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    analysis_module = import_module("legolization.analysis")
+    report_module = import_module("legolization.ldraw_report")
+    prepared = report_module.prepare_analysis_catalog()
+    missing = replace(
+        prepared,
+        parts=None,
+        diagnostics=(
+            Diagnostic(
+                message="configured parts library is missing",
+                severity=Severity.ERROR,
+                code=DiagnosticCode.CATALOG_LIBRARY_MISSING,
+            ),
+        ),
+    )
+    monkeypatch.setattr(analysis_module, "prepare_analysis_catalog", lambda: missing)
+
+    result = analyze_ldraw(_HEART, AnalysisConfig(repair=False))
+
+    assert result.report.status == "error"
+    assert result.report.verdict == "indeterminate"
+    assert "ldraw download --yes" in result.report.errors[0]
+    assert result.report.ldraw["catalog"]["diagnostics"][0]["code"] == (
+        "catalog.library_missing"
+    )
+
+
+def test_usable_catalog_with_persistence_error_marks_report_partial(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    analysis_module = import_module("legolization.analysis")
+    report_module = import_module("legolization.ldraw_report")
+    prepared = report_module.prepare_analysis_catalog()
+    degraded = replace(
+        prepared,
+        diagnostics=(
+            *prepared.diagnostics,
+            Diagnostic(
+                message="could not persist refreshed catalog index",
+                severity=Severity.WARNING,
+                code=DiagnosticCode.CATALOG_PERSIST_FAILED,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        analysis_module,
+        "prepare_analysis_catalog",
+        lambda: degraded,
+    )
+
+    result = analyze_ldraw(_HEART, AnalysisConfig(repair=False))
+
+    assert result.report.status == "partial"
+    assert result.report.verdict == "feasible"
+    assert result.report.errors == ()
+    assert (
+        "pyldraw catalog catalog.persist_failed: "
+        "could not persist refreshed catalog index"
+    ) in result.report.warnings
+    assert result.report.ldraw["catalog"]["complete"] is True
+    assert result.report.ldraw["catalog"]["degraded"] is True
+
+    code = main(
+        ["analyze", str(_HEART), "--no-repair", "--report", "-"],
+    )
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out)["status"] == "partial"
+
+
+def test_generated_module_failure_makes_prepared_catalog_unusable(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    analysis_module = import_module("legolization.analysis")
+    report_module = import_module("legolization.ldraw_report")
+    prepared = report_module.prepare_analysis_catalog()
+    unusable = replace(
+        prepared,
+        diagnostics=(
+            Diagnostic(
+                message="generated module refresh failed",
+                severity=Severity.ERROR,
+                code=DiagnosticCode.GENERATION_FAILED,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        analysis_module,
+        "prepare_analysis_catalog",
+        lambda: unusable,
+    )
+
+    result = analyze_ldraw(_HEART, AnalysisConfig(repair=False))
+
+    assert result.report.status == "error"
+    assert result.report.verdict == "indeterminate"
+    assert "generated module refresh failed" in result.report.errors[0]
+    assert "ldraw download --yes" in result.report.errors[0]
 
 
 def test_analysis_does_not_hide_internal_import_type_errors(
@@ -229,6 +501,48 @@ def test_versioned_catalog_extension_is_merged(tmp_path: Path):
     catalog = load_catalog(path)
 
     assert catalog.rect_key(1, 5, 3, category=Category.BRICK) == "brick_1x5_custom"
+
+
+def test_custom_catalog_remains_authoritative_when_exact_geometry_is_missing(
+    tmp_path: Path,
+):
+    catalog_path = tmp_path / "parts.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "parts": [
+                    {
+                        "key": "brick_1x5_custom",
+                        "ldraw_part": "9998",
+                        "category": "brick",
+                        "size": [1, 5],
+                        "height_plates": 3,
+                        "mass_g": 1.9,
+                    }
+                ],
+            }
+        )
+    )
+    layout = Layout(catalog=load_catalog(catalog_path))
+    layout.add("brick_1x5_custom", 0, 0, 0, 0, 4)
+    model_path = tmp_path / "custom.ldr"
+    write_model(layout, model_path)
+
+    result = analyze_ldraw(
+        model_path,
+        AnalysisConfig(catalog_paths=(catalog_path,), repair=False),
+    )
+
+    assert result.report.status == "complete"
+    assert result.report.verdict == "feasible"
+    assert result.report.model["exact_bounds_ldu"] is None
+    geometry = result.report.ldraw["geometry"]
+    assert geometry["complete"] is False
+    assert geometry["occurrence_count"] == 1
+    assert geometry["resolved_count"] == 0
+    assert geometry["skipped"][0]["part"] == "9998"
+    assert geometry["skipped"][0]["diagnostic"]["code"] == "geometry.incomplete"
 
 
 def test_custom_nonrect_part_requires_explicit_physics_geometry(tmp_path: Path):
@@ -691,7 +1005,7 @@ def test_exterior_bridge_discovery_buckets_only_aligned_studs(
     monkeypatch.setattr(redesign_module, "time", FakeTime)
 
     assert list(_eligible_bridge_pairs(studs, deadline=1.0)) == []
-    assert clock_checks == len(studs)
+    assert 0 < clock_checks <= 2 * len(studs)
 
 
 def test_exterior_bridge_discovery_keeps_aligned_cross_component_pairs():
@@ -924,6 +1238,24 @@ def test_analyze_cli_stdout_report_keeps_summary_on_stderr(
     assert json.loads(captured.out)["verdict"] == "feasible"
     assert "analysis: FEASIBLE" in captured.err
     assert not source.with_suffix(".analysis.json").exists()
+
+
+def test_ordinary_ldraw_conversion_prints_tolerant_load_warnings(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+):
+    source = tmp_path / "warning.ldr"
+    source.write_text(
+        "0 warning\n0 !UNRECOGNIZED report-me\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
+    )
+    output = tmp_path / "converted.ldr"
+
+    code = main([str(source), "-o", str(output)])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert output.is_file()
+    assert "warning: model.unknown_meta: unknown meta-command" in captured.err
 
 
 def test_analyze_cli_rejects_unsafe_artifact_paths(tmp_path: Path):

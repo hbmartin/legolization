@@ -729,7 +729,7 @@ class PrefixSolver:
                 )
             self._force_col(batch, 0.0, loads)
 
-    def _emit_knob(  # noqa: PLR0913 - one scalar per knob attribute
+    def _emit_knob(  # noqa: PLR0913, PLR0917 - one scalar per knob attribute
         self,
         below: int,
         above: int,

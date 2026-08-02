@@ -14,7 +14,14 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ldraw.model import read_model
+from ldraw import (
+    Diagnostic,
+    InstructionDocument,
+    ModelAnalysis,
+    Severity,
+    iter_ldr_issues,
+    load_model,
+)
 
 from legolization.catalog import Category, default_catalog, rotate_offset
 from legolization.color import default_palette
@@ -28,10 +35,12 @@ from legolization.ldraw_units import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
     from ldraw.geometry import Matrix, Vector
     from ldraw.model import ModelOccurrence
+    from ldraw.parts import Parts
 
     from legolization.catalog import Catalog, Part
 
@@ -64,13 +73,42 @@ def _yaw_for_outward(part: Part, outward: tuple[int, int]) -> int | None:
 class LdrawImportError(ValueError):
     """The model contains pieces this pipeline cannot represent."""
 
-    def __init__(self, details: list[LdrawImportProblem]) -> None:
+    def __init__(
+        self,
+        details: Iterable[LdrawImportProblem],
+        *,
+        diagnostics: Iterable[Diagnostic] = (),
+        load_diagnostics: Iterable[Diagnostic] | None = None,
+        load_complete: bool | None = None,
+    ) -> None:
         self.details = tuple(details)
-        self.problems = tuple(problem.summary for problem in details)
+        self.diagnostics = tuple(diagnostics)
+        self.load_diagnostics = (
+            self.diagnostics if load_diagnostics is None else tuple(load_diagnostics)
+        )
+        self.load_complete = load_complete
+        diagnostic_problems = tuple(
+            _diagnostic_summary(diagnostic)
+            for diagnostic in self.diagnostics
+            if diagnostic.severity is Severity.ERROR
+        )
+        self.problems = diagnostic_problems + tuple(
+            problem.summary for problem in self.details
+        )
         summary = "\n  ".join(self.problems)
         super().__init__(
-            f"cannot import model ({len(details)} problem(s)):\n  {summary}"
+            f"cannot import model ({len(self.problems)} problem(s)):\n  {summary}"
         )
+
+
+def _diagnostic_summary(diagnostic: Diagnostic) -> str:
+    """Render one pyldraw diagnostic for the compatibility error surface."""
+    location = str(diagnostic.path) if diagnostic.path is not None else "model"
+    if diagnostic.section is not None:
+        location = f"{location}:{diagnostic.section}"
+    if diagnostic.line_number is not None:
+        location = f"{location}:{diagnostic.line_number}"
+    return f"{diagnostic.code} at {location}: {diagnostic.message}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +144,18 @@ class LdrawSourceRef:
     source_line: int | None
     source_step: int | None
     global_step: int | None
+    path: tuple[LdrawSourcePathItem, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class LdrawSourcePathItem:
+    """One placement in a flattened occurrence's root-to-leaf path."""
+
+    source_model: str
+    reference: str
+    source_line: int | None
+    local_step: int | None
+    effective_step: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,10 +165,18 @@ class ImportedLdrawModel:
     layout: Layout
     source_refs: dict[int, LdrawSourceRef]
     ground_offset_layers: int = 0
+    load_complete: bool = True
+    diagnostics: tuple[Diagnostic, ...] = ()
+    instruction_document: InstructionDocument | None = None
+    model_analysis: ModelAnalysis | None = None
 
     @property
     def has_explicit_steps(self) -> bool:
         """Whether the source contains more than the implicit first step."""
+        if self.instruction_document is not None:
+            return any(
+                len(section.steps) > 1 for section in self.instruction_document.sections
+            )
         return any(
             (ref.global_step or ref.source_step or 1) > 1
             for ref in self.source_refs.values()
@@ -137,6 +195,17 @@ class _DecodedOccurrence:
     layer: int
     yaw: int
     colour: int
+
+
+@dataclass(frozen=True, slots=True)
+class _OccurrenceImport:
+    """Decoded occurrences before they are wrapped in a document result."""
+
+    layout: Layout
+    source_refs: dict[int, LdrawSourceRef]
+    occurrence_bricks: dict[int, int]
+    ground_offset_layers: int
+    problems: tuple[LdrawImportProblem, ...]
 
 
 def layout_from_ldraw(
@@ -161,9 +230,59 @@ def import_ldraw(
     *,
     catalog: Catalog | None = None,
     ground: bool = False,
+    parts: Parts | None = None,
 ) -> ImportedLdrawModel:
-    """Read a model with stable source references for every imported brick."""
+    """Read a model once with diagnostics and stable occurrence provenance."""
     catalog = catalog or default_catalog()
+    # Parser/structure diagnostics stay independent of pyldraw's catalog:
+    # legolization's curated (and extensible) catalog remains authoritative
+    # for whether a placement is supported. Exact geometry below can still
+    # report an unavailable pyldraw part as supplementary skipped evidence.
+    loaded = load_model(path)
+    load_diagnostics = tuple(iter_ldr_issues(loaded))
+    model_analysis = loaded.analyze(parts)
+    if loaded.model is None or model_analysis is None:
+        raise LdrawImportError(
+            (),
+            diagnostics=load_diagnostics,
+            load_complete=loaded.complete,
+        )
+    document = loaded.model.instruction_document(parts=parts)
+    imported = _import_occurrences(
+        model_analysis.occurrences,
+        catalog=catalog,
+        ground=ground,
+        default_model=path.name,
+    )
+    if imported.problems or any(
+        diagnostic.severity is Severity.ERROR for diagnostic in load_diagnostics
+    ):
+        raise LdrawImportError(
+            imported.problems,
+            diagnostics=model_analysis.diagnostics,
+            load_diagnostics=load_diagnostics,
+            load_complete=loaded.complete,
+        )
+    return ImportedLdrawModel(
+        layout=imported.layout,
+        source_refs=imported.source_refs,
+        ground_offset_layers=imported.ground_offset_layers,
+        load_complete=loaded.complete,
+        diagnostics=load_diagnostics,
+        instruction_document=document,
+        model_analysis=model_analysis,
+    )
+
+
+def _import_occurrences(
+    occurrences: Iterable[ModelOccurrence],
+    *,
+    catalog: Catalog,
+    ground: bool,
+    default_model: str,
+    allow_main_colour: bool = False,
+) -> _OccurrenceImport:
+    """Decode an already-materialized occurrence stream into one layout."""
     # Several catalog parts can share one LDraw code (a flat tile and its
     # sideways-mounted twin both emit 3070b), so the reverse map carries
     # every candidate in catalog order and the decode disambiguates: a
@@ -174,35 +293,39 @@ def import_ldraw(
         reverse.setdefault(part.ldraw_part.casefold(), []).append(part.key)
     layout = Layout(catalog=catalog)
     source_refs: dict[int, LdrawSourceRef] = {}
+    occurrence_bricks: dict[int, int] = {}
     problems: list[LdrawImportProblem] = []
     decoded: list[_DecodedOccurrence] = []
-    # iter_occurrences composes MPD submodel transforms into world frame;
-    # iter_pieces would yield submodel pieces in their local frames.
-    for index, occurrence in enumerate(read_model(path).iter_occurrences(), start=1):
+    for index, occurrence in enumerate(occurrences, start=1):
         if (candidates := reverse.get(str(occurrence.part_code).casefold())) is None:
             problems.append(
                 _problem(
                     index,
                     occurrence,
                     "part not in the catalog",
-                    default_model=path.name,
+                    default_model=default_model,
                 )
             )
             continue
-        if (colour := _decode_colour(occurrence.colour)) is None:
+        if (
+            colour := _decode_colour(
+                occurrence.colour,
+                allow_main_colour=allow_main_colour,
+            )
+        ) is None:
             problems.append(
                 _problem(
                     index,
                     occurrence,
                     "colour is not in the solid palette",
-                    default_model=path.name,
+                    default_model=default_model,
                 )
             )
             continue
         matched = _match_candidates(catalog, candidates, occurrence)
         if isinstance(matched, str):
             problems.append(
-                _problem(index, occurrence, matched, default_model=path.name)
+                _problem(index, occurrence, matched, default_model=default_model)
             )
             continue
         matched_key, (x, y, layer, yaw) = matched
@@ -235,23 +358,34 @@ def import_ldraw(
                     item.index,
                     item.occurrence,
                     str(error),
-                    default_model=path.name,
+                    default_model=default_model,
                 )
             )
         else:
             source_refs[brick.brick_id] = LdrawSourceRef(
                 occurrence=item.index,
-                source_model=str(item.occurrence.source_model.name or path.name),
+                source_model=str(item.occurrence.source_model.name or default_model),
                 source_line=item.occurrence.source_line,
                 source_step=item.occurrence.source_step,
                 global_step=item.occurrence.step,
+                path=tuple(
+                    LdrawSourcePathItem(
+                        source_model=str(path_item.model.name or default_model),
+                        reference=path_item.piece.reference,
+                        source_line=path_item.source_line,
+                        local_step=path_item.local_step,
+                        effective_step=path_item.effective_step,
+                    )
+                    for path_item in item.occurrence.path
+                ),
             )
-    if problems:
-        raise LdrawImportError(problems)
-    return ImportedLdrawModel(
+            occurrence_bricks[item.index] = brick.brick_id
+    return _OccurrenceImport(
         layout=layout,
         source_refs=source_refs,
+        occurrence_bricks=occurrence_bricks,
         ground_offset_layers=ground_offset,
+        problems=tuple(problems),
     )
 
 
@@ -393,11 +527,17 @@ def _decode_yaw(matrix: Matrix) -> int | None:
     return None if flat is None else _YAW_MATRICES.get(flat)
 
 
-def _decode_colour(colour: object) -> int | None:
+def _decode_colour(
+    colour: object,
+    *,
+    allow_main_colour: bool = False,
+) -> int | None:
     """Return the palette colour code, or None if unknown."""
     code = getattr(colour, "code", colour)
     if not isinstance(code, int):
         return None
+    if allow_main_colour and code == 16:
+        return 7
     try:
         default_palette().name_of(code)
     except ValueError:

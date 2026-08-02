@@ -187,7 +187,7 @@ def test_smga_returns_best_chromosome_across_generations(monkeypatch):
         del args, kwargs
         return list(next(initial))
 
-    def fake_next_generation(  # noqa: PLR0913 - mirrors the production method
+    def fake_next_generation(  # noqa: PLR0913, PLR0917 - mirrors the production method
         self, problem, below, rng, population, fitnesses, p_mut
     ) -> tuple[list[tuple[Rect2D, ...]], list[float]]:
         del problem, rng, population, fitnesses, p_mut

@@ -583,7 +583,7 @@ def _relative(path: Path) -> str:
         return path.as_posix()
 
 
-def _collect_model(  # noqa: PLR0913 - one model needs all collection state
+def _collect_model(  # noqa: PLR0913, PLR0917 - one model needs all collection state
     corpus: ModuleType,
     model: CorpusModelLike,
     args: argparse.Namespace,

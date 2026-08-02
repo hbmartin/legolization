@@ -324,8 +324,8 @@ def _solve_lp_highspy(
     lp.row_lower_ = np.full(rows, -np.inf)
     lp.row_upper_ = b_ub
     lp.a_matrix_.format_ = highspy.MatrixFormat.kColwise
-    lp.a_matrix_.start_ = csc.indptr
-    lp.a_matrix_.index_ = csc.indices
+    lp.a_matrix_.start_ = np.asarray(csc.indptr, dtype=np.int64)
+    lp.a_matrix_.index_ = np.asarray(csc.indices, dtype=np.int64)
     lp.a_matrix_.value_ = csc.data
     solver = highspy.Highs()
     solver.setOptionValue("output_flag", False)  # noqa: FBT003 - pybind API

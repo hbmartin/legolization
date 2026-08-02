@@ -3,8 +3,9 @@
 The palette is introspected from the generated ``ldraw.library.colours``
 module, restricted to opaque solid colours (no metallic/chrome/glitter
 finishes, no transparency) so every quantized code is a colour real bricks
-come in. Distance uses the "redmean" weighted-Euclidean approximation, a
-cheap stand-in for perceptual distance that needs no extra dependencies.
+come in. Distance uses the "redmean" weighted-Euclidean approximation plus
+a chroma-preservation term, a cheap stand-in for perceptual distance that
+needs no extra dependencies.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from ldraw.colour import Colour
 
 _PSEUDO_CODES = frozenset({16, 24})  # LDraw main/edge placeholder colours
 _RGB_CHANNELS = 3
+_CHROMA_WEIGHT = 4.0
 
 # The generated colours module encodes finish only in the colour *name*
 # (attributes and alpha are unreliable), so filter by name tokens.
@@ -86,6 +88,11 @@ class Palette:
             (2.0 + mean_red / 256.0) * delta[:, :, 0] ** 2
             + 4.0 * delta[:, :, 1] ** 2
             + (2.0 + (255.0 - mean_red) / 256.0) * delta[:, :, 2] ** 2
+        )
+        pixel_chroma = np.ptp(pixels, axis=1)
+        palette_chroma = np.ptp(self.rgbs, axis=1)
+        distance += (
+            _CHROMA_WEIGHT * (pixel_chroma[:, None] - palette_chroma[None, :]) ** 2
         )
         return self.codes[np.argmin(distance, axis=1)]
 

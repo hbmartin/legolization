@@ -79,7 +79,7 @@ class Layout:
         cells = part.cells_at(x, y, layer, yaw)
         return all(cell[2] >= 0 and cell not in self.occupancy for cell in cells)
 
-    def add(  # noqa: PLR0913 - a placement is naturally six scalars
+    def add(  # noqa: PLR0913, PLR0917 - a placement is naturally six scalars
         self,
         part_key: str,
         x: int,

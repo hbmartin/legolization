@@ -298,7 +298,7 @@ def search_repair(  # noqa: PLR0913 - public search configuration
     )
 
 
-def _search_worker(  # noqa: PLR0913 - process target mirrors search inputs
+def _search_worker(  # noqa: PLR0913, PLR0917 - process target mirrors search inputs
     layout: Layout,
     physics_seed_ids: tuple[int, ...],
     parity_solver: SolverConfig,

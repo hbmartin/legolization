@@ -16,7 +16,17 @@ from legolization.ldraw_in import (
     ImportedLdrawModel,
     LdrawImportError,
     LdrawSourceRef,
+    _import_occurrences,
     import_ldraw,
+)
+from legolization.ldraw_report import (
+    build_ldraw_payload,
+    catalog_degraded,
+    catalog_error,
+    catalog_payload,
+    diagnostic_payload,
+    instruction_issues,
+    prepare_analysis_catalog,
 )
 from legolization.stability.links import LinkReport, localize_instability
 from legolization.stability.prefix import PrefixSolver
@@ -33,6 +43,15 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from ldraw import (
+        CatalogPreparationResult,
+        InstructionIssue,
+        InstructionSection,
+        ModelOccurrence,
+        Vector,
+    )
+
+    from legolization.catalog import Catalog
     from legolization.layout import Layout
 
 Verdict = Literal["feasible", "infeasible", "indeterminate"]
@@ -84,13 +103,14 @@ class AnalysisReport:
     topology: dict[str, Any]
     solvers: dict[str, Any]
     catalog: dict[str, Any] = field(default_factory=dict)
+    ldraw: dict[str, Any] = field(default_factory=dict)
     bricks: tuple[dict[str, Any], ...] = ()
     source_steps: tuple[dict[str, Any], ...] = ()
     repair: dict[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
     problems: tuple[dict[str, Any], ...] = ()
-    schema: int = 1
+    schema: int = 2
 
     @property
     def feasible(self) -> bool:
@@ -113,6 +133,16 @@ class AnalysisResult:
     report: AnalysisReport
     imported: ImportedLdrawModel | None = None
     repaired_layout: Layout | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _AnalysisInputs:
+    """Catalogs and imported model prepared before physics begins."""
+
+    catalog: Catalog
+    pyldraw_catalog: CatalogPreparationResult
+    catalog_info: dict[str, Any]
+    imported: ImportedLdrawModel
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,7 +211,7 @@ class _PrefixTopology:
         while self.parent[root] != root:
             root = self.parent[root]
         while self.parent[brick_id] != brick_id:
-            brick_id, self.parent[brick_id] = self.parent[brick_id], root
+            self.parent[brick_id], brick_id = root, self.parent[brick_id]
         return root
 
     def _union(self, first: int, second: int) -> None:
@@ -204,10 +234,6 @@ class _PrefixTopology:
         return 0 if self.grounded_roots[root] else self.sizes[root]
 
 
-class _SourceStepLimitError(ValueError):
-    """Source-step analysis was skipped because the document is pathological."""
-
-
 def _error_report(  # noqa: PLR0913 - shared report fields stay explicit
     *,
     reason: str,
@@ -215,6 +241,7 @@ def _error_report(  # noqa: PLR0913 - shared report fields stay explicit
     input_info: dict[str, Any],
     assumptions: dict[str, Any],
     catalog_info: dict[str, Any],
+    ldraw_info: dict[str, Any] | None = None,
     imported: ImportedLdrawModel | None = None,
     problems: tuple[dict[str, Any], ...] = (),
 ) -> AnalysisReport:
@@ -224,25 +251,28 @@ def _error_report(  # noqa: PLR0913 - shared report fields stay explicit
         verdict="indeterminate",
         input=input_info,
         assumptions=assumptions,
-        model=_model_summary(imported.layout) if imported is not None else {},
+        model=(
+            _model_summary(imported.layout, imported=imported)
+            if imported is not None
+            else {}
+        ),
         topology={},
         solvers={},
         catalog=catalog_info,
+        ldraw=ldraw_info or {},
         repair={"status": "skipped", "reason": reason},
         errors=errors,
         problems=problems,
     )
 
 
-def analyze_ldraw(
+def _prepare_analysis_inputs(
     path: Path,
-    config: AnalysisConfig | None = None,
-) -> AnalysisResult:
-    """Analyze an existing LDraw model and optionally search for a repair."""
-    config = config or AnalysisConfig()
-    started = time.perf_counter()
-    input_info = _input_info(path)
-    assumptions = _assumptions(config)
+    config: AnalysisConfig,
+    input_info: dict[str, Any],
+    assumptions: dict[str, Any],
+) -> _AnalysisInputs | AnalysisResult:
+    """Load both catalogs and strictly import one tolerantly parsed model."""
     catalog_info: dict[str, Any] = {
         "schema": CATALOG_SCHEMA,
         "version": f"schema-{CATALOG_SCHEMA}",
@@ -261,9 +291,44 @@ def analyze_ldraw(
             )
         )
     try:
-        imported = import_ldraw(path, catalog=catalog, ground=config.auto_ground)
+        pyldraw_catalog = prepare_analysis_catalog()
+    except (OSError, RuntimeError, ValueError) as error:
+        return AnalysisResult(
+            report=_error_report(
+                reason="pyldraw catalog preparation failed",
+                errors=(f"pyldraw catalog preparation failed: {error}",),
+                input_info=input_info,
+                assumptions=assumptions,
+                catalog_info=catalog_info,
+            )
+        )
+    pyldraw_catalog_payload = catalog_payload(pyldraw_catalog)
+    catalog_info = {**catalog_info, "pyldraw": pyldraw_catalog_payload}
+    if (catalog_failure := catalog_error(pyldraw_catalog)) is not None:
+        return AnalysisResult(
+            report=_error_report(
+                reason="pyldraw catalog unavailable",
+                errors=(catalog_failure,),
+                input_info=input_info,
+                assumptions=assumptions,
+                catalog_info=catalog_info,
+                ldraw_info={"catalog": pyldraw_catalog_payload},
+            )
+        )
+    if pyldraw_catalog.parts is None:  # narrowed by catalog_error above
+        raise AssertionError
+    try:
+        imported = import_ldraw(
+            path,
+            catalog=catalog,
+            ground=config.auto_ground,
+            parts=pyldraw_catalog.parts,
+        )
     except (LdrawImportError, OSError, ValueError) as error:
         errors, problems = _import_error_payload(error)
+        diagnostics = (
+            error.load_diagnostics if isinstance(error, LdrawImportError) else ()
+        )
         return AnalysisResult(
             report=_error_report(
                 reason="import failed",
@@ -272,8 +337,46 @@ def analyze_ldraw(
                 assumptions=assumptions,
                 catalog_info=catalog_info,
                 problems=problems,
+                ldraw_info={
+                    "catalog": pyldraw_catalog_payload,
+                    "load": {
+                        "complete": (
+                            error.load_complete
+                            if isinstance(error, LdrawImportError)
+                            and error.load_complete is not None
+                            else False
+                        ),
+                        "diagnostics": [
+                            diagnostic_payload(item) for item in diagnostics
+                        ],
+                    },
+                },
             )
         )
+    return _AnalysisInputs(
+        catalog=catalog,
+        pyldraw_catalog=pyldraw_catalog,
+        catalog_info=catalog_info,
+        imported=imported,
+    )
+
+
+def analyze_ldraw(
+    path: Path,
+    config: AnalysisConfig | None = None,
+) -> AnalysisResult:
+    """Analyze an existing LDraw model and optionally search for a repair."""
+    config = config or AnalysisConfig()
+    started = time.perf_counter()
+    input_info = _input_info(path)
+    assumptions = _assumptions(config)
+    prepared = _prepare_analysis_inputs(path, config, input_info, assumptions)
+    if isinstance(prepared, AnalysisResult):
+        return prepared
+    catalog = prepared.catalog
+    pyldraw_catalog = prepared.pyldraw_catalog
+    catalog_info = prepared.catalog_info
+    imported = prepared.imported
 
     grounded_input = {
         **input_info,
@@ -310,15 +413,53 @@ def analyze_ldraw(
             ),
         )
 
-    source_steps, step_warnings = _source_step_payload(imported, config)
-    warnings = step_warnings + tuple(
-        f"source step {row['step']} is not feasible"
-        for row in source_steps
-        if not bool(row["feasible"])
+    section_physics, issues, step_warnings = _instruction_section_payload(
+        imported,
+        config,
+    )
+    document = imported.instruction_document
+    source_steps = (
+        section_physics.get(document.root.name, ())
+        if document is not None
+        and config.check_source_steps
+        and imported.has_explicit_steps
+        else ()
+    )
+    warnings = (
+        tuple(
+            f"pyldraw catalog {diagnostic.code}: {diagnostic.message}"
+            for diagnostic in pyldraw_catalog.diagnostics
+            if str(diagnostic.severity) == "warning"
+        )
+        + tuple(
+            f"{diagnostic.code}: {diagnostic.message}"
+            for diagnostic in imported.diagnostics
+            if str(diagnostic.severity) == "warning"
+        )
+        + tuple(
+            f"instruction {issue.section}:{issue.line_number or '?'} "
+            f"[{issue.code}]: {issue.message}"
+            for issue in issues
+        )
+        + step_warnings
     )
     repair_payload, repaired_layout = _repair_payload(imported, physics, config)
+    ldraw_info = build_ldraw_payload(
+        imported,
+        pyldraw_catalog,
+        section_physics=section_physics,
+        issues=issues,
+    )
+    catalog_errors = tuple(
+        f"pyldraw catalog {diagnostic.code}: {diagnostic.message}"
+        for diagnostic in pyldraw_catalog.diagnostics
+        if str(diagnostic.severity) == "error"
+    )
     report = AnalysisReport(
-        status=_status_for(repair_payload),
+        status=_status_for(
+            repair_payload,
+            catalog_is_degraded=catalog_degraded(pyldraw_catalog),
+        ),
         verdict="feasible" if physics.feasible else "infeasible",
         input={
             **grounded_input,
@@ -327,14 +468,16 @@ def analyze_ldraw(
             "elapsed_seconds": round(time.perf_counter() - started, 6),
         },
         assumptions=assumptions,
-        model=_model_summary(imported.layout),
+        model=_model_summary(imported.layout, imported=imported),
         topology=_topology_payload(physics.graph),
         solvers=_solver_payload(physics),
         catalog=catalog_info,
+        ldraw=ldraw_info,
         bricks=_brick_payloads(imported, physics),
         source_steps=source_steps,
         repair=repair_payload,
         warnings=warnings,
+        errors=catalog_errors,
     )
     return AnalysisResult(
         report=report,
@@ -349,23 +492,153 @@ def _import_error_payload(
     if isinstance(error, LdrawImportError):
         return (
             error.problems,
-            tuple(asdict(problem) for problem in error.details),
+            tuple(
+                diagnostic_payload(diagnostic)
+                for diagnostic in error.diagnostics
+                if str(diagnostic.severity) == "error"
+            )
+            + tuple(asdict(problem) for problem in error.details),
         )
     return ((str(error),), ())
 
 
-def _source_step_payload(
+def _instruction_section_payload(
     imported: ImportedLdrawModel,
     config: AnalysisConfig,
-) -> tuple[tuple[dict[str, Any], ...], tuple[str, ...]]:
-    if not config.check_source_steps or not imported.has_explicit_steps:
-        return (), ()
-    try:
-        return _analyze_source_steps(imported, config), ()
-    except _SourceStepLimitError as error:
-        return (), (str(error),)
-    except (RuntimeError, ValueError) as error:
-        return (), (f"source-step analysis failed: {error}",)
+) -> tuple[
+    dict[str, tuple[dict[str, Any], ...]],
+    tuple[InstructionIssue, ...],
+    tuple[str, ...],
+]:
+    """Analyze every reliable reachable semantic instruction section."""
+    document = imported.instruction_document
+    if document is None:
+        return {}, (), ()
+    issues = instruction_issues(document)
+    if not config.check_source_steps:
+        return {}, issues, ()
+    step_count = sum(len(section.steps) for section in document.sections)
+    if step_count > _MAX_SOURCE_STEPS:
+        message = (
+            f"source-step analysis skipped: {step_count:_} steps exceeds "
+            f"the {_MAX_SOURCE_STEPS:_}-step safety limit"
+        )
+        return {}, issues, (message,)
+    error_sections = {
+        issue.section for issue in issues if str(issue.severity) == "error"
+    }
+    payload: dict[str, tuple[dict[str, Any], ...]] = {}
+    warnings: list[str] = []
+    for section in document.sections:
+        if section.name in error_sections:
+            warnings.append(
+                f"source-step analysis skipped for section {section.name}: "
+                "instruction validation failed"
+            )
+            continue
+        try:
+            rows = (
+                _analyze_root_instruction_section(imported, section, config)
+                if section.is_root
+                else _analyze_local_instruction_section(
+                    section,
+                    catalog=imported.layout.catalog,
+                    config=config,
+                )
+            )
+        except (RecursionError, RuntimeError, ValueError) as error:
+            warnings.append(
+                f"source-step analysis skipped for section {section.name}: {error}"
+            )
+            continue
+        payload[section.name] = rows
+        warnings.extend(
+            (
+                f"source step {row['step']} is not feasible"
+                if section.is_root
+                else f"source section {section.name} step {row['step']} is not feasible"
+            )
+            for row in rows
+            if row["evaluated"] and row["feasible"] is False
+        )
+    return payload, issues, tuple(warnings)
+
+
+def _analyze_root_instruction_section(
+    imported: ImportedLdrawModel,
+    section: InstructionSection,
+    config: AnalysisConfig,
+) -> tuple[dict[str, Any], ...]:
+    if imported.model_analysis is None:
+        return ()
+    brick_by_occurrence = {
+        source.occurrence: brick_id for brick_id, source in imported.source_refs.items()
+    }
+    step_by_outer_piece = {
+        id(piece): step.number for step in section.steps for piece in step.added_pieces
+    }
+    grouped: dict[int, list[int]] = {}
+    for index, occurrence in enumerate(
+        imported.model_analysis.occurrences,
+        start=1,
+    ):
+        if index not in brick_by_occurrence or not occurrence.path:
+            continue
+        step = step_by_outer_piece[id(occurrence.path[0].piece)]
+        grouped.setdefault(step, []).append(brick_by_occurrence[index])
+    groups = tuple(
+        (step.number, tuple(grouped.get(step.number, ()))) for step in section.steps
+    )
+    return _analyze_step_groups(
+        imported.layout,
+        groups,
+        section=section.name,
+        ground_offset_layers=imported.ground_offset_layers,
+        config=config,
+    )
+
+
+def _analyze_local_instruction_section(
+    section: InstructionSection,
+    *,
+    catalog: Catalog,
+    config: AnalysisConfig,
+) -> tuple[dict[str, Any], ...]:
+    occurrences: list[ModelOccurrence] = []
+    indexes_by_step: list[tuple[int, tuple[int, ...]]] = []
+    for step in section.steps:
+        added = step.added_occurrences()
+        start = len(occurrences) + 1
+        occurrences.extend(added)
+        indexes_by_step.append((step.number, tuple(range(start, start + len(added)))))
+    decoded = _import_occurrences(
+        occurrences,
+        catalog=catalog,
+        ground=True,
+        default_model=section.name,
+        allow_main_colour=True,
+    )
+    if decoded.problems:
+        message = "; ".join(problem.summary for problem in decoded.problems)
+        raise ValueError(message)
+    groups = tuple(
+        (
+            step,
+            tuple(
+                decoded.occurrence_bricks[index]
+                for index in indexes
+                if index in decoded.occurrence_bricks
+            ),
+        )
+        for step, indexes in indexes_by_step
+    )
+    return _analyze_step_groups(
+        decoded.layout,
+        groups,
+        section=section.name,
+        ground_offset_layers=decoded.ground_offset_layers,
+        config=config,
+    )
 
 
 def _repair_payload(
@@ -409,8 +682,12 @@ def _repair_payload(
 
 def _status_for(
     repair_payload: dict[str, Any],
+    *,
+    catalog_is_degraded: bool = False,
 ) -> Literal["complete", "partial"]:
     """Preserve a determined verdict while marking incomplete repair evidence."""
+    if catalog_is_degraded:
+        return "partial"
     match repair_payload.get("status"), repair_payload.get("timed_out"):
         case ("error", _) | (_, True):
             return "partial"
@@ -472,50 +749,58 @@ def _physics_seed_ids(physics: _PhysicsRun) -> tuple[int, ...]:
     return tuple(sorted(seeds))
 
 
-def _analyze_source_steps(
-    imported: ImportedLdrawModel,
+def _analyze_step_groups(
+    layout: Layout,
+    groups: tuple[tuple[int, tuple[int, ...]], ...],
+    *,
+    section: str,
+    ground_offset_layers: int,
     config: AnalysisConfig,
 ) -> tuple[dict[str, Any], ...]:
-    grouped: dict[int, list[int]] = {}
-    for brick_id, ref in imported.source_refs.items():
-        step = ref.global_step or ref.source_step or 1
-        grouped.setdefault(step, []).append(brick_id)
-    if len(grouped) > _MAX_SOURCE_STEPS:
-        msg = (
-            f"source-step analysis skipped: {len(grouped):_} steps exceeds "
-            f"the {_MAX_SOURCE_STEPS:_}-step safety limit"
-        )
-        raise _SourceStepLimitError(msg)
-    solver = PrefixSolver.create(layout=imported.layout, config=config.strict_solver)
-    prefix = imported.layout.subset(())
-    topology = _PrefixTopology.from_layout(imported.layout)
+    solver = (
+        PrefixSolver.create(layout=layout, config=config.strict_solver)
+        if layout.bricks
+        else None
+    )
+    prefix = layout.subset(())
+    topology = _PrefixTopology.from_layout(layout)
     rows: list[dict[str, Any]] = []
-    for step, brick_ids in sorted(grouped.items()):
+    previous: StabilityResult | None = None
+    for step, brick_ids in groups:
         chunk = tuple(sorted(brick_ids))
-        _extend_prefix_layout(prefix, imported.layout, chunk)
-        result = (
-            solver.probe(chunk)
-            if solver is not None
-            else analyze(layout=prefix, config=config.strict_solver)
-        )
-        topology.extend(chunk)
-        if solver is not None:
-            solver.commit(chunk)
+        geometry_changed = bool(chunk)
+        if geometry_changed:
+            if solver is None:
+                _extend_prefix_layout(prefix, layout, chunk)
+                result = analyze(layout=prefix, config=config.strict_solver)
+            else:
+                result = solver.probe(chunk)
+            topology.extend(chunk)
+            if solver is not None:
+                solver.commit(chunk)
+            previous = result
+        else:
+            result = previous
         feasible = (
-            result.stable
+            result is not None
+            and result.stable
             and topology.component_count == 1
             and topology.floating_count == 0
         )
         rows.append(
             {
+                "section": section,
                 "step": step,
                 "brick_ids": list(chunk),
                 "brick_count": len(topology.present),
-                "stable": result.stable,
-                "max_score": result.max_score,
+                "geometry_changed": geometry_changed,
+                "evaluated": result is not None,
+                "stable": result.stable if result is not None else None,
+                "max_score": result.max_score if result is not None else None,
                 "component_count": topology.component_count,
                 "floating_count": topology.floating_count,
-                "feasible": feasible,
+                "feasible": feasible if result is not None else None,
+                "ground_offset_layers": ground_offset_layers,
             }
         )
     return tuple(rows)
@@ -576,6 +861,16 @@ def _source_payload(source: LdrawSourceRef | None) -> dict[str, Any] | None:
         "line": source.source_line,
         "source_step": source.source_step,
         "global_step": source.global_step,
+        "path": [
+            {
+                "model": item.source_model,
+                "reference": item.reference,
+                "line": item.source_line,
+                "local_step": item.local_step,
+                "effective_step": item.effective_step,
+            }
+            for item in source.path
+        ],
     }
 
 
@@ -587,12 +882,40 @@ def _score_payload(score: BrickScore) -> dict[str, Any]:
     }
 
 
-def _model_summary(layout: Layout) -> dict[str, Any]:
-    return {
+def _model_summary(
+    layout: Layout,
+    *,
+    imported: ImportedLdrawModel | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "brick_count": len(layout),
         "mass_g": layout.total_mass_g(),
         "bounds": _bounds(layout),
     }
+    if imported is None or imported.model_analysis is None:
+        return payload
+    summary = imported.model_analysis.summary
+    payload.update(
+        {
+            "exact_bounds_ldu": (
+                {
+                    "minimum": _ldraw_vector(summary.bounds.min),
+                    "maximum": _ldraw_vector(summary.bounds.max),
+                    "size": _ldraw_vector(summary.bounds.size),
+                }
+                if summary.bounds is not None
+                else None
+            ),
+            "size_mm": (
+                _ldraw_vector(summary.size_mm) if summary.size_mm is not None else None
+            ),
+        }
+    )
+    return payload
+
+
+def _ldraw_vector(vector: Vector) -> list[float]:
+    return [float(vector.x), float(vector.y), float(vector.z)]
 
 
 def _bounds(layout: Layout) -> dict[str, list[int]] | None:

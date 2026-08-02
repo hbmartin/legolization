@@ -19,6 +19,7 @@ import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import lru_cache
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Self, cast
 
@@ -895,19 +896,17 @@ def _validate_decode_ambiguity(catalog: Catalog) -> None:
     for part in catalog.parts.values():
         by_code.setdefault(part.ldraw_part.casefold(), []).append(part)
     for parts in by_code.values():
-        for index, part in enumerate(parts):
-            for other in parts[index + 1 :]:
-                first_cosets = _decode_cosets(part)
-                other_cosets = _decode_cosets(other)
-                ambiguous = any(
-                    first_matrix == other_matrix
-                    and _cosets_overlap(first_position, other_position)
-                    for first_matrix, first_position in first_cosets
-                    for other_matrix, other_position in other_cosets
+        decoded = [(part, _decode_cosets(part)) for part in parts]
+        for (part, first_cosets), (other, other_cosets) in combinations(decoded, 2):
+            ambiguous = any(
+                first_matrix == other_matrix
+                and _cosets_overlap(first_position, other_position)
+                for first_matrix, first_position in first_cosets
+                for other_matrix, other_position in other_cosets
+            )
+            if ambiguous:
+                msg = (
+                    f"catalog parts {part.key!r} and {other.key!r} have "
+                    f"ambiguous LDraw decode metadata"
                 )
-                if ambiguous:
-                    msg = (
-                        f"catalog parts {part.key!r} and {other.key!r} have "
-                        f"ambiguous LDraw decode metadata"
-                    )
-                    raise ValueError(msg)
+                raise ValueError(msg)

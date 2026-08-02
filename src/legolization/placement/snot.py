@@ -184,7 +184,7 @@ def _runs(zs: list[int], *, min_run: int) -> list[list[int]]:
     return runs
 
 
-def _slide_path_clear(  # noqa: PLR0913 - one site is five scalars plus the layout
+def _slide_path_clear(  # noqa: PLR0913, PLR0917 - one site is five scalars plus the layout
     layout: Layout,
     grid: VoxelGrid,
     x: int,

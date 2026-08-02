@@ -304,13 +304,19 @@ def test_aggregate_collapses_press_fragile_runs() -> None:
     from legolization.instructions.booklet import _aggregate_support_warnings
 
     warnings = (
-        "step 3: insertion-fragile (press score 1.00); "
-        "press bricks home gently and support the joint",
-        "step 4: insertion-fragile (under press); "
-        "press bricks home gently and support the joint",
+        (
+            "step 3: insertion-fragile (press score 1.00); "
+            "press bricks home gently and support the joint"
+        ),
+        (
+            "step 4: insertion-fragile (under press); "
+            "press bricks home gently and support the joint"
+        ),
         "step 5: insertion-fragile; press bricks home gently",
-        "step 8: prefix unstable (score 1.00); "
-        "support the overhang by hand while building",
+        (
+            "step 8: prefix unstable (score 1.00); "
+            "support the overhang by hand while building"
+        ),
         "unrelated warning",
     )
     aggregated = _aggregate_support_warnings(warnings)
