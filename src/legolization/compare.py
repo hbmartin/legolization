@@ -35,6 +35,7 @@ from legolization.instructions.sequencer import InstructionsConfig
 from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import ObjectiveWeights, evaluate
 from legolization.placement.registry import strategy_names
+from legolization.runtime import ProgressCallback, ProgressEvent
 from legolization.stability import (
     SolverConfig,
     build_model_from_config,
@@ -226,7 +227,7 @@ def restart_race(  # noqa: PLR0913 - mirrors run_all's dispatch knobs
     seeds: Sequence[int],
     jobs: int = 0,
     timeout_s: float | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> tuple[int, SelectionReport]:
     """Race ``config.strategy`` across seeds; return the winning seed.
 
@@ -251,9 +252,67 @@ def restart_race(  # noqa: PLR0913 - mirrors run_all's dispatch knobs
         timeout_s=timeout_s,
         progress=progress,
     )
-    report = select_best(candidates)
+    report = _select_restart_best(candidates, objective=config.cost_objective)
     winner_seed = report.winner.seed if report.winner is not None else seeds[0]
     return winner_seed, report
+
+
+def _select_restart_best(
+    candidates: Sequence[Candidate],
+    *,
+    objective: str,
+) -> SelectionReport:
+    """Apply the deterministic heuristic-restart contract in canonical order."""
+    ordered = tuple(
+        sorted(candidates, key=lambda candidate: (candidate.strategy, candidate.seed))
+    )
+    eligible = [candidate for candidate in ordered if candidate.ok]
+    if not eligible:
+        return SelectionReport(
+            winner=None,
+            reason="every deterministic restart failed",
+            candidates=ordered,
+        )
+    winner = min(eligible, key=lambda item: _restart_key(item, objective=objective))
+    return SelectionReport(
+        winner=winner,
+        reason=f"deterministic {objective} restart ordering",
+        candidates=ordered,
+    )
+
+
+def _restart_key(candidate: Candidate, *, objective: str) -> tuple[object, ...]:
+    metrics = candidate.metrics
+    if metrics is None:
+        return (1, float("inf"), float("inf"), float("inf"), float("inf"), ())
+    configured_cost = metrics.mass_g if objective == "mass" else metrics.brick_count
+    return (
+        not metrics.buildable,
+        metrics.component_count,
+        metrics.floating_count,
+        metrics.max_score,
+        configured_cost,
+        _layout_signature(candidate.result),
+    )
+
+
+def _layout_signature(result: PipelineResult | None) -> tuple[tuple[object, ...], ...]:
+    if result is None:
+        return ()
+    return tuple(
+        sorted(
+            (
+                brick.part_key,
+                brick.x,
+                brick.y,
+                brick.layer,
+                brick.yaw,
+                brick.colour_code,
+                brick.offset_ldu,
+            )
+            for brick in result.layout
+        )
+    )
 
 
 def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
@@ -264,7 +323,7 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     names: Sequence[str] | None = None,
     seeds: Sequence[int] | None = None,
     timeout_s: float | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
     skip: Collection[tuple[str, int]] = (),
     on_complete: Callable[[Candidate], None] | None = None,
 ) -> list[Candidate]:
@@ -278,44 +337,24 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     seeds squeeze the same budget. Returns candidates sorted by
     (strategy, seed) regardless of completion order.
     """
-    chosen = tuple(names) if names is not None else tuple(strategy_names())
-    chosen_seeds = tuple(dict.fromkeys(seeds)) if seeds else (config.seed,)
-    skipped = set(skip)
-    configs = {
-        (name, seed): _candidate_config(
-            config, strategy=name, seed=seed, timeout_s=timeout_s
-        )
-        for name in chosen
-        for seed in chosen_seeds
-        if (name, seed) not in skipped
-    }
+    configs = _candidate_configs(
+        config,
+        names=names,
+        seeds=seeds,
+        timeout_s=timeout_s,
+        skip=skip,
+    )
     if not configs:
         return []
     workers = jobs if jobs > 0 else min(len(configs), os.cpu_count() or 1)
     if workers == 1:
-        # One monotonic deadline for the whole sequential sweep: stop
-        # launching once it expires and hand each candidate only the
-        # remaining budget (PR #17 review, P1 — previously every
-        # candidate got a fresh full timeout and the sweep overran).
-        deadline = time.monotonic() + timeout_s if timeout_s is not None else None
-        candidates = []
-        for (name, seed), candidate_config in configs.items():
-            remaining = None if deadline is None else deadline - time.monotonic()
-            if remaining is not None and remaining <= 0:
-                candidate = Candidate(
-                    strategy=name,
-                    seconds=0.0,
-                    error="sweep deadline expired before this candidate started",
-                    seed=seed,
-                )
-            else:
-                candidate = _run_candidate(
-                    grid, _restrict_budget(candidate_config, remaining)
-                )
-            _report(progress, candidate)
-            if on_complete is not None:
-                on_complete(candidate)
-            candidates.append(candidate)
+        candidates = _run_sequential(
+            grid,
+            configs,
+            timeout_s=timeout_s,
+            progress=progress,
+            on_complete=on_complete,
+        )
     else:
         candidates = _run_parallel(
             grid,
@@ -326,6 +365,57 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
             on_complete=on_complete,
         )
     return sorted(candidates, key=lambda c: (c.strategy, c.seed))
+
+
+def _candidate_configs(
+    config: PipelineConfig,
+    *,
+    names: Sequence[str] | None,
+    seeds: Sequence[int] | None,
+    timeout_s: float | None,
+    skip: Collection[tuple[str, int]],
+) -> dict[tuple[str, int], PipelineConfig]:
+    chosen = tuple(names) if names is not None else tuple(strategy_names())
+    chosen_seeds = tuple(dict.fromkeys(seeds)) if seeds else (config.seed,)
+    skipped = set(skip)
+    return {
+        (name, seed): _candidate_config(
+            config, strategy=name, seed=seed, timeout_s=timeout_s
+        )
+        for name in chosen
+        for seed in chosen_seeds
+        if (name, seed) not in skipped
+    }
+
+
+def _run_sequential(
+    grid: VoxelGrid,
+    configs: dict[tuple[str, int], PipelineConfig],
+    *,
+    timeout_s: float | None,
+    progress: ProgressCallback | None,
+    on_complete: Callable[[Candidate], None] | None,
+) -> list[Candidate]:
+    """Run candidates against one shared monotonic sweep deadline."""
+    deadline = time.monotonic() + timeout_s if timeout_s is not None else None
+    candidates: list[Candidate] = []
+    for (name, seed), candidate_config in configs.items():
+        remaining = None if deadline is None else deadline - time.monotonic()
+        candidate = (
+            Candidate(
+                strategy=name,
+                seconds=0.0,
+                error="sweep deadline expired before this candidate started",
+                seed=seed,
+            )
+            if remaining is not None and remaining <= 0
+            else _run_candidate(grid, _restrict_budget(candidate_config, remaining))
+        )
+        _report(progress, candidate)
+        if on_complete is not None:
+            on_complete(candidate)
+        candidates.append(candidate)
+    return candidates
 
 
 def _candidate_config(
@@ -395,7 +485,7 @@ def _run_parallel(  # noqa: PLR0913
     *,
     workers: int,
     timeout_s: float | None,
-    progress: Callable[[str], None] | None,
+    progress: ProgressCallback | None,
     on_complete: Callable[[Candidate], None] | None,
 ) -> list[Candidate]:
     """Fan out over a spawn pool with a soft, sweep-wide wait deadline.
@@ -464,12 +554,18 @@ def _collect(future: Future[Candidate], *, strategy: str, seed: int) -> Candidat
         )
 
 
-def _report(progress: Callable[[str], None] | None, candidate: Candidate) -> None:
+def _report(progress: ProgressCallback | None, candidate: Candidate) -> None:
     if progress is None:
         return
     verdict = "ok" if candidate.ok else f"error: {candidate.error}"
     tag = f"[seed {candidate.seed}]" if candidate.seed else ""
-    progress(f"{candidate.strategy}{tag}: {verdict} ({candidate.seconds:.1f}s)")
+    progress(
+        ProgressEvent(
+            f"{candidate.strategy}{tag}: {verdict} ({candidate.seconds:.1f}s)",
+            phase="placement.restart",
+            level="info" if candidate.ok else "error",
+        )
+    )
 
 
 __all__ = [

@@ -421,6 +421,7 @@ def test_missing_pyldraw_catalog_is_fatal_with_setup_hint(
 def test_usable_catalog_with_persistence_error_marks_report_partial(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ):
     analysis_module = import_module("legolization.analysis")
     report_module = import_module("legolization.ldraw_report")
@@ -454,9 +455,9 @@ def test_usable_catalog_with_persistence_error_marks_report_partial(
     assert result.report.ldraw["catalog"]["complete"] is True
     assert result.report.ldraw["catalog"]["degraded"] is True
 
-    code = main(
-        ["analyze", str(_HEART), "--no-repair", "--report", "-"],
-    )
+    source = tmp_path / "heart.ldr"
+    source.write_bytes(_HEART.read_bytes())
+    code = main(["analyze", str(source), "--no-repair", "--report", "-"])
 
     captured = capsys.readouterr()
     assert code == 0
@@ -513,7 +514,7 @@ def test_versioned_catalog_extension_is_merged(tmp_path: Path):
     path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "parts": [
                     {
                         "key": "brick_1x5_custom",
@@ -540,7 +541,7 @@ def test_custom_catalog_remains_authoritative_when_exact_geometry_is_missing(
     catalog_path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "parts": [
                     {
                         "key": "brick_1x5_custom",
@@ -580,7 +581,7 @@ def test_custom_nonrect_part_requires_explicit_physics_geometry(tmp_path: Path):
     path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "parts": [
                     {
                         "key": "corner_custom",
@@ -604,7 +605,7 @@ def test_catalog_extension_rejects_ambiguous_ldraw_decode(tmp_path: Path):
     path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "parts": [
                     {
                         "key": "ambiguous_1x1",
@@ -629,7 +630,7 @@ def test_catalog_rejects_overlapping_decode_tolerance_windows(tmp_path: Path):
     path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "parts": [
                     {
                         "key": "near_ambiguous_1x1",
@@ -711,7 +712,7 @@ def test_catalog_extension_rejects_invalid_core_metadata(
 ):
     parts = [part, part] if message == "duplicate key" else [part]
     path = tmp_path / "parts.json"
-    path.write_text(json.dumps({"schema": 1, "parts": parts}))
+    path.write_text(json.dumps({"schema": 2, "parts": parts}))
 
     with pytest.raises(ValueError, match=message):
         load_catalog(path)
@@ -721,8 +722,8 @@ def test_catalog_extension_rejects_invalid_core_metadata(
     ("document", "error", "message"),
     [
         ({"parts": []}, ValueError, "must declare schema"),
-        ({"schema": 2, "parts": []}, ValueError, "must declare schema"),
-        ({"schema": 1, "parts": {}}, TypeError, "must contain a parts list"),
+        ({"schema": 3, "parts": []}, ValueError, "must declare schema"),
+        ({"schema": 2, "parts": {}}, TypeError, "must contain a parts list"),
     ],
 )
 def test_catalog_rejects_malformed_documents(
@@ -743,7 +744,7 @@ def test_catalog_extension_rejects_malformed_connector_geometry(tmp_path: Path):
     path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "parts": [
                     {
                         "key": "bad_connector",
@@ -777,8 +778,10 @@ def test_analyze_cli_uses_derived_report_path(
     code = main(["analyze", str(source), "--no-repair"])
 
     assert code == 0
-    report = source.with_suffix(".analysis.json")
-    assert json.loads(report.read_text())["verdict"] == "feasible"
+    report = source.with_name("heart.manifest.json")
+    assert json.loads(report.read_text())["status"] == "complete"
+    assert not source.with_suffix(".analysis.json").exists()
+    assert not source.with_suffix(".assembly.json").exists()
     assert "analysis: FEASIBLE" in capsys.readouterr().out
     assert source.read_bytes() == _HEART.read_bytes()
 
@@ -797,6 +800,8 @@ def test_analyze_cli_writes_validated_repair_but_returns_infeasible(tmp_path: Pa
             "--preserve-origin",
             "--time-budget",
             "60",
+            "--report",
+            str(source.with_suffix(".analysis.json")),
         ]
     )
 
@@ -819,7 +824,15 @@ def test_analyze_cli_import_failure_still_writes_report(tmp_path: Path):
     source = tmp_path / "unknown.ldr"
     source.write_text("0 unknown\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 9999.dat\n")
 
-    code = main(["analyze", str(source), "--no-repair"])
+    code = main(
+        [
+            "analyze",
+            str(source),
+            "--no-repair",
+            "--report",
+            str(source.with_suffix(".analysis.json")),
+        ]
+    )
 
     report = json.loads(source.with_suffix(".analysis.json").read_text())
     assert code == 1
@@ -1213,7 +1226,15 @@ def test_repair_worker_failure_keeps_infeasible_verdict(
 
     monkeypatch.setattr("legolization.redesign.search_repair", boom)
 
-    code = main(["analyze", str(source), "--preserve-origin"])
+    code = main(
+        [
+            "analyze",
+            str(source),
+            "--preserve-origin",
+            "--report",
+            str(source.with_suffix(".analysis.json")),
+        ]
+    )
 
     report = json.loads(source.with_suffix(".analysis.json").read_text())
     assert code == 2
@@ -1223,7 +1244,7 @@ def test_repair_worker_failure_keeps_infeasible_verdict(
     assert "simulated worker start failure" in report["repair"]["error"]
 
 
-def test_repair_write_failure_keeps_infeasible_exit_code(
+def test_repair_write_failure_keeps_assembly_driven_exit_code(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -1245,10 +1266,19 @@ def test_repair_write_failure_keeps_infeasible_exit_code(
     blocker = tmp_path / "not-a-dir"
     blocker.write_text("occupied")
 
-    code = main(["analyze", str(source), "-o", str(blocker / "repair.ldr")])
+    code = main(
+        [
+            "analyze",
+            str(source),
+            "-o",
+            str(blocker / "repair.ldr"),
+            "--report",
+            str(source.with_suffix(".analysis.json")),
+        ]
+    )
 
     report = json.loads(source.with_suffix(".analysis.json").read_text())
-    assert code == 2
+    assert code == 3
     assert report["status"] == "partial"
     assert report["verdict"] == "infeasible"
     assert any("repair write failed" in error for error in report["errors"])
@@ -1288,6 +1318,30 @@ def test_ordinary_ldraw_conversion_prints_tolerant_load_warnings(
     assert "warning: model.unknown_meta: unknown meta-command" in captured.err
 
 
+def test_failed_ldraw_import_prints_tolerant_load_warnings_before_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+):
+    source = tmp_path / "warning-and-error.ldr"
+    source.write_text(
+        "0 warning and error\n"
+        "0 !UNRECOGNIZED report-me\n"
+        "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 9999.dat\n"
+    )
+    output = tmp_path / "converted.ldr"
+
+    code = main([str(source), "-o", str(output)])
+
+    captured = capsys.readouterr()
+    warning = "warning: model.unknown_meta: unknown meta-command"
+    error = "error: cannot import model"
+    assert code == 1
+    assert warning in captured.err
+    assert error in captured.err
+    assert captured.err.index(warning) < captured.err.index(error)
+    assert not output.exists()
+
+
 def test_analyze_cli_rejects_unsafe_artifact_paths(tmp_path: Path):
     source = tmp_path / "heart.ldr"
     source.write_bytes(_HEART.read_bytes())
@@ -1295,7 +1349,7 @@ def test_analyze_cli_rejects_unsafe_artifact_paths(tmp_path: Path):
     with pytest.raises(SystemExit):
         main(["analyze", str(source), "--report", str(tmp_path / "evidence.txt")])
     with pytest.raises(SystemExit):
-        main(["analyze", str(source), "-o", str(tmp_path / "repair.mpd")])
+        main(["analyze", str(source), "-o", str(tmp_path / "repair.txt")])
     with pytest.raises(SystemExit):
         main(["analyze", str(source), "-o", str(source)])
 
@@ -1305,7 +1359,7 @@ def test_catalog_extension_cannot_shadow_builtin_key(tmp_path: Path):
     path.write_text(
         json.dumps(
             {
-                "schema": 1,
+                "schema": 2,
                 "parts": [
                     {
                         "key": "brick_1x1",

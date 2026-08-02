@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hbmartin/legolization/schemas/assembly-manifest-v1.schema.json",
+  "title": "legolization assembly manifest version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "version",
+    "status",
+    "source",
+    "configuration",
+    "coordinate_system",
+    "parts",
+    "occurrences",
+    "contacts",
+    "action_graph",
+    "support",
+    "load_cases",
+    "stability",
+    "capabilities",
+    "exactness"
+  ],
+  "properties": {
+    "schema": {"const": "legolization.assembly-manifest"},
+    "version": {"const": 1},
+    "status": {"enum": ["complete", "partial", "error"]},
+    "source": {"type": "object"},
+    "configuration": {"type": "object"},
+    "coordinate_system": {"type": "object"},
+    "parts": {"type": "array", "items": {"type": "object"}},
+    "occurrences": {"type": "array", "items": {"type": "object"}},
+    "contacts": {"type": "array", "items": {"type": "object"}},
+    "action_graph": {"type": "object"},
+    "support": {"type": "object"},
+    "load_cases": {"type": "array", "items": {"type": "object"}},
+    "stability": {"type": "object"},
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": ["complete", "partial", "unsupported", "not_requested", "error"]
+      }
+    },
+    "exactness": {"type": "object"},
+    "templates": {"type": "array", "items": {"type": "object"}},
+    "bom": {"type": "object"},
+    "artifacts": {"type": "object", "additionalProperties": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "errors": {"type": "array", "items": {"type": "string"}}
+  }
+}

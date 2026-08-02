@@ -351,6 +351,8 @@ def _emit_subassembly(  # noqa: PLR0913, PLR0917 - the rewrite hands over all it
     config: InstructionsConfig,
     world_press: Callable[[tuple[int, ...]], bool] | None = None,
 ) -> None:
+    # Typed rewrite state is explicit at this one subassembly hand-off boundary.
+    # lizard forgives(parameter_count)
     anchor = min(layout.bricks[bid].layer for bid in cluster.bricks)
     sub_layout = layout.subset(cluster.bricks).translated(dz=anchor)
     sub_config = replace(

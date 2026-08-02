@@ -13,17 +13,19 @@ solver stack — no Gurobi required.
 
 ## What it does
 
-- **Input**: a MagicaVoxel `.vox` file or a numpy `.npy` array (LDraw colour
-  codes or RGB(A) voxels — colours are quantized to the nearest solid LDraw
-  colour, with optional Floyd-Steinberg dithering for gradients).
+- **Input**: MagicaVoxel `.vox`, NumPy `.npy`, and `.obj`/`.stl`/`.ply` mesh
+  files. Missing VOX RGBA data uses the MagicaVoxel default palette. PACK and
+  scene-graph transforms are composed; conflicting overlaps and ambiguous
+  unplaced multi-model files are rejected.
 - **Placement**: covers every voxel with bricks and plates at true heights
-  (plate = 8 LDU, brick = 24 LDU) using one of seven strategies; tiles and
-  slopes are opt-in finishing passes (`--tiles`, `--slopes`). Slope fitting
-  places all three catalogued slopes (45° 2x1/2x2, 33° 3x1): `--slopes`
-  (= `--slopes preserve`) swaps bricks whose cells exactly match a slope's
-  own profile inside the shape — no material added or removed — while
-  `--slopes smooth` is the legacy pass that fills staircase steps with
-  slopes *outside* the shape:
+  (plate = 8 LDU, brick = 24 LDU). The redesigned CLI defaults to `auto`:
+  bounded whole-model exact placement is used below its cell and candidate
+  caps and deterministic `bond` placement otherwise. Exact placement enforces
+  target coverage, LDU collision, colour, and rooted stud connectivity, then
+  cold-certifies physics. Shape-preserving slopes (including inverted slopes)
+  and exposed-region tile splitting are default finishing passes; neither may
+  change target occupancy. Plate caps are opt-in because they change layering.
+  The available heuristic strategies remain:
   - `greedy` (default): largest-first bottom-up fill with Kollsker's
     remainder-lookahead h(r) and distance-decayed stretcher-bond scoring,
     then delete-and-rebuild reinforcement around the weakest bricks.
@@ -43,6 +45,9 @@ solver stack — no Gurobi required.
     per 4-connected component of each layer — stage 1 minimizes the part
     count, stage 2 maximizes stagger quality at that optimum; falls back
     to `bond` per component on timeout.
+  - `global-exact`: bounded 3D exact placement with a brick-count or mass
+    objective and explicit `fail`, `fallback`, and deadline-bound `continue`
+    limit policies.
 - **Physics**: every layout is scored by the RBE — gravity, support, press,
   drag/pull friction (capacity T = 0.98 N per contact point), knob presses,
   and torque-capable side presses at shared-face extremes (side-supported
@@ -59,14 +64,16 @@ solver stack — no Gurobi required.
 - **Instructions**: smart step sequencing (default) chunks each layer into
   ~7-brick spatially coherent steps, keeps mirror-symmetric halves together,
   prefers spatially adjacent steps (Ma et al.'s continuity heuristic),
-  guarantees every prefix is stable and vertically insertable (or warns), and
+  validates every expanded action for collision, insertion, connectivity,
+  support, and cold prefix stability, and
   adds `0 ROTSTEP` view hints. When the greedy pass hits an unstable stretch
   it re-plans the remainder by assembly-by-disassembly along a
   maximal-stability path (Tian et al. / Luo); an opt-in beam search
   (`InstructionsConfig(search="beam")`) explores whole build orders. `--bom
   out.json` writes a bill of materials with per-step callouts.
-- **SNOT cladding**: `--snot` clads tall flat wall faces with sideways
-  1x1 tiles (3070b) hung on side-stud brackets (87087) — real receiving
+- **SNOT cladding**: the opt-in SNOT pass clads tall flat wall faces with
+  sideways tiles on exact connector geometry, including 87087 carriers, 4070
+  headlight bricks, and 99781 inverted brackets — real receiving
   geometry, priced by the same RBE physics through genuine lateral stud
   contacts. Only free-standing 1x1 wall columns are converted (carving a
   bracket out of a wall-spanning brick would destroy its bonding), and
@@ -90,13 +97,10 @@ solver stack — no Gurobi required.
   [pyldraw3](https://pypi.org/project/pyldraw3/). Open it in
   [LDView](https://tcobbs.github.io/ldview/) or
   [BrickLink Studio](https://www.bricklink.com/v3/studio/download.page).
-- **LDraw input**: an existing `.ldr`/`.mpd` model can be the input too —
-  placement is skipped and the model's own bricks are analyzed and
-  sequenced into instructions (`legolization model.ldr -o out.ldr
-  --instructions booklet.pdf`). Import is strict: every part must be in
-  the catalog, axis-aligned, on the stud/plate grid, and in the solid
-  palette; all problems are reported together. MPD submodels are
-  flattened through their world transforms.
+- **LDraw analysis**: `analyze` preserves exact arbitrary occurrence matrices
+  and reports geometry, contact, physics, and planning capabilities separately.
+  Supported pitch/roll poses are analyzed without snapping; unsupported
+  capabilities retain completed evidence and produce a partial manifest.
 
 ## Setup
 
@@ -109,64 +113,111 @@ uv run ldraw generate --yes   # once: generate ldraw.library.* part/colour modul
 ## Usage
 
 ```sh
-uv run legolization data/examples/heart.vox -o heart.ldr
-uv run legolization model.npy --strategy beauty --beauty-preset aesthetics
-uv run legolization model.vox --strategy bond --bom parts.json
-uv run legolization model.vox --instructions booklet.pdf   # rendered booklet
-uv run legolization model.npy --strategy luo --solid --seed 7
-uv run legolization model.vox --slopes --tiles      # surface finishing passes
-uv run legolization model.vox --slopes smooth       # legacy add-outside slopes
-uv run legolization model.vox --snot                # sideways wall cladding
-uv run legolization model.vox -o out.mpd --subassemblies  # separately built units
-uv run legolization model.vox --aspect-correct      # keep cubic voxel aspect
-uv run legolization model.vox --milp                # cross-check the exact LP
-uv run legolization model.npy --strategy all --jobs 4 --report report.json
-uv run legolization model.obj --up y --target-studs 24   # mesh input (M6)
-uv run legolization model.ldr -o out.ldr --instructions b.pdf  # LDraw input
-uv run legolization analyze model.ldr                    # physics report + repair
+uv run legolization build data/examples/heart.vox -o heart.ldr
+uv run legolization build model.npy -o model.ldr --strategy global-exact
+uv run legolization build model.obj -o model.ldr --target-studs 24
+uv run legolization build model.obj -o model.ldr --auto-scale 16 32
+uv run legolization build model.vox -o model.ldr --config legolization.toml
+uv run legolization analyze model.ldr
+uv run legolization validate model.manifest.json --against model.ldr
+uv run legolization cache inspect
+uv run legolization cache clear --key SHA256
+```
 
+Builds write `<output>.manifest.json`; analyses write
+`<input-stem>.manifest.json`. Use `--manifest PATH` or `--no-manifest` to
+override that per run. Exit codes are `0` complete/feasible, `1` input or
+runtime error, `2` completed but infeasible, `3` partial analysis, and `4` an
+exact-solver limit under the `fail` policy.
+
+Configuration is strict nested TOML. Built-in defaults are applied first,
+then the file, then only command-line options explicitly supplied by the user.
+Relative paths are resolved from the TOML file; unknown keys and incompatible
+options fail before work starts.
+
+```toml
+[placement]
+strategy = "auto"
+objective = "bricks"
+restarts = 1
+
+[placement.exact]
+max_cells = 256
+max_candidates = 100000
+time_limit_s = 60
+limit_policy = "fail"
+
+[stability]
+profile = "corrected"
+support = "baseplate"
+
+[output]
+manifest = true
+emit_support = false
 ```
 
 ### Analyze an existing LDraw model
 
-`analyze` is the non-generative feasibility workflow. It auto-grounds the
-lowest occupied layer, checks stud connectivity and grounding, solves both the
-StableLego-parity 5-DOF and stricter yaw-torque 6-DOF profiles, computes strict
-maximin friction capacity, and checks explicit `STEP` prefixes. If the finished
-model fails, a killable worker searches deterministic re-tiling, enclosed-fill,
-and exterior-support tiers for one candidate that passes every same check.
+`analyze` is the non-generative feasibility workflow. It always builds a
+geometry-first assembly from pyldraw's resolved occurrences, so arbitrary
+parts, MPD transforms, SNOT/half-stud placements, angled mechanisms, and every
+LDraw colour can produce topology even when the legacy voxel `Layout` adapter
+rejects them. Confirmed and potential connector graphs remain separate, and an
+unsupported connector produces partial evidence instead of aborting the model.
 
 ```sh
 uv run legolization analyze model.ldr
-uv run legolization analyze assembly.mpd --preserve-origin --no-repair
+uv run legolization analyze assembly.mpd --topology-only --no-repair
+uv run legolization analyze vehicle.mpd --support wheels --scenario side-load
+uv run legolization analyze model.mpd \
+  --path-between pages:1-20 pages:80-100 --artifact-dir diagnostics
 uv run legolization analyze model.ldr \
   --report evidence.json --output repaired.ldr --time-budget 120 --seed 7
-uv run legolization analyze model.ldr --catalog local-parts.json --catalog lab.json
+uv run legolization analyze model.ldr \
+  --connector-catalog connectors.json --ldcad-metadata parts/
 ```
 
-The defaults are `model.analysis.json` and, only when a validated repair is
-found, `model.repaired.ldr`. The input path is always rejected as an artifact
-path. Exit code `0` means the original model is feasible, `2` means the
-original is infeasible (even when a repair was found), and `1` means invalid
-input, solver failure, or an indeterminate result. Source `STEP` warnings are
-informational and do not change the finished-model exit code. Once the
-finished-model verdict is determined, repair-search failures, timeouts, and
-repair-write failures are recorded in the report (status `"partial"`) and
-likewise leave the exit code unchanged.
+Normal runs write the canonical version-1 assembly manifest. The old schema-2
+analysis and schema-1 assembly JSON are available only as explicitly requested
+derived views through `--report` and `--assembly-report`. Graph, component MPD,
+and floating MPD artifacts remain available; `--no-data-artifacts` suppresses
+them. `--artifact-dir` additionally enables a
+self-contained HTML report, missing-connector callouts, and before/after
+renders when a renderer is installed. Only one JSON report may target stdout.
 
-Analysis reports use schema 2. The `ldraw` block records pyldraw's prepared
+Support defaults are adaptive: strict voxel-compatible models use an anchored
+baseplate, detected vehicles rest on their wheels, and other arbitrary models
+use loose lowest-surface contacts. `--support free` deliberately reports no
+static verdict. Unknown load-bearing capacities keep physics indeterminate
+even when an optimistic equilibrium exists. Exit codes are assembly-driven:
+`0` means connected/feasible, `2` means definitely disconnected/infeasible,
+`3` means partial/indeterminate, and `1` means invalid input or runtime error.
+
+On a definite failure, the repair budget searches one BOM-preserving source
+edit at a time (orthonormal rotations/reflections and nearby stud/plate
+translations). A suggestion must improve real connector topology, never just
+bounding-box overlap. The best validated edit is written automatically to
+`model.repaired.ldr` or `.mpd`; `--no-repair` disables the search.
+
+The preserved legacy report uses schema 2. Its `ldraw` block records pyldraw's prepared
 catalog state, tolerant-load diagnostics, exact transformed bounds, official
 BOM, occurrence provenance, and renderer-neutral instruction sections. Exact
 stud contacts and AABB gaps are included through 1,000 occurrences and marked
 as skipped above that safety limit. The analyze command prepares the configured
 catalog automatically; if the library is missing, run `ldraw download --yes`.
 
-LDraw import — for both the generation and analyze workflows — snaps
-Studio-style export noise: positions within 0.2 LDU of the stud/plate grid
-and rotations within about half a degree of a yaw multiple are accepted;
-meaningful offsets such as a half plate are still rejected.
+The assembly schema records exact occurrence transforms and provenance,
+connector coverage, confirmed/optimistic component counts, detected grid
+frames, resolved support, region-to-region cuts, load scenarios, and ranked
+counterfactual evidence. Public occurrence IDs are one-based; pyldraw's
+zero-based traversal index is retained separately.
 
-Catalog extensions declare `"schema": 1` and a `parts` list. Rectangular
+LDraw analysis preserves the imported matrix and position exactly. Catalog and
+assembly capabilities decide whether collision, connector, and physics
+operations support that pose; no meaningful pitch, roll, or half offset is
+silently snapped to the generated-placement lattice.
+
+Catalog extensions declare `"schema": 2` and a `parts` list. Rectangular
 bricks, plates, and tiles use explicit `size`, `height_plates`, and measured
 `mass_g`. A custom non-rectangular part must instead declare its complete
 `occupied_cells`, `filled_cells`, `top_connectors`, `bottom_connectors`,
@@ -198,10 +249,10 @@ parallel sweep while also becoming the cooperative time budget for strategies
 that support one. Workers already running at the deadline cannot be terminated
 and may continue after the sweep returns.
 
-The CLI races a few seeds by default (`--restarts`, default 3: placement
-and physics run per seed in parallel, then the best layout is re-run once
-with full instruction sequencing — `--restarts 1` restores single-seed
-runs) and reports brick count, mass, step count, and the physics verdict:
+Heuristic multi-seed restarts are opt-in (`--restarts`; default 1). Seeds are
+deterministic, exact placement is never raced, and the winner is ordered by
+buildability, components/floating parts, worst stability score, the configured
+cost objective, and a canonical layout signature.
 
 ```text
 restart race: seeds 0..2 -> seed 2
@@ -222,8 +273,10 @@ Python API:
 from pathlib import Path
 from legolization import (
     AnalysisConfig,
+    AssemblyAnalysisConfig,
     PipelineConfig,
     VoxelGrid,
+    analyze_assembly,
     analyze_ldraw,
     run,
     run_file,
@@ -237,6 +290,12 @@ analysis = analyze_ldraw(
     AnalysisConfig(repair_time_budget_s=120, seed=7),
 )
 print(analysis.report.verdict, analysis.report.to_json())
+
+assembly = analyze_assembly(
+    Path("vehicle.mpd"),
+    AssemblyAnalysisConfig(support="wheels", scenarios=("auto",)),
+)
+print(assembly.report.topology_verdict, assembly.report.physics_verdict)
 ```
 
 ## How the stability model works
@@ -244,27 +303,24 @@ print(analysis.report.verdict, analysis.report.to_json())
 Each mated stud contributes 3 or 4 contact points (per StableLego's measured
 geometry) carrying a shared normal force and a friction (drag/pull) force, so
 Newton's third law holds by construction; each knob adds four horizontal
-knob-press forces, and laterally touching bricks exchange two side presses at
-the shared face's vertical extremes so lateral load transfer carries torque.
-Per brick, five equilibrium residuals (3 forces, 2 torques about the mass
-centroid) are minimized rather than constrained. A brick scores `1` when it
+knob-press forces, and laterally touching bricks exchange side presses at
+exact shared-face extremes so lateral load transfer carries torque. The
+corrected default enforces all three force and all three torque balance rows,
+rotates contact patterns with part yaw, and uses the paper contact-point rule.
+A named `stablelego-parity` profile retains reproduction behavior. A brick
+scores `1` when it
 cannot reach equilibrium or its friction demand exceeds T; otherwise
 `drag_max / T` — so the score doubles as a stress heatmap. The default solver
 is a hand-assembled LP on scipy/HiGHS, and the relaxation is provably exact
 (each contact's press and pull columns are exact negatives, so no optimum ever
-uses both); `--milp` re-verifies with explicit big-M complementarity via
-cvxpy. The whole stack reproduces all nine verdicts of the StableLego
-release's test fixtures (vendored under `tests/data/stablelego/`).
+uses both). Complementarity MILP is not a production CLI mode; a private
+small-instance oracle remains for equivalence tests.
 
 ## Benchmark
 
-`uv run python scripts/benchmark.py` compares all six strategies across the
-example models (brick count, stability margin, seam/perpendicularity/symmetry
-metrics, runtime). Highlights at seed 0: `bond` and `beauty` cover the arch in
-13 bricks where largest-first greedy needs 32, and `beauty --beauty-preset
-aesthetics` produces perfectly mirror-symmetric layers on symmetric models.
-For picking one model right now rather than tabulating, `--strategy all` is
-the CLI counterpart (see Usage).
+Existing evaluation and comparison utilities are preserved for regression and
+research work. Expanding their corpora, metrics, or baselines is intentionally
+deferred; they are not acceptance gates for the foundation program.
 
 ## Development
 
@@ -274,6 +330,8 @@ uv run pytest --run-slow  # full suite, including benchmark/sweep/renderer tests
 uv run ruff format --check . && uv run ruff check .
 uv run ty check src tests
 uv run pyrefly check src tests
+uv run deptry .
+uv run lizard --languages python --CCN 15 --length 120 --arguments 8 src/legolization
 ```
 
 ## License

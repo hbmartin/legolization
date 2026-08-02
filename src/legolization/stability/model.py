@@ -267,7 +267,7 @@ def footprint_columns(
 def knob_pattern(
     columns: frozenset[tuple[int, int]],
     min_dim: int,
-    column: tuple[int, int],
+    column: tuple[float, float],
 ) -> tuple[tuple[float, float], ...]:
     """Per-knob contact offsets under the StableLego *paper* rule.
 

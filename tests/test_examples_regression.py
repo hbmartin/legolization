@@ -24,8 +24,8 @@ _RESTART_SEEDS = (0, 1, 2)
 
 _GOLDEN = {
     "pyramid.npy": (0, 124),
-    "arch.npy": (1, 15),
-    "heart.vox": (2, 12),
+    "arch.npy": (2, 27),
+    "heart.vox": (0, 12),
 }
 
 

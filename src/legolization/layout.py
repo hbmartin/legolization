@@ -11,10 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
+from legolization.physical import boxes_intersect
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from legolization.catalog import Catalog, Cell, Connector, Part
+    from legolization.physical import LduBox, LduConnector
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +31,7 @@ class PlacedBrick:
     layer: int
     yaw: int
     colour_code: int
+    offset_ldu: tuple[int, int, int] = (0, 0, 0)
 
 
 class CollisionError(ValueError):
@@ -67,6 +71,30 @@ class Layout:
             brick.x, brick.y, brick.layer, brick.yaw, top=top
         )
 
+    def collision_boxes_of(self, brick: PlacedBrick) -> tuple[LduBox, ...]:
+        """Return exact physical volumes independently of target coverage."""
+        return self.part_of(brick).collision_boxes_at(
+            brick.x,
+            brick.y,
+            brick.layer,
+            brick.yaw,
+            offset_ldu=brick.offset_ldu,
+        )
+
+    def physical_connectors_of(
+        self,
+        brick: PlacedBrick,
+        *,
+        top: bool,
+    ) -> tuple[LduConnector, ...]:
+        """Return exact physical connector positions for a placed part."""
+        return self.part_of(brick).physical_connectors_at(
+            (brick.x, brick.y, brick.layer),
+            brick.yaw,
+            top=top,
+            offset_ldu=brick.offset_ldu,
+        )
+
     def can_place(
         self,
         part: Part,
@@ -77,7 +105,12 @@ class Layout:
     ) -> bool:
         """Whether the placement is collision-free and above ground."""
         cells = part.cells_at(x, y, layer, yaw)
-        return all(cell[2] >= 0 and cell not in self.occupancy for cell in cells)
+        if not all(cell[2] >= 0 and cell not in self.occupancy for cell in cells):
+            return False
+        boxes = part.collision_boxes_at(x, y, layer, yaw)
+        return not any(
+            boxes_intersect(boxes, self.collision_boxes_of(brick)) for brick in self
+        )
 
     def add(  # noqa: PLR0913, PLR0917 - a placement is naturally six scalars
         self,
@@ -87,8 +120,12 @@ class Layout:
         layer: int,
         yaw: int,
         colour_code: int,
+        *,
+        offset_ldu: tuple[int, int, int] = (0, 0, 0),
     ) -> PlacedBrick:
         """Place a brick, raising :class:`CollisionError` on overlap."""
+        # One explicit scalar per LDraw placement field keeps call sites legible.
+        # lizard forgives(parameter_count)
         part = self.catalog[part_key]
         cells = part.cells_at(x, y, layer, yaw)
         for cell in cells:
@@ -98,6 +135,14 @@ class Layout:
             if (other := self.occupancy.get(cell)) is not None:
                 msg = f"{part_key} at {(x, y, layer)} collides with brick {other}"
                 raise CollisionError(msg)
+        boxes = part.collision_boxes_at(x, y, layer, yaw, offset_ldu=offset_ldu)
+        for other_brick in self:
+            if boxes_intersect(boxes, self.collision_boxes_of(other_brick)):
+                msg = (
+                    f"{part_key} at {(x, y, layer)} physically collides with "
+                    f"brick {other_brick.brick_id}"
+                )
+                raise CollisionError(msg)
         brick = PlacedBrick(
             brick_id=self._next_id,
             part_key=part_key,
@@ -106,6 +151,7 @@ class Layout:
             layer=layer,
             yaw=yaw,
             colour_code=colour_code,
+            offset_ldu=offset_ldu,
         )
         self.bricks[brick.brick_id] = brick
         for cell in cells:

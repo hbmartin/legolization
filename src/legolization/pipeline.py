@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field, replace
+import hashlib
+from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
 from legolization import telemetry
-from legolization.catalog import default_catalog
+from legolization.catalog import DEFAULT_CATALOG_PATH, default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
@@ -23,25 +23,43 @@ from legolization.instructions.render import render_step_images
 from legolization.instructions.sequencer import (
     InstructionPlan,
     InstructionsConfig,
+    InstructionsError,
     plan_instructions,
+)
+from legolization.instructions.verification import (
+    InstructionCertification,
+    certify_instructions,
 )
 from legolization.ldraw_out import write_model
 from legolization.mesh import MESH_SUFFIXES, MeshOptions, mesh_to_grid
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.repair import RepairConfig, repair_stability
-from legolization.placement.slopes import SlopeMode, apply_slopes, apply_tiles
+from legolization.placement.slopes import (
+    apply_plate_caps,
+    apply_slopes,
+    apply_tiles,
+)
 from legolization.placement.snot import apply_snot
+from legolization.placement.templates import (
+    TemplateContext,
+    instantiate_repeated_templates,
+)
+from legolization.repetition import repeated_components
+from legolization.runtime import Deadline, ProgressCallback, ProgressEvent
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
+from legolization.support import emit_support_plate
+from legolization.template_cache import TemplateCache
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Iterator
     from pathlib import Path
 
     from legolization.catalog import Catalog
     from legolization.instructions.booklet import Booklet
     from legolization.layout import Layout
     from legolization.placement.base import PlacementStrategy
+    from legolization.placement.global_exact import ExactOutcome
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,9 +70,8 @@ class PipelineConfig:
     hollow: bool = True
     hollow_rounds: int = 5
     hollow_restore_radius: int = 2
-    slopes: bool | SlopeMode = False
-    """``"preserve"`` swaps exact in-shape profile matches (adds nothing);
-    ``"smooth"`` (or legacy ``True``) adds slopes outside the shape."""
+    slopes: bool = False
+    """Swap exact in-shape profile matches for slope parts."""
 
     tiles: bool = False
     refine: bool = True
@@ -72,13 +89,27 @@ class PipelineConfig:
     beauty_preset: Literal["balanced", "stability", "aesthetics", "efficiency"] = (
         "balanced"
     )
-    progress: Callable[[str], None] | None = None
+    progress: ProgressCallback | None = None
     repair: bool = True
     repair_config: RepairConfig = field(default_factory=RepairConfig)
     instructions: InstructionsConfig = field(default_factory=InstructionsConfig)
     mesh: MeshOptions = field(default_factory=MeshOptions)
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
+
+    exact_max_cells: int = 256
+    exact_max_candidates: int = 100_000
+    exact_time_limit_s: float = 60.0
+    exact_limit_policy: Literal["fail", "fallback", "continue"] = "fail"
+    exact_fallback_strategy: Literal["bond", "fast", "greedy"] = "bond"
+    exact_auto_preflight_fallback: bool = False
+    cost_objective: Literal["bricks", "mass"] = "bricks"
+    plate_cap: bool = False
+    emit_support: bool = False
+    template_cache_enabled: bool = False
+    template_cache_path: Path | None = None
+    template_configuration_hash: str = ""
+    template_physics_profile: str = "corrected"
 
     # Fields below are appended after the 0.2.0 layout so positional
     # callers keep their meaning (PR #17 review); add new fields at the
@@ -126,10 +157,16 @@ class PipelineResult:
     floating_count: int
     slopes_added: int = 0
     tiles_added: int = 0
+    placement_strategy: str = "unknown"
+    exact_status: str | None = None
+    exact_candidate_count: int = 0
+    plate_caps_added: int = 0
+    support_ids: tuple[int, ...] = ()
+    instruction_certification: InstructionCertification | None = None
+    cache_provenance: tuple[dict[str, int | str], ...] = ()
     plan: InstructionPlan | None = None
 
-    # Appended after the 0.2.0 layout for positional compatibility
-    # (PR #17 review); add new fields at the end only.
+    # Appended after the 0.2.0 layout for positional compatibility.
     snot_added: int = 0
 
     @property
@@ -139,16 +176,39 @@ class PipelineResult:
 
     @property
     def buildable(self) -> bool:
-        """Stable, single brick-graph component, and nothing floating.
-
-        Components count stud connectivity between bricks only: two
-        grounded but disconnected towers are NOT buildable as one model.
-        """
+        """Return whether physics and graph checks certify the layout."""
         return (
             self.stability.stable
             and self.component_count == 1
             and self.floating_count == 0
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _PlacementPhase:
+    """Typed result from placement, repair, and exactness certification."""
+
+    layout: Layout
+    stability: StabilityResult
+    exact_outcome: ExactOutcome | None = None
+
+    def __iter__(self) -> Iterator[Layout | StabilityResult]:
+        """Preserve two-value unpacking at the private legacy test seam."""
+        yield self.layout
+        yield self.stability
+
+
+@dataclass(slots=True)
+class _PipelineState:
+    """Mutable phase state kept out of the public immutable result contract."""
+
+    source: VoxelGrid
+    working: VoxelGrid
+    config: PipelineConfig
+    catalog: Catalog
+    rng: np.random.Generator
+    deadline: Deadline | None
+    placement: _PlacementPhase
 
 
 def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult:
@@ -157,16 +217,32 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
         msg = "input grid contains no filled voxels"
         raise ValueError(msg)
     config = config or PipelineConfig()
+    working = _prepare_grid(grid, config)
     catalog = default_catalog()
     rng = np.random.default_rng(config.seed)
-    # One absolute deadline for every budgeted pipeline phase. Strategy-local
-    # caps may tighten it, but cannot restart it after hollowing; repair and
-    # restore likewise share this same monotonic timestamp (v8 guardrail).
-    deadline = (
-        time.monotonic() + config.time_budget_s
-        if config.time_budget_s is not None
-        else None
+    deadline = Deadline.after(config.time_budget_s)
+    state = _PipelineState(
+        source=grid,
+        working=working,
+        config=config,
+        catalog=catalog,
+        rng=rng,
+        deadline=deadline,
+        placement=_place_and_repair(
+            working,
+            catalog,
+            config,
+            rng,
+            deadline,
+        ),
     )
+    _phase_gauge("pipeline.placed", state.placement.layout, state.placement.stability)
+    _restore_hollow_columns(state)
+    _remerge(state)
+    return _complete_pipeline(state)
+
+
+def _prepare_grid(grid: VoxelGrid, config: PipelineConfig) -> VoxelGrid:
     with telemetry.span("phase.hollow"):
         working = (
             hollow_grid(
@@ -177,80 +253,205 @@ def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult
             if config.hollow
             else grid
         )
-        if config.ignore_interior:
-            working = _ignore_interior(working)
+        return _ignore_interior(working) if config.ignore_interior else working
 
-    layout, stability = _place_and_repair(working, catalog, config, rng, deadline)
-    _phase_gauge("pipeline.placed", layout, stability)
-    if config.hollow:
-        with telemetry.span("phase.hollow_restore"):
-            rounds = 0
-            while not stability.stable and rounds < config.hollow_rounds:
-                if deadline is not None and time.monotonic() >= deadline:
-                    telemetry.value("pipeline.hollow_restore.deadline_stop", rounds)
-                    break
-                trouble = {
-                    cell
-                    for brick_id in stability.unstable_ids
-                    for cell in layout.cells_of(layout.bricks[brick_id])
-                }
-                restored = restore_columns(
-                    grid,
-                    working,
-                    trouble,
-                    radius=config.hollow_restore_radius,
-                )
-                if restored is working:
-                    break
-                working = restored
-                layout, stability = _place_and_repair(
-                    working, catalog, config, rng, deadline
-                )
-                rounds += 1
-                telemetry.value("pipeline.hollow_restore.round", rounds)
-                _phase_gauge("pipeline.restored", layout, stability)
 
+def _restore_hollow_columns(state: _PipelineState) -> None:
+    if not state.config.hollow:
+        return
+    with telemetry.span("phase.hollow_restore"):
+        for rounds in range(state.config.hollow_rounds):
+            if state.placement.stability.stable:
+                break
+            if state.deadline is not None and state.deadline.expired:
+                telemetry.value("pipeline.hollow_restore.deadline_stop", rounds)
+                break
+            restored = _restore_once(state)
+            if restored is state.working:
+                break
+            state.working = restored
+            state.placement = _place_and_repair(
+                restored,
+                state.catalog,
+                state.config,
+                state.rng,
+                state.deadline,
+            )
+            telemetry.value("pipeline.hollow_restore.round", rounds + 1)
+            _phase_gauge(
+                "pipeline.restored",
+                state.placement.layout,
+                state.placement.stability,
+            )
+
+
+def _restore_once(state: _PipelineState) -> VoxelGrid:
+    trouble = {
+        cell
+        for brick_id in state.placement.stability.unstable_ids
+        for cell in state.placement.layout.cells_of(
+            state.placement.layout.bricks[brick_id]
+        )
+    }
+    return restore_columns(
+        state.source,
+        state.working,
+        trouble,
+        radius=state.config.hollow_restore_radius,
+    )
+
+
+def _remerge(state: _PipelineState) -> None:
     with telemetry.span("phase.remerge"):
         if final_remerge(
-            layout,
-            working,
-            rng,
-            weights=config.weights,
-            solver_config=config.solver,
+            state.placement.layout,
+            state.working,
+            state.rng,
+            weights=state.config.weights,
+            solver_config=state.config.solver,
         ):
-            stability = analyze(layout, config.solver)
-        resolve_ignore_colours(layout)
-        _phase_gauge("pipeline.remerged", layout, stability)
+            state.placement = replace(
+                state.placement,
+                stability=analyze(state.placement.layout, state.config.solver),
+            )
+        resolve_ignore_colours(state.placement.layout)
+        _phase_gauge(
+            "pipeline.remerged",
+            state.placement.layout,
+            state.placement.stability,
+        )
 
+
+def _complete_pipeline(state: _PipelineState) -> PipelineResult:
+    layout = state.placement.layout
     with telemetry.span("phase.finish_surfaces"):
-        stability, slopes_added, tiles_added, snot_added = _finish_surfaces(
-            layout, working, stability, config
+        finishing = _finish_surfaces(
+            layout,
+            state.working,
+            state.placement.stability,
+            state.config,
         )
-
-    plan: InstructionPlan | None = None
-    if config.instructions.mode == "smart":
-        instructions_config = (
-            config.instructions
-            if config.instructions.solver is not None
-            else replace(config.instructions, solver=config.solver)
-        )
-        with telemetry.span("phase.sequencing"):
-            plan = plan_instructions(layout, config=instructions_config)
-
+    stability, slopes, tiles, snot, plate_caps = finishing
+    stability, cache_provenance = _canonicalize_templates(
+        layout,
+        state.working,
+        stability,
+        state.config,
+    )
+    support_ids, stability = _add_support(layout, stability, state.config)
+    plan, certification = _instruction_plan(layout, state.config)
     graph = ConnectionGraph.from_layout(layout)
     return PipelineResult(
         layout=layout,
         stability=stability,
-        grid=working,
+        grid=state.working,
         brick_count=len(layout),
         mass_g=layout.total_mass_g(),
         component_count=graph.component_count(),
         floating_count=len(graph.floating_ids()),
-        slopes_added=slopes_added,
-        tiles_added=tiles_added,
-        snot_added=snot_added,
+        slopes_added=slopes,
+        tiles_added=tiles,
+        snot_added=snot,
         plan=plan,
+        placement_strategy=_selected_strategy(state),
+        exact_status=(
+            state.placement.exact_outcome.status
+            if state.placement.exact_outcome is not None
+            else None
+        ),
+        exact_candidate_count=(
+            state.placement.exact_outcome.candidate_count
+            if state.placement.exact_outcome is not None
+            else 0
+        ),
+        plate_caps_added=plate_caps,
+        support_ids=support_ids,
+        instruction_certification=certification,
+        cache_provenance=cache_provenance,
     )
+
+
+def _canonicalize_templates(
+    layout: Layout,
+    grid: VoxelGrid,
+    stability: StabilityResult,
+    config: PipelineConfig,
+) -> tuple[StabilityResult, tuple[dict[str, int | str], ...]]:
+    repeated = repeated_components(grid)
+    if not repeated:
+        return stability, ()
+    cache = None
+    if config.template_cache_enabled:
+        cache = (
+            TemplateCache(root=config.template_cache_path)
+            if config.template_cache_path is not None
+            else TemplateCache.default()
+        )
+    guard = layout.copy()
+    applications = instantiate_repeated_templates(
+        layout,
+        repeated,
+        cache=cache,
+        context=TemplateContext(
+            catalog_hash=hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes()).hexdigest(),
+            configuration_hash=config.template_configuration_hash,
+            physics_profile=config.template_physics_profile,
+        ),
+    )
+    if all(item.status == "skipped" for item in applications):
+        return stability, tuple(asdict(item) for item in applications)
+    certified = analyze(layout, config.solver)
+    if stability.stable and not certified.stable:
+        layout.replace_with(guard)
+        rejected = tuple(
+            {**asdict(item), "status": "rejected_stability"} for item in applications
+        )
+        return stability, rejected
+    return certified, tuple(asdict(item) for item in applications)
+
+
+def _selected_strategy(state: _PipelineState) -> str:
+    outcome = state.placement.exact_outcome
+    if outcome is not None and outcome.status == "fallback":
+        return state.config.exact_fallback_strategy
+    return state.config.strategy
+
+
+def _add_support(
+    layout: Layout,
+    stability: StabilityResult,
+    config: PipelineConfig,
+) -> tuple[tuple[int, ...], StabilityResult]:
+    if not config.emit_support:
+        return (), stability
+    with telemetry.span("phase.emit_support"):
+        support_ids = emit_support_plate(layout)
+        return support_ids, analyze(layout, config.solver)
+
+
+def _instruction_plan(
+    layout: Layout,
+    config: PipelineConfig,
+) -> tuple[InstructionPlan | None, InstructionCertification | None]:
+    if config.instructions.mode != "smart":
+        return None, None
+    instructions_config = (
+        config.instructions
+        if config.instructions.solver is not None
+        else replace(config.instructions, solver=config.solver)
+    )
+    with telemetry.span("phase.sequencing"):
+        plan = plan_instructions(layout, config=instructions_config)
+    with telemetry.span("phase.sequencing.certify"):
+        certification = certify_instructions(
+            layout,
+            plan,
+            config=instructions_config,
+        )
+    if certification.violations:
+        msg = "instruction certification failed: " + "; ".join(certification.violations)
+        raise InstructionsError(msg)
+    return plan, certification
 
 
 def _finish_surfaces(
@@ -258,22 +459,13 @@ def _finish_surfaces(
     working: VoxelGrid,
     stability: StabilityResult,
     config: PipelineConfig,
-) -> tuple[StabilityResult, int, int, int]:
+) -> tuple[StabilityResult, int, int, int, int]:
     """Run the opt-in slope/tile/snot finishing passes; re-analyze if used."""
-    slope_mode: SlopeMode | None = (
-        "smooth" if config.slopes is True else config.slopes or None
-    )
     slopes_added = 0
-    if slope_mode is not None:
-        # Preserve mode must never trade stability for looks: carving
-        # donors fragments load paths, so keep a snapshot to revert to.
-        guard = (
-            (layout.copy(), stability)
-            if slope_mode == "preserve" and stability.stable
-            else None
-        )
+    if config.slopes:
+        guard = (layout.copy(), stability) if stability.stable else None
         with telemetry.span("finish.slopes"):
-            slopes_added = apply_slopes(layout, working, mode=slope_mode)
+            slopes_added = apply_slopes(layout, working)
         if slopes_added:
             stability = analyze(layout, config.solver)
             if guard is not None and not stability.stable:
@@ -282,17 +474,32 @@ def _finish_surfaces(
                 slopes_added = 0
                 if config.progress is not None:
                     config.progress(
-                        "slopes: preserve pass would break stability; reverted"
+                        ProgressEvent(
+                            "slopes: preserve pass would break stability; reverted",
+                            phase="finish.slopes",
+                            level="warning",
+                        )
                     )
     snot_added = 0
     if config.snot:
         with telemetry.span("finish.snot"):
             snot_added, stability = _snot_tiers(layout, working, config, stability)
+    plate_caps_added = 0
+    if config.plate_cap:
+        guard = (layout.copy(), stability) if stability.stable else None
+        with telemetry.span("finish.plate_caps"):
+            plate_caps_added = apply_plate_caps(layout)
+        if plate_caps_added:
+            stability = analyze(layout, config.solver)
+            if guard is not None and not stability.stable:
+                layout.replace_with(guard[0])
+                stability = guard[1]
+                plate_caps_added = 0
     with telemetry.span("finish.tiles"):
         tiles_added = apply_tiles(layout) if config.tiles else 0
     if tiles_added:
         stability = analyze(layout, config.solver)
-    return stability, slopes_added, tiles_added, snot_added
+    return stability, slopes_added, tiles_added, snot_added, plate_caps_added
 
 
 def _snot_tiers(
@@ -321,7 +528,13 @@ def _snot_tiers(
             stability = guard[1]
             snot_added = 0
             if config.progress is not None:
-                config.progress("snot: cladding pass would break stability; reverted")
+                config.progress(
+                    ProgressEvent(
+                        "snot: cladding pass would break stability; reverted",
+                        phase="finish.snot",
+                        level="warning",
+                    )
+                )
     checkpoint = (layout.copy(), stability) if stability.stable else None
     bold_added = apply_snot(layout, working, spanning_donors=True)
     if bold_added:
@@ -331,8 +544,12 @@ def _snot_tiers(
             stability = checkpoint[1]
             if config.progress is not None:
                 config.progress(
-                    "snot: wall-carving tier would break stability; "
-                    "kept the conservative tier"
+                    ProgressEvent(
+                        "snot: wall-carving tier would break stability; "
+                        "kept the conservative tier",
+                        phase="finish.snot",
+                        level="warning",
+                    )
                 )
         else:
             snot_added += bold_added
@@ -397,7 +614,7 @@ def write_outputs(
     *,
     bom_path: Path | None = None,
     instructions_path: Path | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> Booklet | None:
     """Write the model plus, when requested, the BOM and instruction booklet.
 
@@ -443,7 +660,13 @@ def write_outputs(
     )
     if progress is not None:
         for warning in images.warnings:
-            progress(f"warning: {warning}")
+            progress(
+                ProgressEvent(
+                    f"warning: {warning}",
+                    phase="instructions.render",
+                    level="warning",
+                )
+            )
     return booklet
 
 
@@ -494,7 +717,7 @@ def _place_and_repair(
     config: PipelineConfig,
     rng: np.random.Generator,
     deadline: float | None = None,
-) -> tuple[Layout, StabilityResult]:
+) -> _PlacementPhase:
     """Place, then rearrange at constant volume before any material is added."""
     strategy = _strategy(catalog, config)
     with telemetry.span("phase.place"):
@@ -518,7 +741,14 @@ def _place_and_repair(
                 else analyze(layout, config.solver)
             )
             _phase_gauge("pipeline.repaired", layout, stability)
-    return layout, stability
+    from legolization.placement.global_exact import GlobalExactStrategy  # noqa: PLC0415
+
+    outcome = strategy.outcome if isinstance(strategy, GlobalExactStrategy) else None
+    return _PlacementPhase(
+        layout=layout,
+        stability=stability,
+        exact_outcome=outcome,
+    )
 
 
 def _strategy(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:

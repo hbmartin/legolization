@@ -21,10 +21,10 @@ from scipy import ndimage
 from scipy.spatial import KDTree
 
 from legolization.color import default_palette
-from legolization.grid import EMPTY, VoxelGrid
+from legolization.grid import EMPTY, MeshFeatureAnnotations, VoxelGrid
+from legolization.runtime import ProgressCallback, ProgressEvent
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from legolization.color import Palette
@@ -73,6 +73,8 @@ class MeshOptions:
     # Appended after the original fields: positional callers predating
     # colour sampling keep their meaning (PR #17 review).
     colour_mode: Literal["uniform", "sampled"] = "uniform"
+    auto_scale: tuple[int, int] | None = None
+    grid_phases: int = 1
 
     def __post_init__(self) -> None:
         """Reject invalid programmatic configuration at the API boundary."""
@@ -90,6 +92,30 @@ class MeshOptions:
         if self.colour_mode not in {"uniform", "sampled"}:
             msg = "colour_mode must be 'uniform' or 'sampled'"
             raise ValueError(msg)
+        if self.auto_scale is not None:
+            scale = tuple(int(value) for value in self.auto_scale)
+            if len(scale) != 2 or scale[0] <= 0 or scale[0] > scale[1]:
+                msg = "auto_scale must be an inclusive positive (minimum, maximum)"
+                raise ValueError(msg)
+            object.__setattr__(self, "auto_scale", scale)
+            if self.pitch is not None:
+                msg = "auto_scale is incompatible with an explicit pitch"
+                raise ValueError(msg)
+        if self.grid_phases not in {1, 2, 4, 8}:
+            msg = "grid_phases must be one of 1, 2, 4, or 8"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class _VoxelChoice:
+    voxels: _VoxelGridLike
+    mask: np.ndarray
+    target_studs: int
+    pitch: float
+    phase: tuple[float, float, float]
+    surface_error: float
+    feature_count: int
+    constructibility: float
 
 
 def mesh_to_grid(
@@ -97,7 +123,7 @@ def mesh_to_grid(
     *,
     options: MeshOptions | None = None,
     palette: Palette | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> VoxelGrid:
     """Load a mesh file and voxelize it into a plate-resolution grid."""
     return grid_from_mesh(
@@ -113,7 +139,7 @@ def grid_from_mesh(
     *,
     options: MeshOptions | None = None,
     palette: Palette | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> VoxelGrid:
     """Voxelize an in-memory mesh into a plate-resolution grid."""
     options = options or MeshOptions()
@@ -122,22 +148,9 @@ def grid_from_mesh(
         msg = f"unknown LDraw colour code {options.colour_code} for mesh fill"
         raise ValueError(msg)
     working = _orient_z_up(mesh, options.up)
-    pitch = _stud_pitch(working, options)
     working.apply_scale((1.0, 1.0, _PLATES_PER_STUD))
-    _check_grid_dims(working, pitch)
-    voxels = cast(
-        "_VoxelGridLike",
-        working.voxelized(pitch=pitch),
-    )
-    if options.fill:
-        voxels = voxels.fill()
-    mask = np.asarray(voxels.matrix, dtype=bool)
-    if not mask.any():
-        msg = (
-            "mesh voxelization produced no filled cells; try a larger "
-            "--target-studs or a smaller --pitch"
-        )
-        raise ValueError(msg)
+    choice = _select_voxelization(working, options)
+    mask = choice.mask
     if options.keep_largest:
         mask, dropped = _largest_component(mask)
         if dropped:
@@ -149,17 +162,208 @@ def grid_from_mesh(
     if options.colour_mode == "sampled":
         colours = _vertex_colours(working)
         if colours is not None:
-            rgba = _sampled_rgba(working, voxels, mask, colours)
-            return VoxelGrid.from_array(rgba, plates_per_voxel=1, palette=palette)
+            rgba = _sampled_rgba(
+                working,
+                choice,
+                mask,
+                colours,
+            )
+            grid = VoxelGrid.from_array(rgba, plates_per_voxel=1, palette=palette)
+            return VoxelGrid(
+                codes=grid.codes,
+                mesh_features=_mesh_annotations(mask, choice),
+            )
         _notify(progress, "mesh has no colour data; using the uniform colour")
     codes = np.where(mask, options.colour_code, EMPTY).astype(np.int16)
-    return VoxelGrid.from_array(codes, plates_per_voxel=1, palette=palette)
+    return VoxelGrid(
+        codes=codes,
+        mesh_features=_mesh_annotations(mask, choice),
+    )
 
 
-def _notify(progress: Callable[[str], None] | None, message: str) -> None:
+def _select_voxelization(
+    mesh: trimesh.Trimesh,
+    options: MeshOptions,
+) -> _VoxelChoice:
+    targets = (
+        range(options.auto_scale[0], options.auto_scale[1] + 1)
+        if options.auto_scale is not None
+        else (options.target_studs,)
+    )
+    choices = [
+        choice
+        for target in targets
+        for choice in _choices_at_target(mesh, options, target_studs=target)
+    ]
+    if not choices:
+        msg = (
+            "mesh voxelization produced no filled cells; try a larger "
+            "target-stud range or a smaller pitch"
+        )
+        raise ValueError(msg)
+    return min(
+        choices,
+        key=lambda item: (
+            -item.feature_count,
+            item.surface_error,
+            -item.constructibility,
+            item.target_studs,
+            item.phase,
+        ),
+    )
+
+
+def _choices_at_target(
+    mesh: trimesh.Trimesh,
+    options: MeshOptions,
+    *,
+    target_studs: int,
+) -> tuple[_VoxelChoice, ...]:
+    pitch = _pitch_for_target(mesh, options, target_studs)
+    _check_grid_dims(mesh, pitch)
+    choices: list[_VoxelChoice] = []
+    for phase in _grid_phase_vectors(options.grid_phases):
+        shifted = mesh.copy()
+        shifted.apply_translation(np.asarray(phase) * pitch)
+        voxels = cast("_VoxelGridLike", shifted.voxelized(pitch=pitch))
+        if options.fill:
+            voxels = voxels.fill()
+        mask = np.asarray(voxels.matrix, dtype=bool)
+        if mask.any():
+            error, feature_count = _surface_score(
+                mesh,
+                voxels,
+                mask,
+                phase=phase,
+                pitch=pitch,
+            )
+            choices.append(
+                _VoxelChoice(
+                    voxels=voxels,
+                    mask=mask,
+                    target_studs=target_studs,
+                    pitch=pitch,
+                    phase=phase,
+                    surface_error=error,
+                    feature_count=feature_count,
+                    constructibility=_constructibility(mask),
+                )
+            )
+    return tuple(choices)
+
+
+def _pitch_for_target(
+    mesh: trimesh.Trimesh,
+    options: MeshOptions,
+    target_studs: int,
+) -> float:
+    if options.pitch is not None:
+        return options.pitch
+    extent = float(np.max(mesh.extents[:_HORIZONTAL_AXES]))
+    if extent <= 0.0:
+        msg = "mesh has no horizontal extent after orientation; check --up"
+        raise ValueError(msg)
+    return extent / target_studs
+
+
+def _grid_phase_vectors(count: int) -> tuple[tuple[float, float, float], ...]:
+    return (
+        (0.0, 0.0, 0.0),
+        (0.5, 0.0, 0.0),
+        (0.0, 0.5, 0.0),
+        (0.5, 0.5, 0.0),
+        (0.0, 0.0, 0.5),
+        (0.5, 0.0, 0.5),
+        (0.0, 0.5, 0.5),
+        (0.5, 0.5, 0.5),
+    )[:count]
+
+
+def _surface_score(
+    mesh: trimesh.Trimesh,
+    voxels: _VoxelGridLike,
+    mask: np.ndarray,
+    *,
+    phase: tuple[float, float, float],
+    pitch: float,
+) -> tuple[float, int]:
+    surface = mask & ~ndimage.binary_erosion(mask, structure=_FACE_STRUCTURE)
+    indices = np.argwhere(surface)
+    centres = np.asarray(voxels.indices_to_points(indices), dtype=np.float64)
+    centres -= np.asarray(phase) * pitch
+    distances, nearest = KDTree(np.asarray(mesh.vertices)).query(centres, workers=-1)
+    return (float(np.mean(distances) / pitch), len(np.unique(nearest)))
+
+
+def _constructibility(mask: np.ndarray) -> float:
+    filled = int(np.count_nonzero(mask))
+    if not filled:
+        return 0.0
+    bonds = sum(_bond_count(mask, axis=axis) for axis in range(3))
+    return bonds / filled
+
+
+def _bond_count(mask: np.ndarray, *, axis: int) -> int:
+    match axis:
+        case 0:
+            pairs = mask[1:, :, :] & mask[:-1, :, :]
+        case 1:
+            pairs = mask[:, 1:, :] & mask[:, :-1, :]
+        case 2:
+            pairs = mask[:, :, 1:] & mask[:, :, :-1]
+        case _:
+            raise AssertionError
+    return int(np.count_nonzero(pairs))
+
+
+def _mesh_annotations(
+    mask: np.ndarray,
+    choice: _VoxelChoice,
+) -> MeshFeatureAnnotations:
+    inside = np.asarray(ndimage.distance_transform_edt(mask), dtype=np.float64)
+    outside = np.asarray(ndimage.distance_transform_edt(~mask), dtype=np.float64)
+    signed = inside - outside
+    gradient_x = np.asarray(np.gradient(signed, axis=0), dtype=np.float64)
+    gradient_y = np.asarray(np.gradient(signed, axis=1), dtype=np.float64)
+    gradient_z = np.asarray(np.gradient(signed, axis=2), dtype=np.float64)
+    surface = mask & ~ndimage.binary_erosion(mask, structure=_FACE_STRUCTURE)
+    surface_cells = np.argwhere(surface)
+    normals: list[tuple[tuple[int, int, int], tuple[float, float, float]]] = []
+    detail: list[tuple[int, int, int]] = []
+    curvature = np.abs(ndimage.laplace(signed))
+    threshold = float(np.quantile(curvature[surface], 0.75)) if surface.any() else 0.0
+    for row in surface_cells:
+        cell = (int(row[0]), int(row[1]), int(row[2]))
+        vector = np.asarray(
+            [gradient_x[cell], gradient_y[cell], gradient_z[cell]],
+            dtype=np.float64,
+        )
+        length = float(np.linalg.norm(vector))
+        normal = (
+            tuple(float(value / length) for value in vector)
+            if length
+            else (0.0, 0.0, 1.0)
+        )
+        normals.append((cell, cast("tuple[float, float, float]", normal)))
+        if curvature[cell] > threshold:
+            detail.append(cell)
+    planar = surface & (curvature <= threshold)
+    _, planar_regions = ndimage.label(planar, structure=_FACE_STRUCTURE)
+    return MeshFeatureAnnotations(
+        target_studs=choice.target_studs,
+        grid_phase=choice.phase,
+        surface_error=choice.surface_error,
+        constructibility=choice.constructibility,
+        planar_region_count=int(planar_regions),
+        detail_candidates=tuple(detail),
+        local_normals=tuple(normals),
+    )
+
+
+def _notify(progress: ProgressCallback | None, message: str) -> None:
     """Route a loader message to the progress callback or a UserWarning."""
     if progress is not None:
-        progress(message)
+        progress(ProgressEvent(message, phase="input.mesh", level="warning"))
     else:
         warnings.warn(message, UserWarning, stacklevel=3)
 
@@ -181,7 +385,7 @@ def _vertex_colours(mesh: trimesh.Trimesh) -> np.ndarray | None:
 
 def _sampled_rgba(
     working: trimesh.Trimesh,
-    voxels: _VoxelGridLike,
+    choice: _VoxelChoice,
     mask: np.ndarray,
     colours: np.ndarray,
 ) -> np.ndarray:
@@ -193,7 +397,11 @@ def _sampled_rgba(
     surface colour and are relabelled IGNORE downstream anyway.
     """
     filled = np.argwhere(mask)
-    centres = np.asarray(voxels.indices_to_points(filled), dtype=np.float64)
+    centres = np.asarray(
+        choice.voxels.indices_to_points(filled),
+        dtype=np.float64,
+    )
+    centres -= np.asarray(choice.phase) * choice.pitch
     centres[:, 2] /= _PLATES_PER_STUD
     vertices = np.asarray(working.vertices, dtype=np.float64).copy()
     vertices[:, 2] /= _PLATES_PER_STUD

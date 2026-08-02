@@ -54,10 +54,11 @@ def piece_for(layout: Layout, brick: PlacedBrick) -> Piece:
     center_y = sum(c[1] for c in columns) / len(columns)
     offset_x, offset_y, offset_z = part.origin_offset
     rotated_ox, rotated_oz = _rotate_ldu(offset_x, offset_z, brick.yaw)
+    physical_x, physical_y, physical_z = brick.offset_ldu
     position = Vector(
-        STUD_LDU * center_x + rotated_ox,
-        -PLATE_LDU * (brick.layer + part.height_plates) + offset_y,
-        STUD_LDU * center_y + rotated_oz,
+        STUD_LDU * center_x + rotated_ox + physical_x,
+        -PLATE_LDU * (brick.layer + part.height_plates) + offset_y - physical_z,
+        STUD_LDU * center_y + rotated_oz + physical_y,
     )
     emit_yaw = (brick.yaw + part.emit_yaw_offset) % 360
     # Grid yaw maps local +X toward +Z. pyldraw3 1.3's corrected positive
@@ -104,11 +105,12 @@ def _cladding_piece(layout: Layout, brick: PlacedBrick, part: Part) -> Piece:
     center_x = sum(c[0] for c in columns) / len(columns)
     center_y = sum(c[1] for c in columns) / len(columns)
     offset_out, offset_up, offset_across = part.mount_offset_ldu
+    physical_x, physical_y, physical_z = brick.offset_ldu
     across_x, across_y = -oy, ox
     position = Vector(
-        STUD_LDU * center_x + offset_out * ox + offset_across * across_x,
-        -PLATE_LDU * brick.layer + offset_up,
-        STUD_LDU * center_y + offset_out * oy + offset_across * across_y,
+        STUD_LDU * center_x + offset_out * ox + offset_across * across_x + physical_x,
+        -PLATE_LDU * brick.layer + offset_up - physical_z,
+        STUD_LDU * center_y + offset_out * oy + offset_across * across_y + physical_y,
     )
     return Piece(
         colour=brick.colour_code,

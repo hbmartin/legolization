@@ -99,6 +99,14 @@ def test_write_ldr_and_mpd(layout, tmp_path):
     assert mpd_lines[-1] == "0 NOFILE"
 
 
+def test_structural_ldraw_golden(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("plate_1x2", 0, 0, 3, 0, 14)
+    expected = (Path(__file__).parent / "data" / "golden" / "simple.ldr").read_text()
+
+    assert "\n".join(model_lines(layout)) + "\n" == expected
+
+
 def test_roundtrip_through_pyldraw3(layout, tmp_path):
     from ldraw.model import read_model
     from ldraw.pieces import Piece

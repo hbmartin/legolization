@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "comment": "Seed part catalog. size = [width, length] in studs (length runs along local dx). Masses in grams come from BrickLink's Parts.txt Weight (in Grams) field and are refreshed by scripts/ingest_bricklink_masses.py. Slope specs list stud_cells (full-height columns carrying studs) and slope_cells (columns under the sloped face); the LDraw models descend toward -Z from an origin at the stud-cell centroid.",
   "parts": [
     {
@@ -529,6 +529,26 @@
       ]
     },
     {
+      "key": "slope_inverted_45_2x1",
+      "ldraw_part": "3665",
+      "category": "slope",
+      "height_plates": 3,
+      "mass_g": 0.64,
+      "inverted": true,
+      "stud_cells": [[0, 1]],
+      "slope_cells": [[0, 0]]
+    },
+    {
+      "key": "slope_inverted_45_2x2",
+      "ldraw_part": "3660",
+      "category": "slope",
+      "height_plates": 3,
+      "mass_g": 1.08,
+      "inverted": true,
+      "stud_cells": [[0, 1], [1, 1]],
+      "slope_cells": [[0, 0], [1, 0]]
+    },
+    {
       "key": "brick_1x1_side_stud",
       "ldraw_part": "87087",
       "category": "snot",
@@ -569,7 +589,65 @@
           "direction": [0, 1, 0]
         }
       ],
-      "emit_yaw_offset": 0
+      "emit_yaw_offset": 0,
+      "collision_boxes_ldu": [
+        {
+          "minimum": [-10, -8, 0],
+          "maximum": [10, 10, 24]
+        }
+      ],
+      "top_connectors_ldu": [
+        {"point": [0, 0, 24], "direction": [0, 0, 1]},
+        {"point": [0, 8, 12], "direction": [0, 1, 0]}
+      ],
+      "bottom_connectors_ldu": [
+        {"point": [0, 0, 0], "direction": [0, 0, -1]}
+      ]
+    },
+    {
+      "key": "bracket_1x2_inverted_side_detail",
+      "ldraw_part": "99781",
+      "category": "special_snot",
+      "snot_role": "explicit",
+      "occupied_cells": [
+        [0, 0, 0], [0, 0, 1], [0, 0, 2],
+        [1, 0, 0], [1, 0, 1], [1, 0, 2]
+      ],
+      "filled_cells": [
+        [0, 0, 0], [0, 0, 1], [0, 0, 2],
+        [1, 0, 0], [1, 0, 1], [1, 0, 2]
+      ],
+      "top_connectors": [
+        {"cell": [0, 0, 2], "direction": [0, 0, 1]},
+        {"cell": [1, 0, 2], "direction": [0, 0, 1]},
+        {"cell": [0, 0, 1], "direction": [0, -1, 0]},
+        {"cell": [1, 0, 1], "direction": [0, -1, 0]}
+      ],
+      "bottom_connectors": [
+        {"cell": [0, 0, 0], "direction": [0, 0, -1]},
+        {"cell": [1, 0, 0], "direction": [0, 0, -1]}
+      ],
+      "height_plates": 3,
+      "mass_g": 0.58,
+      "orientations": [0, 90, 180, 270],
+      "origin_offset": [0.0, 0.0, 0.0],
+      "mount_normal": null,
+      "emit_yaw_offset": 0,
+      "replaceable_geometry": false,
+      "collision_boxes_ldu": [
+        {"minimum": [-10, -10, 16], "maximum": [30, 10, 24]},
+        {"minimum": [-10, -10, 0], "maximum": [30, -2, 24]}
+      ],
+      "top_connectors_ldu": [
+        {"point": [0, 0, 24], "direction": [0, 0, 1]},
+        {"point": [20, 0, 24], "direction": [0, 0, 1]},
+        {"point": [0, -10, 12], "direction": [0, -1, 0]},
+        {"point": [20, -10, 12], "direction": [0, -1, 0]}
+      ],
+      "bottom_connectors_ldu": [
+        {"point": [0, 0, 16], "direction": [0, 0, -1]},
+        {"point": [20, 0, 16], "direction": [0, 0, -1]}
+      ]
     },
     {
       "key": "dish_3x3_inverted_snot",

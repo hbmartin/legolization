@@ -26,8 +26,12 @@ dependencies = [
     "clarabel>=0.11.1",
     "cvxpy>=1.9.2",
     "highspy>=1.15.1",
+    "jsonschema>=4.25.1",
     "numpy>=2.5.1",
     "osqp>=1.1.3",
+    "filelock>=3.20.3",
+    "platformdirs>=4.9.2",
+    "pyldcad>=0.1,<0.2",
     "pyldraw3>=1.5.0",
     "reportlab>=4.2",
     "scipy>=1.18.0",
@@ -49,6 +53,7 @@ dev = [
     "deptry>=0.23.0",
     "hypothesis>=6.156.7",
     "lizard>=1.23.0",
+    "pillow>=12.1.0",
     "pypdf>=5.1",
     "pyrefly>=1.1.1",
     "pyroma>=5.0.1",
@@ -91,9 +96,14 @@ project-includes = [
     "scripts/**/*.py",
 ]
 
+[tool.uv.sources]
+pyldcad = { path = "../../pyLDCad", editable = true }
+pyldraw3 = { path = "../../pyldraw3", editable = true }
+
 [tool.deptry]
 known_first_party = ["legolization"]
 extend_exclude = ["papers PDFs"]
+package_module_name_map = { pyldraw3 = ["ldraw"], pyldcad = ["pyldcad"] }
 
 [tool.deptry.per_rule_ignores]
 # clarabel/highspy/osqp/scs are cvxpy/scipy solver backends loaded by name at

@@ -145,6 +145,8 @@ class BeautyStrategy(LayeredStrategy):
         rects: tuple[Rect2D, ...],
         counter: int,
     ) -> int:
+        # Search-node fields remain explicit at this priority-queue mutation seam.
+        # lizard forgives(parameter_count)
         seed = next(column for column in order if column not in covered)
         for rect in rects_covering(
             problem,

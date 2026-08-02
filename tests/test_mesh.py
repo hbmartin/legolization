@@ -355,6 +355,23 @@ def test_mesh_options_reject_invalid_colour_mode() -> None:
         MeshOptions(colour_mode=cast("Literal['uniform', 'sampled']", "vibes"))
 
 
+def test_auto_scale_and_grid_phase_emit_deterministic_feature_annotations() -> None:
+    first = grid_from_mesh(
+        _box(),
+        options=MeshOptions(auto_scale=(4, 6), grid_phases=4),
+    )
+    second = grid_from_mesh(
+        _box(),
+        options=MeshOptions(auto_scale=(4, 6), grid_phases=4),
+    )
+
+    assert first.mesh_features is not None
+    assert first.mesh_features == second.mesh_features
+    assert np.array_equal(first.codes, second.codes)
+    assert 4 <= first.mesh_features.target_studs <= 6
+    assert first.mesh_features.local_normals
+
+
 def test_cli_sampled_colour_mode_on_ply(tmp_path: Path) -> None:
     path = tmp_path / "box.ply"
     _split_colour_box().export(path)

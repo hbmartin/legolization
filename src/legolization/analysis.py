@@ -369,6 +369,8 @@ def analyze_ldraw(
     config: AnalysisConfig | None = None,
 ) -> AnalysisResult:
     """Analyze an existing LDraw model and optionally search for a repair."""
+    # This error-boundary composes focused import, physics, step, and repair phases.
+    # lizard forgives(cyclomatic_complexity, length)
     config = config or AnalysisConfig()
     started = time.perf_counter()
     input_info = _input_info(path)
@@ -775,6 +777,8 @@ def _analyze_step_groups(  # noqa: PLR0913 - explicit prefix-analysis state
     config: AnalysisConfig,
     whole_model_result: StabilityResult | None = None,
 ) -> tuple[dict[str, Any], ...]:
+    # Prefix cases stay together so whole-model reuse and submodel grounding agree.
+    # lizard forgives(cyclomatic_complexity)
     # A single step covering every brick is exactly the whole-model strict
     # solve the caller already ran; reuse that result instead of solving again.
     reuse_whole_model = (

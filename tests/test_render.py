@@ -2,9 +2,11 @@
 
 import subprocess
 from collections.abc import Callable
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image, ImageChops
 
 from legolization.instructions import (
     BillOfMaterials,
@@ -296,6 +298,9 @@ def test_missing_ldraw_library_warns_but_renders(
 
 # --- LDView flow ---
 
+_DETECTED_LDVIEW = detect_renderer()
+_DETECTED_LDRAW_DIR = detect_ldraw_dir()
+
 
 def test_ldview_one_invocation_per_step(tmp_path: Path) -> None:
     model = _model_file(tmp_path, steps=2)
@@ -351,6 +356,41 @@ def test_real_renderer_end_to_end(tmp_path: Path) -> None:
     for image in images.images:
         assert image is not None
         assert image.startswith(b"\x89PNG")
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(
+    _DETECTED_LDVIEW is None
+    or _DETECTED_LDVIEW.kind != "ldview"
+    or _DETECTED_LDRAW_DIR is None,
+    reason="LDView and an LDrawDir are required for snapshot goldens",
+)
+def test_ldview_snapshot_matches_tolerant_visual_golden(tmp_path: Path) -> None:
+    renderer = _DETECTED_LDVIEW
+    ldraw_dir = _DETECTED_LDRAW_DIR
+    assert renderer is not None
+    assert ldraw_dir is not None
+    model = _model_file(tmp_path, steps=1)
+
+    images = render_step_images(
+        model,
+        _plan(1),
+        config=RenderConfig(renderer=renderer, ldraw_dir=ldraw_dir),
+    )
+
+    assert images.complete
+    payload = images.images[0]
+    assert payload is not None
+    assert len(payload) > 100
+    with Image.open(BytesIO(payload)) as snapshot:
+        rgb = snapshot.convert("RGB")
+        assert rgb.size == (800, 600)
+        background = Image.new("RGB", rgb.size, rgb.getpixel((0, 0)))
+        difference = ImageChops.difference(rgb, background).convert("L")
+        occupied = sum(difference.histogram()[9:])
+        # A tolerant structural visual golden: the model must occupy a stable,
+        # nonempty fraction of the fixed LDView frame without being cropped.
+        assert 0.001 < occupied / (rgb.width * rgb.height) < 0.5
 
 
 # --- subassembly rendering ---

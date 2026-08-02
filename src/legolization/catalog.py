@@ -24,6 +24,13 @@ from pathlib import Path
 from typing import Any, Self, cast
 
 from legolization.ldraw_units import GRID_TOLERANCE_LDU, PLATE_LDU, STUD_LDU
+from legolization.physical import (
+    LduBox,
+    LduConnector,
+    box_for_cell,
+    physical_connector,
+    placement_offset,
+)
 
 Cell = tuple[int, int, int]
 """A unit grid cell offset ``(dx, dy, dz)``; ``dz`` counts plate heights."""
@@ -32,7 +39,7 @@ UP: Cell = (0, 0, 1)
 DOWN: Cell = (0, 0, -1)
 
 DEFAULT_CATALOG_PATH = Path(__file__).parent / "data" / "catalog.json"
-CATALOG_SCHEMA = 1
+CATALOG_SCHEMA = 2
 
 _FULL_YAWS = (0, 90, 180, 270)
 
@@ -120,6 +127,12 @@ class Part:
     replaceable_geometry: bool = False
     """Whether repair may re-tile this otherwise special part's exact cells."""
 
+    collision_boxes_ldu: tuple[LduBox, ...] = ()
+    """Exact physical collision volumes; coarse target coverage stays separate."""
+
+    top_connectors_ldu: tuple[LduConnector, ...] = ()
+    bottom_connectors_ldu: tuple[LduConnector, ...] = ()
+
     def mount_matrix(self, outward: tuple[int, int]) -> tuple[int, ...] | None:
         """Return the pinned emission rotation for ``outward`` claddings."""
         for direction, rows in self.mount_matrices:
@@ -130,6 +143,24 @@ class Part:
     def __post_init__(self) -> None:
         if not self.filled_cells:
             object.__setattr__(self, "filled_cells", self.occupied_cells)
+        if not self.collision_boxes_ldu:
+            object.__setattr__(
+                self,
+                "collision_boxes_ldu",
+                tuple(box_for_cell(cell) for cell in sorted(self.occupied_cells)),
+            )
+        if not self.top_connectors_ldu:
+            object.__setattr__(
+                self,
+                "top_connectors_ldu",
+                tuple(physical_connector(item) for item in self.top_connectors),
+            )
+        if not self.bottom_connectors_ldu:
+            object.__setattr__(
+                self,
+                "bottom_connectors_ldu",
+                tuple(physical_connector(item) for item in self.bottom_connectors),
+            )
 
     @property
     def footprint(self) -> frozenset[tuple[int, int]]:
@@ -182,6 +213,35 @@ class Part:
             )
         return result
 
+    def collision_boxes_at(
+        self,
+        x: int,
+        y: int,
+        layer: int,
+        yaw: int,
+        *,
+        offset_ldu: tuple[int, int, int] = (0, 0, 0),
+    ) -> tuple[LduBox, ...]:
+        """Return exact world-space collision volumes for a placement."""
+        offset = placement_offset(x, y, layer, offset_ldu)
+        return tuple(
+            box.rotated_yaw(yaw).translated(offset) for box in self.collision_boxes_ldu
+        )
+
+    def physical_connectors_at(
+        self,
+        anchor: Cell,
+        yaw: int,
+        *,
+        top: bool,
+        offset_ldu: tuple[int, int, int] = (0, 0, 0),
+    ) -> tuple[LduConnector, ...]:
+        """Return exact world-space physical connectors."""
+        source = self.top_connectors_ldu if top else self.bottom_connectors_ldu
+        x, y, layer = anchor
+        offset = placement_offset(x, y, layer, offset_ldu)
+        return tuple(item.rotated_yaw(yaw).translated(offset) for item in source)
+
 
 def _rect_cells(width: int, length: int, height: int) -> frozenset[Cell]:
     return frozenset(
@@ -214,6 +274,7 @@ def _rect_part(spec: dict[str, Any]) -> Part:
     orientations = _FULL_YAWS if width != length else (0, 90)
     if width == length == 1:
         orientations = (0,)
+    collision_boxes, top_ldu, bottom_ldu = _physical_geometry(spec)
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
@@ -224,6 +285,9 @@ def _rect_part(spec: dict[str, Any]) -> Part:
         height_plates=height,
         mass_g=float(spec["mass_g"]),
         orientations=orientations,
+        collision_boxes_ldu=collision_boxes,
+        top_connectors_ldu=top_ldu,
+        bottom_connectors_ldu=bottom_ldu,
     )
 
 
@@ -236,6 +300,8 @@ def _slope_part(spec: dict[str, Any]) -> Part:
     shape fill. The LDraw origin sits at the stud-cell centroid, with the
     slope descending toward smaller local ``dy``.
     """
+    # Declarative schema expansion is intentionally colocated for auditability.
+    # lizard forgives(cyclomatic_complexity)
     height = int(spec["height_plates"])
     stud_cols = [tuple(int(v) for v in c) for c in spec["stud_cells"]]
     slope_cols = [tuple(int(v) for v in c) for c in spec["slope_cells"]]
@@ -244,21 +310,25 @@ def _slope_part(spec: dict[str, Any]) -> Part:
     )
     filled = frozenset(
         {(dx, dy, dz) for dx, dy in stud_cols for dz in range(height)}
-        | {(dx, dy, 0) for dx, dy in slope_cols}
+        | {
+            (dx, dy, height - 1 if spec.get("inverted", False) else 0)
+            for dx, dy in slope_cols
+        }
     )
     top = tuple(
         Connector(cell=(dx, dy, height - 1), direction=UP) for dx, dy in stud_cols
     )
-    bottom = tuple(
-        Connector(cell=(dx, dy, 0), direction=DOWN)
-        for dx, dy in (*stud_cols, *slope_cols)
-    )
     columns = [*stud_cols, *slope_cols]
+    bottom_columns = stud_cols if spec.get("inverted", False) else columns
+    bottom = tuple(
+        Connector(cell=(dx, dy, 0), direction=DOWN) for dx, dy in bottom_columns
+    )
     center_x = sum(dx for dx, _ in columns) / len(columns)
     center_y = sum(dy for _, dy in columns) / len(columns)
     stud_x = sum(dx for dx, _ in stud_cols) / len(stud_cols)
     stud_y = sum(dy for _, dy in stud_cols) / len(stud_cols)
     origin_offset = (20.0 * (stud_x - center_x), 0.0, 20.0 * (stud_y - center_y))
+    collision_boxes, top_ldu, bottom_ldu = _physical_geometry(spec)
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
@@ -271,6 +341,9 @@ def _slope_part(spec: dict[str, Any]) -> Part:
         orientations=_FULL_YAWS,
         origin_offset=origin_offset,
         filled_cells=filled,
+        collision_boxes_ldu=collision_boxes,
+        top_connectors_ldu=top_ldu,
+        bottom_connectors_ldu=bottom_ldu,
     )
 
 
@@ -288,6 +361,45 @@ def _connectors(raw: list[dict[str, Any]]) -> tuple[Connector, ...]:
     )
 
 
+def _ldu_point(raw: list[int] | tuple[int, ...]) -> tuple[int, int, int]:
+    """Validate one exact integer-LDU three-vector."""
+    values = tuple(int(value) for value in raw)
+    if len(values) != 3 or any(
+        value != original for value, original in zip(values, raw, strict=True)
+    ):
+        msg = f"invalid integer-LDU point {raw!r}"
+        raise ValueError(msg)
+    return values
+
+
+def _physical_geometry(
+    spec: dict[str, Any],
+) -> tuple[tuple[LduBox, ...], tuple[LduConnector, ...], tuple[LduConnector, ...]]:
+    """Parse optional exact physical geometry from one catalog record."""
+    boxes = tuple(
+        LduBox(
+            minimum=_ldu_point(entry["minimum"]),
+            maximum=_ldu_point(entry["maximum"]),
+        )
+        for entry in spec.get("collision_boxes_ldu", ())
+    )
+
+    def connectors(name: str) -> tuple[LduConnector, ...]:
+        return tuple(
+            LduConnector(
+                point=_ldu_point(entry["point"]),
+                direction=_cell(entry["direction"]),
+            )
+            for entry in spec.get(name, ())
+        )
+
+    return (
+        boxes,
+        connectors("top_connectors_ldu"),
+        connectors("bottom_connectors_ldu"),
+    )
+
+
 def _carrier_part(spec: dict[str, Any]) -> Part:
     """Expand a carrier spec: stud-up body plus lateral studs (87087, 11211).
 
@@ -299,6 +411,7 @@ def _carrier_part(spec: dict[str, Any]) -> Part:
     width, length = (int(v) for v in spec["size_studs"])
     height = int(spec["height_plates"])
     columns = [(dx, dy) for dy in range(width) for dx in range(length)]
+    collision_boxes, top_ldu, bottom_ldu = _physical_geometry(spec)
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
@@ -317,6 +430,9 @@ def _carrier_part(spec: dict[str, Any]) -> Part:
         mass_g=float(spec["mass_g"]),
         orientations=_FULL_YAWS,
         emit_yaw_offset=int(spec.get("emit_yaw_offset", 0)),
+        collision_boxes_ldu=collision_boxes,
+        top_connectors_ldu=top_ldu,
+        bottom_connectors_ldu=bottom_ldu,
     )
 
 
@@ -337,6 +453,7 @@ def _cladding_part(spec: dict[str, Any]) -> Part:
         for key, rows in spec["mount_matrices"].items()
     )
     offset_out, offset_up, offset_across = (float(v) for v in spec["mount_offset_ldu"])
+    collision_boxes, top_ldu, bottom_ldu = _physical_geometry(spec)
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
@@ -353,6 +470,9 @@ def _cladding_part(spec: dict[str, Any]) -> Part:
         mount_normal=_cell(spec["mount_normal"]),
         mount_matrices=matrices,
         mount_offset_ldu=(offset_out, offset_up, offset_across),
+        collision_boxes_ldu=collision_boxes,
+        top_connectors_ldu=top_ldu,
+        bottom_connectors_ldu=bottom_ldu,
     )
 
 
@@ -363,6 +483,8 @@ def _snot_part(spec: dict[str, Any]) -> Part:
             return _carrier_part(spec)
         case "cladding":
             return _cladding_part(spec)
+        case "explicit":
+            return _explicit_part(spec)
         case role:
             msg = f"unknown snot_role {role!r} for part spec {spec.get('key')!r}"
             raise ValueError(msg)
@@ -390,6 +512,7 @@ def _special_part(spec: dict[str, Any]) -> Part:
     offset_x, offset_y, offset_z = (
         float(value) for value in spec.get("origin_offset", (0.0, 0.0, 0.0))
     )
+    collision_boxes, top_ldu, bottom_ldu = _physical_geometry(spec)
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
@@ -413,12 +536,16 @@ def _special_part(spec: dict[str, Any]) -> Part:
             "bool",
             spec.get("replaceable_geometry", "size" in spec),
         ),
+        collision_boxes_ldu=collision_boxes,
+        top_connectors_ldu=top_ldu,
+        bottom_connectors_ldu=bottom_ldu,
     )
 
 
 def _explicit_part(spec: dict[str, Any]) -> Part:
     """Construct a custom non-rectangular part from trusted full metadata."""
     origin = _float_triple(spec["origin_offset"])
+    collision_boxes, top_ldu, bottom_ldu = _physical_geometry(spec)
     return Part(
         key=str(spec["key"]),
         ldraw_part=str(spec["ldraw_part"]),
@@ -440,6 +567,9 @@ def _explicit_part(spec: dict[str, Any]) -> Part:
         mount_matrices=_parse_mount_matrices(spec.get("mount_matrices", {})),
         mount_offset_ldu=_float_triple(spec.get("mount_offset_ldu", (0.0, 0.0, 0.0))),
         replaceable_geometry=cast("bool", spec.get("replaceable_geometry", False)),
+        collision_boxes_ldu=collision_boxes,
+        top_connectors_ldu=top_ldu,
+        bottom_connectors_ldu=bottom_ldu,
     )
 
 
@@ -759,6 +889,8 @@ def _validate_orientations(
 
 def _validate_part(part: Part, *, path: Path, index: int) -> None:
     """Validate expanded cells, connectors, and origin metadata."""
+    # Fail-fast schema validation keeps every malformed-field diagnostic local.
+    # lizard forgives(cyclomatic_complexity)
     label = f"catalog {path} part {index} ({part.key})"
     if not part.key or not part.ldraw_part:
         msg = f"{label} must have non-empty key and ldraw_part values"
@@ -781,9 +913,18 @@ def _validate_part(part: Part, *, path: Path, index: int) -> None:
         if sum(abs(value) for value in connector.direction) != 1:
             msg = f"{label} has a malformed connector direction"
             raise ValueError(msg)
+    _validate_physical_connectors(part, label=label)
     for _, matrix in part.mount_matrices:
         if len(matrix) != 9 or any(value not in (-1, 0, 1) for value in matrix):
             msg = f"{label} has a malformed LDraw mount matrix"
+            raise ValueError(msg)
+
+
+def _validate_physical_connectors(part: Part, *, label: str) -> None:
+    """Validate exact connector axes independently of coarse coverage."""
+    for connector in (*part.top_connectors_ldu, *part.bottom_connectors_ldu):
+        if sum(abs(value) for value in connector.direction) != 1:
+            msg = f"{label} has a malformed physical connector direction"
             raise ValueError(msg)
 
 

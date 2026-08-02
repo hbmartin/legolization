@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from legolization.ldraw_out import _submodel_file
+from legolization.runtime import ProgressCallback, ProgressEvent
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -170,7 +171,7 @@ def render_step_images(
     *,
     config: RenderConfig | None = None,
     runner: Runner | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> StepImages:
     """Render one PNG per plan step from the written model file.
 
@@ -236,9 +237,11 @@ def _render_with_subassemblies(  # noqa: PLR0913, PLR0917 - one bag of render st
     config: RenderConfig,
     ldraw_dir: Path | None,
     run: Runner,
-    progress: Callable[[str], None] | None,
+    progress: ProgressCallback | None,
     warnings: list[str],
 ) -> StepImages:
+    # Renderer transaction inputs are explicit and immutable at this boundary.
+    # lizard forgives(parameter_count)
     main = plan.main_steps()
     main_longitudes = _step_longitudes(main, base=config.longitude)
     collected_main = _render_text(
@@ -316,9 +319,11 @@ def _render_text(  # noqa: PLR0913, PLR0917 - one bag of render state, locally o
     config: RenderConfig,
     ldraw_dir: Path | None,
     run: Runner,
-    progress: Callable[[str], None] | None,
+    progress: ProgressCallback | None,
     warnings: list[str],
 ) -> dict[int, bytes]:
+    # One renderer invocation context; arguments mirror the two renderer backends.
+    # lizard forgives(parameter_count)
     with tempfile.TemporaryDirectory(prefix="legolization-render-") as tmp:
         sanitized = Path(tmp) / name
         sanitized.write_text(_sanitized(text), encoding="utf-8")
@@ -394,7 +399,7 @@ def _render_leocad(  # noqa: PLR0913 - one bag of render state, locally owned
     config: RenderConfig,
     ldraw_dir: Path | None,
     run: Runner,
-    progress: Callable[[str], None] | None,
+    progress: ProgressCallback | None,
     warnings: list[str],
 ) -> dict[int, bytes]:
     """Render each same-view segment of steps in one LeoCAD invocation."""
@@ -424,7 +429,14 @@ def _render_leocad(  # noqa: PLR0913 - one bag of render state, locally owned
         if ldraw_dir is not None:
             cmd += ["-l", str(ldraw_dir)]
         if progress is not None:
-            progress(f"rendering steps {first}-{last}")
+            progress(
+                ProgressEvent(
+                    f"rendering steps {first}-{last}",
+                    phase="instructions.render",
+                    completed=last,
+                    total=len(longitudes),
+                )
+            )
         stderr = _invoke(run, _wrap_xvfb(cmd), config.timeout_s, warnings)
         if stderr is None:
             continue
@@ -445,7 +457,7 @@ def _render_ldview(  # noqa: PLR0913 - one bag of render state, locally owned
     config: RenderConfig,
     ldraw_dir: Path | None,
     run: Runner,
-    progress: Callable[[str], None] | None,
+    progress: ProgressCallback | None,
     warnings: list[str],
 ) -> dict[int, bytes]:
     """Render one snapshot per step; LDView has no batched step export."""
@@ -467,7 +479,14 @@ def _render_ldview(  # noqa: PLR0913 - one bag of render state, locally owned
         if ldraw_dir is not None:
             cmd.append(f"-LDrawDir={ldraw_dir}")
         if progress is not None:
-            progress(f"rendering step {step_no}")
+            progress(
+                ProgressEvent(
+                    f"rendering step {step_no}",
+                    phase="instructions.render",
+                    completed=step_no,
+                    total=len(longitudes),
+                )
+            )
         stderr = _invoke(run, cmd, config.timeout_s, warnings)
         if stderr is None:
             continue

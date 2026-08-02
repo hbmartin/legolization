@@ -91,6 +91,86 @@ def test_vox_loader(tmp_path):
     assert grid.code_at(0, 0, 0) == EMPTY
 
 
+def test_vox_loader_uses_magica_default_palette_when_rgba_is_absent(tmp_path):
+    data = _vox_bytes()
+    path = tmp_path / "default-palette.vox"
+    path.write_bytes(data[: data.find(b"RGBA")])
+
+    grid = VoxelGrid.from_vox(path, plates_per_voxel=1)
+
+    assert grid.code_at(1, 0, 0) == 15  # palette index 1 is white
+
+
+def _scene_vox_bytes(*, second_translation: str, conflicting: bool = False) -> bytes:
+    def chunk(cid: bytes, content: bytes, children: bytes = b"") -> bytes:
+        return (
+            cid + struct.pack("<ii", len(content), len(children)) + content + children
+        )
+
+    def string(value: str) -> bytes:
+        encoded = value.encode()
+        return struct.pack("<i", len(encoded)) + encoded
+
+    def dictionary(values: dict[str, str]) -> bytes:
+        return struct.pack("<i", len(values)) + b"".join(
+            string(key) + string(value) for key, value in values.items()
+        )
+
+    def transform(node_id: int, child: int, translation: str) -> bytes:
+        return struct.pack("<iiiiii", node_id, 0, child, -1, -1, 1) + dictionary(
+            {"_t": translation}
+        )
+
+    def shape(node_id: int, model: int) -> bytes:
+        return struct.pack("<iii", node_id, 0, 1) + struct.pack("<ii", model, 0)
+
+    size = chunk(b"SIZE", struct.pack("<iii", 1, 1, 1))
+    first = chunk(b"XYZI", struct.pack("<i", 1) + bytes([0, 0, 0, 1]))
+    second_colour = 2 if conflicting else 1
+    second = chunk(
+        b"XYZI",
+        struct.pack("<i", 1) + bytes([0, 0, 0, second_colour]),
+    )
+    group = struct.pack("<iii", 1, 0, 2) + struct.pack("<ii", 2, 4)
+    palette = bytearray(256 * 4)
+    palette[:4] = bytes([201, 26, 9, 255])
+    palette[4:8] = bytes([0, 85, 191, 255])
+    children = b"".join(
+        (
+            size,
+            first,
+            size,
+            second,
+            chunk(b"nTRN", transform(0, 1, "0 0 0")),
+            chunk(b"nGRP", group),
+            chunk(b"nTRN", transform(2, 3, "0 0 0")),
+            chunk(b"nSHP", shape(3, 0)),
+            chunk(b"nTRN", transform(4, 5, second_translation)),
+            chunk(b"nSHP", shape(5, 1)),
+            chunk(b"RGBA", bytes(palette)),
+        )
+    )
+    return b"VOX " + struct.pack("<i", 150) + chunk(b"MAIN", b"", children)
+
+
+def test_vox_scene_composes_positioned_models(tmp_path):
+    path = tmp_path / "scene.vox"
+    path.write_bytes(_scene_vox_bytes(second_translation="3 0 0"))
+
+    grid = VoxelGrid.from_vox(path, plates_per_voxel=1)
+
+    assert grid.shape == (4, 1, 1)
+    assert grid.filled_count == 2
+
+
+def test_vox_scene_rejects_conflicting_overlaps(tmp_path):
+    path = tmp_path / "conflict.vox"
+    path.write_bytes(_scene_vox_bytes(second_translation="0 0 0", conflicting=True))
+
+    with pytest.raises(ValueError, match="conflicting scene colours"):
+        VoxelGrid.from_vox(path, plates_per_voxel=1)
+
+
 def test_vox_rejects_garbage(tmp_path):
     path = tmp_path / "bad.vox"
     path.write_bytes(b"NOTAVOXFILE")
