@@ -21,7 +21,7 @@ from legolization.compare import (
 )
 from legolization.graph import ConnectionGraph
 from legolization.instructions.sequencer import InstructionsConfig, plan_instructions
-from legolization.ldraw_in import LdrawImportError, layout_from_ldraw
+from legolization.ldraw_in import LdrawImportError, import_ldraw
 from legolization.ldraw_out import write_heatmap, write_model
 from legolization.mesh import DEFAULT_MESH_COLOUR, MESH_SUFFIXES, MeshOptions
 from legolization.pipeline import (
@@ -805,10 +805,17 @@ def _run_import(
     """
     solver = SolverConfig()
     try:
-        layout = layout_from_ldraw(args.input)
+        imported = import_ldraw(args.input)
     except (LdrawImportError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    for diagnostic in imported.diagnostics:
+        if str(diagnostic.severity) == "warning":
+            print(
+                f"warning: {diagnostic.code}: {diagnostic.message}",
+                file=sys.stderr,
+            )
+    layout = imported.layout
     stability = analyze(layout, solver)
     plan = None
     if args.steps == "smart":

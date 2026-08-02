@@ -28,8 +28,8 @@ jobs:
     - name: Generate ldraw.library part/colour modules
       if: steps.ldraw-cache.outputs.cache-hit != 'true'
       run: |
-        uv run ldraw download
-        uv run ldraw generate
+        uv run ldraw download --yes
+        uv run ldraw generate --yes
     - run: uv run ruff format --check .
     - run: uv run ruff check .
     - name: Run type checks

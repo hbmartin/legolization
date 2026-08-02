@@ -102,8 +102,8 @@ solver stack — no Gurobi required.
 
 ```sh
 uv sync
-uv run ldraw download   # once: fetch the LDraw parts library
-uv run ldraw generate   # once: generate ldraw.library.* part/colour modules
+uv run ldraw download --yes   # once: fetch the LDraw parts library
+uv run ldraw generate --yes   # once: generate ldraw.library.* part/colour modules
 ```
 
 ## Usage
@@ -153,6 +153,13 @@ informational and do not change the finished-model exit code. Once the
 finished-model verdict is determined, repair-search failures, timeouts, and
 repair-write failures are recorded in the report (status `"partial"`) and
 likewise leave the exit code unchanged.
+
+Analysis reports use schema 2. The `ldraw` block records pyldraw's prepared
+catalog state, tolerant-load diagnostics, exact transformed bounds, official
+BOM, occurrence provenance, and renderer-neutral instruction sections. Exact
+stud contacts and AABB gaps are included through 1,000 occurrences and marked
+as skipped above that safety limit. The analyze command prepares the configured
+catalog automatically; if the library is missing, run `ldraw download --yes`.
 
 LDraw import — for both the generation and analyze workflows — snaps
 Studio-style export noise: positions within 0.2 LDU of the stud/plate grid
