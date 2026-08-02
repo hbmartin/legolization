@@ -72,12 +72,15 @@ def test_single_stud_cantilever_holds_with_drag(layout):
     tower = layout.add("brick_1x1", 0, 0, 0, 0, 4)
     beam = layout.add("brick_1x4", 0, 0, 3, 0, 4)
     result = analyze(layout)
-    beam_weight_n = 1.57e-3 * 9.8
+    beam_weight_n = layout.catalog["brick_1x4"].mass_g / 1_000 * 9.8
     assert result.stable
     assert result.scores[beam.brick_id].drag_max == pytest.approx(
         1.25 * beam_weight_n, rel=1e-4
     )
-    assert result.scores[beam.brick_id].score == pytest.approx(0.019625, rel=1e-4)
+    assert result.scores[beam.brick_id].score == pytest.approx(
+        1.25 * beam_weight_n / T_CAPACITY_N,
+        rel=1e-4,
+    )
     assert result.weakest_pair == (tower.brick_id, beam.brick_id)
     assert result.min_capacity < T_CAPACITY_N
 
@@ -86,8 +89,9 @@ def test_maximin_capacity_on_cantilever(layout):
     layout.add("brick_1x1", 0, 0, 0, 0, 4)
     layout.add("brick_1x4", 0, 0, 3, 0, 4)
     result = solve_maximin(build_model(layout))
+    beam_weight_n = layout.catalog["brick_1x4"].mass_g / 1_000 * 9.8
     assert result.feasible
-    assert result.capacity == pytest.approx(T_CAPACITY_N - 1.25 * 1.57e-3 * 9.8)
+    assert result.capacity == pytest.approx(T_CAPACITY_N - 1.25 * beam_weight_n)
 
 
 def test_maximin_infeasible_for_floating_brick(layout):
