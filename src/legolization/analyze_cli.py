@@ -67,6 +67,7 @@ _SCENARIOS = (
 class _OutputPaths:
     legacy_report: str | None
     assembly_report: str | None
+    manifest: Path | None
     candidate: Path
     graph: Path | None
     components: Path | None
@@ -261,7 +262,10 @@ def main(argv: list[str]) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     _validate_option_combinations(parser, args)
-    paths = _resolve_paths(args)
+    manifest_enabled = not args.no_manifest and (
+        args.manifest is not None or project.output.manifest
+    )
+    paths = _resolve_paths(args, manifest_enabled=manifest_enabled)
     _validate_paths(parser, args.input, paths=paths)
     legacy_result, assembly_result = _run_analyses(args, project=project)
     legacy_report, assembly_result = _write_candidate(
@@ -277,7 +281,6 @@ def main(argv: list[str]) -> int:
     )
     try:
         _write_result_views(
-            args,
             project=project,
             paths=paths,
             legacy_report=legacy_report,
@@ -315,6 +318,7 @@ def _run_analyses(
 ) -> tuple[AnalysisResult, AssemblyAnalysisResult]:
     seed = project.placement.seed
     time_budget = project.placement.time_budget_s or 300.0
+    per_search_budget = time_budget / 2.0
     repair_enabled = project.stability.repair
     legacy = analyze_ldraw(
         args.input,
@@ -322,7 +326,7 @@ def _run_analyses(
             auto_ground=not args.preserve_origin,
             check_source_steps=not args.no_step_check,
             repair=repair_enabled,
-            repair_time_budget_s=time_budget,
+            repair_time_budget_s=per_search_budget,
             seed=seed,
             catalog_paths=tuple(args.catalog),
         ),
@@ -343,7 +347,7 @@ def _run_analyses(
             studio_metadata_paths=tuple(args.studio_metadata),
             voxel_catalog_paths=tuple(args.catalog),
             repair=repair_enabled,
-            repair_time_budget_s=time_budget,
+            repair_time_budget_s=per_search_budget,
             seed=seed,
             auto_ground_strict=not args.preserve_origin,
         ),
@@ -352,7 +356,6 @@ def _run_analyses(
 
 
 def _write_result_views(
-    args: argparse.Namespace,
     *,
     project: ProjectConfig,
     paths: _OutputPaths,
@@ -361,20 +364,13 @@ def _write_result_views(
 ) -> None:
     _write_legacy_report(legacy_report, paths.legacy_report)
     _write_assembly_output(assembly_result.report, paths.assembly_report)
-    if (
-        assembly_result.report.status == "error"
-        or args.no_manifest
-        or (args.manifest is None and not project.output.manifest)
-    ):
+    if assembly_result.report.status == "error" or paths.manifest is None:
         return
-    manifest_path = args.manifest or args.input.with_name(
-        f"{args.input.stem}.manifest.json"
-    )
     manifest = manifest_for_analysis(
         assembly_result,
         configuration=project.to_dict(),
     )
-    write_manifest(manifest, manifest_path)
+    write_manifest(manifest, paths.manifest)
 
 
 def _write_candidate(
@@ -486,7 +482,7 @@ def _write_data_artifacts(
             continue
         try:
             operation(path)
-        except OSError as error:
+        except (OSError, TypeError, ValueError) as error:
             state.warnings.append(f"{name} artifact write failed: {error}")
         else:
             state.written[name] = str(path)
@@ -502,7 +498,7 @@ def _write_callout(
     callout = path / "missing-connections.svg"
     try:
         write_callout_svg(state.model, state.connectivity, callout)
-    except OSError as error:
+    except (OSError, TypeError, ValueError) as error:
         state.warnings.append(f"callout artifact write failed: {error}")
     else:
         state.written["callouts"] = str(callout)
@@ -534,7 +530,7 @@ def _write_html_view(
     report = replace(report, artifacts={**report.artifacts, "html": str(path)})
     try:
         write_html_report(report, path)
-    except OSError as error:
+    except (OSError, TypeError, ValueError) as error:
         return replace(
             report,
             status="partial" if report.status == "complete" else report.status,
@@ -581,12 +577,21 @@ def _write_assembly_output(
         write_assembly_report(report, Path(report_path))
 
 
-def _resolve_paths(args: argparse.Namespace) -> _OutputPaths:
+def _resolve_paths(
+    args: argparse.Namespace,
+    *,
+    manifest_enabled: bool,
+) -> _OutputPaths:
     stem = args.input.stem
     artifact_dir = args.artifact_dir
     base = artifact_dir if artifact_dir is not None else args.input.parent
     legacy_report = args.report
     assembly_report = args.assembly_report
+    manifest = (
+        args.manifest or args.input.with_name(f"{stem}.manifest.json")
+        if manifest_enabled
+        else None
+    )
     candidate = args.output or args.input.with_name(
         f"{stem}.repaired{args.input.suffix.lower()}"
     )
@@ -608,6 +613,7 @@ def _resolve_paths(args: argparse.Namespace) -> _OutputPaths:
     return _OutputPaths(
         legacy_report=legacy_report,
         assembly_report=assembly_report,
+        manifest=manifest,
         candidate=candidate,
         graph=graph,
         components=components,
@@ -659,6 +665,10 @@ def _validate_paths(  # noqa: C901 - all output collision checks stay centralize
         if assembly.suffix.lower() != ".json":
             parser.error("--assembly-report must end in .json or be '-'")
         file_paths.append(("assembly report", assembly))
+    if paths.manifest is not None:
+        if paths.manifest.suffix.lower() != ".json":
+            parser.error("--manifest must end in .json")
+        file_paths.append(("manifest", paths.manifest))
     for name, path, suffix in (
         ("graph", paths.graph, ".json"),
         ("diagnostic MPD", paths.components, ".mpd"),

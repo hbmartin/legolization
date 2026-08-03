@@ -15,6 +15,7 @@ from legolization.compare import restart_race
 from legolization.configuration import (
     ProjectConfig,
     load_project_config,
+    mapping_hash,
     merge_overrides,
 )
 from legolization.errors import (
@@ -250,6 +251,12 @@ def _write_build_manifest(
             support_mode=config.stability.support,
             exactness=exactness,
             artifacts={"model_sha256": artifact_hash},
+            status=(
+                "partial"
+                if result.instruction_certification is not None
+                and not result.instruction_certification.valid
+                else "complete"
+            ),
         ),
     )
     write_manifest(manifest, manifest_path)
@@ -257,9 +264,8 @@ def _write_build_manifest(
 
 def _configuration_payload(config: ProjectConfig) -> dict[str, Any]:
     values = config.to_dict()
-    canonical = json.dumps(values, sort_keys=True, separators=(",", ":")).encode()
     return {
-        "sha256": hashlib.sha256(canonical).hexdigest(),
+        "sha256": mapping_hash(values),
         "values": values,
     }
 
@@ -274,7 +280,16 @@ def _validate(args: argparse.Namespace) -> int:
             _error(message)
         return 1
     print(f"valid {manifest.schema} version {manifest.version}")
-    return 3 if manifest.status == "partial" else 0
+    if manifest.status == "partial":
+        return 3
+    if manifest.status == "error":
+        return 1
+    buildable = (
+        manifest.stability.get("stable") is True
+        and manifest.stability.get("component_count") == 1
+        and manifest.stability.get("floating_count") == 0
+    )
+    return 0 if buildable else 2
 
 
 def _cache(args: argparse.Namespace) -> int:

@@ -149,6 +149,9 @@ def analyze_region_path(
     if not left or not right:
         msg = "region selectors must each resolve to at least one occurrence"
         raise ValueError(msg)
+    if set(left) & set(right):
+        msg = "region selectors must not overlap"
+        raise ValueError(msg)
     confirmed_edges = [
         edge.occurrence_ids
         for edge in connectivity.connections
@@ -174,11 +177,12 @@ def analyze_region_path(
         verdict = "definitely_disconnected"
     else:
         verdict = "possibly_connected"
+    cut_edge_set = set(confirmed_cut_edges)
     capacity_values = [
         edge.capacity.shear_n
         for edge in connectivity.connections
         if edge.status is ConnectionStatus.CONFIRMED
-        and edge.occurrence_ids in set(confirmed_cut_edges)
+        and edge.occurrence_ids in cut_edge_set
     ]
     capacity_complete = bool(capacity_values) and all(
         value is not None for value in capacity_values

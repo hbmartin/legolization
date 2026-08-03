@@ -264,7 +264,7 @@ def test_torsion_bridge_dogleg_geometry(corpus: ModuleType) -> None:
     assert not deck[:-1, 1:, :].any()  # nothing else
 
 
-def test_torsion_bridge_yaw_row_moves_the_score(corpus: ModuleType) -> None:
+def test_torsion_bridge_yaw_row_preserves_the_score(corpus: ModuleType) -> None:
     # Exact physical contact points make this symmetric bridge invariant to
     # enabling the explicit yaw-equilibrium row; the historical coarse contact
     # pattern produced an artificial score increase here.

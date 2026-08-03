@@ -194,7 +194,15 @@ def test_ldr_fallback_flattens_submodels(layout, tmp_path):
 
 def _brick_key(layout: Layout) -> list[tuple]:
     return sorted(
-        (b.part_key, b.x, b.y, b.layer, b.yaw % 360, b.colour_code)
+        (
+            b.part_key,
+            b.x,
+            b.y,
+            b.layer,
+            b.yaw % 360,
+            b.colour_code,
+            b.offset_ldu,
+        )
         for b in layout.bricks.values()
     )
 
@@ -233,6 +241,23 @@ def test_import_roundtrips_slopes_and_yaws(layout, tmp_path):
     assert _brick_key(layout_from_ldraw(path)) == _brick_key(layout)
 
 
+def test_import_roundtrips_physical_offset(layout: Layout, tmp_path: Path) -> None:
+    from legolization.ldraw_in import layout_from_ldraw
+
+    layout.add(
+        part_key="plate_1x1",
+        x=0,
+        y=0,
+        layer=0,
+        yaw=0,
+        colour_code=4,
+        offset_ldu=(3, -2, 1),
+    )
+    path = tmp_path / "offset.ldr"
+    write_model(layout, path)
+    assert _brick_key(layout_from_ldraw(path)) == _brick_key(layout)
+
+
 def test_import_flattens_mpd_submodels(layout, tmp_path):
     from legolization.instructions import InstructionsConfig, plan_instructions
     from legolization.ldraw_in import layout_from_ldraw
@@ -254,7 +279,7 @@ def test_import_strict_reports_every_problem(tmp_path):
     path.write_text(
         "0 bad\n"
         "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 9999.dat\n"  # unknown part
-        "1 4 7 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # off-grid x
+        "1 4 7.5 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # fractional-LDU x
         "1 99999 20 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # unknown colour
         "1 4 40 -24 0 0.7 0 -0.7 0 1 0 0.7 0 0.7 3005.dat\n"  # 45-degree
         "1 4 60 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"  # fine

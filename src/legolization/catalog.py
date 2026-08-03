@@ -315,10 +315,11 @@ def _slope_part(spec: dict[str, Any]) -> Part:
             for dx, dy in slope_cols
         }
     )
-    top = tuple(
-        Connector(cell=(dx, dy, height - 1), direction=UP) for dx, dy in stud_cols
-    )
     columns = [*stud_cols, *slope_cols]
+    top_columns = columns if spec.get("inverted", False) else stud_cols
+    top = tuple(
+        Connector(cell=(dx, dy, height - 1), direction=UP) for dx, dy in top_columns
+    )
     bottom_columns = stud_cols if spec.get("inverted", False) else columns
     bottom = tuple(
         Connector(cell=(dx, dy, 0), direction=DOWN) for dx, dy in bottom_columns
@@ -369,7 +370,8 @@ def _ldu_point(raw: list[int] | tuple[int, ...]) -> tuple[int, int, int]:
     ):
         msg = f"invalid integer-LDU point {raw!r}"
         raise ValueError(msg)
-    return values
+    x, y, z = values
+    return (x, y, z)
 
 
 def _physical_geometry(

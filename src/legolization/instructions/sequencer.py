@@ -105,8 +105,9 @@ class InstructionsConfig:
         if (
             self.min_step_size > self.max_step_size
             or self.target_step_size > self.max_step_size
+            or self.min_step_size > self.target_step_size
         ):
-            msg = "minimum and target step sizes cannot exceed the maximum"
+            msg = "step sizes must satisfy minimum <= target <= maximum"
             raise ValueError(msg)
         if self.lp_budget is not None and self.lp_budget <= 0:
             msg = "lp_budget must be positive"

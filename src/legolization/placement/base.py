@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from legolization.grid import VoxelGrid
     from legolization.layout import Layout
+    from legolization.placement.global_exact import ExactOutcome
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,18 +43,19 @@ class ObjectiveWeights:
 
     def __post_init__(self) -> None:
         values = (
-            self.cost,
-            self.stability,
-            self.aesthetics,
-            self.colour,
-            self.perpendicularity,
-            self.symmetry,
-            self.bond_alpha1,
-            self.bond_alpha2,
+            ("cost", self.cost),
+            ("stability", self.stability),
+            ("aesthetics", self.aesthetics),
+            ("colour", self.colour),
+            ("perpendicularity", self.perpendicularity),
+            ("symmetry", self.symmetry),
+            ("bond_alpha1", self.bond_alpha1),
+            ("bond_alpha2", self.bond_alpha2),
         )
-        if any(not math.isfinite(value) or value < 0 for value in values):
-            msg = "objective weights must be finite and non-negative"
-            raise ValueError(msg)
+        for name, value in values:
+            if not math.isfinite(value) or value < 0:
+                msg = f"objective weight {name} must be finite and non-negative"
+                raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +110,11 @@ def evaluate(
 
 class PlacementStrategy(Protocol):
     """Turns a voxel grid into a placed-brick layout."""
+
+    @property
+    def outcome(self) -> ExactOutcome | None:
+        """Return exact-strategy evidence, or None for heuristic strategies."""
+        ...
 
     def place(
         self,

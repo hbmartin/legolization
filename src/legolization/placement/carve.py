@@ -19,6 +19,8 @@ from scipy.sparse import coo_matrix
 from legolization.catalog import Category, rotate_offset
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from legolization.catalog import Cell
     from legolization.layout import Layout, PlacedBrick
 
@@ -50,6 +52,11 @@ def refill_candidates(
     categories: tuple[Category, ...] = (Category.BRICK, Category.PLATE),
 ) -> list[tuple[str, Cell, int, int, tuple[Cell, ...]]]:
     """Enumerate rect placements inside ``remainder``, one colour each."""
+    supported = {Category.BRICK, Category.PLATE, Category.TILE}
+    if unsupported := set(categories) - supported:
+        listed = ", ".join(sorted(item.value for item in unsupported))
+        msg = f"refill categories require exact-cover geometry: {listed}"
+        raise ValueError(msg)
     candidates: list[tuple[str, Cell, int, int, tuple[Cell, ...]]] = []
     seen: set[tuple[str, Cell, int]] = set()
     for part in layout.catalog.by_category(*categories):
@@ -76,7 +83,7 @@ def refill_candidates(
 
 def refill_tiling(
     layout: Layout,
-    remainder: set[Cell],
+    remainder: Collection[Cell],
     colour_of: dict[Cell, int],
     *,
     categories: tuple[Category, ...] = (Category.BRICK, Category.PLATE),
@@ -84,15 +91,16 @@ def refill_tiling(
     """Exact-cover ``remainder`` with rect parts, one colour per part."""
     if not remainder:
         return []
+    remainder_set = set(remainder)
     candidates = refill_candidates(
         layout,
-        remainder,
+        remainder_set,
         colour_of,
         categories=categories,
     )
     if not candidates:
         return None
-    cells_sorted = sorted(remainder)
+    cells_sorted = sorted(remainder_set)
     cell_index = {cell: i for i, cell in enumerate(cells_sorted)}
     rows: list[int] = []
     cols: list[int] = []

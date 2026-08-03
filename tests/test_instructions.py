@@ -71,7 +71,9 @@ def test_mirror_pairs_detected_and_co_stepped():
     assert pairs[centre.brick_id] == centre.brick_id
 
     chunks = chunk_bands(
-        layout, config=InstructionsConfig(target_step_size=2), pairs=pairs
+        layout,
+        config=InstructionsConfig(target_step_size=2, min_step_size=2),
+        pairs=pairs,
     )
     for _, chunk in chunks:
         if left.brick_id in chunk:

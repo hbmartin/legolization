@@ -87,6 +87,7 @@ class GreedyStrategy:
     solver_config: SolverConfig = field(default_factory=SolverConfig)
     refine: bool = True
     fail_max: int = 20
+    outcome: None = field(default=None, init=False)
 
     def place(
         self,

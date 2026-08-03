@@ -253,7 +253,7 @@ def restart_race(  # noqa: PLR0913 - mirrors run_all's dispatch knobs
         progress=progress,
     )
     report = _select_restart_best(candidates, objective=config.cost_objective)
-    winner_seed = report.winner.seed if report.winner is not None else seeds[0]
+    winner_seed = report.winner.seed if report.winner is not None else config.seed
     return winner_seed, report
 
 
@@ -561,7 +561,7 @@ def _report(progress: ProgressCallback | None, candidate: Candidate) -> None:
     tag = f"[seed {candidate.seed}]" if candidate.seed else ""
     progress(
         ProgressEvent(
-            f"{candidate.strategy}{tag}: {verdict} ({candidate.seconds:.1f}s)",
+            message=f"{candidate.strategy}{tag}: {verdict} ({candidate.seconds:.1f}s)",
             phase="placement.restart",
             level="info" if candidate.ok else "error",
         )

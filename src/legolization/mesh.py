@@ -34,6 +34,7 @@ DEFAULT_MESH_COLOUR = 7  # light grey
 _PLATES_PER_STUD = 2.5  # 20 LDU stud pitch / 8 LDU plate height
 _MAX_GRID_DIM = 512
 _MAX_GRID_CELLS = 16_000_000
+_MAX_MESH_ANNOTATIONS = 100_000
 _HORIZONTAL_AXES = 2
 # 6-connectivity for the largest-component filter, matching grid semantics.
 _FACE_STRUCTURE = ndimage.generate_binary_structure(rank=3, connectivity=1)
@@ -93,14 +94,14 @@ class MeshOptions:
             msg = "colour_mode must be 'uniform' or 'sampled'"
             raise ValueError(msg)
         if self.auto_scale is not None:
-            scale = tuple(int(value) for value in self.auto_scale)
+            if self.pitch is not None:
+                msg = "auto_scale is incompatible with an explicit pitch"
+                raise ValueError(msg)
+            scale = (int(self.auto_scale[0]), int(self.auto_scale[1]))
             if len(scale) != 2 or scale[0] <= 0 or scale[0] > scale[1]:
                 msg = "auto_scale must be an inclusive positive (minimum, maximum)"
                 raise ValueError(msg)
             object.__setattr__(self, "auto_scale", scale)
-            if self.pitch is not None:
-                msg = "auto_scale is incompatible with an explicit pitch"
-                raise ValueError(msg)
         if self.grid_phases not in {1, 2, 4, 8}:
             msg = "grid_phases must be one of 1, 2, 4, or 8"
             raise ValueError(msg)
@@ -114,7 +115,7 @@ class _VoxelChoice:
     pitch: float
     phase: tuple[float, float, float]
     surface_error: float
-    feature_count: int
+    feature_ratio: float
     constructibility: float
 
 
@@ -190,11 +191,21 @@ def _select_voxelization(
         if options.auto_scale is not None
         else (options.target_studs,)
     )
-    choices = [
-        choice
-        for target in targets
-        for choice in _choices_at_target(mesh, options, target_studs=target)
-    ]
+    tree = KDTree(np.asarray(mesh.vertices))
+    choices: list[_VoxelChoice] = []
+    for target in targets:
+        try:
+            target_choices = _choices_at_target(
+                mesh,
+                options,
+                target_studs=target,
+                tree=tree,
+            )
+        except ValueError:
+            if options.auto_scale is None:
+                raise
+            continue
+        choices.extend(target_choices)
     if not choices:
         msg = (
             "mesh voxelization produced no filled cells; try a larger "
@@ -204,8 +215,8 @@ def _select_voxelization(
     return min(
         choices,
         key=lambda item: (
-            -item.feature_count,
             item.surface_error,
+            -item.feature_ratio,
             -item.constructibility,
             item.target_studs,
             item.phase,
@@ -218,6 +229,7 @@ def _choices_at_target(
     options: MeshOptions,
     *,
     target_studs: int,
+    tree: KDTree,
 ) -> tuple[_VoxelChoice, ...]:
     pitch = _pitch_for_target(mesh, options, target_studs)
     _check_grid_dims(mesh, pitch)
@@ -230,10 +242,10 @@ def _choices_at_target(
             voxels = voxels.fill()
         mask = np.asarray(voxels.matrix, dtype=bool)
         if mask.any():
-            error, feature_count = _surface_score(
-                mesh,
+            error, feature_ratio = _surface_score(
                 voxels,
                 mask,
+                tree=tree,
                 phase=phase,
                 pitch=pitch,
             )
@@ -245,7 +257,7 @@ def _choices_at_target(
                     pitch=pitch,
                     phase=phase,
                     surface_error=error,
-                    feature_count=feature_count,
+                    feature_ratio=feature_ratio,
                     constructibility=_constructibility(mask),
                 )
             )
@@ -280,19 +292,20 @@ def _grid_phase_vectors(count: int) -> tuple[tuple[float, float, float], ...]:
 
 
 def _surface_score(
-    mesh: trimesh.Trimesh,
     voxels: _VoxelGridLike,
     mask: np.ndarray,
     *,
+    tree: KDTree,
     phase: tuple[float, float, float],
     pitch: float,
-) -> tuple[float, int]:
+) -> tuple[float, float]:
     surface = mask & ~ndimage.binary_erosion(mask, structure=_FACE_STRUCTURE)
     indices = np.argwhere(surface)
     centres = np.asarray(voxels.indices_to_points(indices), dtype=np.float64)
     centres -= np.asarray(phase) * pitch
-    distances, nearest = KDTree(np.asarray(mesh.vertices)).query(centres, workers=-1)
-    return (float(np.mean(distances) / pitch), len(np.unique(nearest)))
+    distances, nearest = tree.query(centres, workers=-1)
+    feature_ratio = len(np.unique(nearest)) / len(indices)
+    return (float(np.mean(distances) / pitch), feature_ratio)
 
 
 def _constructibility(mask: np.ndarray) -> float:
@@ -328,25 +341,35 @@ def _mesh_annotations(
     gradient_z = np.asarray(np.gradient(signed, axis=2), dtype=np.float64)
     surface = mask & ~ndimage.binary_erosion(mask, structure=_FACE_STRUCTURE)
     surface_cells = np.argwhere(surface)
+    if len(surface_cells) > _MAX_MESH_ANNOTATIONS:
+        indices = np.linspace(
+            0,
+            len(surface_cells) - 1,
+            num=_MAX_MESH_ANNOTATIONS,
+            dtype=np.int64,
+        )
+        surface_cells = surface_cells[indices]
     normals: list[tuple[tuple[int, int, int], tuple[float, float, float]]] = []
     detail: list[tuple[int, int, int]] = []
     curvature = np.abs(ndimage.laplace(signed))
     threshold = float(np.quantile(curvature[surface], 0.75)) if surface.any() else 0.0
-    for row in surface_cells:
-        cell = (int(row[0]), int(row[1]), int(row[2]))
-        vector = np.asarray(
-            [gradient_x[cell], gradient_y[cell], gradient_z[cell]],
-            dtype=np.float64,
+    cells = tuple((int(row[0]), int(row[1]), int(row[2])) for row in surface_cells)
+    if cells:
+        rows = tuple(zip(*cells, strict=True))
+        vectors = np.column_stack(
+            (gradient_x[rows], gradient_y[rows], gradient_z[rows])
         )
-        length = float(np.linalg.norm(vector))
-        normal = (
-            tuple(float(value / length) for value in vector)
-            if length
-            else (0.0, 0.0, 1.0)
+        lengths = np.linalg.norm(vectors, axis=1)
+        normalized = np.zeros_like(vectors)
+        np.divide(
+            vectors, lengths[:, None], out=normalized, where=lengths[:, None] != 0
         )
-        normals.append((cell, cast("tuple[float, float, float]", normal)))
-        if curvature[cell] > threshold:
-            detail.append(cell)
+        normalized[lengths == 0] = (0.0, 0.0, 1.0)
+        normals.extend(
+            (cell, (float(vector[0]), float(vector[1]), float(vector[2])))
+            for cell, vector in zip(cells, normalized, strict=True)
+        )
+        detail.extend(cell for cell in cells if curvature[cell] > threshold)
     planar = surface & (curvature <= threshold)
     _, planar_regions = ndimage.label(planar, structure=_FACE_STRUCTURE)
     return MeshFeatureAnnotations(

@@ -12,13 +12,20 @@ from jsonschema import Draft202012Validator
 
 from legolization.catalog import default_catalog
 from legolization.commands import main as commands_main
-from legolization.configuration import load_project_config, project_config_from_mapping
-from legolization.errors import ConfigurationError
+from legolization.configuration import (
+    ProjectConfig,
+    load_project_config,
+    merge_overrides,
+    project_config_from_mapping,
+)
+from legolization.errors import ConfigurationError, ExactPlacementLimitError
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.instructions.blocking import directional_blockers
 from legolization.layout import Layout
 from legolization.manifest import MANIFEST_SCHEMA, manifest_json_schema, read_manifest
-from legolization.physical import LduBox
+from legolization.physical import LduBox, LduConnector
+from legolization.placement import global_exact
+from legolization.placement.global_exact import GlobalExactStrategy
 from legolization.placement.slopes import apply_plate_caps
 from legolization.placement.snot import (
     _carrier_for,
@@ -62,6 +69,61 @@ def test_strict_config_rejects_unknown_and_incompatible_options() -> None:
         )
 
 
+def test_auto_scale_preserves_explicit_target_studs_state() -> None:
+    automatic = merge_overrides(
+        ProjectConfig(),
+        {"input.mesh.auto_scale": (8, 24)},
+    )
+    assert automatic.input.mesh.auto_scale == (8, 24)
+    assert "target_studs" not in automatic.to_dict()["input"]["mesh"]
+
+    explicit = project_config_from_mapping({"input": {"mesh": {"target_studs": 32}}})
+    with pytest.raises(ConfigurationError, match="explicit target_studs"):
+        merge_overrides(explicit, {"input.mesh.auto_scale": (8, 24)})
+
+
+def test_global_exact_stability_refinement_has_independent_cut_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grid = VoxelGrid.from_array(np.full((1, 1, 1), 4, dtype=np.int16))
+    catalog = default_catalog()
+    config = replace(
+        ProjectConfig().to_pipeline(strategy="global-exact"),
+        exact_max_stability_cuts=1,
+    )
+    strategy = GlobalExactStrategy(
+        catalog=catalog,
+        solver_config=SolverConfig(),
+        config=config,
+    )
+    monkeypatch.setattr(
+        global_exact,
+        "_solve",
+        lambda _grid, candidates, **_kwargs: global_exact.OptimizeResult(
+            status=0,
+            x=np.ones(len(candidates)),
+        ),
+    )
+    monkeypatch.setattr(
+        global_exact,
+        "_layout",
+        lambda _catalog, _candidates, _selected: Layout(catalog=catalog),
+    )
+    monkeypatch.setattr(
+        global_exact,
+        "analyze",
+        lambda _layout, _config: type("Result", (), {"stable": False})(),
+    )
+    monkeypatch.setattr(
+        global_exact,
+        "_weak_region_cut",
+        lambda *_args, **_kwargs: frozenset({0}),
+    )
+
+    with pytest.raises(ExactPlacementLimitError, match="cut cap"):
+        strategy.place(grid, rng=np.random.default_rng(0))
+
+
 def test_corrected_profile_is_the_default() -> None:
     config = project_config_from_mapping({})
     solver = config.stability.effective_solver()
@@ -94,6 +156,30 @@ def test_half_offset_catalog_parts_expose_exact_geometry() -> None:
     assert lateral[0].point == (0, 8, 12)
     assert {item.point[2] for item in bracket.bottom_connectors_ldu} == {16}
     assert len(bracket.collision_boxes_ldu) == 2
+    assert headlight.collision_boxes_ldu == (
+        LduBox(minimum=(-10, -8, 0), maximum=(10, 10, 24)),
+    )
+    assert headlight.top_connectors_ldu == (
+        LduConnector(point=(0, 0, 24), direction=(0, 0, 1)),
+        LduConnector(point=(0, 8, 12), direction=(0, 1, 0)),
+    )
+    assert headlight.bottom_connectors_ldu == (
+        LduConnector(point=(0, 0, 0), direction=(0, 0, -1)),
+    )
+    assert bracket.collision_boxes_ldu == (
+        LduBox(minimum=(-10, -10, 16), maximum=(30, 10, 24)),
+        LduBox(minimum=(-10, -10, 0), maximum=(30, -2, 24)),
+    )
+    assert bracket.top_connectors_ldu == (
+        LduConnector(point=(0, 0, 24), direction=(0, 0, 1)),
+        LduConnector(point=(20, 0, 24), direction=(0, 0, 1)),
+        LduConnector(point=(0, -10, 12), direction=(0, -1, 0)),
+        LduConnector(point=(20, -10, 12), direction=(0, -1, 0)),
+    )
+    assert bracket.bottom_connectors_ldu == (
+        LduConnector(point=(0, 0, 16), direction=(0, 0, -1)),
+        LduConnector(point=(20, 0, 16), direction=(0, 0, -1)),
+    )
 
 
 @pytest.mark.parametrize(

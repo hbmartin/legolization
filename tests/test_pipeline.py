@@ -43,6 +43,8 @@ def test_place_and_repair_shares_deadline_and_reuses_verdict(
     seen_deadlines: list[float | None] = []
 
     class FakeStrategy:
+        outcome = None
+
         def place(
             self,
             grid: VoxelGrid,
@@ -82,13 +84,14 @@ def test_place_and_repair_shares_deadline_and_reuses_verdict(
     monkeypatch.setattr(pipeline_module, "analyze", fake_analyze)
     monkeypatch.setattr(pipeline_module, "repair_stability", fake_repair)
 
-    _, result = pipeline_module._place_and_repair(  # noqa: SLF001 - regression seam
+    phase = pipeline_module._place_and_repair(  # noqa: SLF001 - regression seam
         grid,
         default_catalog(),
         PipelineConfig(hollow=False),
         np.random.default_rng(0),
         123.0,
     )
+    result = phase.stability
 
     assert seen_deadlines == [123.0]
     assert result is repaired
@@ -373,7 +376,7 @@ def test_dataclass_positional_layouts_are_stable():
         "grid_phases",
     ]
     config_names = [f.name for f in fields(PipelineConfig)]
-    assert config_names[-7:] == [
+    assert config_names[26:33] == [
         "snot",
         "milp_layer_time_s",
         "milp_bond_weight",
@@ -382,9 +385,46 @@ def test_dataclass_positional_layouts_are_stable():
         "bridge_rephase",
         "hybrid_bridge",
     ]
+    assert config_names[33:] == [
+        "exact_max_cells",
+        "exact_max_candidates",
+        "exact_time_limit_s",
+        "exact_limit_policy",
+        "exact_fallback_strategy",
+        "exact_auto_preflight_fallback",
+        "cost_objective",
+        "plate_cap",
+        "emit_support",
+        "template_cache_enabled",
+        "template_cache_path",
+        "template_configuration_hash",
+        "template_physics_profile",
+        "exact_max_stability_cuts",
+    ]
     assert config_names.index("tiles") + 1 == config_names.index("refine")
     result_names = [f.name for f in fields(pipeline_module.PipelineResult)]
-    assert result_names[-2:] == ["plan", "snot_added"]
+    assert result_names[:10] == [
+        "layout",
+        "stability",
+        "grid",
+        "brick_count",
+        "mass_g",
+        "component_count",
+        "floating_count",
+        "slopes_added",
+        "tiles_added",
+        "snot_added",
+    ]
+    assert result_names[10:] == [
+        "placement_strategy",
+        "exact_status",
+        "exact_candidate_count",
+        "plate_caps_added",
+        "support_ids",
+        "instruction_certification",
+        "cache_provenance",
+        "plan",
+    ]
 
 
 def test_connectivity_fail_max_override():

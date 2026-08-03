@@ -111,6 +111,7 @@ def _phase(value: float, spacing: float) -> float:
     remainder = value % spacing
     if math.isclose(remainder, spacing, abs_tol=GRID_TOLERANCE_LDU):
         remainder = 0.0
+    remainder = round(remainder / GRID_TOLERANCE_LDU) * GRID_TOLERANCE_LDU
     rounded = round(remainder)
     return (
         float(rounded)

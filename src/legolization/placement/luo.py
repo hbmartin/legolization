@@ -66,6 +66,7 @@ class LuoStrategy:
     colour_weight: float = 1.0
     refine: bool = True
     time_budget_s: float | None = None
+    outcome: None = field(default=None, init=False)
     """Soft place() budget: the stability split-remerge loop stops at
     round boundaries once spent (each round costs two full ~n^2.8 RBE
     solves — the measured Armadillo wall). None = unbounded (historical

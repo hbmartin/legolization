@@ -57,11 +57,17 @@ class InputConfig:
     aspect_correct: bool = False
     dither: bool = False
     mesh: MeshOptions = field(default_factory=lambda: MeshOptions(grid_phases=8))
+    _target_studs_explicit: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.plates_per_voxel <= 0:
             msg = "input.plates_per_voxel must be positive"
             raise ConfigurationError(msg)
+
+    @property
+    def target_studs_explicit(self) -> bool:
+        """Whether the user supplied mesh target_studs rather than its default."""
+        return self._target_studs_explicit
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -93,12 +99,17 @@ class ExactPlacementConfig:
 
     max_cells: int = 256
     max_candidates: int = 100_000
+    max_stability_cuts: int = 256
     time_limit_s: float = 60.0
     limit_policy: ExactLimitPolicy = "fail"
     fallback_strategy: Literal["bond", "fast", "greedy"] = "bond"
 
     def __post_init__(self) -> None:
-        if self.max_cells <= 0 or self.max_candidates <= 0:
+        if (
+            self.max_cells <= 0
+            or self.max_candidates <= 0
+            or self.max_stability_cuts <= 0
+        ):
             msg = "exact placement caps must be positive"
             raise ConfigurationError(msg)
         if not math.isfinite(self.time_limit_s) or self.time_limit_s <= 0:
@@ -301,6 +312,7 @@ class ProjectConfig:
             emit_support=self.output.emit_support,
             exact_max_cells=self.placement.exact.max_cells,
             exact_max_candidates=self.placement.exact.max_candidates,
+            exact_max_stability_cuts=self.placement.exact.max_stability_cuts,
             exact_time_limit_s=self.placement.exact.time_limit_s,
             exact_limit_policy=self.placement.exact.limit_policy,
             exact_fallback_strategy=self.placement.exact.fallback_strategy,
@@ -308,13 +320,22 @@ class ProjectConfig:
             cost_objective=self.placement.objective,
             template_cache_enabled=self.cache.enabled,
             template_cache_path=self.cache.path,
-            template_configuration_hash=_mapping_hash(self.to_dict()),
+            template_configuration_hash=mapping_hash(self.to_dict()),
             template_physics_profile=self.stability.profile,
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible deterministic configuration mapping."""
-        return cast("dict[str, Any]", _json_safe(asdict(self)))
+        payload = asdict(self)
+        input_payload = cast("dict[str, Any]", payload["input"])
+        input_payload.pop("_target_studs_explicit")
+        mesh_payload = cast("dict[str, Any]", input_payload["mesh"])
+        if (
+            self.input.mesh.auto_scale is not None
+            and not self.input.target_studs_explicit
+        ):
+            mesh_payload.pop("target_studs")
+        return cast("dict[str, Any]", _json_safe(payload))
 
 
 def load_project_config(path: Path | None) -> ProjectConfig:
@@ -322,7 +343,7 @@ def load_project_config(path: Path | None) -> ProjectConfig:
     if path is None:
         return ProjectConfig()
     try:
-        payload = tomllib.loads(path.read_text())
+        payload = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as error:
         msg = f"cannot load configuration {path}: {error}"
         raise ConfigurationError(msg) from error
@@ -332,7 +353,8 @@ def load_project_config(path: Path | None) -> ProjectConfig:
     return project_config_from_mapping(payload, base_dir=path.parent.resolve())
 
 
-def _mapping_hash(payload: dict[str, Any]) -> str:
+def mapping_hash(payload: dict[str, Any]) -> str:
+    """Hash a JSON mapping with the manifest/cache canonical encoding."""
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -355,7 +377,8 @@ def project_config_from_mapping(
     cache_data = _table(payload, "cache")
 
     mesh_data = _pop_table(input_data, "mesh")
-    if mesh_data.get("auto_scale") is not None and "target_studs" in mesh_data:
+    target_studs_explicit = "target_studs" in mesh_data
+    if mesh_data.get("auto_scale") is not None and target_studs_explicit:
         msg = "input.mesh.auto_scale is incompatible with explicit target_studs"
         raise ConfigurationError(msg)
     mesh = _construct(MeshOptions, mesh_data, "input.mesh")
@@ -393,11 +416,16 @@ def project_config_from_mapping(
         cache_data["path"] = cache_path.resolve()
 
     input_data["mesh"] = mesh
+    input_config = _construct(InputConfig, input_data, "input")
+    input_config = replace(
+        input_config,
+        _target_studs_explicit=target_studs_explicit,
+    )
     placement_data.update(exact=exact, weights=weights)
     stability_data.update(solver=solver, repair_options=repair)
     instructions_data["options"] = instruction_options
     return ProjectConfig(
-        input=_construct(InputConfig, input_data, "input"),
+        input=input_config,
         geometry=_construct(GeometryConfig, geometry_data, "geometry"),
         placement=_construct(PlacementConfig, placement_data, "placement"),
         finishing=_construct(FinishingConfig, finishing_data, "finishing"),
@@ -418,6 +446,12 @@ def merge_overrides(
 ) -> ProjectConfig:
     """Apply dotted CLI overrides through the same strict parser."""
     payload = config.to_dict()
+    if (
+        overrides.get("input.mesh.auto_scale") is not None
+        and "input.mesh.target_studs" not in overrides
+        and not config.input.target_studs_explicit
+    ):
+        cast("dict[str, Any]", payload["input"]["mesh"]).pop("target_studs", None)
     for dotted, value in overrides.items():
         target = payload
         segments = dotted.split(".")
@@ -464,7 +498,11 @@ def _reject_unknown[T](payload: dict[str, Any], cls: type[T], label: str) -> Non
         "dict[str, object]",
         getattr(cls, "__dataclass_fields__", {}),
     )
-    allowed = set(dataclass_fields)
+    allowed = {
+        name
+        for name, dataclass_field in dataclass_fields.items()
+        if getattr(dataclass_field, "init", False) and not name.startswith("_")
+    }
     if unknown := sorted(set(payload) - allowed):
         msg = f"unknown {label} keys: {', '.join(unknown)}"
         raise ConfigurationError(msg)

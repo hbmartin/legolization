@@ -28,7 +28,9 @@ _SCOUT = Path(__file__).parent / "data" / "scout.mpd"
 _HEART = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
 
 
-def test_scout_tolerant_analysis_resolves_every_occurrence_without_strict_layout():
+def test_scout_tolerant_analysis_resolves_every_occurrence_without_strict_layout() -> (
+    None
+):
     result = analyze_assembly(
         _SCOUT,
         AssemblyAnalysisConfig(topology_only=True, repair=False),
@@ -44,7 +46,9 @@ def test_scout_tolerant_analysis_resolves_every_occurrence_without_strict_layout
     assert result.report.physics_verdict == "not_run"
 
 
-def test_scout_foundation_rotation_changes_target_contacts_from_zero_to_sixteen():
+def test_scout_foundation_rotation_changes_target_contacts_from_zero_to_sixteen() -> (
+    None
+):
     prepared = prepare_analysis_catalog()
     assert prepared.parts is not None
     loaded = load_model(_SCOUT)
@@ -85,7 +89,9 @@ def test_scout_foundation_rotation_changes_target_contacts_from_zero_to_sixteen(
     assert len([edge for edge in contacts if edge.occurrence_ids == (1, 3)]) == 8
 
 
-def test_scout_counterfactual_finds_and_writes_bom_preserving_ry90(tmp_path: Path):
+def test_scout_counterfactual_finds_and_writes_bom_preserving_ry90(
+    tmp_path: Path,
+) -> None:
     result = analyze_assembly(
         _SCOUT,
         AssemblyAnalysisConfig(
@@ -108,7 +114,9 @@ def test_scout_counterfactual_finds_and_writes_bom_preserving_ry90(tmp_path: Pat
     )
 
 
-def test_global_half_stud_phase_is_fitted_before_strict_layout_decode(tmp_path: Path):
+def test_global_half_stud_phase_is_fitted_before_strict_layout_decode(
+    tmp_path: Path,
+) -> None:
     layout = Layout(catalog=load_catalog())
     layout.add("brick_2x4", 0, 0, 0, 0, 4)
     layout.add("brick_2x4", 5, 0, 0, 0, 1)
@@ -130,7 +138,9 @@ def test_global_half_stud_phase_is_fitted_before_strict_layout_decode(tmp_path: 
     assert [(item.x, item.y, item.layer) for item in imported] == [(0, 0, 0), (5, 0, 0)]
 
 
-def test_unknown_load_bearing_capacity_produces_indeterminate_physics(tmp_path: Path):
+def test_unknown_load_bearing_capacity_produces_indeterminate_physics(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "unknown-capacity.ldr"
     source.write_text(
         "0 unknown capacity\n"
@@ -185,7 +195,7 @@ def test_unknown_load_bearing_capacity_produces_indeterminate_physics(tmp_path: 
     assert result.physics.scenarios[0].known_capacity_feasible is False
 
 
-def test_region_path_reports_connector_instance_minimum_cut(tmp_path: Path):
+def test_region_path_reports_connector_instance_minimum_cut(tmp_path: Path) -> None:
     source = tmp_path / "stack.ldr"
     source.write_text(
         "0 stack\n"
@@ -208,7 +218,7 @@ def test_region_path_reports_connector_instance_minimum_cut(tmp_path: Path):
     assert path["confirmed_path"] == (1, 2)
 
 
-def test_free_support_reports_topology_without_static_verdict():
+def test_free_support_reports_topology_without_static_verdict() -> None:
     result = analyze_assembly(
         _HEART,
         AssemblyAnalysisConfig(support="free", repair=False),
@@ -219,7 +229,7 @@ def test_free_support_reports_topology_without_static_verdict():
     assert result.report.verdict == "connected"
 
 
-def test_cli_writes_parallel_reports_and_default_data_artifacts(tmp_path: Path):
+def test_cli_writes_parallel_reports_and_default_data_artifacts(tmp_path: Path) -> None:
     source = tmp_path / "heart.ldr"
     source.write_bytes(_HEART.read_bytes())
 
@@ -236,7 +246,7 @@ def test_cli_writes_parallel_reports_and_default_data_artifacts(tmp_path: Path):
     assert source.with_suffix(".floating.mpd").is_file()
 
 
-def test_cli_artifact_directory_adds_html_and_callout(tmp_path: Path):
+def test_cli_artifact_directory_adds_html_and_callout(tmp_path: Path) -> None:
     source = tmp_path / "heart.ldr"
     source.write_bytes(_HEART.read_bytes())
     artifacts = tmp_path / "artifacts"
@@ -248,7 +258,9 @@ def test_cli_artifact_directory_adds_html_and_callout(tmp_path: Path):
     assert (artifacts / "heart.callouts" / "missing-connections.svg").is_file()
 
 
-def test_topology_only_rejects_explicit_support(capsys: pytest.CaptureFixture[str]):
+def test_topology_only_rejects_explicit_support(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     with pytest.raises(SystemExit):
         analyze_main(
             [
@@ -259,3 +271,23 @@ def test_topology_only_rejects_explicit_support(capsys: pytest.CaptureFixture[st
             ]
         )
     assert "cannot specify support" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("--manifest", "{source}"),
+        ("--manifest", "{output}", "--report", "{output}"),
+    ],
+)
+def test_cli_rejects_manifest_path_collisions(
+    tmp_path: Path,
+    arguments: tuple[str, ...],
+) -> None:
+    source = tmp_path / "input.ldr"
+    source.write_text("0 input\n", encoding="utf-8")
+    output = tmp_path / "shared.json"
+    rendered = tuple(value.format(source=source, output=output) for value in arguments)
+
+    with pytest.raises(SystemExit):
+        analyze_main([str(source), *rendered])
