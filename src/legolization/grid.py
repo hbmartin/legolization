@@ -29,6 +29,8 @@ _RGBA_CHANNELS = 4
 _VOX_MAGIC = b"VOX "
 _ASPECT_PLATES_PER_VOXEL = 2.5  # 20 LDU stud pitch / 8 LDU plate height
 
+type Cell = tuple[int, int, int]
+
 
 def colour_matches(a: int, b: int) -> bool:
     """Check two colour codes for compatibility (IGNORE matches anything)."""
@@ -57,10 +59,24 @@ _XY_CROSS = _FACE_STRUCTURE[:, :, 1:2]
 
 
 @dataclass(frozen=True, slots=True)
+class MeshFeatureAnnotations:
+    """Deterministic mesh evidence attached to a voxelized target."""
+
+    target_studs: int
+    grid_phase: tuple[float, float, float]
+    surface_error: float
+    constructibility: float
+    planar_region_count: int
+    detail_candidates: tuple[Cell, ...]
+    local_normals: tuple[tuple[Cell, tuple[float, float, float]], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class VoxelGrid:
     """An ``(nx, ny, nlayers)`` grid of LDraw colour codes; ``-1`` = empty."""
 
     codes: np.ndarray
+    mesh_features: MeshFeatureAnnotations | None = None
 
     def __post_init__(self) -> None:
         if self.codes.ndim != _RGB_CHANNELS:
@@ -140,7 +156,10 @@ class VoxelGrid:
 
     def with_codes(self, codes: np.ndarray) -> Self:
         """Return a copy of this grid with a replaced code array."""
-        return type(self)(codes=codes.astype(np.int16))
+        return type(self)(
+            codes=codes.astype(np.int16),
+            mesh_features=self.mesh_features,
+        )
 
     @classmethod
     def from_array(
@@ -306,53 +325,409 @@ def _stretch_layers(codes: np.ndarray, scale: float) -> np.ndarray:
     return codes[:, :, index]
 
 
+type _VoxMatrix = tuple[Cell, Cell, Cell]
+
+_IDENTITY_VOX: _VoxMatrix = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+
+
+@dataclass(frozen=True, slots=True)
+class _VoxModel:
+    size: tuple[int, int, int]
+    voxels: np.ndarray
+
+
+@dataclass(frozen=True, slots=True)
+class _VoxTransform:
+    child: int
+    translation: Cell
+    rotation: _VoxMatrix
+    hidden: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _VoxGroup:
+    children: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _VoxShape:
+    models: tuple[int, ...]
+
+
+type _VoxNode = _VoxTransform | _VoxGroup | _VoxShape
+
+
+@dataclass(frozen=True, slots=True)
+class _VoxPose:
+    rotation: _VoxMatrix
+    translation: Cell
+    ancestry: frozenset[int] = frozenset()
+
+
+@dataclass(slots=True)
+class _SceneWalk:
+    nodes: dict[int, _VoxNode]
+    placements: list[tuple[int, _VoxMatrix, Cell]]
+
+
 def _parse_vox(data: bytes) -> tuple[tuple[int, int, int], np.ndarray, np.ndarray]:
-    """Parse the first model of a ``.vox`` file → (size, xyzi rows, palette)."""
+    """Parse and compose a MagicaVoxel model or positioned multi-model scene."""
     if data[:4] != _VOX_MAGIC:
         msg = "not a MagicaVoxel file (missing 'VOX ' magic)"
         raise ValueError(msg)
-    size: tuple[int, int, int] | None = None
-    voxels: np.ndarray | None = None
-    vox_palette: np.ndarray | None = None
-    offset = 8  # skip magic + version
     try:
-        while offset + 12 <= len(data):
-            chunk_id = data[offset : offset + 4]
-            content_len, _children_len = struct.unpack_from("<ii", data, offset + 4)
-            if content_len < 0:
-                msg = "negative chunk length"
-                raise ValueError(msg)  # noqa: TRY301 - rewrapped below
-            content = data[offset + 12 : offset + 12 + content_len]
-            match chunk_id:
-                case b"SIZE" if size is None:
-                    sx, sy, sz = struct.unpack_from("<iii", content)
-                    size = _validate_vox_size((sx, sy, sz))
-                case b"XYZI" if voxels is None:
-                    (count,) = struct.unpack_from("<i", content)
-                    voxels = np.frombuffer(
-                        content, dtype=np.uint8, count=count * 4, offset=4
-                    ).reshape(-1, 4)
-                case b"RGBA":
-                    # Palette index i (1-based in XYZI) sits at position i-1.
-                    raw = np.frombuffer(content, dtype=np.uint8, count=256 * 4)
-                    vox_palette = np.zeros((257, 4), dtype=np.uint8)
-                    vox_palette[1:] = raw.reshape(256, 4)
-                case _:
-                    pass
-            offset += 12 + content_len
-    except (struct.error, ValueError) as error:
+        models, nodes, vox_palette = _parse_vox_chunks(data)
+        size, voxels = _compose_vox_scene(models, nodes)
+    except (IndexError, struct.error, UnicodeError, ValueError) as error:
         msg = f"malformed .vox file: {error}"
         raise ValueError(msg) from error
-    if size is None or voxels is None:
-        msg = "malformed .vox file: missing SIZE or XYZI chunk"
-        raise ValueError(msg)
-    if vox_palette is None:
-        msg = (
-            ".vox file has no RGBA palette chunk; re-export it with a palette "
-            "or convert to .npy"
-        )
-        raise ValueError(msg)
     return size, voxels.astype(np.int64), vox_palette
+
+
+def _parse_vox_chunks(
+    data: bytes,
+) -> tuple[list[_VoxModel], dict[int, _VoxNode], np.ndarray]:
+    models: list[_VoxModel] = []
+    nodes: dict[int, _VoxNode] = {}
+    palette: np.ndarray | None = None
+    pending_size: tuple[int, int, int] | None = None
+    offset = 8
+    while offset + 12 <= len(data):
+        chunk_id = data[offset : offset + 4]
+        content_len, _children_len = struct.unpack_from("<ii", data, offset + 4)
+        if content_len < 0 or offset + 12 + content_len > len(data):
+            msg = "truncated or negative chunk length"
+            raise ValueError(msg)
+        content = data[offset + 12 : offset + 12 + content_len]
+        match chunk_id:
+            case b"SIZE":
+                pending_size = _parse_vox_size(content)
+            case b"XYZI":
+                if pending_size is None:
+                    msg = "XYZI chunk has no preceding SIZE"
+                    raise ValueError(msg)
+                models.append(_VoxModel(pending_size, _parse_voxels(content)))
+                pending_size = None
+            case b"RGBA":
+                palette = _parse_vox_palette(content)
+            case b"nTRN" | b"nGRP" | b"nSHP":
+                node_id, node = _parse_vox_node(chunk_id, content)
+                nodes[node_id] = node
+            case _:
+                pass
+        offset += 12 + content_len
+    if not models:
+        msg = "missing SIZE or XYZI chunk"
+        raise ValueError(msg)
+    return models, nodes, palette if palette is not None else _magica_default_palette()
+
+
+def _parse_vox_size(content: bytes) -> tuple[int, int, int]:
+    sx, sy, sz = struct.unpack_from("<iii", content)
+    return _validate_vox_size((sx, sy, sz))
+
+
+def _parse_voxels(content: bytes) -> np.ndarray:
+    (count,) = struct.unpack_from("<i", content)
+    if count < 0 or len(content) != 4 + count * 4:
+        msg = "XYZI count does not match its chunk length"
+        raise ValueError(msg)
+    return np.frombuffer(content, dtype=np.uint8, count=count * 4, offset=4).reshape(
+        -1, 4
+    )
+
+
+def _parse_vox_palette(content: bytes) -> np.ndarray:
+    if len(content) != 256 * 4:
+        msg = "RGBA palette must contain 256 entries"
+        raise ValueError(msg)
+    palette = np.zeros((257, 4), dtype=np.uint8)
+    palette[1:] = np.frombuffer(content, dtype=np.uint8).reshape(256, 4)
+    return palette
+
+
+def _parse_vox_node(chunk_id: bytes, content: bytes) -> tuple[int, _VoxNode]:
+    cursor = 0
+    node_id, cursor = _take_i32(content, cursor)
+    attributes, cursor = _take_dict(content, cursor)
+    match chunk_id:
+        case b"nTRN":
+            child, cursor = _take_i32(content, cursor)
+            _, cursor = _take_i32(content, cursor)  # reserved id
+            _, cursor = _take_i32(content, cursor)  # layer id
+            frame_count, cursor = _take_i32(content, cursor)
+            frames = []
+            for _ in range(max(frame_count, 0)):
+                frame, cursor = _take_dict(content, cursor)
+                frames.append(frame)
+            frame = frames[0] if frames else {}
+            translation = _parse_translation(frame.get("_t", "0 0 0"))
+            rotation = _decode_vox_rotation(int(frame.get("_r", "4")))
+            return (
+                node_id,
+                _VoxTransform(
+                    child=child,
+                    translation=translation,
+                    rotation=rotation,
+                    hidden=attributes.get("_hidden") == "1",
+                ),
+            )
+        case b"nGRP":
+            count, cursor = _take_i32(content, cursor)
+            children = tuple(
+                _take_i32(content, cursor + 4 * index)[0] for index in range(count)
+            )
+            return (node_id, _VoxGroup(children=children))
+        case b"nSHP":
+            count, cursor = _take_i32(content, cursor)
+            models: list[int] = []
+            for _ in range(count):
+                model, cursor = _take_i32(content, cursor)
+                _, cursor = _take_dict(content, cursor)
+                models.append(model)
+            return (node_id, _VoxShape(models=tuple(models)))
+        case _:
+            raise AssertionError
+
+
+def _take_i32(data: bytes, cursor: int) -> tuple[int, int]:
+    return (struct.unpack_from("<i", data, cursor)[0], cursor + 4)
+
+
+def _take_string(data: bytes, cursor: int) -> tuple[str, int]:
+    length, cursor = _take_i32(data, cursor)
+    if length < 0 or cursor + length > len(data):
+        msg = "invalid scene string length"
+        raise ValueError(msg)
+    return (data[cursor : cursor + length].decode(), cursor + length)
+
+
+def _take_dict(data: bytes, cursor: int) -> tuple[dict[str, str], int]:
+    count, cursor = _take_i32(data, cursor)
+    result: dict[str, str] = {}
+    for _ in range(max(count, 0)):
+        key, cursor = _take_string(data, cursor)
+        value, cursor = _take_string(data, cursor)
+        result[key] = value
+    return (result, cursor)
+
+
+def _parse_translation(value: str) -> Cell:
+    coordinates = tuple(int(item) for item in value.split())
+    if len(coordinates) != 3:
+        msg = f"invalid scene translation {value!r}"
+        raise ValueError(msg)
+    return coordinates
+
+
+def _decode_vox_rotation(value: int) -> _VoxMatrix:
+    first_axis = value & 0x3
+    second_axis = (value >> 2) & 0x3
+    if first_axis > 2 or second_axis > 2 or first_axis == second_axis:
+        msg = f"invalid scene rotation {value}"
+        raise ValueError(msg)
+    third_axis = 3 - first_axis - second_axis
+    rows: list[Cell] = []
+    for row, axis in enumerate((first_axis, second_axis, third_axis)):
+        sign = -1 if value & (1 << (4 + row)) else 1
+        values = [0, 0, 0]
+        values[axis] = sign
+        rows.append((values[0], values[1], values[2]))
+    return (rows[0], rows[1], rows[2])
+
+
+def _compose_vox_scene(
+    models: list[_VoxModel],
+    nodes: dict[int, _VoxNode],
+) -> tuple[tuple[int, int, int], np.ndarray]:
+    if not nodes:
+        if len(models) != 1:
+            msg = "multiple models lack usable scene placement"
+            raise ValueError(msg)
+        return (models[0].size, models[0].voxels)
+    placements = _scene_placements(nodes)
+    if not placements:
+        msg = "scene graph contains no visible model placements"
+        raise ValueError(msg)
+    colours: dict[Cell, int] = {}
+    for model_id, rotation, translation in placements:
+        if not 0 <= model_id < len(models):
+            msg = f"scene references missing model {model_id}"
+            raise ValueError(msg)
+        _place_vox_model(
+            models[model_id],
+            rotation=rotation,
+            translation=translation,
+            colours=colours,
+        )
+    if not colours:
+        msg = "scene contains no voxels"
+        raise ValueError(msg)
+    minimum = tuple(min(cell[axis] for cell in colours) for axis in range(3))
+    shifted = {
+        (cell[0] - minimum[0], cell[1] - minimum[1], cell[2] - minimum[2]): colour
+        for cell, colour in colours.items()
+    }
+    size = (
+        max(cell[0] for cell in shifted) + 1,
+        max(cell[1] for cell in shifted) + 1,
+        max(cell[2] for cell in shifted) + 1,
+    )
+    voxels = np.asarray([(*cell, colour) for cell, colour in sorted(shifted.items())])
+    return (size, voxels)
+
+
+def _scene_placements(
+    nodes: dict[int, _VoxNode],
+) -> tuple[tuple[int, _VoxMatrix, Cell], ...]:
+    referenced = {
+        child
+        for node in nodes.values()
+        for child in (
+            (node.child,)
+            if isinstance(node, _VoxTransform)
+            else node.children
+            if isinstance(node, _VoxGroup)
+            else ()
+        )
+    }
+    roots = sorted(set(nodes) - referenced)
+    placements: list[tuple[int, _VoxMatrix, Cell]] = []
+    context = _SceneWalk(nodes=nodes, placements=placements)
+    for root in roots:
+        _walk_vox_scene(
+            root,
+            context=context,
+            pose=_VoxPose(rotation=_IDENTITY_VOX, translation=(0, 0, 0)),
+        )
+    return tuple(placements)
+
+
+def _walk_vox_scene(
+    node_id: int,
+    *,
+    context: _SceneWalk,
+    pose: _VoxPose,
+) -> None:
+    if node_id in pose.ancestry:
+        msg = "scene graph contains a cycle"
+        raise ValueError(msg)
+    node = context.nodes.get(node_id)
+    if node is None:
+        msg = f"scene references missing node {node_id}"
+        raise ValueError(msg)
+    ancestry = pose.ancestry | {node_id}
+    match node:
+        case _VoxTransform() if not node.hidden:
+            child_rotation = _multiply_matrix(pose.rotation, node.rotation)
+            child_translation = _add_cell(
+                _apply_matrix(pose.rotation, node.translation),
+                pose.translation,
+            )
+            _walk_vox_scene(
+                node.child,
+                context=context,
+                pose=_VoxPose(
+                    rotation=child_rotation,
+                    translation=child_translation,
+                    ancestry=ancestry,
+                ),
+            )
+        case _VoxGroup():
+            for child in node.children:
+                _walk_vox_scene(
+                    child,
+                    context=context,
+                    pose=_VoxPose(
+                        rotation=pose.rotation,
+                        translation=pose.translation,
+                        ancestry=ancestry,
+                    ),
+                )
+        case _VoxShape():
+            context.placements.extend(
+                (model, pose.rotation, pose.translation) for model in node.models
+            )
+        case _:
+            pass
+
+
+def _place_vox_model(
+    model: _VoxModel,
+    *,
+    rotation: _VoxMatrix,
+    translation: Cell,
+    colours: dict[Cell, int],
+) -> None:
+    if (
+        model.voxels.size
+        and (model.voxels[:, :_RGB_CHANNELS] >= np.asarray(model.size)).any()
+    ):
+        msg = "voxel coordinates outside SIZE"
+        raise ValueError(msg)
+    for x, y, z, colour in model.voxels:
+        position = _add_cell(
+            _apply_matrix(rotation, (int(x), int(y), int(z))),
+            translation,
+        )
+        value = int(colour)
+        if (existing := colours.get(position)) is not None and existing != value:
+            msg = f"conflicting scene colours at {position}"
+            raise ValueError(msg)
+        colours[position] = value
+
+
+def _apply_matrix(matrix: _VoxMatrix, cell: Cell) -> Cell:
+    return (
+        _dot(matrix[0], cell),
+        _dot(matrix[1], cell),
+        _dot(matrix[2], cell),
+    )
+
+
+def _multiply_matrix(left: _VoxMatrix, right: _VoxMatrix) -> _VoxMatrix:
+    columns = (
+        (right[0][0], right[1][0], right[2][0]),
+        (right[0][1], right[1][1], right[2][1]),
+        (right[0][2], right[1][2], right[2][2]),
+    )
+    return (
+        _product_row(left[0], columns),
+        _product_row(left[1], columns),
+        _product_row(left[2], columns),
+    )
+
+
+def _dot(left: Cell, right: Cell) -> int:
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+
+
+def _product_row(row: Cell, columns: _VoxMatrix) -> Cell:
+    return (_dot(row, columns[0]), _dot(row, columns[1]), _dot(row, columns[2]))
+
+
+def _add_cell(left: Cell, right: Cell) -> Cell:
+    return (left[0] + right[0], left[1] + right[1], left[2] + right[2])
+
+
+def _magica_default_palette() -> np.ndarray:
+    """Return MagicaVoxel's documented implicit 255-colour RGBA palette."""
+    levels = (255, 204, 153, 102, 51, 0)
+    colours = [
+        (red, green, blue, 255)
+        for red in levels
+        for green in levels
+        for blue in levels
+        if (red, green, blue) != (0, 0, 0)
+    ]
+    ramp = (238, 221, 187, 170, 136, 119, 85, 68, 34, 17)
+    colours.extend((value, 0, 0, 255) for value in ramp)
+    colours.extend((0, value, 0, 255) for value in ramp)
+    colours.extend((0, 0, value, 255) for value in ramp)
+    colours.extend((value, value, value, 255) for value in ramp)
+    palette = np.zeros((257, 4), dtype=np.uint8)
+    palette[1:256] = np.asarray(colours, dtype=np.uint8)
+    return palette
 
 
 def _validate_vox_size(size: tuple[int, int, int]) -> tuple[int, int, int]:

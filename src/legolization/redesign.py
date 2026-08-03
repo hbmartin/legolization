@@ -563,6 +563,8 @@ def _validate_candidate(  # noqa: PLR0911 - fail-fast validation gates
     parity_solver: SolverConfig,
     strict_solver: SolverConfig,
 ) -> RepairCandidate | None:
+    # Fail-fast acceptance gates are one cold-certification transaction.
+    # lizard forgives(cyclomatic_complexity)
     original_placements = set(signatures(original))
     candidate_placements = set(signatures(candidate))
     if tier == "envelope-retile":

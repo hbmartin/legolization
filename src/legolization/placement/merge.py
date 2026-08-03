@@ -294,6 +294,8 @@ def improve_connectivity(  # noqa: PLR0913 - repair knobs are all keyword-only
     bridge: BridgeFn | None = None,
 ) -> int:
     """Run connectivity repair under one top-level profiling span."""
+    # Public tuning values stay explicit and keyword-only.
+    # lizard forgives(parameter_count)
     with telemetry.span("place.connectivity"):
         return _improve_connectivity(
             layout,
@@ -352,6 +354,8 @@ def _improve_connectivity(  # noqa: PLR0913 - internal implementation
     local best-of-k choices shift downstream refinement chaotically
     (measured: heart 12 -> 29 bricks).
     """
+    # The bounded accept/reject loop is one connectivity-repair state machine.
+    # lizard forgives(cyclomatic_complexity, parameter_count)
     if bridge_draws < 1:
         msg = f"bridge_draws must be >= 1, got {bridge_draws}"
         raise ValueError(msg)
@@ -420,6 +424,8 @@ def _best_bridging_draw(  # noqa: PLR0913 - threads improve_connectivity's knobs
     deadline: float | None,
 ) -> tuple[Layout | None, tuple[int, int] | None]:
     """Best (components, bricks) candidate among the bridging draws."""
+    # This internal hand-off mirrors the public repair transaction exactly.
+    # lizard forgives(parameter_count)
     best: Layout | None = None
     best_key: tuple[int, int] | None = None
     for _ in range(bridge_draws):
@@ -497,6 +503,8 @@ def compact_vertical(layout: Layout) -> int:
     2D remerging leaves plate stacks behind (there is no 2-plate-tall part,
     so pairwise merges can never form a brick). Returns the merge count.
     """
+    # The local rewrite is a fail-fast catalogue of mutually exclusive merges.
+    # lizard forgives(cyclomatic_complexity)
     merged = 0
     for brick in sorted(layout, key=lambda b: (b.layer, b.x, b.y, b.brick_id)):
         if brick.brick_id not in layout.bricks:

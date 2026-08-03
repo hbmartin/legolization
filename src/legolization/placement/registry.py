@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypedDict
 
+from legolization.placement.global_exact import GlobalExactStrategy
 from legolization.placement.greedy import GreedyStrategy
 from legolization.placement.layered import (
     BeautyStrategy,
@@ -31,8 +32,8 @@ if TYPE_CHECKING:
 
 
 def strategy_names() -> tuple[str, ...]:
-    """All registered strategy names, sorted."""
-    return tuple(sorted(_STRATEGIES))
+    """Ordinary heuristic strategy names used by comparisons and sweeps."""
+    return tuple(sorted(name for name in _STRATEGIES if name != "global-exact"))
 
 
 def make_strategy(
@@ -45,7 +46,7 @@ def make_strategy(
     try:
         factory = _STRATEGIES[name]
     except KeyError:
-        known = ", ".join(strategy_names())
+        known = ", ".join(sorted(_STRATEGIES))
         msg = f"unknown strategy {name!r}; choose from: {known}"
         raise ValueError(msg) from None
     return factory(catalog, config)
@@ -167,6 +168,14 @@ def _make_kollsker(catalog: Catalog, config: PipelineConfig) -> PlacementStrateg
     )
 
 
+def _make_global_exact(catalog: Catalog, config: PipelineConfig) -> PlacementStrategy:
+    return GlobalExactStrategy(
+        catalog=catalog,
+        solver_config=config.solver,
+        config=config,
+    )
+
+
 _STRATEGIES: dict[str, StrategyFactory] = {
     "greedy": _make_greedy,
     "luo": _make_luo,
@@ -175,4 +184,5 @@ _STRATEGIES: dict[str, StrategyFactory] = {
     "smga": _make_smga,
     "beauty": _make_beauty,
     "kollsker": _make_kollsker,
+    "global-exact": _make_global_exact,
 }

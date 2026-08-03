@@ -134,6 +134,8 @@ class KollskerStrategy(BondStrategy):
         deadline: float | None,
     ) -> list[Rect2D] | None:
         """Two-stage lexicographic MILP; None means use the fallback."""
+        # Candidate and constraint construction form one exact-solver kernel.
+        # lizard forgives(cyclomatic_complexity)
         if self._time_limit(deadline) is None:
             return None  # deadline already spent: don't pay for enumeration
         try:

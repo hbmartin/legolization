@@ -369,6 +369,8 @@ def test_dataclass_positional_layouts_are_stable():
         "fill",
         "keep_largest",
         "colour_mode",
+        "auto_scale",
+        "grid_phases",
     ]
     config_names = [f.name for f in fields(PipelineConfig)]
     assert config_names[-7:] == [

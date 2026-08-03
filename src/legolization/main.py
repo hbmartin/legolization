@@ -38,11 +38,12 @@ from legolization.placement.registry import strategy_names
 from legolization.stability.solver import SolverConfig, analyze
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Iterable
 
     from ldraw import Diagnostic
 
     from legolization.grid import VoxelGrid
+    from legolization.runtime import ProgressCallback
 
 LDRAW_SUFFIXES = {".ldr", ".mpd"}
 DEFAULT_RESTARTS = 3
@@ -99,6 +100,8 @@ def _positive_float(value: str) -> float:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    # Declarative argparse registration is intentionally kept contiguous.
+    # lizard forgives(length)
     parser = argparse.ArgumentParser(
         prog="legolization",
         description=(
@@ -216,15 +219,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--slopes",
-        nargs="?",
-        const="preserve",
-        choices=("preserve", "smooth"),
-        default=None,
-        help=(
-            "fit slope bricks onto staircase surfaces: 'preserve' (default) "
-            "swaps exact in-shape matches without adding material; 'smooth' "
-            "adds slopes outside the shape"
-        ),
+        action="store_true",
+        help="swap exact in-shape surface profiles for slope bricks",
     )
     parser.add_argument(
         "--tiles",
@@ -258,11 +254,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--hybrid-bridge",
         action="store_true",
         help="complete the phase-1 bridge candidate with a local hard-flow MILP",
-    )
-    parser.add_argument(
-        "--milp",
-        action="store_true",
-        help="debug cross-check of the exact LP with MILP complementarity (slower)",
     )
     mesh = parser.add_argument_group("mesh input (.obj/.stl/.ply)")
     mesh_pitch = mesh.add_mutually_exclusive_group()
@@ -574,10 +565,8 @@ def _validate_input_kind_args(
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI; returns a process exit code."""
     effective_argv = list(sys.argv[1:] if argv is None else argv)
-    if effective_argv and effective_argv[0] == "analyze":
-        from legolization.analyze_cli import main as analyze_main  # noqa: PLC0415
-
-        return analyze_main(effective_argv[1:])
+    if (command_result := _explicit_command(effective_argv)) is not None:
+        return command_result
     parser = _build_parser()
     args = parser.parse_args(effective_argv)
     _validate_args(parser, args)
@@ -593,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     config = PipelineConfig(
         strategy=args.strategy,
         hollow=not args.solid,
-        slopes=args.slopes or False,
+        slopes=args.slopes,
         tiles=args.tiles,
         snot=args.snot,
         refine=not args.no_refine,
@@ -637,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
             keep_largest=args.largest_component_only,
         ),
         weights=ObjectiveWeights(stability=args.stability_weight),
-        solver=SolverConfig(mode="milp" if args.milp else "lp"),
+        solver=SolverConfig(),
     )
     if args.strategy == "all":
         return _run_sweep(args, config=config, output=output)
@@ -753,14 +742,13 @@ def _validate_ldraw_args(
         name
         for name, given in (
             ("--solid", args.solid),
-            ("--slopes", args.slopes is not None),
+            ("--slopes", args.slopes),
             ("--tiles", args.tiles),
             ("--snot", args.snot),
             ("--no-refine", args.no_refine),
             ("--no-repair", args.no_repair),
             ("--bridge-rephase", args.bridge_rephase),
             ("--hybrid-bridge", args.hybrid_bridge),
-            ("--milp", args.milp),
             ("--plates-per-voxel", args.plates_per_voxel is not None),
             ("--aspect-correct", args.aspect_correct),
             ("--dither", args.dither),
@@ -810,7 +798,7 @@ def _run_import(
     args: argparse.Namespace,
     *,
     output: Path,
-    progress: Callable[[str], None] | None,
+    progress: ProgressCallback | None,
 ) -> int:
     """Instructions for an existing LDraw model: import, analyze, sequence.
 
@@ -932,6 +920,21 @@ def _print_result(
         print("  model is NOT fully buildable; try --strategy luo or --solid")
         return 2
     return 0
+
+
+def _explicit_command(argv: list[str]) -> int | None:
+    """Dispatch explicit subcommands before the legacy generation parser."""
+    if not argv:
+        return None
+    if argv[0] == "analyze":
+        from legolization.analyze_cli import main as analyze_main  # noqa: PLC0415
+
+        return analyze_main(argv[1:])
+    if argv[0] in {"build", "validate", "cache"}:
+        from legolization.commands import main as commands_main  # noqa: PLC0415
+
+        return commands_main(argv)
+    return None
 
 
 def _run_sweep(

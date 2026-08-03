@@ -219,9 +219,17 @@ def _slide_path_clear(  # noqa: PLR0913, PLR0917 - one site is five scalars plus
     return True
 
 
-def _carrier_for(catalog: Catalog, columns: int) -> Part | None:
+def _carrier_for(
+    catalog: Catalog,
+    columns: int,
+    *,
+    prefer_compound: bool = False,
+) -> Part | None:
     """Find the side-stud carrier covering ``columns`` wall columns."""
-    for part in catalog.by_category(Category.SNOT):
+    ordinary = catalog.by_category(Category.SNOT)
+    compound = catalog.by_category(Category.SPECIAL_SNOT)
+    choices = (*compound, *ordinary) if prefer_compound else (*ordinary, *compound)
+    for part in choices:
         if part.mount_normal is not None or len(part.footprint) != columns:
             continue
         laterals = [c for c in part.top_connectors if c.direction[2] == 0]
@@ -279,15 +287,31 @@ class _MountPlan:
     tile_key: str
     tile_yaw: int
     tile_anchor: tuple[int, int]
+    tile_offset_ldu: tuple[int, int, int]
     tile_colour: int
+
+
+@dataclass(frozen=True, slots=True)
+class _ConnectorPose:
+    """Part and exact generated pose used to align a compound mount."""
+
+    part: Part
+    anchor: tuple[int, int, int]
+    yaw: int
 
 
 def _site_parts(
     catalog: Catalog,
     site: _Site,
+    *,
+    prefer_compound: bool,
 ) -> tuple[Part, int, Part, int] | None:
     """Resolve the carrier/cladding pair and their yaws for a site."""
-    carrier = _carrier_for(catalog, len(site.columns))
+    carrier = _carrier_for(
+        catalog,
+        len(site.columns),
+        prefer_compound=prefer_compound,
+    )
     cladding = _cladding_for(catalog, len(site.columns))
     if carrier is None or cladding is None:
         return None
@@ -331,12 +355,23 @@ def _mount_plan(
     spanning_donors: bool = True,
 ) -> _MountPlan | None:
     """Validate one cladding site; None on any failed eligibility guard."""
-    if (parts := _site_parts(layout.catalog, site)) is None:
-        return None
-    carrier, carrier_yaw, cladding, tile_yaw = parts
     window = {
         (cx, cy, site.z + dz) for cx, cy in site.columns for dz in range(_BRICK_PLATES)
     }
+    detail_cells = (
+        frozenset(grid.mesh_features.detail_candidates)
+        if grid.mesh_features is not None
+        else frozenset()
+    )
+    if (
+        parts := _site_parts(
+            layout.catalog,
+            site,
+            prefer_compound=bool(window & detail_cells),
+        )
+    ) is None:
+        return None
+    carrier, carrier_yaw, cladding, tile_yaw = parts
     # Sites are gathered before any mutation; an earlier mount may have
     # hung its tile into this face's neighbour columns (inside corners
     # share them — hit on suzanne). Re-check occupancy now.
@@ -360,6 +395,21 @@ def _mount_plan(
     if (tiling := refill_tiling(layout, remainder, colour_of)) is None:
         return None
     anchor = site.columns[0]
+    tile_anchor = (anchor[0] + site.face[0], anchor[1] + site.face[1])
+    tile_offset = _tile_connector_offset(
+        _ConnectorPose(
+            part=carrier,
+            anchor=(anchor[0], anchor[1], site.z),
+            yaw=carrier_yaw,
+        ),
+        _ConnectorPose(
+            part=cladding,
+            anchor=(tile_anchor[0], tile_anchor[1], site.z),
+            yaw=tile_yaw,
+        ),
+    )
+    if tile_offset is None:
+        return None
     return _MountPlan(
         donors=donors,
         carrier_key=carrier.key,
@@ -369,9 +419,60 @@ def _mount_plan(
         tiling=tiling,
         tile_key=cladding.key,
         tile_yaw=tile_yaw,
-        tile_anchor=(anchor[0] + site.face[0], anchor[1] + site.face[1]),
+        tile_anchor=tile_anchor,
+        tile_offset_ldu=tile_offset,
         tile_colour=_face_colour(grid, window, fallback=bracket_colour),
     )
+
+
+def _tile_connector_offset(
+    carrier: _ConnectorPose,
+    cladding: _ConnectorPose,
+) -> tuple[int, int, int] | None:
+    """Align a compound carrier's exact sockets, retaining half offsets."""
+    # Set comprehensions directly encode the exact connector-set equivalence.
+    # lizard forgives(cyclomatic_complexity)
+    studs = tuple(
+        item
+        for item in carrier.part.physical_connectors_at(
+            carrier.anchor,
+            carrier.yaw,
+            top=True,
+        )
+        if item.direction[2] == 0
+    )
+    sockets = tuple(
+        item
+        for item in cladding.part.physical_connectors_at(
+            cladding.anchor,
+            cladding.yaw,
+            top=False,
+        )
+        if item.direction[2] == 0
+    )
+    candidates = {
+        tuple(stud.point[axis] - socket.point[axis] for axis in range(3))
+        for stud in studs
+        for socket in sockets
+        if stud.direction == tuple(-component for component in socket.direction)
+    }
+    stud_evidence = {(item.point, item.direction) for item in studs}
+    offsets = {
+        offset
+        for offset in candidates
+        if {
+            (
+                tuple(socket.point[axis] + offset[axis] for axis in range(3)),
+                tuple(-component for component in socket.direction),
+            )
+            for socket in sockets
+        }
+        == stud_evidence
+    }
+    if len(offsets) != 1:
+        return None
+    offset = next(iter(offsets))
+    return (offset[0], offset[1], offset[2])
 
 
 def _face_colour(
@@ -430,6 +531,7 @@ def _mount(
         site.z,
         plan.tile_yaw,
         plan.tile_colour,
+        offset_ldu=plan.tile_offset_ldu,
     )
     graph = ConnectionGraph.from_layout(trial)
     after = (graph.component_count(), len(graph.floating_ids()))

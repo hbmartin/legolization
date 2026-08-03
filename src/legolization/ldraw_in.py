@@ -11,6 +11,7 @@ every problem, so a user sees the model's full distance to importable.
 from __future__ import annotations
 
 import math
+from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -206,6 +207,7 @@ class OccurrenceImport:
     occurrence_bricks: dict[int, int]
     ground_offset_layers: int
     problems: tuple[LdrawImportProblem, ...]
+    grid_phase_ldu: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
 def layout_from_ldraw(
@@ -283,11 +285,14 @@ def import_occurrences(
     allow_main_colour: bool = False,
 ) -> OccurrenceImport:
     """Decode an already-materialized occurrence stream into one layout."""
+    # Import is a single diagnostic transaction; branch helpers own decoding.
+    # lizard forgives(length)
     # Several catalog parts can share one LDraw code (a flat tile and its
     # sideways-mounted twin both emit 3070b), so the reverse map carries
     # every candidate in catalog order and the decode disambiguates: a
     # flat part only accepts yaw matrices (middle row (0, 1, 0)), a
     # sideways part only its mount matrices (middle row never (0, 1, 0)).
+    materialized = tuple(occurrences)
     reverse: dict[str, list[str]] = {}
     for part in catalog.parts.values():
         reverse.setdefault(part.ldraw_part.casefold(), []).append(part.key)
@@ -296,7 +301,8 @@ def import_occurrences(
     occurrence_bricks: dict[int, int] = {}
     problems: list[LdrawImportProblem] = []
     decoded: list[_DecodedOccurrence] = []
-    for index, occurrence in enumerate(occurrences, start=1):
+    grid_phase = _detect_import_phase(materialized, catalog=catalog, reverse=reverse)
+    for index, occurrence in enumerate(materialized, start=1):
         if (candidates := reverse.get(str(occurrence.part_code).casefold())) is None:
             problems.append(
                 _problem(
@@ -322,7 +328,12 @@ def import_occurrences(
                 )
             )
             continue
-        matched = _match_candidates(catalog, candidates, occurrence)
+        matched = _match_candidates(
+            catalog,
+            candidates,
+            occurrence,
+            grid_phase=grid_phase,
+        )
         if isinstance(matched, str):
             problems.append(
                 _problem(index, occurrence, matched, default_model=default_model)
@@ -386,6 +397,7 @@ def import_occurrences(
         occurrence_bricks=occurrence_bricks,
         ground_offset_layers=ground_offset,
         problems=tuple(problems),
+        grid_phase_ldu=grid_phase,
     )
 
 
@@ -410,6 +422,8 @@ def _match_candidates(
     catalog: Catalog,
     candidates: list[str],
     occurrence: ModelOccurrence,
+    *,
+    grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> tuple[str, tuple[int, int, int, int]] | str:
     """Decode against every candidate part; exactly one clean fit wins.
 
@@ -422,7 +436,11 @@ def _match_candidates(
     reasons: list[str] = []
     fits: list[tuple[str, tuple[int, int, int, int]]] = []
     for part_key in candidates:
-        decoded = _decode_occurrence(catalog.parts[part_key], occurrence)
+        decoded = _decode_occurrence(
+            catalog.parts[part_key],
+            occurrence,
+            grid_phase=grid_phase,
+        )
         if isinstance(decoded, str):
             reasons.append(decoded)
         else:
@@ -443,15 +461,24 @@ def _match_candidates(
 def _decode_occurrence(
     part: Part,
     occurrence: ModelOccurrence,
+    *,
+    grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> tuple[int, int, int, int] | str:
     """Decode one occurrence as ``part``: placement, or the failure reason."""
     if part.category in (Category.SNOT, Category.SPECIAL_SNOT):
-        if (snot := _decode_snot(part, occurrence)) is None:
+        if (snot := _decode_snot(part, occurrence, grid_phase=grid_phase)) is None:
             return "sideways part in an unsupported orientation"
         return snot
     if (yaw := _decode_yaw(occurrence.matrix)) is None:
         return "rotation is not a yaw multiple of 90°"
-    if (placement := _decode_position(part, occurrence.position, yaw)) is None:
+    if (
+        placement := _decode_position(
+            part,
+            occurrence.position,
+            yaw,
+            grid_phase=grid_phase,
+        )
+    ) is None:
         return "position is off the stud/plate grid"
     return (*placement, yaw)
 
@@ -459,6 +486,8 @@ def _decode_occurrence(
 def _decode_snot(
     part: Part,
     occurrence: ModelOccurrence,
+    *,
+    grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> tuple[int, int, int, int] | None:
     """Invert the SNOT emission paths, both driven by catalog data.
 
@@ -472,16 +501,23 @@ def _decode_snot(
         if (rotated := _decode_yaw(occurrence.matrix)) is None:
             return None
         yaw = (rotated - part.emit_yaw_offset) % 360
-        placement = _decode_position(part, occurrence.position, yaw)
+        placement = _decode_position(
+            part,
+            occurrence.position,
+            yaw,
+            grid_phase=grid_phase,
+        )
         if placement is None:
             return None
         return (*placement, yaw)
-    return _decode_cladding(part, occurrence)
+    return _decode_cladding(part, occurrence, grid_phase=grid_phase)
 
 
 def _decode_cladding(
     part: Part,
     occurrence: ModelOccurrence,
+    *,
+    grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> tuple[int, int, int, int] | None:
     """Invert the cladding origin: pinned matrix → outward, centroid → anchor."""
     position = occurrence.position
@@ -498,13 +534,14 @@ def _decode_cladding(
     ]
     mean_rx = sum(rx for rx, _, _ in rotated_cols) / len(rotated_cols)
     mean_ry = sum(ry for _, ry, _ in rotated_cols) / len(rotated_cols)
+    phase_x, phase_y, phase_z = grid_phase
     x = (
-        float(position.x) - offset_out * ox - offset_across * across_x
+        float(position.x) - phase_x - offset_out * ox - offset_across * across_x
     ) / STUD_LDU - mean_rx
     y = (
-        float(position.z) - offset_out * oy - offset_across * across_y
+        float(position.z) - phase_z - offset_out * oy - offset_across * across_y
     ) / STUD_LDU - mean_ry
-    layer = (offset_up - float(position.y)) / PLATE_LDU
+    layer = (offset_up - float(position.y) + phase_y) / PLATE_LDU
     coords = _grid_coordinates((x, y, layer))
     return None if coords is None else (*coords, yaw)
 
@@ -553,6 +590,8 @@ def _decode_position(
     part: Part,
     position: Vector,
     yaw: int,
+    *,
+    grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> tuple[int, int, int] | None:
     """Invert ``ldraw_out.piece_for``'s position math; None if off-grid."""
     offset_x, offset_y, offset_z = part.origin_offset
@@ -560,10 +599,72 @@ def _decode_position(
     rotated = [rotate_offset((dx, dy, 0), yaw) for dx, dy in sorted(part.footprint)]
     mean_rx = sum(rx for rx, _, _ in rotated) / len(rotated)
     mean_ry = sum(ry for _, ry, _ in rotated) / len(rotated)
-    x = (float(position.x) - rotated_ox) / STUD_LDU - mean_rx
-    y = (float(position.z) - rotated_oz) / STUD_LDU - mean_ry
-    layer = -(float(position.y) - offset_y) / PLATE_LDU - part.height_plates
+    phase_x, phase_y, phase_z = grid_phase
+    x = (float(position.x) - phase_x - rotated_ox) / STUD_LDU - mean_rx
+    y = (float(position.z) - phase_z - rotated_oz) / STUD_LDU - mean_ry
+    layer = -(float(position.y) - phase_y - offset_y) / PLATE_LDU - part.height_plates
     return _grid_coordinates((x, y, layer))
+
+
+def _detect_import_phase(
+    occurrences: tuple[ModelOccurrence, ...],
+    *,
+    catalog: Catalog,
+    reverse: dict[str, list[str]],
+) -> tuple[float, float, float]:
+    """Fit the dominant catalog-anchor phase before strict grid decoding."""
+    candidates: list[tuple[float, float, float]] = []
+    for occurrence in occurrences:
+        part_keys = reverse.get(str(occurrence.part_code).casefold(), ())
+        for part_key in part_keys:
+            part = catalog.parts[part_key]
+            if part.mount_normal is not None:
+                continue
+            if (matrix_yaw := _decode_yaw(occurrence.matrix)) is None:
+                continue
+            yaw = (matrix_yaw - part.emit_yaw_offset) % 360
+            offset_x, offset_y, offset_z = part.origin_offset
+            rotated_ox, rotated_oz = _rotate_ldu(offset_x, offset_z, yaw)
+            rotated = [
+                rotate_offset((dx, dy, 0), yaw) for dx, dy in sorted(part.footprint)
+            ]
+            mean_rx = sum(rx for rx, _, _ in rotated) / len(rotated)
+            mean_ry = sum(ry for _, ry, _ in rotated) / len(rotated)
+            candidates.append(
+                (
+                    _phase_ldu(
+                        float(occurrence.position.x) - rotated_ox - STUD_LDU * mean_rx,
+                        STUD_LDU,
+                    ),
+                    _phase_ldu(
+                        float(occurrence.position.y)
+                        - offset_y
+                        + PLATE_LDU * part.height_plates,
+                        PLATE_LDU,
+                    ),
+                    _phase_ldu(
+                        float(occurrence.position.z) - rotated_oz - STUD_LDU * mean_ry,
+                        STUD_LDU,
+                    ),
+                )
+            )
+            break
+    if len(candidates) < 2:
+        return (0.0, 0.0, 0.0)
+    phase, count = Counter(candidates).most_common(1)[0]
+    return phase if count >= 2 else (0.0, 0.0, 0.0)
+
+
+def _phase_ldu(value: float, spacing: float) -> float:
+    remainder = value % spacing
+    if math.isclose(remainder, spacing, abs_tol=GRID_TOLERANCE_LDU):
+        remainder = 0.0
+    rounded = round(remainder)
+    return (
+        float(rounded)
+        if math.isclose(remainder, rounded, abs_tol=GRID_TOLERANCE_LDU)
+        else remainder
+    )
 
 
 def _grid_coordinates(

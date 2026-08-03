@@ -151,18 +151,16 @@ def test_place_rect_yaw90_anchor():
     assert columns == {(x, y) for x in range(2) for y in range(4)}
 
 
-def test_apply_slopes_on_step():
+def test_apply_slopes_never_adds_material_outside_a_step():
     codes = np.full((1, 3, 3), EMPTY, dtype=np.int16)
     codes[0, 0, :] = 4  # one full-height column at y=0
     grid = VoxelGrid(codes=codes)
     layout = Layout(catalog=default_catalog())
     layout.add("brick_1x1", 0, 0, 0, 0, 4)
     replaced = apply_slopes(layout, grid)
-    assert replaced == 1
+    assert replaced == 0
     (brick,) = list(layout)
-    assert brick.part_key == "slope_45_2x1"
-    # The stud column stays where the 1x1 brick was.
-    assert (0, 0, 0) in layout.filled_cells_of(brick)
+    assert brick.part_key == "brick_1x1"
 
 
 def test_apply_tiles_caps_top_plates():
@@ -181,6 +179,16 @@ def test_apply_tiles_skips_supporting_plates():
     assert apply_tiles(layout) == 1  # only the top 1x1 becomes a tile
     keys = sorted(b.part_key for b in layout)
     assert keys == ["plate_2x2", "tile_1x1"]
+
+
+def test_apply_tiles_splits_an_exposed_region_into_available_sizes():
+    layout = Layout(catalog=default_catalog())
+    layout.add("plate_2x4", 0, 0, 0, 0, 4)
+    before = set(layout.occupancy)
+
+    assert apply_tiles(layout) == 2
+    assert set(layout.occupancy) == before
+    assert sorted(brick.part_key for brick in layout) == ["tile_1x4", "tile_1x4"]
 
 
 def test_greedy_bridges_straight_seams():
@@ -470,7 +478,9 @@ def test_hollow_sphere_brick_count_regression():
     # the default 3-plate shell simply carries more material.
     result = run(grid, PipelineConfig(seed=0, shell_studs=1, shell_plates=1))
     assert result.buildable
-    assert result.brick_count <= 160
+    # Corrected six-DOF physics keeps more reinforcement than the historical
+    # release-parity profile while remaining far below the old plate-raft case.
+    assert result.brick_count <= 190
 
 
 @pytest.mark.parametrize("acceptance", ["maximin", "rbe"])
@@ -660,7 +670,7 @@ def test_preserve_swaps_45_profile_without_changing_fill():
         codes, [("brick_1x1", 0, 0, 0, 0, 4), ("plate_1x1", 1, 0, 0, 0, 4)]
     )
     before = _filled(layout)
-    assert apply_slopes(layout, grid, mode="preserve") == 1
+    assert apply_slopes(layout, grid) == 1
     assert [b.part_key for b in layout] == ["slope_45_2x1"]
     assert _filled(layout) == before  # zero material added or removed
 
@@ -680,7 +690,7 @@ def test_preserve_prefers_larger_slopes():
             ("plate_1x1", 2, 0, 0, 0, 4),
         ],
     )
-    assert apply_slopes(layout, grid, mode="preserve") == 1
+    assert apply_slopes(layout, grid) == 1
     assert [b.part_key for b in layout] == ["slope_33_3x1"]
 
 
@@ -696,7 +706,7 @@ def test_preserve_places_wide_2x2_slope():
             ("plate_1x1", 1, 1, 0, 0, 4),
         ],
     )
-    assert apply_slopes(layout, grid, mode="preserve") == 1
+    assert apply_slopes(layout, grid) == 1
     assert [b.part_key for b in layout] == ["slope_45_2x2"]
 
 
@@ -712,7 +722,7 @@ def test_preserve_carves_and_refills_overlapping_donors():
         codes, [("brick_1x1", 0, 0, 0, 0, 4), ("plate_1x2", 1, 0, 0, 90, 4)]
     )
     before = _filled(layout)
-    assert apply_slopes(layout, grid, mode="preserve") == 1
+    assert apply_slopes(layout, grid) == 1
     parts = sorted(b.part_key for b in layout)
     assert parts == ["plate_1x1", "slope_45_2x1"]
     assert _filled(layout) == before
@@ -726,7 +736,7 @@ def test_preserve_rejects_bad_candidates():
     grid, layout = _preserve_fixture(
         codes, [("brick_1x1", 0, 0, 0, 0, 4), ("brick_1x1", 1, 0, 0, 0, 4)]
     )
-    assert apply_slopes(layout, grid, mode="preserve") == 0
+    assert apply_slopes(layout, grid) == 0
 
     # Donor colours differ: no swap.
     codes = np.full((2, 1, 3), EMPTY, dtype=np.int16)
@@ -735,18 +745,7 @@ def test_preserve_rejects_bad_candidates():
     grid, layout = _preserve_fixture(
         codes, [("brick_1x1", 0, 0, 0, 0, 4), ("plate_1x1", 1, 0, 0, 0, 14)]
     )
-    assert apply_slopes(layout, grid, mode="preserve") == 0
-
-
-def test_smooth_mode_is_the_legacy_default():
-    codes = np.full((1, 3, 3), EMPTY, dtype=np.int16)
-    codes[0, 0, :] = 4
-    grid = VoxelGrid(codes=codes)
-    layout = Layout(catalog=default_catalog())
-    layout.add("brick_1x1", 0, 0, 0, 0, 4)
-    assert apply_slopes(layout, grid) == 1  # same behaviour as before
-    (brick,) = list(layout)
-    assert brick.part_key == "slope_45_2x1"
+    assert apply_slopes(layout, grid) == 0
 
 
 def test_improve_connectivity_best_of_k_bridges_leaner():

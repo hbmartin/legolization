@@ -39,10 +39,11 @@ class KnobContact:
 
     below_id: int
     above_id: int
-    x: int
-    y: int
-    interface_layer: int
+    x: float
+    y: float
+    interface_layer: float
     normal: tuple[int, int, int] = (0, 0, 1)
+    point_ldu: tuple[int, int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,54 +92,44 @@ class ConnectionGraph:
     @classmethod
     def _from_layout_body(cls, layout: Layout) -> ConnectionGraph:
         """Run the body of :meth:`from_layout` without its telemetry span."""
-        # Sockets are keyed by (cell, mating direction): a lateral
-        # anti-stud only accepts a stud pointing back along its axis.
+        # Exact LDU points keep half-stud and half-plate features distinct;
+        # coarse target cells are never used as physical connector evidence.
         sockets: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
         for brick in layout:
-            for conn in layout.connectors_of(brick, top=False):
-                sockets[(conn.cell, conn.direction)] = brick.brick_id
+            for connector in layout.physical_connectors_of(brick, top=False):
+                sockets[(connector.point, connector.direction)] = brick.brick_id
 
         knob_contacts: list[KnobContact] = []
         grounded: set[int] = set()
         for brick in layout:
-            for conn in layout.connectors_of(brick, top=True):
-                cx, cy, cz = conn.cell
-                dx, dy, dz = conn.direction
-                mate = (cx + dx, cy + dy, cz + dz)
-                if (above := sockets.get((mate, (-dx, -dy, -dz)))) is None:
+            for connector in layout.physical_connectors_of(brick, top=True):
+                dx, dy, dz = connector.direction
+                if (above := sockets.get((connector.point, (-dx, -dy, -dz)))) is None:
                     continue
-                if conn.direction == (0, 0, 1):
-                    knob_contacts.append(
-                        KnobContact(
-                            below_id=brick.brick_id,
-                            above_id=above,
-                            x=cx,
-                            y=cy,
-                            interface_layer=cz + 1,
-                        )
+                point = connector.point
+                knob_contacts.append(
+                    KnobContact(
+                        below_id=brick.brick_id,
+                        above_id=above,
+                        x=point[0] / 20,
+                        y=point[1] / 20,
+                        interface_layer=point[2] / 8,
+                        normal=connector.direction,
+                        point_ldu=point,
                     )
-                else:  # lateral (SNOT) mate: record the stud cell itself
-                    knob_contacts.append(
-                        KnobContact(
-                            below_id=brick.brick_id,
-                            above_id=above,
-                            x=cx,
-                            y=cy,
-                            interface_layer=cz,
-                            normal=conn.direction,
-                        )
-                    )
-            for conn in layout.connectors_of(brick, top=False):
+                )
+            for connector in layout.physical_connectors_of(brick, top=False):
                 # Only downward anti-studs can seat on the ground plane.
-                if conn.cell[2] == 0 and conn.direction == (0, 0, -1):
+                if connector.point[2] == 0 and connector.direction == (0, 0, -1):
                     grounded.add(brick.brick_id)
                     knob_contacts.append(
                         KnobContact(
                             below_id=GROUND_ID,
                             above_id=brick.brick_id,
-                            x=conn.cell[0],
-                            y=conn.cell[1],
+                            x=connector.point[0] / 20,
+                            y=connector.point[1] / 20,
                             interface_layer=0,
+                            point_ldu=connector.point,
                         )
                     )
 

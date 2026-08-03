@@ -9,6 +9,7 @@ or reject refinement steps; the CLI reports it.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -38,6 +39,21 @@ class ObjectiveWeights:
     # ``bond_alpha1 * exp(-bond_alpha2 * d)`` (d = 0 is a stacked seam).
     bond_alpha1: float = 4.0
     bond_alpha2: float = 0.8
+
+    def __post_init__(self) -> None:
+        values = (
+            self.cost,
+            self.stability,
+            self.aesthetics,
+            self.colour,
+            self.perpendicularity,
+            self.symmetry,
+            self.bond_alpha1,
+            self.bond_alpha2,
+        )
+        if any(not math.isfinite(value) or value < 0 for value in values):
+            msg = "objective weights must be finite and non-negative"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)

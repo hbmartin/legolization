@@ -12,6 +12,7 @@ falling back to the hollow-restore loop, which adds material.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
@@ -28,6 +29,7 @@ from legolization.placement.merge import (
     compact_vertical,
     regional_random_merge,
 )
+from legolization.stability.incremental import FrozenBoundaryAnalyzer
 from legolization.stability.links import LinkReport, localize_instability
 from legolization.stability.solver import analyze
 
@@ -51,6 +53,23 @@ class RepairConfig:
     localizer: Literal["qp", "rbe"] = "qp"
     filler: Literal["merge", "milp"] = "merge"
     milp_cell_limit: int = 200
+
+    def __post_init__(self) -> None:
+        if any(
+            not math.isfinite(value) or value < 0
+            for value in (self.beta0, self.gamma, self.epsilon)
+        ):
+            msg = "repair coefficients must be finite and non-negative"
+            raise ValueError(msg)
+        if self.max_rounds < 0 or self.milp_cell_limit <= 0:
+            msg = "repair limits must be non-negative with a positive cell cap"
+            raise ValueError(msg)
+        if self.localizer not in {"qp", "rbe"} or self.filler not in {
+            "merge",
+            "milp",
+        }:
+            msg = "unsupported repair localizer or filler"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +120,15 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
             result=stability,
         )
     report = _localize(layout, solver_config, config)
+    if solver_config is None:
+        from legolization.stability.solver import SolverConfig  # noqa: PLC0415
+
+        solver_config = SolverConfig()
+    boundary = FrozenBoundaryAnalyzer.create(
+        layout,
+        config=solver_config,
+        result=initial_stability,
+    )
     q_history = [report.q]
     rounds = 0
     rebuilt = 0
@@ -117,19 +145,22 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
         candidate = layout.copy()
         freed = _remove(candidate, victims, grid)
         _refill(candidate, freed, grid, catalog, rng, config)
+        changed_ids = victims | (set(candidate.bricks) - set(layout.bricks))
+        certification = boundary.certify(candidate, changed_ids=changed_ids)
+        if not certification.cold_certified:
+            escalation += 1
+            q_history.append(report.q)
+            continue
         candidate_report = _localize(candidate, solver_config, config)
         if candidate_report.q < report.q:
             layout.replace_with(candidate)
             report = candidate_report
             rebuilt += len(victims)
+            boundary.accept(candidate, certification)
         else:
             escalation += 1
         q_history.append(report.q)
-    stability = (
-        initial_stability
-        if rebuilt == 0 and initial_stability is not None
-        else analyze(layout, solver_config)
-    )
+    stability = boundary.result
     return RepairReport(
         stable=stability.stable,
         rounds=rounds,

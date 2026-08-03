@@ -219,6 +219,8 @@ class GreedyStrategy:
         rng: np.random.Generator,
     ) -> None:
         """Repair connectivity, then delete-and-rebuild until stable."""
+        # Bounded reinforcement gates are kept together as one rollback loop.
+        # lizard forgives(cyclomatic_complexity)
         from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
 
         # Straight seams can strand towers no greedy refill bridges (the

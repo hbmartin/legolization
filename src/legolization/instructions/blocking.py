@@ -15,14 +15,84 @@ would plug into the readiness and disassembly checks without redesign.
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from legolization.layout import Layout, PlacedBrick
+    from legolization.physical import LduBox
 
 _ID_MAX = 2**63 - 1  # sorts after any real brick id at equal coordinate
+
+type InsertionDirection = Literal["x+", "x-", "y+", "y-", "z+", "z-"]
+
+_DIRECTION_AXIS: dict[InsertionDirection, tuple[int, int]] = {
+    "x+": (0, 1),
+    "x-": (0, -1),
+    "y+": (1, 1),
+    "y-": (1, -1),
+    "z+": (2, 1),
+    "z-": (2, -1),
+}
+
+
+def directional_blockers(
+    layout: Layout,
+) -> dict[InsertionDirection, dict[int, frozenset[int]]]:
+    """Return exact-AABB sweep blockers for all six insertion directions."""
+    boxes = {brick.brick_id: layout.collision_boxes_of(brick) for brick in layout}
+    return {
+        direction: {
+            brick_id: frozenset(
+                other_id
+                for other_id, other_boxes in boxes.items()
+                if other_id != brick_id
+                and _blocks_sweep(
+                    boxes[brick_id],
+                    other_boxes,
+                    axis=axis,
+                    sign=sign,
+                )
+            )
+            for brick_id in boxes
+        }
+        for direction, (axis, sign) in _DIRECTION_AXIS.items()
+    }
+
+
+def _blocks_sweep(
+    moving: tuple[LduBox, ...],
+    obstacle: tuple[LduBox, ...],
+    *,
+    axis: int,
+    sign: int,
+) -> bool:
+    return any(
+        _box_blocks_sweep(left, right, axis=axis, sign=sign)
+        for left in moving
+        for right in obstacle
+    )
+
+
+def _box_blocks_sweep(
+    moving: LduBox,
+    obstacle: LduBox,
+    *,
+    axis: int,
+    sign: int,
+) -> bool:
+    transverse = tuple(index for index in range(3) if index != axis)
+    overlaps = all(
+        moving.minimum[index] < obstacle.maximum[index]
+        and obstacle.minimum[index] < moving.maximum[index]
+        for index in transverse
+    )
+    if not overlaps:
+        return False
+    if sign > 0:
+        return obstacle.maximum[axis] > moving.maximum[axis]
+    return obstacle.minimum[axis] < moving.minimum[axis]
 
 
 def vertical_blockers(layout: Layout) -> dict[int, frozenset[int]]:

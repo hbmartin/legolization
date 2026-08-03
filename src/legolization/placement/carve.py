@@ -46,14 +46,16 @@ def refill_candidates(
     layout: Layout,
     remainder: set[Cell],
     colour_of: dict[Cell, int],
+    *,
+    categories: tuple[Category, ...] = (Category.BRICK, Category.PLATE),
 ) -> list[tuple[str, Cell, int, int, tuple[Cell, ...]]]:
     """Enumerate rect placements inside ``remainder``, one colour each."""
     candidates: list[tuple[str, Cell, int, int, tuple[Cell, ...]]] = []
     seen: set[tuple[str, Cell, int]] = set()
-    for part in layout.catalog.by_category(Category.BRICK, Category.PLATE):
+    for part in layout.catalog.by_category(*categories):
         for yaw in part.orientations:
             offsets = [rotate_offset(cell, yaw) for cell in sorted(part.occupied_cells)]
-            for seed in remainder:
+            for seed in sorted(remainder):
                 for ox, oy, oz in offsets:
                     anchor = (seed[0] - ox, seed[1] - oy, seed[2] - oz)
                     if anchor[2] < 0 or (part.key, anchor, yaw) in seen:
@@ -76,11 +78,18 @@ def refill_tiling(
     layout: Layout,
     remainder: set[Cell],
     colour_of: dict[Cell, int],
+    *,
+    categories: tuple[Category, ...] = (Category.BRICK, Category.PLATE),
 ) -> list[tuple[str, Cell, int, int]] | None:
     """Exact-cover ``remainder`` with rect parts, one colour per part."""
     if not remainder:
         return []
-    candidates = refill_candidates(layout, remainder, colour_of)
+    candidates = refill_candidates(
+        layout,
+        remainder,
+        colour_of,
+        categories=categories,
+    )
     if not candidates:
         return None
     cells_sorted = sorted(remainder)

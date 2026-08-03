@@ -733,14 +733,16 @@ class PrefixSolver:
         self,
         below: int,
         above: int,
-        x: int,
-        y: int,
+        x: float,
+        y: float,
         z_plane: float,
         chunk: frozenset[int],
         batch: _ColumnBatch,
         drag_links: list[tuple[int, int]],
         appendage: _Appendage,
     ) -> None:
+        # Scalar contact evidence is kept explicit at the LP-column emission seam.
+        # lizard forgives(parameter_count)
         if self._config.paper_knob_rule:
             columns, min_dim = self._footprint[above]
             pattern = knob_pattern(columns, min_dim, (x, y))

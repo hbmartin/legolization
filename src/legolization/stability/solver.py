@@ -21,6 +21,7 @@ Two modes:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -87,7 +88,7 @@ class SolverConfig:
     highspy directly (drops the scipy wrapper overhead); smaller ones
     keep the scipy-exact path that the 1e-6 equivalence tests pin."""
 
-    torque_z: bool = False
+    torque_z: bool = True
     """Model the yaw torque row (τz) as a sixth residual per brick.
 
     StableLego (paper and release) drops it; enabling it makes
@@ -95,7 +96,7 @@ class SolverConfig:
     contacts to four corner generators. Default follows the v5 A/B
     verdict."""
 
-    paper_knob_rule: bool = False
+    paper_knob_rule: bool = True
     """Per-knob contact points per the StableLego *paper* (edge knobs 3,
     interior knobs 4 on min-dimension-3+ bodies) instead of the
     release's uniform per-brick rule. Inert for the shipped catalog —
@@ -116,6 +117,21 @@ class SolverConfig:
     baseplate-style studs). False models bricks resting loose on a
     table: the ground pushes but never pulls, so top-heavy structures
     may tip."""
+
+    def __post_init__(self) -> None:
+        positive = (
+            self.tol_force,
+            self.tol_torque,
+            self.drag_big_m,
+            self.normal_big_m,
+            self.boundary_margin,
+        )
+        if any(not math.isfinite(value) or value <= 0 for value in positive):
+            msg = "solver tolerances, bounds, and margin must be finite and positive"
+            raise ValueError(msg)
+        if self.rescue_direct_min_bricks <= 0:
+            msg = "rescue_direct_min_bricks must be positive"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +154,10 @@ class StabilityResult:
     min_capacity: float = T_CAPACITY_N
     status: str = "optimal"
     objective: float = 0.0
+    interface_forces: dict[tuple[int, int], tuple[float, float]] = field(
+        default_factory=dict
+    )
+    """Cold-solve ``(normal, drag)`` sums keyed by physical interface pair."""
 
     @property
     def unstable_ids(self) -> frozenset[int]:
@@ -555,6 +575,14 @@ def _score(
             weakest_pair = (point.below_id, point.above_id)
 
     stable = all(s.score < 1.0 for s in scores.values())
+    interface_forces: dict[tuple[int, int], tuple[float, float]] = {}
+    for point in model.contact_points:
+        key = (point.below_id, point.above_id)
+        normal, drag = interface_forces.get(key, (0.0, 0.0))
+        interface_forces[key] = (
+            normal + float(force_values[point.normal_col]),
+            drag + float(force_values[point.drag_col]),
+        )
     return StabilityResult(
         stable=stable,
         scores=scores,
@@ -562,4 +590,5 @@ def _score(
         min_capacity=min_capacity,
         status=status,
         objective=float(objective) if objective is not None else 0.0,
+        interface_forces=interface_forces,
     )

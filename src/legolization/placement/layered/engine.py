@@ -31,10 +31,11 @@ from legolization.placement.merge import (
     improve_connectivity,
     place_rect,
 )
+from legolization.runtime import ProgressCallback, ProgressEvent
 from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
 
     import numpy as np
 
@@ -128,7 +129,7 @@ class LayeredStrategy:
     solver_config: SolverConfig = field(default_factory=SolverConfig)
     fail_max: int = 30
     time_budget_s: float | None = None
-    progress: Callable[[str], None] | None = None
+    progress: ProgressCallback | None = None
     milp_bridge: bool = True
     """Bridge connectivity repairs with the exact-cover synthesizer
     first (random rewrite as fallback); False = v4 behaviour, the
@@ -180,8 +181,13 @@ class LayeredStrategy:
                 done += len(problem.columns)
                 if self.progress is not None:
                     self.progress(
-                        f"layer {index + 1}/{len(problems)} "
-                        f"({100 * done // total}% of cells)"
+                        ProgressEvent(
+                            f"layer {index + 1}/{len(problems)} "
+                            f"({100 * done // total}% of cells)",
+                            phase="placement.layers",
+                            completed=index + 1,
+                            total=len(problems),
+                        )
                     )
         recording = telemetry.current() is not None
         telemetry.value("place.tiled.bricks", len(layout))
