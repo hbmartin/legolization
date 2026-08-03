@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 def emit_support_plate(layout: Layout, *, colour_code: int = 7) -> tuple[int, ...]:
     """Lift a layout one plate and exactly tile its original ground footprint."""
-    ground_cells = {(x, y, 0) for x, y, z in layout.occupancy if z == 0}
+    ground_cells = tuple(sorted((x, y, 0) for x, y, z in layout.occupancy if z == 0))
     if not ground_cells:
         return ()
     lifted = layout.translated(dz=-1)
@@ -23,7 +23,14 @@ def emit_support_plate(layout: Layout, *, colour_code: int = 7) -> tuple[int, ..
         raise ValueError(msg)
     support_ids: list[int] = []
     for part_key, anchor, yaw, colour in tiling:
-        brick = lifted.add(part_key, *anchor, yaw, colour)
+        brick = lifted.add(
+            part_key=part_key,
+            x=anchor[0],
+            y=anchor[1],
+            layer=anchor[2],
+            yaw=yaw,
+            colour_code=colour,
+        )
         support_ids.append(brick.brick_id)
     layout.replace_with(lifted)
     return tuple(support_ids)

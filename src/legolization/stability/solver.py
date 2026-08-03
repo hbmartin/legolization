@@ -22,6 +22,7 @@ Two modes:
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -170,6 +171,10 @@ class StabilityResult:
         return max((s.score for s in self.scores.values()), default=0.0)
 
 
+class StabilityDeadlineError(TimeoutError):
+    """The caller's absolute stability deadline expired."""
+
+
 def build_model_from_config(
     layout: Layout,
     config: SolverConfig,
@@ -200,6 +205,7 @@ def analyze(
     graph: ConnectionGraph | None = None,
     *,
     extra_masses: dict[int, float] | None = None,
+    deadline: float | None = None,
 ) -> StabilityResult:
     """Build and solve the RBE for a layout.
 
@@ -216,21 +222,28 @@ def analyze(
             graph,
             extra_masses=extra_masses,
         )
-        return solve_model(model, config)
+        return solve_model(model, config, deadline=deadline)
 
 
 def solve_model(
     model: StabilityModel,
     config: SolverConfig | None = None,
+    *,
+    deadline: float | None = None,
 ) -> StabilityResult:
     """Solve an assembled system and score every brick."""
     config = config or SolverConfig()
     if config.mode == "lp":
-        return _solve_lp(model, config)
-    return _solve_milp(model, config)
+        return _solve_lp(model, config, deadline=deadline)
+    return _solve_milp(model, config, deadline=deadline)
 
 
-def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
+def _solve_lp(
+    model: StabilityModel,
+    config: SolverConfig,
+    *,
+    deadline: float | None = None,
+) -> StabilityResult:
     """Solve the convex relaxation directly with HiGHS via scipy.
 
     The refinement loops call this dozens of times, and cvxpy's per-call
@@ -239,7 +252,7 @@ def _solve_lp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
     ``-t <= A F + b <= t`` and ``d_j <= dmax_i``, all variables nonnegative.
     """
     with telemetry.span("stability.lp", n=model.brick_count):
-        return _solve_lp_body(model, config)
+        return _solve_lp_body(model, config, deadline=deadline)
 
 
 def _lp_arrays(
@@ -290,23 +303,36 @@ def _lp_arrays(
     return cost, a_ub, b_ub, force_count
 
 
-def _solve_lp_body(model: StabilityModel, config: SolverConfig) -> StabilityResult:
+def _solve_lp_body(
+    model: StabilityModel,
+    config: SolverConfig,
+    *,
+    deadline: float | None = None,
+) -> StabilityResult:
     """Run the body of :func:`_solve_lp` without its telemetry span."""
     cost, a_ub, b_ub, force_count = _lp_arrays(model)
     result = None
     with telemetry.span("stability.lp.linprog", n=model.brick_count):
         for method, options in _LP_ATTEMPTS:
+            attempt_options: dict[str, bool | float] = {}
+            if options is not None:
+                attempt_options.update(options)
+            if (remaining := _remaining_time(deadline)) is not None:
+                attempt_options["time_limit"] = remaining
             result = linprog(
                 c=cost,
                 A_ub=a_ub,
                 b_ub=b_ub,
                 bounds=(0, None),
                 method=method,
-                options=options,
+                options=attempt_options or None,
             )
             if result.success and result.x is not None:
                 break
     if result is None or not result.success or result.x is None:
+        if deadline is not None and time.monotonic() >= deadline:
+            msg = "stability deadline expired"
+            raise StabilityDeadlineError(msg)
         message = result.message if result is not None else "no result"
         msg = f"stability LP failed: {message}"
         raise RuntimeError(msg)
@@ -474,13 +500,23 @@ def _solve_maximin_body(model: StabilityModel) -> MaximinResult:
     raise RuntimeError(msg)
 
 
-def _solve_milp(model: StabilityModel, config: SolverConfig) -> StabilityResult:
+def _solve_milp(
+    model: StabilityModel,
+    config: SolverConfig,
+    *,
+    deadline: float | None = None,
+) -> StabilityResult:
     """Solve with big-M complementarity via cvxpy (exact but slower)."""
     with telemetry.span("stability.milp", n=model.brick_count):
-        return _solve_milp_body(model, config)
+        return _solve_milp_body(model, config, deadline=deadline)
 
 
-def _solve_milp_body(model: StabilityModel, config: SolverConfig) -> StabilityResult:
+def _solve_milp_body(
+    model: StabilityModel,
+    config: SolverConfig,
+    *,
+    deadline: float | None = None,
+) -> StabilityResult:
     """Run the body of :func:`_solve_milp` without its telemetry span."""
     forces = cp.Variable(model.var_count, nonneg=True)
     residual = model.a_matrix @ forces + model.b_vector
@@ -505,7 +541,7 @@ def _solve_milp_body(model: StabilityModel, config: SolverConfig) -> StabilityRe
         )
 
     problem = cp.Problem(cp.Minimize(objective), constraints)
-    status = _solve_with_fallback(problem, config)
+    status = _solve_with_fallback(problem, config, deadline=deadline)
     if forces.value is None:
         msg = f"stability solve failed with status {status!r}"
         raise RuntimeError(msg)
@@ -513,16 +549,25 @@ def _solve_milp_body(model: StabilityModel, config: SolverConfig) -> StabilityRe
     return _score(model, config, np.asarray(forces.value), status, problem.value)
 
 
-def _solve_with_fallback(problem: cp.Problem, config: SolverConfig) -> str:
+def _solve_with_fallback(
+    problem: cp.Problem,
+    config: SolverConfig,
+    *,
+    deadline: float | None = None,
+) -> str:
     solvers = (config.solver,) if config.solver else _MILP_SOLVERS
     last_error: Exception | None = None
     last_status: str | None = None
     for solver in solvers:
         try:
+            remaining = _remaining_time(deadline)
             if solver == "HIGHS":
                 # HiGHS owns one process-global scheduler. Leaving CVXPY at
                 # its auto thread count poisons later one-thread warm solvers.
-                problem.solve(solver=solver, threads=1)
+                kwargs: dict[str, int | float] = {"threads": 1}
+                if remaining is not None:
+                    kwargs["time_limit"] = remaining
+                problem.solve(solver=solver, **kwargs)
             else:
                 problem.solve(solver=solver)
         except (cp.SolverError, ValueError) as error:
@@ -536,6 +581,15 @@ def _solve_with_fallback(problem: cp.Problem, config: SolverConfig) -> str:
     if last_status is not None:
         msg = f"{msg}; last status: {last_status}"
     raise RuntimeError(msg) from last_error
+
+
+def _remaining_time(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    if (remaining := deadline - time.monotonic()) <= 0:
+        msg = "stability deadline expired"
+        raise StabilityDeadlineError(msg)
+    return remaining
 
 
 def _score(

@@ -70,6 +70,7 @@ class _LinearSystem:
     """Mutable sparse equilibrium system assembly state."""
 
     body_ids: tuple[int, ...]
+    body_index: dict[int, int]
     centers_m: dict[int, np.ndarray]
     rows: list[int]
     columns: list[int]
@@ -83,8 +84,10 @@ class _LinearSystem:
 
     @classmethod
     def create(cls, model: AssemblyModel) -> _LinearSystem:
+        body_ids = tuple(item.occurrence_id for item in model.occurrences)
         return cls(
-            body_ids=tuple(item.occurrence_id for item in model.occurrences),
+            body_ids=body_ids,
+            body_index={body_id: index for index, body_id in enumerate(body_ids)},
             centers_m={
                 item.occurrence_id: _to_si(
                     item.center_of_mass_ldu or item.bounds_ldu.center
@@ -101,10 +104,6 @@ class _LinearSystem:
             inequality_values=[],
             inequality_rhs=[],
         )
-
-    @property
-    def body_index(self) -> dict[int, int]:
-        return {body_id: index for index, body_id in enumerate(self.body_ids)}
 
     def variable(
         self,
@@ -806,7 +805,11 @@ def _to_si(value: Vector3) -> np.ndarray:
 
 def _direction_to_si(value: Vector3) -> np.ndarray:
     vector = np.asarray((value.x, value.z, -value.y), dtype=np.float64)
-    return vector / np.linalg.norm(vector)
+    norm = float(np.linalg.norm(vector))
+    if norm <= _SOLVER_TOLERANCE:
+        msg = "connection axis must be non-zero"
+        raise ValueError(msg)
+    return vector / norm
 
 
 def _tangent_basis(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

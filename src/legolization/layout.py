@@ -95,21 +95,25 @@ class Layout:
             offset_ldu=brick.offset_ldu,
         )
 
-    def can_place(
+    def can_place(  # noqa: PLR0913 - exact placement adds one physical offset
         self,
         part: Part,
         x: int,
         y: int,
         layer: int,
         yaw: int,
+        *,
+        offset_ldu: tuple[int, int, int] = (0, 0, 0),
     ) -> bool:
         """Whether the placement is collision-free and above ground."""
+        # lizard forgives(parameter_count)
         cells = part.cells_at(x, y, layer, yaw)
         if not all(cell[2] >= 0 and cell not in self.occupancy for cell in cells):
             return False
-        boxes = part.collision_boxes_at(x, y, layer, yaw)
+        boxes = part.collision_boxes_at(x, y, layer, yaw, offset_ldu=offset_ldu)
         return not any(
-            boxes_intersect(boxes, self.collision_boxes_of(brick)) for brick in self
+            boxes_intersect(boxes, self.collision_boxes_of(brick))
+            for brick in self._nearby_bricks(cells)
         )
 
     def add(  # noqa: PLR0913, PLR0917 - a placement is naturally six scalars
@@ -136,7 +140,7 @@ class Layout:
                 msg = f"{part_key} at {(x, y, layer)} collides with brick {other}"
                 raise CollisionError(msg)
         boxes = part.collision_boxes_at(x, y, layer, yaw, offset_ldu=offset_ldu)
-        for other_brick in self:
+        for other_brick in self._nearby_bricks(cells):
             if boxes_intersect(boxes, self.collision_boxes_of(other_brick)):
                 msg = (
                     f"{part_key} at {(x, y, layer)} physically collides with "
@@ -158,6 +162,18 @@ class Layout:
             self.occupancy[cell] = brick.brick_id
         self._next_id += 1
         return brick
+
+    def _nearby_bricks(self, cells: Iterable[Cell]) -> tuple[PlacedBrick, ...]:
+        """Resolve the only placements whose exact boxes can reach ``cells``."""
+        nearby_ids = {
+            brick_id
+            for x, y, z in cells
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            for dz in (-1, 0, 1)
+            if (brick_id := self.occupancy.get((x + dx, y + dy, z + dz))) is not None
+        }
+        return tuple(self.bricks[brick_id] for brick_id in sorted(nearby_ids))
 
     def remove(self, brick_id: int) -> PlacedBrick:
         """Remove a brick and free its cells."""

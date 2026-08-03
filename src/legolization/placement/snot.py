@@ -56,10 +56,22 @@ def apply_snot(
     attempting the bolder wall-carving mounts.
     """
     mounted = 0
+    detail_cells = (
+        frozenset(grid.mesh_features.detail_candidates)
+        if grid.mesh_features is not None
+        else frozenset()
+    )
     graph = ConnectionGraph.from_layout(layout)
     baseline = (graph.component_count(), len(graph.floating_ids()))
     for site in _mount_sites(layout, grid, min_run=min_run):
-        result = _mount(layout, grid, site, baseline, spanning_donors=spanning_donors)
+        result = _mount(
+            layout,
+            grid,
+            site,
+            baseline,
+            detail_cells=detail_cells,
+            spanning_donors=spanning_donors,
+        )
         if result is not None:
             mounted += 1
             baseline = result
@@ -69,7 +81,12 @@ def apply_snot(
         for column in site.columns if len(site.columns) > 1 else ():
             single = _Site(columns=(column,), z=site.z, face=site.face)
             result = _mount(
-                layout, grid, single, baseline, spanning_donors=spanning_donors
+                layout,
+                grid,
+                single,
+                baseline,
+                detail_cells=detail_cells,
+                spanning_donors=spanning_donors,
             )
             if result is not None:
                 mounted += 1
@@ -228,7 +245,7 @@ def _carrier_for(
     """Find the side-stud carrier covering ``columns`` wall columns."""
     ordinary = catalog.by_category(Category.SNOT)
     compound = catalog.by_category(Category.SPECIAL_SNOT)
-    choices = (*compound, *ordinary) if prefer_compound else (*ordinary, *compound)
+    choices = (*compound, *ordinary) if prefer_compound else ordinary
     for part in choices:
         if part.mount_normal is not None or len(part.footprint) != columns:
             continue
@@ -352,17 +369,13 @@ def _mount_plan(
     grid: VoxelGrid,
     site: _Site,
     *,
+    detail_cells: frozenset[tuple[int, int, int]] = frozenset(),
     spanning_donors: bool = True,
 ) -> _MountPlan | None:
     """Validate one cladding site; None on any failed eligibility guard."""
     window = {
         (cx, cy, site.z + dz) for cx, cy in site.columns for dz in range(_BRICK_PLATES)
     }
-    detail_cells = (
-        frozenset(grid.mesh_features.detail_candidates)
-        if grid.mesh_features is not None
-        else frozenset()
-    )
     if (
         parts := _site_parts(
             layout.catalog,
@@ -494,12 +507,13 @@ def _face_colour(
     return tile_colour
 
 
-def _mount(
+def _mount(  # noqa: PLR0913 - one guarded site mutation transaction
     layout: Layout,
     grid: VoxelGrid,
     site: _Site,
     baseline: tuple[int, int],
     *,
+    detail_cells: frozenset[tuple[int, int, int]],
     spanning_donors: bool = True,
 ) -> tuple[int, int] | None:
     """Carve, refill, and clad one site — accepted only via the re-bond guard.
@@ -509,7 +523,13 @@ def _mount(
     ``baseline`` (carving a bonded wall must not cost connectivity).
     Returns the accepted layout's (components, floating), or None.
     """
-    plan = _mount_plan(layout, grid, site, spanning_donors=spanning_donors)
+    plan = _mount_plan(
+        layout,
+        grid,
+        site,
+        detail_cells=detail_cells,
+        spanning_donors=spanning_donors,
+    )
     if plan is None:
         return None
     trial = layout.copy()

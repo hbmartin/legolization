@@ -30,7 +30,7 @@ type ExactStatus = Literal["optimal", "fallback", "limit", "infeasible"]
 
 _OBJECTIVE_SCALE = 1_000_000.0
 _BOND_REWARD = 1.0
-_RANK_EPSILON = 1e-9
+_RANK_EPSILON = 1.0
 _MILP_TOLERANCE = 0.5
 _EXACT_CATEGORIES = frozenset(
     (
@@ -159,18 +159,9 @@ class GlobalExactStrategy:
     ) -> Layout:
         """Return a globally optimal stable layout within configured limits."""
         del rng  # exact enumeration and MILP ordering are deterministic
-        if (
-            grid.filled_count > self.config.exact_max_cells
-            and self.config.exact_limit_policy != "continue"
-        ):
-            return self._on_limit(
-                grid,
-                deadline=deadline,
-                message=(
-                    f"target has {grid.filled_count} cells; exact cap is "
-                    f"{self.config.exact_max_cells}"
-                ),
-            )
+        exact_deadline = _exact_deadline(self.config, deadline)
+        if (limited := self._preflight_limit(grid, deadline=deadline)) is not None:
+            return limited
         candidates = _enumerate_candidates(
             grid,
             self.catalog,
@@ -179,11 +170,13 @@ class GlobalExactStrategy:
                 if self.config.exact_limit_policy == "continue"
                 else self.config.exact_max_candidates
             ),
+            deadline=exact_deadline,
         )
         if candidates is None:
             return self._on_limit(
                 grid,
                 deadline=deadline,
+                preflight=False,
                 message=(
                     "exact candidate enumeration exceeded "
                     f"{self.config.exact_max_candidates} rows"
@@ -192,7 +185,6 @@ class GlobalExactStrategy:
         if not candidates:
             msg = "no candidate covers the target"
             raise PlacementInfeasibleError(msg)
-        exact_deadline = _exact_deadline(self.config, deadline)
         no_goods: list[frozenset[int]] = []
         while True:
             result = _solve(
@@ -214,6 +206,7 @@ class GlobalExactStrategy:
                 return self._on_limit(
                     grid,
                     deadline=deadline,
+                    preflight=False,
                     message="global exact solve reached its time or solver limit",
                     candidate_count=len(candidates),
                     unstable_cuts=len(no_goods),
@@ -240,26 +233,61 @@ class GlobalExactStrategy:
                     stability=stability,
                 )
             )
+            if len(no_goods) >= self.config.exact_max_stability_cuts:
+                return self._on_limit(
+                    grid,
+                    deadline=deadline,
+                    preflight=False,
+                    message=(
+                        "stability refinement reached its cut cap "
+                        f"({self.config.exact_max_stability_cuts})"
+                    ),
+                    candidate_count=len(candidates),
+                    unstable_cuts=len(no_goods),
+                )
             if exact_deadline is not None and time.monotonic() >= exact_deadline:
                 return self._on_limit(
                     grid,
                     deadline=deadline,
+                    preflight=False,
                     message="stability certification exhausted the exact deadline",
                     candidate_count=len(candidates),
                     unstable_cuts=len(no_goods),
                 )
 
-    def _on_limit(
+    def _preflight_limit(
         self,
         grid: VoxelGrid,
         *,
         deadline: float | None,
+    ) -> Layout | None:
+        if (
+            grid.filled_count > self.config.exact_max_cells
+            and self.config.exact_limit_policy != "continue"
+        ):
+            return self._on_limit(
+                grid,
+                deadline=deadline,
+                preflight=True,
+                message=(
+                    f"target has {grid.filled_count} cells; exact cap is "
+                    f"{self.config.exact_max_cells}"
+                ),
+            )
+        return None
+
+    def _on_limit(  # noqa: PLR0913 - outcome evidence accompanies policy inputs
+        self,
+        grid: VoxelGrid,
+        *,
+        deadline: float | None,
+        preflight: bool,
         message: str,
         candidate_count: int = 0,
         unstable_cuts: int = 0,
     ) -> Layout:
         policy = self.config.exact_limit_policy
-        if self.config.exact_auto_preflight_fallback and candidate_count == 0:
+        if self.config.exact_auto_preflight_fallback and preflight:
             policy = "fallback"
         if policy == "fallback":
             from legolization.placement.registry import make_strategy  # noqa: PLC0415
@@ -294,11 +322,14 @@ def _enumerate_candidates(
     catalog: Catalog,
     *,
     limit: int | None,
+    deadline: float | None,
 ) -> list[_Candidate] | None:
     target = _target_cells(grid)
     signatures: dict[tuple[str, int, int, int, int, int], _Candidate] = {}
     for part in _eligible_parts(catalog):
         for candidate in _part_candidates(grid, target, part):
+            if deadline is not None and time.monotonic() >= deadline:
+                return None
             signatures.setdefault(candidate.signature, candidate)
             if limit is not None and len(signatures) > limit:
                 return None
@@ -332,12 +363,16 @@ def _part_candidates(
 ) -> Iterator[_Candidate]:
     for yaw in part.orientations:
         rotated = tuple(rotate_offset(cell, yaw) for cell in part.filled_cells)
+        seen_anchors: set[Cell] = set()
         for target_cell in sorted(target):
             for local in rotated:
                 anchor = cast(
                     "Cell",
                     tuple(target_cell[axis] - local[axis] for axis in range(3)),
                 )
+                if anchor in seen_anchors:
+                    continue
+                seen_anchors.add(anchor)
                 candidate = _candidate(grid, target, part, anchor=anchor, yaw=yaw)
                 if candidate is not None and _candidate_allowed(grid, part, candidate):
                     yield candidate
@@ -403,10 +438,7 @@ def _solve(
     objective: Literal["bricks", "mass"],
     deadline: float | None,
 ) -> OptimizeResult:
-    target = tuple(
-        cast("Cell", tuple(int(value) for value in row))
-        for row in np.argwhere(grid.filled_mask)
-    )
+    target = tuple(sorted(_target_cells(grid)))
     shape = _problem_shape(candidates)
     builder = _RowBuilder()
     _add_cover_constraints(builder, target=target, candidates=candidates)
@@ -455,7 +487,7 @@ def _add_cover_constraints(
     target: tuple[Cell, ...],
     candidates: list[_Candidate],
 ) -> None:
-    by_filled = _cell_index(candidates, attr="filled")
+    by_filled = _cell_index(candidates)
     for cell in target:
         builder.add(
             dict.fromkeys(by_filled.get(cell, ()), 1.0),
@@ -521,9 +553,12 @@ def _run_milp(
     deadline: float | None,
 ) -> OptimizeResult:
     costs = np.zeros(shape.variable_count, dtype=np.float64)
+    contact_total = sum(count for _, count in shape.pair_items)
+    rank_span = _RANK_EPSILON * shape.candidate_count**2 / 2.0
+    primary_scale = max(_OBJECTIVE_SCALE, contact_total + rank_span + 1.0)
     for index, candidate in enumerate(candidates):
         primary = 1.0 if objective == "bricks" else candidate.mass_g
-        costs[index] = _OBJECTIVE_SCALE * primary + _RANK_EPSILON * index
+        costs[index] = primary_scale * primary + _RANK_EPSILON * index
     for pair_index, (_, contact_count) in enumerate(shape.pair_items):
         costs[shape.pair_offset + pair_index] = -_BOND_REWARD * contact_count
     integrality = np.zeros(shape.variable_count, dtype=np.uint8)
@@ -553,7 +588,7 @@ def _run_milp(
 
 
 def _connection_pairs(candidates: list[_Candidate]) -> dict[tuple[int, int], int]:
-    sockets: dict[tuple[tuple[int, int, int], Cell], list[int]] = {}
+    sockets: dict[tuple[Cell, tuple[int, int, int]], list[int]] = {}
     for index, candidate in enumerate(candidates):
         for connector in candidate.bottom:
             sockets.setdefault((connector.point, connector.direction), []).append(index)
@@ -606,12 +641,10 @@ def _collision_pairs(candidates: list[_Candidate]) -> tuple[tuple[int, int], ...
 
 def _cell_index(
     candidates: list[_Candidate],
-    *,
-    attr: Literal["filled"],
 ) -> dict[Cell, list[int]]:
     result: dict[Cell, list[int]] = {}
     for index, candidate in enumerate(candidates):
-        for cell in getattr(candidate, attr):
+        for cell in candidate.filled:
             result.setdefault(cell, []).append(index)
     return result
 
@@ -671,6 +704,6 @@ def _exact_deadline(
     config: PipelineConfig, pipeline_deadline: float | None
 ) -> float | None:
     if config.exact_limit_policy == "continue":
-        return pipeline_deadline
+        return pipeline_deadline or time.monotonic() + config.exact_time_limit_s
     own = time.monotonic() + config.exact_time_limit_s
     return min(own, pipeline_deadline) if pipeline_deadline is not None else own

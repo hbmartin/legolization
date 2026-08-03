@@ -134,17 +134,17 @@ def _normal_error(
 ) -> float:
     features = grid.mesh_features
     if features is None:
-        return 0.0
+        return 1.0
     normals = dict(features.local_normals)
     vectors = [normals[cell] for cell in filled if cell in normals]
     if not vectors:
-        return 0.0
+        return 1.0
     # The signed-distance gradient points into the filled region; negate it
     # to compare with the exposed slope face's outward normal.
     observed = tuple(-sum(row[axis] for row in vectors) for axis in range(3))
     length = math.sqrt(sum(value * value for value in observed))
     if length == 0:
-        return 0.0
+        return 1.0
     observed = tuple(value / length for value in observed)
     angle = math.radians(33.0 if "_33_" in part_key else 45.0)
     horizontal = rotate_offset((0, -1, 0), yaw)

@@ -68,7 +68,7 @@ docs = [
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "venv"]
+exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "vendor", "venv"]
 
 line-length = 88
 indent-width = 4
@@ -97,12 +97,12 @@ project-includes = [
 ]
 
 [tool.uv.sources]
-pyldcad = { path = "../../pyLDCad", editable = true }
-pyldraw3 = { path = "../../pyldraw3", editable = true }
+pyldcad = { path = "vendor/pyLDCad" }
+pyldraw3 = { git = "https://github.com/hbmartin/pyldraw3.git", rev = "f35d7dfce81b34032a095cfc7ff44bf0feba2735" }
 
 [tool.deptry]
 known_first_party = ["legolization"]
-extend_exclude = ["papers PDFs"]
+extend_exclude = ["papers PDFs", "vendor"]
 package_module_name_map = { pyldraw3 = ["ldraw"], pyldcad = ["pyldcad"] }
 
 [tool.deptry.per_rule_ignores]

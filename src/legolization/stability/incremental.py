@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Self
 
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.stability.constants import T_CAPACITY_N
-from legolization.stability.solver import StabilityResult, analyze
+from legolization.stability.solver import (
+    StabilityDeadlineError,
+    StabilityResult,
+    analyze,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -63,7 +67,7 @@ class FrozenBoundaryAnalyzer:
         if k_rings < 0:
             msg = "k_rings must be non-negative"
             raise ValueError(msg)
-        cold = result or analyze(layout, config)
+        cold = result if result is not None else analyze(layout, config)
         return cls(layout=layout.copy(), result=cold, config=config, k_rings=k_rings)
 
     def screen(
@@ -74,7 +78,9 @@ class FrozenBoundaryAnalyzer:
     ) -> FrozenBoundaryScreen:
         """Screen contact-graph rings while freezing last-solve boundary loads."""
         seeds = _changed_ids(self.layout, candidate) | set(changed_ids)
-        adjacency = _combined_adjacency(self.layout, candidate)
+        baseline_graph = ConnectionGraph.from_layout(self.layout)
+        candidate_graph = ConnectionGraph.from_layout(candidate)
+        adjacency = _combined_adjacency(baseline_graph, candidate_graph)
         affected = _expand(seeds, adjacency=adjacency, rings=self.k_rings)
         boundary = {
             neighbour
@@ -87,7 +93,7 @@ class FrozenBoundaryAnalyzer:
             for pair, forces in self.result.interface_forces.items()
             if _crosses(pair, affected)
         }
-        candidate_pairs = set(ConnectionGraph.from_layout(candidate).support_edges())
+        candidate_pairs = set(candidate_graph.support_edges())
         if missing := sorted(set(frozen) - candidate_pairs):
             return FrozenBoundaryScreen(
                 feasible=False,
@@ -128,10 +134,20 @@ class FrozenBoundaryAnalyzer:
         candidate: Layout,
         *,
         changed_ids: Iterable[int] = (),
+        deadline: float | None = None,
     ) -> IncrementalCertification:
         """Run the screen and always cold-solve candidates that survive it."""
         screen = self.screen(candidate, changed_ids=changed_ids)
-        cold = analyze(candidate, self.config) if screen.feasible else None
+        try:
+            cold = (
+                analyze(candidate, self.config, deadline=deadline)
+                if screen.feasible and deadline is not None
+                else analyze(candidate, self.config)
+                if screen.feasible
+                else None
+            )
+        except StabilityDeadlineError:
+            cold = None
         return IncrementalCertification(screen=screen, cold_result=cold)
 
     def accept(
@@ -158,10 +174,9 @@ def _changed_ids(baseline: Layout, candidate: Layout) -> set[int]:
     }
 
 
-def _combined_adjacency(*layouts: Layout) -> dict[int, set[int]]:
+def _combined_adjacency(*graphs: ConnectionGraph) -> dict[int, set[int]]:
     adjacency: dict[int, set[int]] = {}
-    for layout in layouts:
-        graph = ConnectionGraph.from_layout(layout)
+    for graph in graphs:
         for left, right in graph.support_edges():
             adjacency.setdefault(left, set()).add(right)
             adjacency.setdefault(right, set()).add(left)

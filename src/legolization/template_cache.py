@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -61,9 +62,12 @@ class TemplateCache:
             return None
         try:
             raw = path.read_bytes()
+        except OSError:
+            return None
+        try:
             payload = _decode_entry(raw, expected_key=key.digest)
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            self._quarantine(path)
+        except (TypeError, ValueError):
+            self._quarantine(path, raw=raw)
             return None
         return payload
 
@@ -88,9 +92,18 @@ class TemplateCache:
                 return path
             with NamedTemporaryFile(dir=path.parent, delete=False) as handle:
                 temporary = Path(handle.name)
-                handle.write(serialized)
-                handle.flush()
-            temporary.replace(path)
+                try:
+                    handle.write(serialized)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                except BaseException:
+                    temporary.unlink(missing_ok=True)
+                    raise
+            try:
+                temporary.replace(path)
+            except OSError:
+                temporary.unlink(missing_ok=True)
+                raise
         return path
 
     def inspect(self) -> tuple[CacheEntry, ...]:
@@ -101,15 +114,19 @@ class TemplateCache:
         for path in sorted(self.root.glob("*.json"), key=lambda item: item.name):
             try:
                 raw = path.read_bytes()
-                _decode_entry(raw, expected_key=path.stem)
-            except (OSError, ValueError, json.JSONDecodeError):
-                self._quarantine(path)
+            except OSError:
                 continue
+            try:
+                payload = _decode_entry(raw, expected_key=path.stem)
+            except (TypeError, ValueError):
+                self._quarantine(path, raw=raw)
+                continue
+            payload_bytes = _canonical_json(payload)
             entries.append(
                 CacheEntry(
                     key=path.stem,
-                    size_bytes=len(raw),
-                    payload_sha256=hashlib.sha256(raw).hexdigest(),
+                    size_bytes=len(payload_bytes),
+                    payload_sha256=hashlib.sha256(payload_bytes).hexdigest(),
                 )
             )
         return tuple(entries)
@@ -129,6 +146,9 @@ class TemplateCache:
             if path.is_file():
                 path.unlink()
                 removed += 1
+        if all_entries:
+            for lock_path in (self.root / ".locks").glob("*.lock"):
+                lock_path.unlink(missing_ok=True)
         return removed
 
     def quarantine(self, key: TemplateCacheKey) -> None:
@@ -146,11 +166,16 @@ class TemplateCache:
         (self.root / ".locks").mkdir(exist_ok=True)
         (self.root / ".corrupt").mkdir(exist_ok=True)
 
-    def _quarantine(self, path: Path) -> None:
+    def _quarantine(self, path: Path, *, raw: bytes | None = None) -> None:
         if not path.is_file():
             return
         self._ensure_directories()
-        suffix = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+        if raw is None:
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                return
+        suffix = hashlib.sha256(raw).hexdigest()[:12]
         destination = self.root / ".corrupt" / f"{path.name}.{suffix}"
         if destination.exists():
             destination = destination.with_name(
@@ -188,3 +213,7 @@ def _decode_entry(raw: bytes, *, expected_key: str) -> dict[str, Any]:
         msg = "cache payload must be an object"
         raise TypeError(msg)
     return cast("dict[str, Any]", payload)
+
+
+def _canonical_json(payload: dict[str, Any]) -> bytes:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

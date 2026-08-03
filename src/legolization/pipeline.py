@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import asdict, dataclass, field, replace
+from functools import lru_cache
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -23,7 +24,6 @@ from legolization.instructions.render import render_step_images
 from legolization.instructions.sequencer import (
     InstructionPlan,
     InstructionsConfig,
-    InstructionsError,
     plan_instructions,
 )
 from legolization.instructions.verification import (
@@ -52,7 +52,7 @@ from legolization.support import emit_support_plate
 from legolization.template_cache import TemplateCache
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable
     from pathlib import Path
 
     from legolization.catalog import Catalog
@@ -97,20 +97,6 @@ class PipelineConfig:
     weights: ObjectiveWeights = field(default_factory=ObjectiveWeights)
     solver: SolverConfig = field(default_factory=SolverConfig)
 
-    exact_max_cells: int = 256
-    exact_max_candidates: int = 100_000
-    exact_time_limit_s: float = 60.0
-    exact_limit_policy: Literal["fail", "fallback", "continue"] = "fail"
-    exact_fallback_strategy: Literal["bond", "fast", "greedy"] = "bond"
-    exact_auto_preflight_fallback: bool = False
-    cost_objective: Literal["bricks", "mass"] = "bricks"
-    plate_cap: bool = False
-    emit_support: bool = False
-    template_cache_enabled: bool = False
-    template_cache_path: Path | None = None
-    template_configuration_hash: str = ""
-    template_physics_profile: str = "corrected"
-
     # Fields below are appended after the 0.2.0 layout so positional
     # callers keep their meaning (PR #17 review); add new fields at the
     # end only.
@@ -141,6 +127,21 @@ class PipelineConfig:
     and opt-in while its corpus acceptance gates mature.
     """
 
+    exact_max_cells: int = 256
+    exact_max_candidates: int = 100_000
+    exact_time_limit_s: float = 60.0
+    exact_limit_policy: Literal["fail", "fallback", "continue"] = "fail"
+    exact_fallback_strategy: Literal["bond", "fast", "greedy"] = "bond"
+    exact_auto_preflight_fallback: bool = False
+    cost_objective: Literal["bricks", "mass"] = "bricks"
+    plate_cap: bool = False
+    emit_support: bool = False
+    template_cache_enabled: bool = False
+    template_cache_path: Path | None = None
+    template_configuration_hash: str = ""
+    template_physics_profile: str = "corrected"
+    exact_max_stability_cuts: int = 256
+
 
 @dataclass(frozen=True, slots=True)
 class PipelineResult:
@@ -157,6 +158,10 @@ class PipelineResult:
     floating_count: int
     slopes_added: int = 0
     tiles_added: int = 0
+
+    # Appended after the 0.2.0 layout for positional compatibility.
+    snot_added: int = 0
+
     placement_strategy: str = "unknown"
     exact_status: str | None = None
     exact_candidate_count: int = 0
@@ -165,9 +170,6 @@ class PipelineResult:
     instruction_certification: InstructionCertification | None = None
     cache_provenance: tuple[dict[str, int | str], ...] = ()
     plan: InstructionPlan | None = None
-
-    # Appended after the 0.2.0 layout for positional compatibility.
-    snot_added: int = 0
 
     @property
     def step_count(self) -> int:
@@ -191,11 +193,6 @@ class _PlacementPhase:
     layout: Layout
     stability: StabilityResult
     exact_outcome: ExactOutcome | None = None
-
-    def __iter__(self) -> Iterator[Layout | StabilityResult]:
-        """Preserve two-value unpacking at the private legacy test seam."""
-        yield self.layout
-        yield self.stability
 
 
 @dataclass(slots=True)
@@ -326,17 +323,17 @@ def _complete_pipeline(state: _PipelineState) -> PipelineResult:
     layout = state.placement.layout
     with telemetry.span("phase.finish_surfaces"):
         finishing = _finish_surfaces(
-            layout,
-            state.working,
-            state.placement.stability,
-            state.config,
+            layout=layout,
+            working=state.working,
+            stability=state.placement.stability,
+            config=state.config,
         )
     stability, slopes, tiles, snot, plate_caps = finishing
     stability, cache_provenance = _canonicalize_templates(
-        layout,
-        state.working,
-        stability,
-        state.config,
+        layout=layout,
+        grid=state.working,
+        stability=stability,
+        config=state.config,
     )
     support_ids, stability = _add_support(layout, stability, state.config)
     plan, certification = _instruction_plan(layout, state.config)
@@ -393,7 +390,7 @@ def _canonicalize_templates(
         repeated,
         cache=cache,
         context=TemplateContext(
-            catalog_hash=hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes()).hexdigest(),
+            catalog_hash=_catalog_hash(),
             configuration_hash=config.template_configuration_hash,
             physics_profile=config.template_physics_profile,
         ),
@@ -404,10 +401,18 @@ def _canonicalize_templates(
     if stability.stable and not certified.stable:
         layout.replace_with(guard)
         rejected = tuple(
-            {**asdict(item), "status": "rejected_stability"} for item in applications
+            asdict(item)
+            if item.status == "skipped"
+            else {**asdict(item), "status": "rejected_stability"}
+            for item in applications
         )
         return stability, rejected
     return certified, tuple(asdict(item) for item in applications)
+
+
+@lru_cache(maxsize=1)
+def _catalog_hash() -> str:
+    return hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes()).hexdigest()
 
 
 def _selected_strategy(state: _PipelineState) -> str:
@@ -448,10 +453,14 @@ def _instruction_plan(
             plan,
             config=instructions_config,
         )
-    if certification.violations:
-        msg = "instruction certification failed: " + "; ".join(certification.violations)
-        raise InstructionsError(msg)
     return plan, certification
+
+
+@dataclass(frozen=True, slots=True)
+class _FinishOperation:
+    operation: Callable[[], int]
+    span_name: str
+    warning: str
 
 
 def _finish_surfaces(
@@ -463,43 +472,64 @@ def _finish_surfaces(
     """Run the opt-in slope/tile/snot finishing passes; re-analyze if used."""
     slopes_added = 0
     if config.slopes:
-        guard = (layout.copy(), stability) if stability.stable else None
-        with telemetry.span("finish.slopes"):
-            slopes_added = apply_slopes(layout, working)
-        if slopes_added:
-            stability = analyze(layout, config.solver)
-            if guard is not None and not stability.stable:
-                layout.replace_with(guard[0])
-                stability = guard[1]
-                slopes_added = 0
-                if config.progress is not None:
-                    config.progress(
-                        ProgressEvent(
-                            "slopes: preserve pass would break stability; reverted",
-                            phase="finish.slopes",
-                            level="warning",
-                        )
-                    )
+        slopes_added, stability = _guarded_finish(
+            layout,
+            stability,
+            config,
+            finish=_FinishOperation(
+                operation=lambda: apply_slopes(layout, working),
+                span_name="finish.slopes",
+                warning="slopes: preserve pass would break stability; reverted",
+            ),
+        )
     snot_added = 0
     if config.snot:
         with telemetry.span("finish.snot"):
             snot_added, stability = _snot_tiers(layout, working, config, stability)
     plate_caps_added = 0
     if config.plate_cap:
-        guard = (layout.copy(), stability) if stability.stable else None
-        with telemetry.span("finish.plate_caps"):
-            plate_caps_added = apply_plate_caps(layout)
-        if plate_caps_added:
-            stability = analyze(layout, config.solver)
-            if guard is not None and not stability.stable:
-                layout.replace_with(guard[0])
-                stability = guard[1]
-                plate_caps_added = 0
+        plate_caps_added, stability = _guarded_finish(
+            layout,
+            stability,
+            config,
+            finish=_FinishOperation(
+                operation=lambda: apply_plate_caps(layout),
+                span_name="finish.plate_caps",
+                warning="plate caps: pass would break stability; reverted",
+            ),
+        )
     with telemetry.span("finish.tiles"):
         tiles_added = apply_tiles(layout) if config.tiles else 0
     if tiles_added:
         stability = analyze(layout, config.solver)
     return stability, slopes_added, tiles_added, snot_added, plate_caps_added
+
+
+def _guarded_finish(
+    layout: Layout,
+    stability: StabilityResult,
+    config: PipelineConfig,
+    *,
+    finish: _FinishOperation,
+) -> tuple[int, StabilityResult]:
+    guard = (layout.copy(), stability) if stability.stable else None
+    with telemetry.span(finish.span_name):
+        added = finish.operation()
+    if not added:
+        return 0, stability
+    updated = analyze(layout, config.solver)
+    if guard is None or updated.stable:
+        return added, updated
+    layout.replace_with(guard[0])
+    if config.progress is not None:
+        config.progress(
+            ProgressEvent(
+                finish.warning,
+                phase=finish.span_name,
+                level="warning",
+            )
+        )
+    return 0, guard[1]
 
 
 def _snot_tiers(
@@ -741,13 +771,10 @@ def _place_and_repair(
                 else analyze(layout, config.solver)
             )
             _phase_gauge("pipeline.repaired", layout, stability)
-    from legolization.placement.global_exact import GlobalExactStrategy  # noqa: PLC0415
-
-    outcome = strategy.outcome if isinstance(strategy, GlobalExactStrategy) else None
     return _PlacementPhase(
         layout=layout,
         stability=stability,
-        exact_outcome=outcome,
+        exact_outcome=strategy.outcome,
     )
 
 

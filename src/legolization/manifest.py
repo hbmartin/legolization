@@ -107,7 +107,10 @@ class AssemblyManifest:
 @lru_cache(maxsize=1)
 def manifest_json_schema() -> dict[str, Any]:
     """Load the packaged Draft 2020-12 schema for manifest version 1."""
-    return cast("dict[str, Any]", json.loads(MANIFEST_SCHEMA_PATH.read_text()))
+    return cast(
+        "dict[str, Any]",
+        json.loads(MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8")),
+    )
 
 
 def _validate_json_schema(payload: dict[str, Any]) -> None:
@@ -133,6 +136,7 @@ class BuildManifestMetadata:
     support_mode: Literal["baseplate", "table"] = "baseplate"
     exactness: dict[str, Any] | None = None
     artifacts: dict[str, str] | None = None
+    status: ManifestStatus = "complete"
 
 
 def manifest_for_build(
@@ -150,7 +154,7 @@ def manifest_for_build(
         bill_of_materials(layout).to_json(model_name=metadata.source_path.stem)
     )
     return AssemblyManifest(
-        status="complete",
+        status=metadata.status,
         source=_source_payload(metadata.source_path),
         configuration=metadata.configuration,
         coordinate_system=_coordinate_system(),
@@ -320,9 +324,10 @@ def manifest_for_analysis(
     report = result.report
     connectivity = result.connectivity
     occurrences = tuple(report.occurrences)
+    occurrence_ids = _occurrence_ids(occurrences)
     part_ids = sorted({str(item["part_id"]) for item in occurrences})
     status: ManifestStatus = report.status
-    contacts = _analysis_contacts(connectivity)
+    contacts = _known_analysis_contacts(connectivity, occurrence_ids=occurrence_ids)
     action_edges = tuple(
         {
             "kind": "connector",
@@ -335,14 +340,7 @@ def manifest_for_analysis(
     physics_rows = tuple(
         cast("dict[str, Any]", item) for item in report.physics.get("scenarios", ())
     )
-    capabilities = {
-        "geometry": "complete" if occurrences else "error",
-        "connectivity": "complete" if connectivity is not None else "error",
-        "physics": "not_requested"
-        if report.physics_verdict == "not_run"
-        else ("complete" if report.physics_verdict != "indeterminate" else "partial"),
-        "action_plan": "not_requested",
-    }
+    capabilities = _analysis_capabilities(result)
     if "partial" in capabilities.values() and status == "complete":
         status = "partial"
     return AssemblyManifest(
@@ -370,10 +368,47 @@ def manifest_for_analysis(
     )
 
 
+def _occurrence_ids(occurrences: tuple[dict[str, Any], ...]) -> set[int]:
+    return {
+        int(item["occurrence_id"])
+        for item in occurrences
+        if isinstance(item.get("occurrence_id"), int)
+    }
+
+
+def _known_analysis_contacts(
+    connectivity: ConnectivityAnalysis | None,
+    *,
+    occurrence_ids: set[int],
+) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        contact
+        for contact in _analysis_contacts(connectivity)
+        if set(cast("list[int]", contact["occurrence_ids"])) <= occurrence_ids
+    )
+
+
+def _analysis_capabilities(result: AssemblyAnalysisResult) -> dict[str, str]:
+    report = result.report
+    match report.physics_verdict:
+        case "not_run":
+            physics = "not_requested"
+        case "indeterminate":
+            physics = "partial"
+        case _:
+            physics = "complete"
+    return {
+        "geometry": "complete" if report.occurrences else "error",
+        "connectivity": "complete" if result.connectivity is not None else "error",
+        "physics": physics,
+        "action_plan": "not_requested",
+    }
+
+
 def read_manifest(path: Path) -> AssemblyManifest:
     """Read and validate a manifest file."""
     try:
-        payload = json.loads(path.read_text())
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         msg = f"cannot read manifest {path}: {error}"
         raise ManifestError(msg) from error
@@ -385,9 +420,11 @@ def read_manifest(path: Path) -> AssemblyManifest:
 
 def write_manifest(manifest: AssemblyManifest, path: Path) -> None:
     """Atomically write one deterministic manifest."""
+    _validate_json_schema(cast("dict[str, Any]", json.loads(manifest.to_json())))
+    _validate_references(manifest)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(manifest.to_json())
+    temporary.write_text(manifest.to_json(), encoding="utf-8")
     temporary.replace(path)
 
 

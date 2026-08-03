@@ -146,7 +146,11 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
         freed = _remove(candidate, victims, grid)
         _refill(candidate, freed, grid, catalog, rng, config)
         changed_ids = victims | (set(candidate.bricks) - set(layout.bricks))
-        certification = boundary.certify(candidate, changed_ids=changed_ids)
+        certification = boundary.certify(
+            candidate,
+            changed_ids=changed_ids,
+            deadline=deadline,
+        )
         if not certification.cold_certified:
             escalation += 1
             q_history.append(report.q)

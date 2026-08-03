@@ -28,6 +28,7 @@ _RGB_CHANNELS = 3
 _RGBA_CHANNELS = 4
 _VOX_MAGIC = b"VOX "
 _ASPECT_PLATES_PER_VOXEL = 2.5  # 20 LDU stud pitch / 8 LDU plate height
+_MAX_VOX_SCENE_DEPTH = 512
 
 type Cell = tuple[int, int, int]
 
@@ -252,7 +253,7 @@ class VoxelGrid:
         dither: bool = False,
         aspect_correct: bool = False,
     ) -> Self:
-        """Load a MagicaVoxel ``.vox`` file (first model only).
+        """Load a MagicaVoxel ``.vox`` file, composing its full scene graph.
 
         MagicaVoxel is z-up like the grid, so coordinates map directly.
         """
@@ -378,7 +379,13 @@ def _parse_vox(data: bytes) -> tuple[tuple[int, int, int], np.ndarray, np.ndarra
     try:
         models, nodes, vox_palette = _parse_vox_chunks(data)
         size, voxels = _compose_vox_scene(models, nodes)
-    except (IndexError, struct.error, UnicodeError, ValueError) as error:
+    except (
+        IndexError,
+        RecursionError,
+        struct.error,
+        UnicodeError,
+        ValueError,
+    ) as error:
         msg = f"malformed .vox file: {error}"
         raise ValueError(msg) from error
     return size, voxels.astype(np.int64), vox_palette
@@ -609,6 +616,9 @@ def _walk_vox_scene(
     context: _SceneWalk,
     pose: _VoxPose,
 ) -> None:
+    if len(pose.ancestry) >= _MAX_VOX_SCENE_DEPTH:
+        msg = f"scene graph exceeds {_MAX_VOX_SCENE_DEPTH} nodes of depth"
+        raise ValueError(msg)
     if node_id in pose.ancestry:
         msg = "scene graph contains a cycle"
         raise ValueError(msg)
@@ -665,11 +675,12 @@ def _place_vox_model(
     ):
         msg = "voxel coordinates outside SIZE"
         raise ValueError(msg)
-    for x, y, z, colour in model.voxels:
-        position = _add_cell(
-            _apply_matrix(rotation, (int(x), int(y), int(z))),
-            translation,
-        )
+    coordinates = model.voxels[:, :_RGB_CHANNELS].astype(np.int64)
+    coordinates -= np.asarray(model.size, dtype=np.int64) // 2
+    transformed = coordinates @ np.asarray(rotation, dtype=np.int64).T
+    transformed += np.asarray(translation, dtype=np.int64)
+    for row, colour in zip(transformed, model.voxels[:, 3], strict=True):
+        position = (int(row[0]), int(row[1]), int(row[2]))
         value = int(colour)
         if (existing := colours.get(position)) is not None and existing != value:
             msg = f"conflicting scene colours at {position}"

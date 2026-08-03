@@ -41,7 +41,10 @@ def write_graph_json(
 ) -> None:
     """Write the complete connector graph as deterministic JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(connectivity.to_dict(), indent=2, sort_keys=True) + "\n")
+    path.write_text(
+        json.dumps(connectivity.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def write_component_mpd(
@@ -148,7 +151,7 @@ pre{{background:#f6f8fa;padding:1rem;overflow:auto}}.bad{{color:#a00}}.ok{{color
 </body></html>
 """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(document)
+    path.write_text(document, encoding="utf-8")
 
 
 def write_callout_svg(
@@ -195,7 +198,7 @@ Unmatched connector callouts</text>
 {model_marks}{callout_marks}</svg>
 """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(document)
+    path.write_text(document, encoding="utf-8")
 
 
 def render_comparison(
@@ -244,8 +247,9 @@ def render_comparison(
             ]
             if ldraw_dir is not None:
                 command.append(f"-LDrawDir={ldraw_dir}")
+        completed: subprocess.CompletedProcess[bytes] | None = None
         try:
-            subprocess.run(  # noqa: S603 - executable was explicitly resolved
+            completed = subprocess.run(  # noqa: S603 - executable was explicitly resolved
                 command,
                 check=False,
                 capture_output=True,
@@ -256,7 +260,12 @@ def render_comparison(
         if output.is_file() and output.stat().st_size:
             paths[f"comparison_{label}"] = str(output)
         else:
-            warnings.append(f"{label} comparison renderer produced no image")
+            detail = ""
+            if completed is not None:
+                stderr = completed.stderr.decode(errors="replace").strip().splitlines()
+                tail = stderr[-1] if stderr else "no stderr"
+                detail = f" (exit {completed.returncode}: {tail})"
+            warnings.append(f"{label} comparison renderer produced no image{detail}")
     return ArtifactWriteResult(paths=paths, warnings=tuple(warnings))
 
 
@@ -303,7 +312,7 @@ def _write_flattened_mpd(
         )
     lines.append("0 NOFILE")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _project(point: Vector3) -> tuple[float, float]:

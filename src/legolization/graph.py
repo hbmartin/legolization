@@ -20,6 +20,7 @@ from legolization import telemetry
 
 if TYPE_CHECKING:
     from legolization.layout import Layout
+    from legolization.physical import LduConnector
 
 GROUND_ID = -1
 """Pseudo brick id for the ground plane in knob contacts."""
@@ -95,8 +96,11 @@ class ConnectionGraph:
         # Exact LDU points keep half-stud and half-plate features distinct;
         # coarse target cells are never used as physical connector evidence.
         sockets: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
+        bottom_connectors: dict[int, tuple[LduConnector, ...]] = {}
         for brick in layout:
-            for connector in layout.physical_connectors_of(brick, top=False):
+            connectors = layout.physical_connectors_of(brick, top=False)
+            bottom_connectors[brick.brick_id] = connectors
+            for connector in connectors:
                 sockets[(connector.point, connector.direction)] = brick.brick_id
 
         knob_contacts: list[KnobContact] = []
@@ -118,7 +122,7 @@ class ConnectionGraph:
                         point_ldu=point,
                     )
                 )
-            for connector in layout.physical_connectors_of(brick, top=False):
+            for connector in bottom_connectors[brick.brick_id]:
                 # Only downward anti-studs can seat on the ground plane.
                 if connector.point[2] == 0 and connector.direction == (0, 0, -1):
                     grounded.add(brick.brick_id)

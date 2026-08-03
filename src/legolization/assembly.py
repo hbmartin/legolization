@@ -338,7 +338,7 @@ def analyze_assembly(
 def write_assembly_report(report: AssemblyAnalysisReport, path: Path) -> None:
     """Write one assembly report, creating parent directories."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(report.to_json())
+    path.write_text(report.to_json(), encoding="utf-8")
 
 
 def write_counterfactual_candidate(
@@ -349,7 +349,7 @@ def write_counterfactual_candidate(
     if (candidate := result.candidate) is None:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(candidate.model_text)
+    path.write_text(candidate.model_text, encoding="utf-8")
     return True
 
 
@@ -559,7 +559,11 @@ def _input_payload(path: Path) -> dict[str, Any]:
     try:
         data = path.read_bytes()
     except OSError:
-        data = b""
+        return {
+            "path": str(path),
+            "sha256": None,
+            "size_bytes": None,
+        }
     return {
         "path": str(path),
         "sha256": hashlib.sha256(data).hexdigest(),

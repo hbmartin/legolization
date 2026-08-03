@@ -237,7 +237,8 @@ class PrefixSolver:
         self._t_cols: dict[int, int] = {}  # first of each brick's 5 t columns
         self._dmax_col: dict[int, int] = {}
         self._bottom_drag: dict[int, list[int]] = {}
-        self._contact_pairs: list[tuple[int, int, int]] = []  # (below, above, drag)
+        self._contact_pairs: list[tuple[int, int, int, int]] = []
+        """``(below, above, normal_col, drag_col)`` for force extraction."""
         self._base_basis: highspy.HighsBasis | None = None
         self._pending: _Appendage | None = None
 
@@ -701,7 +702,7 @@ class PrefixSolver:
             if knob.below_id != GROUND_ID:
                 loads_normal.append((knob.below_id, inward, position))
                 loads_drag.append((knob.below_id, outward, position))
-            self._force_col(batch, 0.0, loads_normal)
+            normal_col = self._force_col(batch, 0.0, loads_normal)
             drag_col = self._force_col(batch, BETA, loads_drag)
             self._bottom_drag.setdefault(knob.above_id, []).append(drag_col)
             if knob.above_id not in chunk:
@@ -709,7 +710,9 @@ class PrefixSolver:
                     appendage.grown_bottom_drag.get(knob.above_id, 0) + 1
                 )
             drag_links.append((drag_col, knob.above_id))
-            self._contact_pairs.append((knob.below_id, knob.above_id, drag_col))
+            self._contact_pairs.append(
+                (knob.below_id, knob.above_id, normal_col, drag_col)
+            )
         center = (float(x_pos), float(y_pos), float(z_center))
         directions = (
             (tx, ty, 0.0),
@@ -762,7 +765,7 @@ class PrefixSolver:
             if below != GROUND_ID:
                 loads_normal.append((below, _DOWN, position))
                 loads_drag.append((below, _UP, position))
-            self._force_col(batch, 0.0, loads_normal)
+            normal_col = self._force_col(batch, 0.0, loads_normal)
             drag_col = self._force_col(batch, BETA, loads_drag)
             self._bottom_drag.setdefault(above, []).append(drag_col)
             if above not in chunk:
@@ -770,7 +773,7 @@ class PrefixSolver:
                     appendage.grown_bottom_drag.get(above, 0) + 1
                 )
             drag_links.append((drag_col, above))
-            self._contact_pairs.append((below, above, drag_col))
+            self._contact_pairs.append((below, above, normal_col, drag_col))
         knob_center = (float(x), float(y), z_plane)
         for ux, uy in K_DIRECTIONS:
             loads: list[_Load] = [(above, (ux, uy, 0.0), knob_center)]
@@ -893,11 +896,18 @@ class PrefixSolver:
                 near = True
         weakest_pair: tuple[int, int] | None = None
         min_capacity = T_CAPACITY_N
-        for below, above, drag_col in self._contact_pairs:
+        interface_forces: dict[tuple[int, int], tuple[float, float]] = {}
+        for below, above, normal_col, drag_col in self._contact_pairs:
             capacity = T_CAPACITY_N - float(value[drag_col])
             if capacity < min_capacity:
                 min_capacity = capacity
                 weakest_pair = (below, above)
+            key = (below, above)
+            normal, drag = interface_forces.get(key, (0.0, 0.0))
+            interface_forces[key] = (
+                normal + float(value[normal_col]),
+                drag + float(value[drag_col]),
+            )
         stable = all(s.score < 1.0 for s in scores.values())
         info = self._h.getInfo()
         result = StabilityResult(
@@ -907,6 +917,7 @@ class PrefixSolver:
             min_capacity=min_capacity,
             status="optimal",
             objective=float(info.objective_function_value),
+            interface_forces=interface_forces,
         )
         return result, near
 

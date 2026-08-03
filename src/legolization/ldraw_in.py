@@ -196,6 +196,7 @@ class _DecodedOccurrence:
     layer: int
     yaw: int
     colour: int
+    offset_ldu: tuple[int, int, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,7 +340,7 @@ def import_occurrences(
                 _problem(index, occurrence, matched, default_model=default_model)
             )
             continue
-        matched_key, (x, y, layer, yaw) = matched
+        matched_key, (x, y, layer, yaw, offset_ldu) = matched
         decoded.append(
             _DecodedOccurrence(
                 index=index,
@@ -350,6 +351,7 @@ def import_occurrences(
                 layer=layer,
                 yaw=yaw,
                 colour=colour,
+                offset_ldu=offset_ldu,
             )
         )
     ground_offset = min((item.layer for item in decoded), default=0) if ground else 0
@@ -362,6 +364,7 @@ def import_occurrences(
                 layer=item.layer - ground_offset,
                 yaw=item.yaw,
                 colour_code=item.colour,
+                offset_ldu=item.offset_ldu,
             )
         except CollisionError as error:
             problems.append(
@@ -424,7 +427,7 @@ def _match_candidates(
     occurrence: ModelOccurrence,
     *,
     grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> tuple[str, tuple[int, int, int, int]] | str:
+) -> tuple[str, tuple[int, int, int, int, tuple[int, int, int]]] | str:
     """Decode against every candidate part; exactly one clean fit wins.
 
     The decode sets of parts sharing an LDraw code are disjoint by
@@ -434,7 +437,7 @@ def _match_candidates(
     silently resolved by catalog order.
     """
     reasons: list[str] = []
-    fits: list[tuple[str, tuple[int, int, int, int]]] = []
+    fits: list[tuple[str, tuple[int, int, int, int, tuple[int, int, int]]]] = []
     for part_key in candidates:
         decoded = _decode_occurrence(
             catalog.parts[part_key],
@@ -448,6 +451,16 @@ def _match_candidates(
     if len(fits) == 1:
         return fits[0]
     if fits:
+        minimum_offset = min(
+            sum(abs(value) for value in placement[4]) for _, placement in fits
+        )
+        closest = [
+            fit
+            for fit in fits
+            if sum(abs(value) for value in fit[1][4]) == minimum_offset
+        ]
+        if len(closest) == 1:
+            return closest[0]
         keys = ", ".join(key for key, _ in fits)
         return f"ambiguous piece: decodes as {keys}"
     if len(candidates) == 1:
@@ -463,7 +476,7 @@ def _decode_occurrence(
     occurrence: ModelOccurrence,
     *,
     grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> tuple[int, int, int, int] | str:
+) -> tuple[int, int, int, int, tuple[int, int, int]] | str:
     """Decode one occurrence as ``part``: placement, or the failure reason."""
     if part.category in (Category.SNOT, Category.SPECIAL_SNOT):
         if (snot := _decode_snot(part, occurrence, grid_phase=grid_phase)) is None:
@@ -480,7 +493,8 @@ def _decode_occurrence(
         )
     ) is None:
         return "position is off the stud/plate grid"
-    return (*placement, yaw)
+    coordinates, offset_ldu = placement
+    return (*coordinates, yaw, offset_ldu)
 
 
 def _decode_snot(
@@ -488,7 +502,7 @@ def _decode_snot(
     occurrence: ModelOccurrence,
     *,
     grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> tuple[int, int, int, int] | None:
+) -> tuple[int, int, int, int, tuple[int, int, int]] | None:
     """Invert the SNOT emission paths, both driven by catalog data.
 
     Carriers are ordinary bodies with an extra emission yaw: subtract
@@ -509,7 +523,8 @@ def _decode_snot(
         )
         if placement is None:
             return None
-        return (*placement, yaw)
+        coordinates, offset_ldu = placement
+        return (*coordinates, yaw, offset_ldu)
     return _decode_cladding(part, occurrence, grid_phase=grid_phase)
 
 
@@ -518,7 +533,7 @@ def _decode_cladding(
     occurrence: ModelOccurrence,
     *,
     grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> tuple[int, int, int, int] | None:
+) -> tuple[int, int, int, int, tuple[int, int, int]] | None:
     """Invert the cladding origin: pinned matrix → outward, centroid → anchor."""
     position = occurrence.position
     flat = _flat_matrix(occurrence.matrix)
@@ -542,8 +557,11 @@ def _decode_cladding(
         float(position.z) - phase_z - offset_out * oy - offset_across * across_y
     ) / STUD_LDU - mean_ry
     layer = (offset_up - float(position.y) + phase_y) / PLATE_LDU
-    coords = _grid_coordinates((x, y, layer))
-    return None if coords is None else (*coords, yaw)
+    decoded = _grid_coordinates_with_offset((x, y, layer))
+    if decoded is None:
+        return None
+    coordinates, offset_ldu = decoded
+    return (*coordinates, yaw, offset_ldu)
 
 
 def _flat_matrix(matrix: Matrix) -> tuple[int, ...] | None:
@@ -592,7 +610,7 @@ def _decode_position(
     yaw: int,
     *,
     grid_phase: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> tuple[int, int, int] | None:
+) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
     """Invert ``ldraw_out.piece_for``'s position math; None if off-grid."""
     offset_x, offset_y, offset_z = part.origin_offset
     rotated_ox, rotated_oz = _rotate_ldu(offset_x, offset_z, yaw)
@@ -603,7 +621,7 @@ def _decode_position(
     x = (float(position.x) - phase_x - rotated_ox) / STUD_LDU - mean_rx
     y = (float(position.z) - phase_z - rotated_oz) / STUD_LDU - mean_ry
     layer = -(float(position.y) - phase_y - offset_y) / PLATE_LDU - part.height_plates
-    return _grid_coordinates((x, y, layer))
+    return _grid_coordinates_with_offset((x, y, layer))
 
 
 def _detect_import_phase(
@@ -683,3 +701,23 @@ def _grid_coordinates(
             return None
         coords.append(int(rounded))
     return (coords[0], coords[1], coords[2])
+
+
+def _grid_coordinates_with_offset(
+    values: tuple[float, float, float],
+) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
+    """Split a physical placement into its nearest grid anchor and LDU offset."""
+    coordinates: list[int] = []
+    offset_ldu: list[int] = []
+    for value, scale in zip(values, (STUD_LDU, STUD_LDU, PLATE_LDU), strict=True):
+        coordinate = round(value)
+        physical_offset = (value - coordinate) * scale
+        rounded_offset = round(physical_offset)
+        if abs(physical_offset - rounded_offset) > GRID_TOLERANCE_LDU:
+            return None
+        coordinates.append(coordinate)
+        offset_ldu.append(rounded_offset)
+    return (
+        (coordinates[0], coordinates[1], coordinates[2]),
+        (offset_ldu[0], offset_ldu[1], offset_ldu[2]),
+    )

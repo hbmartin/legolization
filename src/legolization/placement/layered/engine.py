@@ -130,6 +130,7 @@ class LayeredStrategy:
     fail_max: int = 30
     time_budget_s: float | None = None
     progress: ProgressCallback | None = None
+    outcome: None = field(default=None, init=False)
     milp_bridge: bool = True
     """Bridge connectivity repairs with the exact-cover synthesizer
     first (random rewrite as fallback); False = v4 behaviour, the

@@ -70,11 +70,11 @@ def _merge_connections(matches: list[Connection]) -> Connection:
         evidence for connection in matches for evidence in connection.evidence
     )
     raw_ids = tuple(sorted(connection.connection_id for connection in matches))
-    canonical_id = "physical:" + "|".join(raw_ids)
+    canonical_id = f"physical:{'|'.join(raw_ids)}"
     return replace(preferred, connection_id=canonical_id, evidence=evidence)
 
 
-def _preference(connection: Connection) -> tuple[int, float, str]:
+def _preference(connection: Connection) -> tuple[bool, bool, float, str]:
     endpoints = (connection.endpoint_a, connection.endpoint_b)
     inferred = any(
         endpoint.connector_id.startswith("synthetic:receptacle")
@@ -82,7 +82,8 @@ def _preference(connection: Connection) -> tuple[int, float, str]:
     )
     confirmed = _enum_value(connection.status) == "confirmed"
     return (
-        int(confirmed) + int(inferred),
+        confirmed,
+        not inferred,
         connection.confidence,
         connection.connection_id,
     )

@@ -77,8 +77,9 @@ def _connected_components(grid: VoxelGrid) -> tuple[frozenset[Cell], ...]:
         for row in np.argwhere(grid.filled_mask)
     }
     components: list[frozenset[Cell]] = []
-    while remaining:
-        start = min(remaining)
+    for start in sorted(remaining):
+        if start not in remaining:
+            continue
         pending = [start]
         found: set[Cell] = set()
         remaining.remove(start)
@@ -94,12 +95,13 @@ def _connected_components(grid: VoxelGrid) -> tuple[frozenset[Cell], ...]:
 
 
 def _canonicalize(grid: VoxelGrid, cells: frozenset[Cell]) -> _Canonical:
-    alternatives = tuple(_at_yaw(grid, cells, yaw=yaw) for yaw in (0, 90, 180, 270))
+    coloured = tuple((cell, grid.code_at(*cell)) for cell in sorted(cells))
+    alternatives = tuple(_at_yaw(coloured, yaw=yaw) for yaw in (0, 90, 180, 270))
     return min(alternatives, key=lambda item: (item.cells, item.yaw))
 
 
-def _at_yaw(grid: VoxelGrid, cells: frozenset[Cell], *, yaw: int) -> _Canonical:
-    rotated = [(rotate_offset(cell, yaw), grid.code_at(*cell)) for cell in cells]
+def _at_yaw(coloured: tuple[tuple[Cell, int], ...], *, yaw: int) -> _Canonical:
+    rotated = [(rotate_offset(cell, yaw), colour) for cell, colour in coloured]
     minimum = tuple(min(cell[axis] for cell, _ in rotated) for axis in range(3))
     origin = cast("Cell", minimum)
     normalized = sorted(

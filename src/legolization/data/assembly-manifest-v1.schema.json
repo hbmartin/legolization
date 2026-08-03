@@ -25,13 +25,81 @@
     "schema": {"const": "legolization.assembly-manifest"},
     "version": {"const": 1},
     "status": {"enum": ["complete", "partial", "error"]},
-    "source": {"type": "object"},
+    "source": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "format": {"type": "string"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "size_bytes": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
     "configuration": {"type": "object"},
-    "coordinate_system": {"type": "object"},
-    "parts": {"type": "array", "items": {"type": "object"}},
-    "occurrences": {"type": "array", "items": {"type": "object"}},
-    "contacts": {"type": "array", "items": {"type": "object"}},
-    "action_graph": {"type": "object"},
+    "coordinate_system": {
+      "type": "object",
+      "required": ["units", "axes"],
+      "properties": {
+        "units": {"type": "string"},
+        "axes": {"type": "object"}
+      }
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "anyOf": [
+          {"required": ["key"]},
+          {"required": ["part_id"]}
+        ],
+        "properties": {
+          "key": {"type": "string"},
+          "part_id": {"type": "string"}
+        }
+      }
+    },
+    "occurrences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["occurrence_id"],
+        "properties": {"occurrence_id": {"type": "integer"}}
+      }
+    },
+    "contacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "occurrence_ids"],
+        "properties": {
+          "id": {"type": "string"},
+          "occurrence_ids": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      }
+    },
+    "action_graph": {
+      "type": "object",
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {"type": "array", "items": {"type": "string"}},
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "source", "target"],
+            "properties": {
+              "kind": {"type": "string"},
+              "source": {"type": "string"},
+              "target": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
     "support": {"type": "object"},
     "load_cases": {"type": "array", "items": {"type": "object"}},
     "stability": {"type": "object"},
@@ -41,11 +109,27 @@
         "enum": ["complete", "partial", "unsupported", "not_requested", "error"]
       }
     },
-    "exactness": {"type": "object"},
+    "exactness": {
+      "type": "object",
+      "required": ["strategy", "status"],
+      "properties": {
+        "strategy": {"type": "string"},
+        "status": {"type": "string"}
+      }
+    },
     "templates": {"type": "array", "items": {"type": "object"}},
     "bom": {"type": "object"},
     "artifacts": {"type": "object", "additionalProperties": {"type": "string"}},
     "warnings": {"type": "array", "items": {"type": "string"}},
     "errors": {"type": "array", "items": {"type": "string"}}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "error"}}},
+      "then": {
+        "required": ["errors"],
+        "properties": {"errors": {"minItems": 1}}
+      }
+    }
+  ]
 }

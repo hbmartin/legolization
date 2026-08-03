@@ -56,13 +56,17 @@ def instantiate_repeated_templates(
         )
         payload = cache.read(key) if cache is not None else None
         status = "hit" if payload is not None else "derived"
-        if payload is not None and not _apply(layout, component, payload):
-            if cache is None:
-                msg = "cached template payload requires a cache"
-                raise RuntimeError(msg)
+        if payload is not None and not _valid_payload(payload):
+            if cache is None:  # payload can only come from a configured cache
+                raise AssertionError
             cache.quarantine(key)
             payload = None
             status = "recovered"
+        elif payload is not None and not _apply(layout, component, payload):
+            # The payload is structurally valid; a collision or local coverage
+            # mismatch says nothing about its reuse in another model.
+            payload = None
+            status = "local_miss"
         if payload is None:
             payload = _derive(layout, component)
             if payload is None or not _apply(layout, component, payload):
@@ -163,6 +167,26 @@ def _apply(
     return True
 
 
+def _valid_payload(payload: dict[str, Any]) -> bool:
+    """Return whether a cache payload has the complete placement shape."""
+    placements = payload.get("placements")
+    if not isinstance(placements, list) or not placements:
+        return False
+    try:
+        for raw in placements:
+            if not isinstance(raw, dict):
+                return False
+            _cell(raw.get("anchor"), label="anchor")
+            _cell(raw.get("offset_ldu"), label="offset_ldu")
+            int(raw["colour_label"])
+            int(raw["yaw"])
+            if not isinstance(raw["part_key"], str):
+                return False
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
 def _component_cells(component: RepeatedComponent) -> frozenset[Cell]:
     return frozenset(cell for item in component.instances for cell in item.cells)
 
@@ -223,10 +247,12 @@ def _instantiate(
         world_offset = rotate_offset(offset, (-instance.canonical_yaw) % 360)
         colour = int(colours[label])
         layout.add(
-            str(raw["part_key"]),
-            *world_anchor,
-            (canonical_yaw - instance.canonical_yaw) % 360,
-            7 if colour == IGNORE else colour,
+            part_key=str(raw["part_key"]),
+            x=world_anchor[0],
+            y=world_anchor[1],
+            layer=world_anchor[2],
+            yaw=(canonical_yaw - instance.canonical_yaw) % 360,
+            colour_code=7 if colour == IGNORE else colour,
             offset_ldu=world_offset,
         )
 

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import math
+import tempfile
 import time
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - used for candidate materialization
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from ldraw import load_model
@@ -283,7 +284,10 @@ def _apply_edit(
         != expected_reference.replace("\\", "/").casefold()
     ):
         return None
-    numbers = [float(item) for item in fields[2:14]]
+    try:
+        numbers = [float(item) for item in fields[2:14]]
+    except ValueError:
+        return None
     position = numbers[:3]
     matrix: Matrix3 = (
         (numbers[3], numbers[4], numbers[5]),
@@ -315,12 +319,19 @@ def _analyze_text(
     directory: Path,
     parts: Parts,
 ) -> ModelAnalysis | None:
-    # pyldraw accepts a filesystem path so relative external references retain
-    # the same resolution root. A deterministic hidden candidate is removed by
-    # the caller's process cleanup and never replaces user input.
-    candidate_path = directory / f".legolization-counterfactual{suffix}"
+    # Keep the candidate beside the source so relative external references retain
+    # the same resolution root, while making concurrent analyses independent.
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=".legolization-counterfactual-",
+        suffix=suffix,
+        dir=directory,
+        delete=False,
+    ) as handle:
+        handle.write(text)
+        candidate_path = Path(handle.name)
     try:
-        candidate_path.write_text(text)
         return load_model(candidate_path).analyze(parts)
     finally:
         candidate_path.unlink(missing_ok=True)

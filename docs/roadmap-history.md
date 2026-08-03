@@ -535,6 +535,7 @@ polytope; near-boundary or failed solves fall back under
 `stability.rescue.cold_fallback`.
 
 Proof (same-session sha-stamped profiles, seed 0):
+
 | model | before | after | migration | notes |
 |---|---|---|---|---|
 | spot@24 | 511.4 s | 490.3 s | 74 of 80 solves → `cold_direct`, 0 fallbacks | result block identical |
@@ -578,6 +579,7 @@ Repair and hollow-restore contributed nothing on the drift models; the
 stage-2 bridging term (fix b) is not indicated and was not built.
 
 Proof (seed 0, determinism double-checked):
+
 | model | kollsker | bond | fast |
 |---|---|---|---|
 | mushroom | 269 → **251** | 265 → 263 | — |
@@ -623,6 +625,7 @@ lost under the old all-or-nothing rail; now the 41 safe mounts stay).
 Proof (seed 0; baseline = v1 pass at the pre-v2 commit, same session —
 the v3-era numbers were stale: suzanne's 6 died with the WS-A2
 cavity-reachability fix, not with v2):
+
 | model | pre-v2 | v2 | split 11211/87087 | stable | comps |
 |---|---|---|---|---|---|
 | two-towers-bridge | 13 | **108** | 49/59 | ✓ | 1 |
@@ -729,6 +732,7 @@ disassembly rescue (per-contact-component verdict cache; the RBE is
 block-diagonal across uncoupled components).
 
 Proof (same sha-pinned inputs as the PR #16 campaign, seed 0):
+
 | model | before | after | speedup | notes |
 |---|---|---|---|---|
 | pyramid.npy | 1.26 s | 0.99 s | 1.3x | clean greedy path |
@@ -771,6 +775,7 @@ submodel section (no renderer CLI flags needed).
 
 Proof (`scripts/check_instructions.py --subassemblies`, seed 0,
 before-JSONs from the pre-item baseline):
+
 | model | unstable steps | subs | attach steps | violations |
 |---|---|---|---|---|
 | mushroom | **17 → 0** | 5 | 5 | 0 |
@@ -825,6 +830,7 @@ the pass and reverts wholesale if the RBE verdict flips stable →
 unstable, so preserve mode can never trade stability for looks.
 
 Proof (seed 0; "fill-identical" = union of filled cells unchanged):
+
 | model | bricks | slopes placed | fill-identical | stable |
 |---|---|---|---|---|
 | suzanne@16 | 331 → 330 | 29 | yes | yes → yes (worst 0.137) |
@@ -876,6 +882,7 @@ argparse errors. `PipelineResult.grid` became optional (imported
 models have no voxel grid); `write_outputs` is reused unchanged.
 
 Proof (seed 0):
+
 | example | round-trip | steps (native → imported) | unstable | violations |
 |---|---|---|---|---|
 | heart.ldr | exact | 7 → 7 | 2 → 2 | 0 |
@@ -915,6 +922,7 @@ all` sweeps, and eval tooling pick it up automatically;
 `PipelineConfig.milp_layer_time_s` / `milp_bond_weight` tune it.
 
 Proof (seed 0, end-to-end pipeline, layer-steps mode):
+
 | model | bond | kollsker | | model | bond | kollsker |
 |---|---|---|---|---|---|---|
 | cantilever | 62 | **36** | | thin-shell | 398 | 417 |
@@ -972,6 +980,7 @@ suzanne). The pipeline snapshot guard reverts wholesale on a
 stability flip, same as preserve slopes.
 
 Proof (seed 0): fire counts and physics —
+
 | model | mounts | stable | components |
 |---|---|---|---|
 | two-towers-bridge | 23 | yes | 1 |
