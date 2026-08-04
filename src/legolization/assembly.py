@@ -6,25 +6,30 @@ import hashlib
 import json
 import math
 import time
+import zipfile
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from ldraw import Severity, iter_ldr_issues, load_model
-from pyldcad import (
-    ConnectivityAnalysis,
-    ConnectivityConfig,
-    analyze_connectivity,
-    build_registry,
-)
 
+from legolization.assembly_connections import (
+    ConnectionAnalysis,
+    ConnectionConfig,
+    analyze_connections,
+)
 from legolization.assembly_counterfactual import (
     CounterfactualCandidate,
     CounterfactualSearchResult,
     search_counterfactuals,
 )
 from legolization.assembly_grid import GridFrame, detect_grid_frames
-from legolization.assembly_model import AssemblyModel, build_assembly_model
+from legolization.assembly_model import (
+    AssemblyModel,
+    build_assembly_model,
+    source_line,
+    source_model,
+)
 from legolization.assembly_paths import (
     AssemblyRegion,
     RegionPath,
@@ -37,10 +42,10 @@ from legolization.assembly_physics import (
     analyze_assembly_physics,
     resolve_support,
 )
+from legolization.assembly_registry import build_registry
 from legolization.catalog import CATALOG_SCHEMA, load_catalog
-from legolization.connectivity import normalize_connectivity
 from legolization.ldraw_in import OccurrenceImport, import_occurrences
-from legolization.ldraw_report import catalog_error, prepare_analysis_catalog
+from legolization.ldraw_report import catalog_error, prepare_connection_catalog
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -49,6 +54,7 @@ if TYPE_CHECKING:
     from ldraw.parts import Parts
 
     from legolization.assembly_model import AssemblyOccurrence
+    from legolization.assembly_registry import ConnectorRegistry
 
 type AssemblyStatus = Literal["complete", "partial", "error"]
 type AssemblyTopologyVerdict = Literal["connected", "disconnected", "indeterminate"]
@@ -175,7 +181,7 @@ class AssemblyAnalysisResult:
 
     report: AssemblyAnalysisReport
     model: AssemblyModel | None = None
-    connectivity: ConnectivityAnalysis | None = None
+    connectivity: ConnectionAnalysis | None = None
     support: SupportResolution | None = None
     physics: AssemblyPhysicsResult | None = None
     counterfactual: CounterfactualSearchResult | None = None
@@ -200,7 +206,10 @@ def analyze_assembly(
     input_payload = _input_payload(path)
     try:
         voxel_catalog = load_catalog(*config.voxel_catalog_paths)
-        prepared = prepare_analysis_catalog()
+        prepared = prepare_connection_catalog(
+            connection_shadows=config.ldcad_metadata_paths,
+            studio_metadata=config.studio_metadata_paths,
+        )
         if (catalog_failure := catalog_error(prepared)) is not None:
             return _error_result(
                 input_payload,
@@ -218,13 +227,10 @@ def analyze_assembly(
                 started=started,
                 message="LDraw model could not produce resolved inspection geometry",
             )
-        connectivity_config = ConnectivityConfig(
-            native_catalog_paths=config.connector_catalog_paths,
-            ldcad_metadata_paths=config.ldcad_metadata_paths,
-            studio_metadata_paths=config.studio_metadata_paths,
+        connection_config = ConnectionConfig(
             infer_surface_contacts=config.infer_surface_contacts,
         )
-        registry = build_registry(connectivity_config)
+        registry = build_registry(config.connector_catalog_paths)
         model = build_assembly_model(
             model_analysis,
             registry=registry,
@@ -236,8 +242,10 @@ def analyze_assembly(
                 started=started,
                 message="model contains no occurrences with resolved geometry",
             )
-        connectivity = normalize_connectivity(
-            analyze_connectivity(model_analysis, connectivity_config)
+        connectivity = analyze_connections(
+            model_analysis.inspection,
+            registry=registry,
+            config=connection_config,
         )
         strict_import = import_occurrences(
             model_analysis.occurrences,
@@ -283,7 +291,8 @@ def analyze_assembly(
             model=model,
             connectivity=connectivity,
             parts=prepared.parts,
-            connectivity_config=connectivity_config,
+            registry=registry,
+            connection_config=connection_config,
         )
         warnings = (
             tuple(
@@ -327,7 +336,7 @@ def analyze_assembly(
             physics=physics,
             counterfactual=counterfactual,
         )
-    except (OSError, RuntimeError, TypeError, ValueError) as error:
+    except (OSError, RuntimeError, TypeError, ValueError, zipfile.BadZipFile) as error:
         return _error_result(
             input_payload,
             started=started,
@@ -360,7 +369,7 @@ def _report(  # noqa: PLR0913 - explicit report evidence inputs
     topology_verdict: AssemblyTopologyVerdict,
     input_payload: dict[str, Any],
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     strict_import: OccurrenceImport,
     frames: tuple[GridFrame, ...],
     support: SupportResolution,
@@ -458,7 +467,7 @@ def _error_result(
 
 
 def _topology_verdict(
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
 ) -> AssemblyTopologyVerdict:
     if connectivity.confirmed_component_count <= 1:
         return "connected"
@@ -488,9 +497,10 @@ def _counterfactual(  # noqa: PLR0913 - explicit search boundary
     config: AssemblyAnalysisConfig,
     verdict: AssemblyVerdict,
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     parts: Parts,
-    connectivity_config: ConnectivityConfig,
+    registry: ConnectorRegistry,
+    connection_config: ConnectionConfig,
 ) -> CounterfactualSearchResult:
     if not config.repair:
         return CounterfactualSearchResult(
@@ -515,7 +525,8 @@ def _counterfactual(  # noqa: PLR0913 - explicit search boundary
         model=model,
         connectivity=connectivity,
         parts=parts,
-        connectivity_config=connectivity_config,
+        registry=registry,
+        config=connection_config,
         time_budget_s=config.repair_time_budget_s,
     )
 
@@ -524,7 +535,7 @@ def _load_paths(
     configured: tuple[tuple[str, str], ...],
     *,
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     regions: tuple[AssemblyRegion, ...],
 ) -> tuple[tuple[RegionPath, ...], tuple[str, ...]]:
     pairs = list(configured)
@@ -576,7 +587,7 @@ def _grid_payload(frame: GridFrame) -> dict[str, Any]:
     return {
         "frame_id": frame.frame_id,
         "kind": frame.kind,
-        "origin_ldu": list(frame.origin_ldu.to_tuple()),
+        "origin_ldu": _vector_payload(frame.origin_ldu),
         "basis": list(frame.basis),
         "inlier_occurrence_ids": list(frame.inlier_occurrence_ids),
         "confidence": frame.confidence,
@@ -596,16 +607,16 @@ def _occurrence_payload(item: AssemblyOccurrence) -> dict[str, Any]:
         "part_id": item.part_id,
         "reference": item.reference,
         "colour_code": item.colour_code,
-        "position_ldu": list(item.position_ldu.to_tuple()),
+        "position_ldu": _vector_payload(item.position_ldu),
         "matrix": list(item.matrix),
         "bounds_ldu": {
-            "min": list(bounds.minimum.to_tuple()),
-            "max": list(bounds.maximum.to_tuple()),
+            "min": _vector_payload(bounds.minimum),
+            "max": _vector_payload(bounds.maximum),
         },
         "mass_g": item.mass_g,
         "mass_source": item.mass_source,
-        "center_of_mass_ldu": list(center.to_tuple()) if center is not None else None,
-        "inertia_g_ldu2": list(inertia.to_tuple()) if inertia is not None else None,
+        "center_of_mass_ldu": (_vector_payload(center) if center is not None else None),
+        "inertia_g_ldu2": (_vector_payload(inertia) if inertia is not None else None),
         "tags": sorted(item.tags),
         "source": {
             "model_path": list(source.model_path),
@@ -614,8 +625,8 @@ def _occurrence_payload(item: AssemblyOccurrence) -> dict[str, Any]:
             "local_step_path": list(source.local_step_path),
             "effective_step_path": list(source.effective_step_path),
             "page_path": list(source.page_path),
-            "source_model": source.source_model,
-            "source_line": source.source_line,
+            "source_model": source_model(source),
+            "source_line": source_line(source),
             "source_page": source.source_page,
         },
     }

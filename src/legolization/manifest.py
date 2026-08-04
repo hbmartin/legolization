@@ -20,9 +20,10 @@ from legolization.ldraw_out import piece_for
 from legolization.repetition import RepeatedComponent, repeated_components
 
 if TYPE_CHECKING:
-    from pyldcad import ConnectivityAnalysis
+    from ldraw.geometry import Vector
 
     from legolization.assembly import AssemblyAnalysisResult
+    from legolization.assembly_connections import ConnectionAnalysis
     from legolization.graph import KnobContact
     from legolization.instructions.sequencer import InstructionPlan
     from legolization.layout import Layout
@@ -377,7 +378,7 @@ def _occurrence_ids(occurrences: tuple[dict[str, Any], ...]) -> set[int]:
 
 
 def _known_analysis_contacts(
-    connectivity: ConnectivityAnalysis | None,
+    connectivity: ConnectionAnalysis | None,
     *,
     occurrence_ids: set[int],
 ) -> tuple[dict[str, Any], ...]:
@@ -509,28 +510,24 @@ def _layout_contact(contact: KnobContact) -> dict[str, Any]:
 
 
 def _analysis_contacts(
-    connectivity: ConnectivityAnalysis | None,
+    connectivity: ConnectionAnalysis | None,
 ) -> tuple[dict[str, Any], ...]:
     if connectivity is None:
         return ()
     return tuple(
         {
-            "id": connection.connection_id,
+            "id": connection.edge_id,
             "occurrence_ids": list(connection.occurrence_ids),
-            "kind": str(connection.kind),
-            "point_ldu": list(connection.point_ldu.to_tuple()),
-            "normal": list(connection.axis.to_tuple()),
-            "status": str(getattr(connection.status, "value", connection.status)),
+            "kind": connection.kind,
+            "point_ldu": _vector_values(connection.point_ldu),
+            "normal": _vector_values(connection.axis),
+            "status": connection.status.value,
             "confidence": connection.confidence,
-            "raw_evidence_ids": connection.connection_id.removeprefix(
-                "physical:"
-            ).split("|"),
+            "raw_evidence_ids": [connection.first.key, connection.second.key],
             "evidence": [
                 {
                     "provider": evidence.provider,
-                    "strength": str(
-                        getattr(evidence.strength, "value", evidence.strength)
-                    ),
+                    "strength": evidence.strength.value,
                     "detail": evidence.detail,
                 }
                 for evidence in connection.evidence
@@ -538,6 +535,10 @@ def _analysis_contacts(
         }
         for connection in connectivity.connections
     )
+
+
+def _vector_values(value: Vector) -> list[float]:
+    return [float(value.x), float(value.y), float(value.z)]
 
 
 def _steps_payload(plan: InstructionPlan | None) -> list[dict[str, Any]]:

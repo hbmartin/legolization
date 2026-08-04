@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pyldcad import Vector3
+from ldraw.geometry import Vector
 
 from legolization.ldraw_units import GRID_TOLERANCE_LDU, PLATE_LDU, STUD_LDU
 
@@ -23,7 +23,7 @@ class GridFrame:
 
     frame_id: int
     kind: str
-    origin_ldu: Vector3
+    origin_ldu: Vector
     basis: tuple[float, float, float, float, float, float, float, float, float]
     inlier_occurrence_ids: tuple[int, ...]
     confidence: float
@@ -73,7 +73,7 @@ def detect_grid_frames(
             GridFrame(
                 frame_id=frame_id,
                 kind=kind,
-                origin_ldu=Vector3(*phase),
+                origin_ldu=Vector(*phase),
                 basis=(
                     float(basis[0]),
                     float(basis[1]),

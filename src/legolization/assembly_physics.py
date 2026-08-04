@@ -7,15 +7,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-from pyldcad import Connection, ConnectionStatus, ConnectorRole, Vector3
+from ldraw import ConnectionRole, ConnectionStatus
+from ldraw.geometry import Vector
 from scipy.optimize import linprog
 from scipy.sparse import coo_matrix
 
 from legolization.assembly_paths import AssemblyRegion, select_occurrences
 
 if TYPE_CHECKING:
-    from pyldcad import ConnectivityAnalysis
-
+    from legolization.assembly_connections import ConnectionAnalysis, ConnectorEdge
     from legolization.assembly_model import AssemblyModel, AssemblyOccurrence
     from legolization.ldraw_in import OccurrenceImport
 
@@ -245,7 +245,7 @@ def resolve_support(  # noqa: PLR0911 - support modes are intentionally explicit
 def analyze_assembly_physics(  # noqa: PLR0913 - public physical config surface
     *,
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     support: SupportResolution,
     regions: tuple[AssemblyRegion, ...],
     scenarios: tuple[str, ...],
@@ -291,7 +291,7 @@ def _solve_scenario(  # noqa: PLR0913 - explicit physical inputs
     name: str,
     *,
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     base_support: SupportResolution,
     regions: tuple[AssemblyRegion, ...],
     gravity_g: float,
@@ -408,7 +408,7 @@ class _SolveResult:
 def _solve_equilibrium(
     *,
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     support: SupportResolution,
     loads: dict[int, tuple[np.ndarray, np.ndarray]],
     optimistic: bool,
@@ -477,14 +477,14 @@ def _solve_equilibrium(
 
 def _add_connection(
     system: _LinearSystem,
-    connection: Connection,
+    connection: ConnectorEdge,
     *,
     optimistic: bool,
     large: float,
 ) -> None:
     left, right = (
-        connection.endpoint_a.occurrence_id,
-        connection.endpoint_b.occurrence_id,
+        connection.first.occurrence_id,
+        connection.second.occurrence_id,
     )
     if left not in system.body_index or right not in system.body_index:
         return
@@ -495,8 +495,10 @@ def _add_connection(
     rotations = connection.degrees_of_freedom.rotations
     if not translations[2]:
         bounds, unknown = _axial_bounds(connection, optimistic=optimistic, large=large)
+        # ``first`` is pinned to the male endpoint, so the pull/compression
+        # bound orientation never depends on endpoint iteration order.
         axial_direction = (
-            -axis if connection.endpoint_a.role is ConnectorRole.MALE else axis
+            -axis if connection.first.role is ConnectionRole.MALE else axis
         )
         _shared_force(
             system,
@@ -563,7 +565,7 @@ def _add_support(
 ) -> None:
     bounds = occurrence.bounds_ldu
     point = _to_si(
-        Vector3(
+        Vector(
             (bounds.minimum.x + bounds.maximum.x) / 2,
             bounds.maximum.y,
             (bounds.minimum.z + bounds.maximum.z) / 2,
@@ -772,7 +774,7 @@ def _scenario_without_solution(  # noqa: PLR0913 - report fields stay explicit
 
 
 def _axial_bounds(
-    connection: Connection,
+    connection: ConnectorEdge,
     *,
     optimistic: bool,
     large: float,
@@ -799,11 +801,11 @@ def _symmetric_bounds(
     return (-limit, limit), value is None
 
 
-def _to_si(value: Vector3) -> np.ndarray:
+def _to_si(value: Vector) -> np.ndarray:
     return np.asarray((value.x, value.z, -value.y), dtype=np.float64) * _LDU_M
 
 
-def _direction_to_si(value: Vector3) -> np.ndarray:
+def _direction_to_si(value: Vector) -> np.ndarray:
     vector = np.asarray((value.x, value.z, -value.y), dtype=np.float64)
     norm = float(np.linalg.norm(vector))
     if norm <= _SOLVER_TOLERANCE:

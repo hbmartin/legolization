@@ -31,8 +31,7 @@ dependencies = [
     "osqp>=1.1.3",
     "filelock>=3.20.3",
     "platformdirs>=4.9.2",
-    "pyldcad>=0.1,<0.2",
-    "pyldraw3>=1.5.0",
+    "pyldraw3>=1.6.1",
     "reportlab>=4.2",
     "scipy>=1.18.0",
     "scs>=3.2.11",
@@ -68,7 +67,7 @@ docs = [
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "vendor", "venv"]
+exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "venv"]
 
 line-length = 88
 indent-width = 4
@@ -97,13 +96,12 @@ project-includes = [
 ]
 
 [tool.uv.sources]
-pyldcad = { path = "vendor/pyLDCad" }
-pyldraw3 = { git = "https://github.com/hbmartin/pyldraw3.git", rev = "f35d7dfce81b34032a095cfc7ff44bf0feba2735" }
+pyldraw3 = { git = "https://github.com/hbmartin/pyldraw3.git", rev = "465f783723ebd4f0a234b826b22b32f2c1d18b73" }
 
 [tool.deptry]
 known_first_party = ["legolization"]
-extend_exclude = ["papers PDFs", "vendor"]
-package_module_name_map = { pyldraw3 = ["ldraw"], pyldcad = ["pyldcad"] }
+extend_exclude = ["papers PDFs"]
+package_module_name_map = { pyldraw3 = ["ldraw"] }
 
 [tool.deptry.per_rule_ignores]
 # clarabel/highspy/osqp/scs are cvxpy/scipy solver backends loaded by name at

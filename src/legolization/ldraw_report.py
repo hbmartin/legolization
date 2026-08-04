@@ -24,6 +24,7 @@ from ldraw import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
     from ldraw import BoundingBox, LDrawState, OccurrenceAttribution, Vector
     from ldraw.parts import Parts
@@ -41,6 +42,29 @@ def prepare_analysis_catalog() -> CatalogPreparationResult:
             LDrawCapability.CATALOG,
             LDrawCapability.GENERATED_MODULES,
         )
+    )
+
+
+@lru_cache(maxsize=4)
+def prepare_connection_catalog(
+    *,
+    connection_shadows: tuple[Path, ...] = (),
+    studio_metadata: tuple[Path, ...] = (),
+) -> CatalogPreparationResult:
+    """Prepare the analysis catalog with registered connection sources.
+
+    An unreadable shadow source raises ``FileNotFoundError`` or
+    ``zipfile.BadZipFile`` at registration; callers own that boundary.
+    """
+    if not connection_shadows and not studio_metadata:
+        return prepare_analysis_catalog()
+    return prepare_catalog(
+        capabilities=(
+            LDrawCapability.CATALOG,
+            LDrawCapability.GENERATED_MODULES,
+        ),
+        connection_shadows=connection_shadows,
+        studio_metadata=studio_metadata,
     )
 
 

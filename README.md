@@ -174,8 +174,18 @@ uv run legolization analyze model.mpd \
 uv run legolization analyze model.ldr \
   --report evidence.json --output repaired.ldr --time-budget 120 --seed 7
 uv run legolization analyze model.ldr \
-  --connector-catalog connectors.json --ldcad-metadata parts/
+  --connector-catalog connectors.json --ldcad-metadata shadow-library/
 ```
+
+Connection evidence comes from pyldraw3's typed connection subsystem.
+`--ldcad-metadata` registers an LDCad shadow library (a directory or a
+ZIP/CSL archive) and `--studio-metadata` a Studio connectivity JSON export as
+connection-feature sources on the parts catalog; unreadable sources exit with
+an error before analysis starts. `--connector-catalog` (schema-1 JSON,
+validated against the packaged `connector-catalog-v1` schema) remains the
+only source for mass, centre of mass, inertia, collision proxies, region
+tags, force capacities, and custom connector kinds — Studio `mass_g`/`tags`
+fields are no longer read.
 
 Normal runs write the canonical version-1 assembly manifest. The old schema-2
 analysis and schema-1 assembly JSON are available only as explicitly requested

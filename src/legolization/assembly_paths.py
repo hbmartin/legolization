@@ -7,13 +7,12 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import TYPE_CHECKING
 
-from pyldcad import ConnectionStatus
+from ldraw import ConnectionStatus
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from pyldcad import ConnectivityAnalysis
-
+    from legolization.assembly_connections import ConnectionAnalysis
     from legolization.assembly_model import AssemblyModel, AssemblyOccurrence
 
 
@@ -139,7 +138,7 @@ def analyze_region_path(
     right_selector: str,
     *,
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
 ) -> RegionPath:
     """Compute confirmed/optimistic connector-instance cuts and one path."""
     # Confirmed/optimistic graph cases share one selector-validation boundary.

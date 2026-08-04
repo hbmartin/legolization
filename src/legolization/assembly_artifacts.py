@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - used to materialize candidate paths
 from typing import TYPE_CHECKING
 
+from ldraw import ConnectionStatus
 from ldraw.pieces import Piece
-from pyldcad import ConnectionStatus
 
 from legolization.assembly_paths import reachable_occurrences
 from legolization.instructions.render import detect_ldraw_dir, detect_renderer
@@ -18,9 +18,10 @@ from legolization.instructions.render import detect_ldraw_dir, detect_renderer
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from pyldcad import ConnectivityAnalysis, Vector3
+    from ldraw.geometry import Vector
 
     from legolization.assembly import AssemblyAnalysisReport
+    from legolization.assembly_connections import ConnectionAnalysis
     from legolization.assembly_model import AssemblyModel
     from legolization.assembly_physics import SupportResolution
 
@@ -36,7 +37,7 @@ class ArtifactWriteResult:
 
 
 def write_graph_json(
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     path: Path,
 ) -> None:
     """Write the complete connector graph as deterministic JSON."""
@@ -49,7 +50,7 @@ def write_graph_json(
 
 def write_component_mpd(
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     path: Path,
 ) -> None:
     """Write a flattened MPD with confirmed components recolored."""
@@ -72,7 +73,7 @@ def write_component_mpd(
 
 def write_floating_mpd(
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     support: SupportResolution,
     path: Path,
 ) -> None:
@@ -156,7 +157,7 @@ pre{{background:#f6f8fa;padding:1rem;overflow:auto}}.bad{{color:#a00}}.ok{{color
 
 def write_callout_svg(
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     path: Path,
 ) -> None:
     """Write an isometric SVG circling unmatched connector endpoints."""
@@ -315,7 +316,7 @@ def _write_flattened_mpd(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _project(point: Vector3) -> tuple[float, float]:
+def _project(point: Vector) -> tuple[float, float]:
     x = float(point.x)
     y = float(point.y)
     z = float(point.z)

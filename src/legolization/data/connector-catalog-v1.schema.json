@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://legolization.dev/schemas/connector-catalog-v1.schema.json",
+  "title": "Legolization connector catalog (schema 1)",
+  "type": "object",
+  "required": ["schema", "parts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "parts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/part" }
+    }
+  },
+  "$defs": {
+    "vector": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "boolTriplet": {
+      "type": "array",
+      "items": { "type": "boolean" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "stringList": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "part": {
+      "type": "object",
+      "required": ["part_id"],
+      "additionalProperties": false,
+      "properties": {
+        "part_id": { "type": "string", "minLength": 1 },
+        "connectors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/connector" }
+        },
+        "mass_g": { "type": ["number", "null"], "minimum": 0 },
+        "center_of_mass_ldu": { "$ref": "#/$defs/vector" },
+        "inertia_g_ldu2": { "$ref": "#/$defs/vector" },
+        "collision_proxy": {
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "$ref": "#/$defs/vector" },
+            "max": { "$ref": "#/$defs/vector" }
+          }
+        },
+        "tags": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "connector": {
+      "type": "object",
+      "required": ["id", "kind", "point_ldu", "axis"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string" },
+        "role": { "enum": ["male", "female", "bidirectional"] },
+        "point_ldu": { "$ref": "#/$defs/vector" },
+        "axis": { "$ref": "#/$defs/vector" },
+        "degrees_of_freedom": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "translations": { "$ref": "#/$defs/boolTriplet" },
+            "rotations": { "$ref": "#/$defs/boolTriplet" }
+          }
+        },
+        "compatible_kinds": { "$ref": "#/$defs/stringList" },
+        "capacity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pull_n": { "type": ["number", "null"], "minimum": 0 },
+            "compression_n": { "type": ["number", "null"], "minimum": 0 },
+            "shear_n": { "type": ["number", "null"], "minimum": 0 },
+            "torque_nm": { "type": ["number", "null"], "minimum": 0 },
+            "friction_coefficient": { "type": ["number", "null"], "minimum": 0 }
+          }
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tags": { "$ref": "#/$defs/stringList" }
+      }
+    }
+  }
+}
