@@ -17,7 +17,7 @@ Usage::
 
 Synthetic models are regenerated in memory and are the default fast scope.
 Mesh evaluation is deliberately opt-in via ``--kind mesh``; run
-``python -m legolization.corpus.ops download`` first for full coverage.
+``legolization corpus download`` first for full coverage.
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ import argparse
 import hashlib
 import json
 import sys
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from legolization.compare import Candidate, run_all, select_best
 from legolization.corpus import generators
-from legolization.corpus.manifest import load_manifest, select_models
+from legolization.corpus.manifest import load_manifest, select_scope
 from legolization.eval_artifacts import (
     SourceIdentity,
     atomic_json,
@@ -53,10 +53,25 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 _REPO = Path(__file__).resolve().parents[3]
-BASELINE = _REPO / "eval" / "baselines" / "scorecard.json"
-MESH_BASELINE = _REPO / "eval" / "baselines" / "scorecard-mesh.json"
+
+
+def baseline_root(*, in_checkout: bool | None = None) -> Path:
+    """Return the baseline directory: committed in a checkout, local outside.
+
+    Inside a git checkout, baselines stay at the committed
+    ``eval/baselines/``; an installed wheel keeps them next to its run
+    output under ``./legolization-eval/baselines/``.
+    """
+    checkout = (_REPO / ".git").exists() if in_checkout is None else in_checkout
+    if checkout:
+        return _REPO / "eval" / "baselines"
+    return Path("legolization-eval") / "baselines"
+
+
+BASELINE = baseline_root() / "scorecard.json"
+MESH_BASELINE = baseline_root() / "scorecard-mesh.json"
 _BASELINE_BY_KIND = {"synthetic": BASELINE, "mesh": MESH_BASELINE}
-RUNS = _REPO / "eval" / "runs"
+RUNS = Path("legolization-eval") / "runs"
 
 
 class CorpusModelLike(Protocol):
@@ -599,9 +614,10 @@ def _manifest_candidate(
     )
 
 
-def _relative(path: Path) -> str:
+def _relative(path: Path, base: Path) -> str:
+    """Record an artifact path relative to the collection manifest's home."""
     try:
-        return path.relative_to(_REPO).as_posix()
+        return path.relative_to(base, walk_up=True).as_posix()
     except ValueError:
         return path.as_posix()
 
@@ -660,7 +676,7 @@ def _collect_model(  # noqa: PLR0913, PLR0917 - one model needs all collection s
             hashes[key] = config_hash
             entry = _manifest_candidate(model_entry, strategy, seed)
             entry["config_hash"] = config_hash
-            entry["artifact"] = _relative(path)
+            entry["artifact"] = _relative(path, manifest_path.parent)
             hit = (
                 None
                 if args.fresh
@@ -712,35 +728,29 @@ def _collect_model(  # noqa: PLR0913, PLR0917 - one model needs all collection s
     return report.winner is not None
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Collect candidate artifacts; scorecard assembly is a separate command."""
-    args = parse_args(argv)
-    if args.write_baseline or args.baseline is not None:
-        msg = (
-            "baseline assembly moved to scripts/assemble_eval.py; "
-            "pass it the collection manifest written by this command"
-        )
-        raise SystemExit(msg)
-    models = select_models(load_manifest(), args.models)
-    if args.traits is not None:
-        wanted = {trait.strip() for trait in args.traits.split(",")}
-        models = [m for m in models if wanted & set(m.traits)]
-    excluded_kinds = sorted({m.kind for m in models})
-    if args.kind is not None:
-        models = [m for m in models if m.kind == args.kind]
-    if not models:
-        hint = (
-            f"; the selection matched only kind {', '.join(excluded_kinds)}"
-            f" - pass --kind {excluded_kinds[0]}"
-            if excluded_kinds and args.kind is not None
-            else ""
-        )
-        print(f"error: no corpus models selected{hint}", file=sys.stderr)
-        return 1
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CollectionRun:
+    """One finished (or interrupted-but-resumable) collection pass."""
+
+    manifest_path: Path
+    manifest: dict[str, object]
+    complete: bool
+
+
+def run_collection(
+    models: Sequence[CorpusModelLike],
+    args: argparse.Namespace,
+) -> CollectionRun:
+    """Collect the full candidate matrix for the selected models.
+
+    Progress goes to stderr only; the durable state is the collection
+    manifest at ``<out>/<stamp>/collection.json`` plus one atomic JSON
+    artifact per completed candidate, so an interrupted run resumes.
+    """
     identity = source_identity(_REPO)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     manifest = _initial_manifest(models, args, identity=identity, stamp=stamp)
-    manifest_path = args.out / "collections" / f"{stamp}.json"
+    manifest_path = args.out / stamp / "collection.json"
     atomic_json(manifest_path, manifest)
     outcomes = [
         _collect_model(
@@ -753,11 +763,38 @@ def main(argv: list[str] | None = None) -> int:
         )
         for model in models
     ]
-    success = all(outcomes)
-    manifest["status"] = "complete" if success else "incomplete"
+    complete = all(outcomes)
+    manifest["status"] = "complete" if complete else "incomplete"
     atomic_json(manifest_path, manifest)
-    print(f"collection manifest: {manifest_path}")
-    return 0 if success else 1
+    return CollectionRun(
+        manifest_path=manifest_path,
+        manifest=manifest,
+        complete=complete,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Collect candidate artifacts; scorecard assembly is a separate command."""
+    args = parse_args(argv)
+    if args.write_baseline or args.baseline is not None:
+        msg = (
+            "baseline assembly moved to 'legolization corpus assemble'; "
+            "pass it the collection manifest written by this command"
+        )
+        raise SystemExit(msg)
+    try:
+        models = select_scope(
+            load_manifest(),
+            names=args.models,
+            traits=args.traits,
+            kind=args.kind,
+        )
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    run = run_collection(models, args)
+    print(f"collection manifest: {run.manifest_path}")
+    return 0 if run.complete else 1
 
 
 if __name__ == "__main__":

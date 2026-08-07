@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from legolization.compare import Candidate, select_best
 from legolization.corpus.collect import (
     BASELINE,
     MESH_BASELINE,
+    RUNS,
     build_row,
     compare_to_baseline,
     to_markdown,
@@ -30,19 +32,42 @@ from legolization.placement.registry import strategy_names
 if TYPE_CHECKING:
     from legolization.corpus.collect import CorpusModelLike
 
-_REPO = Path(__file__).resolve().parents[3]
-_ASSEMBLED = _REPO / "eval" / "runs" / "assembled"
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AssembleOutcome:
+    """Everything one assembly pass produced or refused to produce."""
+
+    collection: Path
+    rows: list[dict[str, Any]]
+    incomplete: tuple[str, ...] = ()
+    scope_refusal: str | None = None
+    scorecard_path: Path | None = None
+    markdown_path: Path | None = None
+    failures: tuple[str, ...] = ()
+    regressions: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
+    baseline_path: Path | None = None
+    baseline_written: bool = False
+    baseline_refusal: str | None = None
+
+    @property
+    def operational_error(self) -> str | None:
+        """The mechanical failure blocking assembly, if any."""
+        if self.incomplete:
+            return "collection is incomplete"
+        return self.scope_refusal
 
 
-def _artifact_path(raw: str) -> Path:
+def _artifact_path(raw: str, base: Path) -> Path:
     path = Path(raw)
-    return path if path.is_absolute() else _REPO / path
+    return path if path.is_absolute() else base / path
 
 
 def _load_candidate(
     candidate_entry: dict[str, Any],
     model_entry: dict[str, Any],
     identity: dict[str, Any],
+    base: Path,
 ) -> tuple[Candidate | None, str | None]:
     artifact_raw = candidate_entry.get("artifact")
     label = (
@@ -51,7 +76,7 @@ def _load_candidate(
     )
     if not artifact_raw:
         return None, f"{label}: missing artifact path"
-    path = _artifact_path(str(artifact_raw))
+    path = _artifact_path(str(artifact_raw), base)
     try:
         payload = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as error:
@@ -77,6 +102,7 @@ def _load_candidate(
 
 def _rows(
     manifest: dict[str, Any],
+    base: Path,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -88,6 +114,7 @@ def _rows(
                 candidate_entry,
                 model_entry,
                 identity,
+                base,
             )
             if error is not None:
                 errors.append(error)
@@ -138,14 +165,12 @@ def _baseline_path(
     return BASELINE if manifest["scope"]["kind"] == "synthetic" else MESH_BASELINE
 
 
-def _assess(rows: list[dict[str, Any]]) -> tuple[int, list[dict[str, Any]]]:
-    """Return failure status and rows eligible for baseline comparison."""
+def _failed_models(rows: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Return models whose evaluation failed, expectation failures included."""
     successful = [row for row in rows if row["status"] == "ok"]
     failed = [row["model"] for row in rows if row["status"] != "ok"]
     failed.extend(row["model"] for row in successful if not row["expectation_ok"])
-    for model in failed:
-        print(f"evaluation failure: {model}")
-    return int(bool(failed)), successful
+    return tuple(failed)
 
 
 def _payload(
@@ -173,75 +198,160 @@ def _payload(
     }
 
 
+def _read_manifest(collection: Path) -> dict[str, Any]:
+    """Load and schema-check a collection manifest, raising ``ValueError``."""
+    try:
+        manifest = json.loads(collection.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        msg = f"cannot read collection: {error}"
+        raise ValueError(msg) from error
+    if not isinstance(manifest, dict) or manifest.get("schema") != 1:
+        msg = "unsupported collection manifest schema"
+        raise ValueError(msg)
+    return manifest
+
+
+def _baseline_diff(
+    manifest: dict[str, Any],
+    rows: list[dict[str, Any]],
+    baseline_path: Path,
+    *,
+    tolerance: float,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Compare successful rows to the baseline when the scope is comparable."""
+    seeds = manifest["scope"]["seeds"]
+    comparable = len(seeds) == 1 and set(manifest["scope"]["strategies"]) == set(
+        strategy_names()
+    )
+    if not comparable or not baseline_path.exists():
+        return (), ()
+    known = json.loads(baseline_path.read_text())["models"]
+    hard, info = compare_to_baseline(
+        rows=[row for row in rows if row["status"] == "ok"],
+        baseline_rows=known,
+        tolerance=tolerance,
+    )
+    return tuple(hard), tuple(info)
+
+
+def assemble_collection(
+    collection: Path,
+    *,
+    out: Path,
+    baseline: Path | None = None,
+    write_baseline: bool = False,
+    tolerance: float = 0.05,
+) -> AssembleOutcome:
+    """Validate one collection and assemble its scorecard artifacts.
+
+    Raises :class:`ValueError` for an unreadable or unsupported
+    collection; every other failure is reported on the outcome. A
+    baseline write requires the canonical scope and refuses when the
+    evaluation had failures, always preserving the existing file.
+    """
+    manifest = _read_manifest(collection)
+    rows, errors = _rows(manifest, collection.parent)
+    if errors:
+        return AssembleOutcome(
+            collection=collection,
+            rows=rows,
+            incomplete=tuple(errors),
+        )
+    if write_baseline and not _canonical_scope(manifest):
+        return AssembleOutcome(
+            collection=collection,
+            rows=rows,
+            scope_refusal=(
+                "baseline assembly requires the full kind, every strategy, and seed 0"
+            ),
+        )
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    payload = _payload(manifest, rows, stamp)
+    out_dir = out / str(manifest["collection_id"])
+    scorecard_path = out_dir / "scorecard.json"
+    atomic_json(scorecard_path, payload)
+    markdown_path = out_dir / "scorecard.md"
+    markdown_path.write_text(to_markdown(rows) + "\n")
+
+    failures = _failed_models(rows)
+    baseline_path = _baseline_path(manifest, baseline)
+    regressions: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
+    if not write_baseline:
+        regressions, notes = _baseline_diff(
+            manifest,
+            rows,
+            baseline_path,
+            tolerance=tolerance,
+        )
+    baseline_written = False
+    baseline_refusal: str | None = None
+    if write_baseline:
+        if failures:
+            baseline_refusal = "baseline not written because the evaluation failed"
+        else:
+            atomic_json(baseline_path, payload)
+            baseline_written = True
+    return AssembleOutcome(
+        collection=collection,
+        rows=rows,
+        scorecard_path=scorecard_path,
+        markdown_path=markdown_path,
+        failures=failures,
+        regressions=regressions,
+        notes=notes,
+        baseline_path=baseline_path,
+        baseline_written=baseline_written,
+        baseline_refusal=baseline_refusal,
+    )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse assembler command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("collection", type=Path)
-    parser.add_argument("--out", type=Path, default=_ASSEMBLED)
+    parser.add_argument("--out", type=Path, default=RUNS)
     parser.add_argument("--baseline", type=Path, default=None)
     parser.add_argument("--write-baseline", action="store_true")
     parser.add_argument("--tolerance", type=float, default=0.05)
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901
+def main(argv: list[str] | None = None) -> int:
     """Validate one collection and assemble its scorecard."""
     args = parse_args(argv)
     try:
-        manifest = json.loads(args.collection.read_text())
-    except (OSError, json.JSONDecodeError) as error:
-        print(f"error: cannot read collection: {error}", file=sys.stderr)
-        return 1
-    if manifest.get("schema") != 1:
-        print("error: unsupported collection manifest schema", file=sys.stderr)
-        return 1
-    rows, errors = _rows(manifest)
-    if errors:
-        print("collection is incomplete:", file=sys.stderr)
-        for error in errors:
-            print(f"  {error}", file=sys.stderr)
-        return 1
-    if args.write_baseline and not _canonical_scope(manifest):
-        print(
-            "error: baseline assembly requires the full kind, every strategy, "
-            "and seed 0",
-            file=sys.stderr,
-        )
-        return 1
-
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    payload = _payload(manifest, rows, stamp)
-    out_dir = args.out / str(manifest["collection_id"])
-    atomic_json(out_dir / "scorecard.json", payload)
-    (out_dir / "scorecard.md").write_text(to_markdown(rows) + "\n")
-    print(f"wrote {out_dir / 'scorecard.json'}")
-    print(to_markdown(rows))
-
-    exit_code, successful_rows = _assess(rows)
-    seeds = manifest["scope"]["seeds"]
-    baseline = _baseline_path(manifest, args.baseline)
-    comparable_scope = len(seeds) == 1 and set(manifest["scope"]["strategies"]) == set(
-        strategy_names()
-    )
-    if not args.write_baseline and comparable_scope and baseline.exists():
-        known = json.loads(baseline.read_text())["models"]
-        hard, info = compare_to_baseline(
-            rows=successful_rows,
-            baseline_rows=known,
+        outcome = assemble_collection(
+            args.collection,
+            out=args.out,
+            baseline=args.baseline,
+            write_baseline=args.write_baseline,
             tolerance=args.tolerance,
         )
-        for line in info:
-            print(f"note: {line}")
-        for line in hard:
-            print(f"REGRESSION: {line}")
-        exit_code = max(exit_code, int(bool(hard)))
-    if args.write_baseline:
-        if exit_code:
-            print("baseline not written because assembly failed", file=sys.stderr)
-        else:
-            atomic_json(baseline, payload)
-            print(f"wrote {baseline}")
-    return exit_code
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    if outcome.incomplete:
+        print("collection is incomplete:", file=sys.stderr)
+        for line in outcome.incomplete:
+            print(f"  {line}", file=sys.stderr)
+        return 1
+    if outcome.scope_refusal is not None:
+        print(f"error: {outcome.scope_refusal}", file=sys.stderr)
+        return 1
+    print(f"wrote {outcome.scorecard_path}")
+    print(to_markdown(outcome.rows))
+    for model in outcome.failures:
+        print(f"evaluation failure: {model}")
+    for line in outcome.notes:
+        print(f"note: {line}")
+    for line in outcome.regressions:
+        print(f"REGRESSION: {line}")
+    if outcome.baseline_refusal is not None:
+        print(outcome.baseline_refusal, file=sys.stderr)
+    elif outcome.baseline_written:
+        print(f"wrote {outcome.baseline_path}")
+    return int(bool(outcome.failures or outcome.regressions))
 
 
 if __name__ == "__main__":

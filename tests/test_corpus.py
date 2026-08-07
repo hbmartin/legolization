@@ -1,4 +1,4 @@
-"""Corpus manifest and synthetic-generator tests."""
+"""Corpus manifest, storage, and synthetic-generator tests."""
 
 import hashlib
 import io
@@ -9,15 +9,25 @@ from types import ModuleType
 import numpy as np
 import pytest
 
+import legolization
 import legolization.corpus
 from legolization.corpus import manifest as corpus_manifest
 from legolization.corpus import ops as corpus_ops
+from legolization.corpus import storage as corpus_storage
 from legolization.grid import EMPTY, VoxelGrid
 
 
 @pytest.fixture(scope="module")
 def corpus() -> ModuleType:
     return legolization.corpus
+
+
+@pytest.fixture
+def storage_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Route corpus storage into tmp_path with no legacy tree to migrate."""
+    monkeypatch.setenv("LEGOLIZATION_DATA_HOME", str(tmp_path))
+    monkeypatch.setattr(corpus_storage, "legacy_data_dir", lambda: None)
+    return tmp_path
 
 
 def test_manifest_parses_and_matches_registry(corpus: ModuleType) -> None:
@@ -89,16 +99,63 @@ def test_sparse_pillars_are_disconnected(corpus: ModuleType) -> None:
 
 def test_select_rejects_unknown_names(corpus: ModuleType) -> None:
     models = corpus.load_manifest()
-    with pytest.raises(SystemExit, match="unknown corpus model"):
+    with pytest.raises(ValueError, match="unknown corpus model"):
         corpus.select_models(models, "no-such-model")
+
+
+def test_manifest_defaults_to_packaged_file() -> None:
+    packaged = Path(legolization.__file__).parent / "data" / "corpus" / "manifest.toml"
+    assert packaged == corpus_manifest.MANIFEST
+    assert corpus_manifest.MANIFEST.is_file()
+
+
+def test_storage_root_honours_data_home_override(
+    storage_root: Path,
+) -> None:
+    assert corpus_storage.corpus_root() == storage_root
+    resolved = corpus_storage.resolve_input(Path("synthetic/cantilever.npy"))
+    assert resolved == storage_root / "corpus" / "synthetic" / "cantilever.npy"
+
+
+def test_migrate_legacy_copies_once_and_never_deletes(tmp_path: Path) -> None:
+    legacy = tmp_path / "data" / "corpus"
+    (legacy / "meshes").mkdir(parents=True)
+    (legacy / "synthetic").mkdir()
+    (legacy / "meshes" / "spot.obj").write_bytes(b"mesh bytes")
+    (legacy / "synthetic" / "cantilever.npy").write_bytes(b"grid bytes")
+    root = tmp_path / "store"
+
+    migrated = corpus_storage.migrate_legacy(legacy, root)
+    assert migrated == ("meshes/spot.obj", "synthetic/cantilever.npy")
+    assert (root / "corpus" / "meshes" / "spot.obj").read_bytes() == b"mesh bytes"
+    assert (legacy / "meshes" / "spot.obj").exists()  # one-way copy, no delete
+
+    # Existing targets are never overwritten.
+    (root / "corpus" / "meshes" / "spot.obj").write_bytes(b"user edit")
+    assert corpus_storage.migrate_legacy(legacy, root) == ()
+    assert (root / "corpus" / "meshes" / "spot.obj").read_bytes() == b"user edit"
+    assert corpus_storage.migrate_legacy(None, root) == ()
+
+
+def test_resolve_input_migrates_legacy_lazily(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LEGOLIZATION_DATA_HOME", str(tmp_path / "store"))
+    legacy = tmp_path / "data" / "corpus"
+    (legacy / "synthetic").mkdir(parents=True)
+    (legacy / "synthetic" / "x.npy").write_bytes(b"payload")
+    monkeypatch.setattr(corpus_storage, "legacy_data_dir", lambda: legacy)
+
+    resolved = corpus_storage.resolve_input(Path("synthetic/x.npy"))
+    assert resolved == tmp_path / "store" / "corpus" / "synthetic" / "x.npy"
+    assert resolved.read_bytes() == b"payload"
 
 
 def test_generate_writes_files(
     corpus: ModuleType,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    storage_root: Path,
 ) -> None:
-    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     models = [
         corpus.CorpusModel(
             name="cantilever",
@@ -107,56 +164,52 @@ def test_generate_writes_files(
             generator="cantilever",
         )
     ]
-    assert corpus.generate(models) == 0
-    saved = np.load(tmp_path / "synthetic" / "cantilever.npy")
+    reports = corpus.generate(models)
+    assert corpus.exit_code(reports) == 0
+    assert [report.status for report in reports] == ["generated"]
+    saved = np.load(storage_root / "corpus" / "synthetic" / "cantilever.npy")
     assert np.array_equal(saved, corpus.cantilever())
 
 
 def test_verify_flags_stale_synthetic(
     corpus: ModuleType,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    storage_root: Path,
 ) -> None:
-    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     model = corpus.CorpusModel(
         name="cantilever",
         kind="synthetic",
         path=Path("synthetic/cantilever.npy"),
         generator="cantilever",
     )
-    (tmp_path / "synthetic").mkdir(parents=True)
-    np.save(tmp_path / "synthetic" / "cantilever.npy", corpus.letter_t())
-    assert corpus.verify([model]) == 1
-    assert "STALE" in capsys.readouterr().out
+    (storage_root / "corpus" / "synthetic").mkdir(parents=True)
+    np.save(storage_root / "corpus" / "synthetic" / "cantilever.npy", corpus.letter_t())
+    reports = corpus.verify([model])
+    assert corpus.exit_code(reports) == 1
+    assert any("STALE" in report.line for report in reports)
 
 
 def test_verify_flags_missing(
     corpus: ModuleType,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    storage_root: Path,
 ) -> None:
-    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
+    del storage_root
     model = corpus.CorpusModel(
         name="cantilever",
         kind="synthetic",
         path=Path("synthetic/cantilever.npy"),
         generator="cantilever",
     )
-    assert corpus.verify([model]) == 1
-    assert "MISSING" in capsys.readouterr().out
+    reports = corpus.verify([model])
+    assert corpus.exit_code(reports) == 1
+    assert any("MISSING" in report.line for report in reports)
 
 
 def test_verify_reports_corrupt_synthetic_and_continues(
     corpus: ModuleType,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    storage_root: Path,
 ) -> None:
-    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
-    synthetic = tmp_path / "synthetic"
-    synthetic.mkdir()
+    synthetic = storage_root / "corpus" / "synthetic"
+    synthetic.mkdir(parents=True)
     (synthetic / "corrupt.npy").write_bytes(b"not a numpy file")
     np.save(synthetic / "valid.npy", corpus.letter_t())
     models = [
@@ -174,22 +227,21 @@ def test_verify_reports_corrupt_synthetic_and_continues(
         ),
     ]
 
-    assert corpus.verify(models) == 1
-    output = capsys.readouterr().out
-    assert "CORRUPT corrupt" in output
-    assert "ok valid" in output
+    reports = corpus.verify(models)
+    assert corpus.exit_code(reports) == 1
+    lines = [report.line for report in reports]
+    assert any("CORRUPT corrupt" in line for line in lines)
+    assert any("ok valid" in line for line in lines)
 
 
 def test_download_isolates_failures_and_replaces_atomically(
     corpus: ModuleType,
-    tmp_path: Path,
+    storage_root: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     good_data = b"verified mesh"
     good_hash = hashlib.sha256(good_data).hexdigest()
-    old_path = tmp_path / "meshes" / "failed.stl"
+    old_path = storage_root / "corpus" / "meshes" / "failed.stl"
     old_path.parent.mkdir(parents=True)
     old_path.write_bytes(b"existing artifact")
 
@@ -217,12 +269,14 @@ def test_download_isolates_failures_and_replaces_atomically(
         ),
     ]
 
-    assert corpus.download(models) == 1
+    reports = corpus.download(models)
+    assert corpus.exit_code(reports) == 1
     assert old_path.read_bytes() == b"existing artifact"
-    assert (tmp_path / "meshes" / "good.stl").read_bytes() == good_data
-    output = capsys.readouterr().out
-    assert "download failed" in output
-    assert "ok meshes/good.stl" in output
+    assert (storage_root / "corpus" / "meshes" / "good.stl").read_bytes() == good_data
+    by_name = {report.name: report for report in reports}
+    assert "download failed" in by_name["failed"].line
+    assert by_name["good"].status == "downloaded"
+    assert by_name["good"].line.endswith("meshes/good.stl")
 
 
 def test_largest_component_only_field(corpus: ModuleType) -> None:

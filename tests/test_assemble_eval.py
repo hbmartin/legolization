@@ -25,6 +25,13 @@ def assembler() -> ModuleType:
     return assemble
 
 
+def test_default_out_is_local_eval_runs(assembler: ModuleType) -> None:
+    from pathlib import Path
+
+    args = assembler.parse_args(["collection.json"])
+    assert args.out == Path("legolization-eval") / "runs"
+
+
 def _metrics() -> CandidateMetrics:
     return CandidateMetrics(
         buildable=True,
@@ -192,6 +199,52 @@ def test_failed_candidate_rehydrates_as_complete_collection(
     assert "collection is incomplete" not in captured.err
     scorecard = json.loads((out / "fixture" / "scorecard.json").read_text())
     assert scorecard["models"][0]["status"] == "error: all failed"
+
+
+def test_write_baseline_refused_when_evaluation_failed(
+    assembler: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Even with a canonical scope, a failed evaluation must never
+    # replace the baseline.
+    identity = SourceIdentity(git_sha="a" * 40, source_hash="b" * 64, dirty=False)
+    artifact = tmp_path / "candidate.json"
+    atomic_json(
+        artifact,
+        candidate_payload(
+            Candidate("greedy", 0.1, error="solver failed"),
+            identity=identity,
+            config_hash="config",
+            input_hash="input",
+            model="fixture",
+        ),
+    )
+    collection = _manifest(
+        tmp_path,
+        artifact=artifact,
+        identity=identity,
+        candidate_status="error",
+    )
+    baseline = tmp_path / "baseline.json"
+    monkeypatch.setattr(assembler, "_canonical_scope", lambda _manifest: True)
+
+    assert (
+        assembler.main(
+            [
+                str(collection),
+                "--write-baseline",
+                "--baseline",
+                str(baseline),
+                "--out",
+                str(tmp_path / "assembled"),
+            ]
+        )
+        == 1
+    )
+    assert not baseline.exists()
+    assert "baseline not written" in capsys.readouterr().err
 
 
 def test_successful_dirty_collection_assembles_without_placement(

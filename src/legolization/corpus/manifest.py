@@ -1,14 +1,24 @@
-"""Corpus manifest records and loading (``data/corpus/manifest.toml``)."""
+"""Corpus manifest records and loading.
+
+The manifest ships inside the package (``legolization/data/corpus/
+manifest.toml``) so wheels work outside a checkout; input files
+themselves resolve into platform user-data storage via
+:mod:`legolization.corpus.storage`.
+"""
 
 from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-_REPO = Path(__file__).resolve().parents[3]
-MANIFEST = _REPO / "data" / "corpus" / "manifest.toml"
+from legolization.corpus.storage import resolve_input
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+MANIFEST = Path(__file__).resolve().parent.parent / "data" / "corpus" / "manifest.toml"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,8 +43,8 @@ class CorpusModel:
 
     @property
     def abs_path(self) -> Path:
-        """Absolute on-disk location of this model's file."""
-        return _REPO / self.path
+        """Absolute on-disk location of this model's file in user storage."""
+        return resolve_input(self.path)
 
 
 def load_manifest(path: Path = MANIFEST) -> list[CorpusModel]:
@@ -68,14 +78,48 @@ def load_manifest(path: Path = MANIFEST) -> list[CorpusModel]:
     return models
 
 
-def select_models(models: list[CorpusModel], only: str | None) -> list[CorpusModel]:
+def select_models(
+    models: Sequence[CorpusModel],
+    only: str | None,
+) -> list[CorpusModel]:
     """Filter models by a comma-separated name list."""
     if only is None:
-        return models
+        return list(models)
     wanted = {name.strip() for name in only.split(",") if name.strip()}
     unknown = wanted - {model.name for model in models}
     if unknown:
         listed = ", ".join(sorted(unknown))
         msg = f"unknown corpus model(s): {listed}"
-        raise SystemExit(msg)
+        raise ValueError(msg)
     return [model for model in models if model.name in wanted]
+
+
+def select_scope(
+    models: Sequence[CorpusModel],
+    *,
+    names: str | None = None,
+    traits: str | None = None,
+    kind: str | None = None,
+) -> list[CorpusModel]:
+    """Filter models by names, traits, and kind; an empty selection raises.
+
+    A selection that matched models of another kind gets a hint naming
+    the ``--kind`` flag rather than a bare "nothing selected" error.
+    """
+    selected = select_models(models, names)
+    if traits is not None:
+        wanted = {trait.strip() for trait in traits.split(",")}
+        selected = [model for model in selected if wanted & set(model.traits)]
+    matched_kinds = sorted({model.kind for model in selected})
+    if kind is not None:
+        selected = [model for model in selected if model.kind == kind]
+    if not selected:
+        hint = (
+            f"; the selection matched only kind {', '.join(matched_kinds)}"
+            f" - pass --kind {matched_kinds[0]}"
+            if matched_kinds and kind is not None
+            else ""
+        )
+        msg = f"no corpus models selected{hint}"
+        raise ValueError(msg)
+    return selected

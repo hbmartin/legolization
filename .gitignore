@@ -21,8 +21,13 @@ reviews_triage/
 .mcp.json
 .claude/settings.local.json
 
-# evaluation corpus binaries (regenerable via scripts/corpus.py) + run output
+# legacy evaluation corpus binaries (now migrated into user-data storage
+# by `legolization corpus`; kept only as a one-way migration source) + run
+# output
 data/corpus/meshes/
 data/corpus/synthetic/
 eval/runs/
 eval/profiles/
+
+# default corpus evaluation output (legolization corpus collect/assemble/evaluate)
+legolization-eval/

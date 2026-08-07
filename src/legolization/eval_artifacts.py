@@ -23,7 +23,6 @@ _RUNTIME_PREFIXES = ("src/", "scripts/")
 _RUNTIME_FILES = frozenset(
     {
         ".python-version",
-        "data/corpus/manifest.toml",
         "pyproject.toml",
         "uv.lock",
     }
