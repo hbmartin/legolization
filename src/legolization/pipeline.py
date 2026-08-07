@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import asdict, dataclass, field, replace
-from functools import lru_cache
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
 from legolization import telemetry
-from legolization.catalog import DEFAULT_CATALOG_PATH, default_catalog
+from legolization.catalog import catalog_hash, default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
@@ -390,7 +388,7 @@ def _canonicalize_templates(
         repeated,
         cache=cache,
         context=TemplateContext(
-            catalog_hash=_catalog_hash(),
+            catalog_hash=catalog_hash(),
             configuration_hash=config.template_configuration_hash,
             physics_profile=config.template_physics_profile,
         ),
@@ -408,11 +406,6 @@ def _canonicalize_templates(
         )
         return stability, rejected
     return certified, tuple(asdict(item) for item in applications)
-
-
-@lru_cache(maxsize=1)
-def _catalog_hash() -> str:
-    return hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes()).hexdigest()
 
 
 def _selected_strategy(state: _PipelineState) -> str:

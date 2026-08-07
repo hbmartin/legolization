@@ -1,7 +1,7 @@
 """The ``bundle`` command: complete noninteractive generation pipeline.
 
-Registered in phase 1; the portable bundle orchestration lands with
-phases 2-4 of the 0.6 roadmap.
+Phase 2 delivers the resumable portable-bundle foundation; candidate
+sweeps, quality tiers, and the retry ladder land with phase 4.
 """
 
 from __future__ import annotations
@@ -13,11 +13,13 @@ from legolization.cli.common import (
     add_catalog_options,
     add_config_options,
     add_json_option,
-    stub_handler,
+    resolve_config,
 )
 
 if TYPE_CHECKING:
     import argparse
+
+    from legolization.cli.envelope import ResultEnvelope
 
 
 def configure(parser: argparse.ArgumentParser) -> None:
@@ -40,13 +42,50 @@ def configure(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="force a fresh numeric-sibling run instead of resuming",
     )
+    parser.add_argument(
+        "--cancel-pending",
+        action="store_true",
+        help=(
+            "terminate this bundle's detached candidate workers, keeping "
+            "completed artifacts for a later resume"
+        ),
+    )
     add_config_options(parser)
     add_catalog_options(parser)
     add_json_option(parser)
-    parser.set_defaults(
-        handler=stub_handler("bundle", "phase 2 (portable bundle foundation)"),
-        command_name="bundle",
+    parser.set_defaults(handler=_run, command_name="bundle")
+
+
+def _run(args: argparse.Namespace) -> ResultEnvelope:
+    from legolization.bundle.orchestrator import (  # noqa: PLC0415
+        BundleRequest,
+        run_bundle,
     )
+
+    config = resolve_config(args)
+    envelope = run_bundle(
+        BundleRequest(
+            input_path=args.input,
+            config=config,
+            output_dir=args.output,
+            fresh=args.fresh,
+            cancel_pending=args.cancel_pending,
+        )
+    )
+    if not args.json:
+        _print_summary(envelope)
+    return envelope
+
+
+def _print_summary(envelope: ResultEnvelope) -> None:
+    data = envelope.data or {}
+    print(f"bundle: {data.get('bundle_dir')} ({data.get('status')})")
+    stages = data.get("stages")
+    if isinstance(stages, dict):
+        line = "   ".join(f"{name}: {status}" for name, status in stages.items())
+        print(f"  {line}")
+    for warning in envelope.warnings:
+        print(f"  warning: {warning}")
 
 
 __all__ = ["configure"]

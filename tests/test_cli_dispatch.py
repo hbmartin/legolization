@@ -112,7 +112,6 @@ def test_handler_failure_with_json_emits_single_envelope(capsys, tmp_path):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["bundle", "model.npy"],
         ["input", "inspect", "model.npy"],
         ["model", "render", "model.ldr"],
         ["instructions", "audit", "model.mpd"],

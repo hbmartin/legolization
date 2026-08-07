@@ -14,6 +14,7 @@ rotates counterclockwise in the x-y plane (viewed from above) in steps of 90°.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass, field
@@ -737,6 +738,12 @@ def _footprint_dims(part: Part) -> tuple[int, int]:
 def default_catalog() -> Catalog:
     """Load (once) the catalog packaged in ``data/catalog.json``."""
     return Catalog.load()
+
+
+@lru_cache(maxsize=1)
+def catalog_hash() -> str:
+    """Hash the built-in catalog bytes for identity records."""
+    return hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes()).hexdigest()
 
 
 def load_catalog(*extensions: Path) -> Catalog:
