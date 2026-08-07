@@ -53,6 +53,15 @@ SUPPORT_EXTENSION_FILENAME = "catalog-extension.json"
 SUPPORT_ESTIMATES_FILENAME = "draft-estimates.json"
 SUPPORT_VALIDATION_FILENAME = "validation.json"
 
+GATE_NAMES: tuple[str, ...] = (
+    "import",
+    "round-trip",
+    "collision",
+    "connector",
+    "topology",
+)
+"""The five activation gates a support bundle must pass, in run order."""
+
 ESTIMATE_METHODS = frozenset(
     {"volumetric", "analogous-part", "catalog-measured", "user-supplied"}
 )
@@ -1024,7 +1033,7 @@ def _require_validated_support(directory: Path) -> None:
     except (OSError, json.JSONDecodeError) as error:
         msg = (
             f"catalog support bundle {directory} has no readable "
-            f"validation.json; {hint}"
+            f"{SUPPORT_VALIDATION_FILENAME}; {hint}"
         )
         raise ConfigurationError(msg) from error
     gates = payload.get("gates") if isinstance(payload, dict) else None
@@ -1035,16 +1044,23 @@ def _require_validated_support(directory: Path) -> None:
         or not gates
     ):
         msg = (
-            f"catalog support bundle {directory} has an invalid validation.json; {hint}"
+            f"catalog support bundle {directory} has an invalid "
+            f"{SUPPORT_VALIDATION_FILENAME}; {hint}"
         )
         raise ConfigurationError(msg)
-    unpassed = sorted(
+    unpassed = [
         str(gate.get("gate", "?"))
         for gate in cast("list[Any]", gates)
         if not isinstance(gate, dict) or gate.get("status") != "passed"
-    )
+    ]
+    recorded = {
+        str(gate.get("gate"))
+        for gate in cast("list[Any]", gates)
+        if isinstance(gate, dict)
+    }
+    unpassed.extend(f"{name} (missing)" for name in GATE_NAMES if name not in recorded)
     if unpassed:
-        listed = ", ".join(unpassed)
+        listed = ", ".join(sorted(unpassed))
         msg = (
             f"catalog support bundle {directory} is not fully validated "
             f"(gates not passed: {listed}); {hint}"

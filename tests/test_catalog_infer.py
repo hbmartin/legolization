@@ -22,6 +22,7 @@ from legolization.catalog_infer.estimates import (
 from legolization.catalog_infer.geometry import (
     infer_geometry,
     merge_cell_boxes,
+    normalize_part_id,
 )
 from legolization.catalog_infer.sources import (
     ENV_BRICKOWL_KEY,
@@ -32,11 +33,12 @@ from legolization.catalog_infer.sources import (
 )
 from legolization.catalog_infer.validate import (
     GATE_NAMES,
+    GateResult,
     validate_extension,
 )
 from legolization.cli import main
 from legolization.errors import ConfigurationError
-from legolization.physical import LduBox
+from legolization.physical import LduBox, box_for_cell
 
 _STUD_DAT = "0 Stud\n0 Name: stud.dat\n4 16 -6 0 -6 6 0 -6 6 0 6 -6 0 6\n"
 
@@ -122,13 +124,35 @@ def test_infer_geometry_requires_a_library(tmp_path: Path):
         infer_geometry("9901", ldraw_dir=tmp_path)
 
 
+def test_normalize_part_id_accepts_real_part_codes():
+    assert normalize_part_id(" 3001.DAT ") == "3001"
+    assert normalize_part_id("973c00") == "973c00"
+    assert normalize_part_id("2454b") == "2454b"
+
+
+@pytest.mark.parametrize(
+    "part_id",
+    ["", "   ", "../../x", "a/b", "a\\b", "a..b", "a&b=c", "a#b", ".dat", "-3001"],
+)
+def test_normalize_part_id_rejects_unsafe_ids(part_id: str):
+    with pytest.raises(ConfigurationError, match="invalid LDraw part id"):
+        normalize_part_id(part_id)
+
+
 def test_merge_cell_boxes_covers_an_l_shape():
-    boxes = merge_cell_boxes(frozenset({(0, 0, 0), (1, 0, 0), (0, 1, 0)}))
+    cells = frozenset({(0, 0, 0), (1, 0, 0), (0, 1, 0)})
+    boxes = merge_cell_boxes(cells)
     assert len(boxes) == 2
-    covered = {
-        (cell, box) for cell in [(0, 0, 0), (1, 0, 0), (0, 1, 0)] for box in boxes
-    }
-    assert covered  # merged boxes exist and validate as LduBox volumes
+    for cell in sorted(cells):
+        target = box_for_cell(cell)
+        assert any(
+            all(
+                box.minimum[axis] <= target.minimum[axis]
+                and target.maximum[axis] <= box.maximum[axis]
+                for axis in range(3)
+            )
+            for box in boxes
+        ), f"cell {cell} is not covered by any merged box"
 
 
 # --- estimates ------------------------------------------------------------
@@ -347,7 +371,7 @@ def _write_extension(path: Path, spec: dict[str, object]) -> Path:
     return path
 
 
-def _statuses(gates: tuple) -> dict[str, str]:
+def _statuses(gates: tuple[GateResult, ...]) -> dict[str, str]:
     return {gate.gate: gate.status for gate in gates}
 
 
@@ -380,6 +404,23 @@ def test_connector_and_topology_gates_fail_without_connectors(tmp_path: Path):
     assert statuses["connector"] == "failed"
     assert statuses["topology"] == "failed"
     assert statuses["collision"] == "passed"
+
+
+def test_mate_gates_report_an_unplaceable_part():
+    from dataclasses import replace
+
+    from legolization.catalog import Catalog, default_catalog
+    from legolization.catalog_infer.validate import _mate_above, _mate_below
+
+    catalog = default_catalog()
+    sunken = replace(
+        catalog["plate_1x1"],
+        key="part_sunken",
+        occupied_cells=frozenset({(0, 0, -2), (0, 0, 0)}),
+    )
+    merged = Catalog(parts={**catalog.parts, "part_sunken": sunken})
+    assert "cannot place in an empty layout" in str(_mate_above(merged, sunken))
+    assert "cannot place in an empty layout" in str(_mate_below(merged, sunken))
 
 
 def test_import_gate_failure_skips_the_remaining_gates(tmp_path: Path):
@@ -455,6 +496,18 @@ def test_resolve_catalog_activates_a_validated_support_dir(tmp_path: Path):
 def test_resolve_catalog_rejects_a_failed_gate(tmp_path: Path):
     directory = _support_dir(tmp_path, _passed_validation(collision="failed"))
     with pytest.raises(ConfigurationError, match="catalog validate"):
+        resolve_catalog((directory,), ())
+
+
+def test_resolve_catalog_rejects_a_recorded_gate_subset(tmp_path: Path):
+    validation = _passed_validation()
+    validation["gates"] = [
+        {"gate": name, "status": "passed", "detail": "ok"}
+        for name in GATE_NAMES
+        if name != "topology"
+    ]
+    directory = _support_dir(tmp_path, validation)
+    with pytest.raises(ConfigurationError, match=r"topology \(missing\)"):
         resolve_catalog((directory,), ())
 
 

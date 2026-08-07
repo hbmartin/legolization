@@ -27,7 +27,10 @@ def configure(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "input",
         type=Path,
-        help="input .vox/.npy/.obj/.stl/.ply model or .ldr/.mpd assembly",
+        help=(
+            "input .vox/.npy/.obj/.stl/.ply model, .ldr/.mpd assembly, "
+            "or -prepared input bundle directory"
+        ),
     )
     parser.add_argument(
         "-o",

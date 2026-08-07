@@ -645,6 +645,15 @@ def _coordinate_system() -> dict[str, Any]:
 
 
 def _source_payload(path: Path) -> dict[str, Any]:
+    from legolization.inspection import resolve_prepared_input  # noqa: PLC0415
+
+    if (prepared := resolve_prepared_input(path)) is not None:
+        return {
+            "name": path.name,
+            "format": "prepared",
+            "sha256": prepared.npy_sha256,
+            "size_bytes": prepared.npy_path.stat().st_size,
+        }
     return {
         "name": path.name,
         "format": path.suffix.lower(),

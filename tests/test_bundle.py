@@ -122,6 +122,31 @@ def test_run_bundle_writes_portable_layout(box_npy, config):
     assert payload["schema"] == "legolization.bundle/v1"
 
 
+def test_run_bundle_accepts_a_prepared_directory(box_npy, config):
+    from legolization.eval_artifacts import input_sha256
+    from legolization.inspection import write_normalized
+
+    _, output = write_normalized(box_npy)
+    envelope = orchestrator.run_bundle(_request(output.directory, config))
+    assert envelope.exit_code == 0
+    bundle_dir = box_npy.parent / "box-prepared-legolization"
+    record = read_record(bundle_dir)
+    assert record is not None
+    assert record.status == "complete"
+    assert record.identity.input_sha256 == input_sha256(output.npy_path)
+    assert record.source["filename"] == "box-prepared"
+    assert record.stage("ingest").detail["format"] == "prepared"
+
+
+def test_run_bundle_rejects_a_directory_that_is_not_prepared(tmp_path, config):
+    empty = tmp_path / "not-a-bundle"
+    empty.mkdir()
+    with pytest.raises(ConfigurationError, match="not a prepared input bundle"):
+        orchestrator.run_bundle(
+            orchestrator.BundleRequest(input_path=empty, config=config, render="off")
+        )
+
+
 def test_run_bundle_unbuildable_islands_exit_two(tmp_path, config):
     islands = _write_box(tmp_path / "islands.npy", islands=2)
     envelope = orchestrator.run_bundle(

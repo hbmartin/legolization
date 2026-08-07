@@ -413,7 +413,11 @@ def _artifacts_valid(context: _BundleContext, stage_name: str) -> bool:
 
 def _stage_ingest(context: _BundleContext) -> None:
     stage = context.record.stage("ingest")
-    stage.detail["format"] = context.request.input_path.suffix.lower().lstrip(".")
+    stage.detail["format"] = (
+        "prepared"
+        if context.request.input_path.is_dir()
+        else context.request.input_path.suffix.lower().lstrip(".")
+    )
     stage.detail["mode"] = context.mode
     if context.mode == "preserve":
         imported = context.ensure_imported()
@@ -996,7 +1000,13 @@ def _mode(request: BundleRequest) -> BundleMode:
 
 def _validate_input(request: BundleRequest) -> None:
     from legolization.cli.common import require_file  # noqa: PLC0415
+    from legolization.inspection import resolve_prepared_input  # noqa: PLC0415
 
+    if resolve_prepared_input(request.input_path) is not None:
+        if request.retile:
+            msg = "--retile applies only to .ldr/.mpd inputs"
+            raise ConfigurationError(msg)
+        return
     require_file(request.input_path, label="input")
     suffix = request.input_path.suffix.lower()
     if suffix not in NATIVE_SUFFIXES | LDRAW_SUFFIXES:

@@ -16,6 +16,7 @@ from legolization.inspection import (
     classify_up_axis,
     inspect_input,
     recommend_plates_per_voxel,
+    resolve_prepared_input,
     write_normalized,
 )
 
@@ -169,6 +170,51 @@ def test_write_normalized_round_trips_voxels(tmp_path):
         "normalized.npy",
         "normalized.json",
     }
+
+
+def test_resolve_prepared_input_round_trips_through_load_grid(tmp_path):
+    from legolization.pipeline import load_grid
+
+    source = tmp_path / "box.npy"
+    codes = np.full((4, 3, 2), -1, dtype=np.int16)
+    codes[0:3, :, :] = 4
+    np.save(source, codes)
+    _, output = write_normalized(source)
+    assert resolve_prepared_input(source) is None
+    prepared = resolve_prepared_input(output.directory)
+    assert prepared is not None
+    assert prepared.npy_path == output.npy_path
+    grid = load_grid(output.directory)
+    expected = VoxelGrid.from_npy(output.npy_path, plates_per_voxel=1)
+    assert grid.codes.shape == expected.codes.shape
+    assert grid.filled_count == expected.filled_count
+
+
+def test_resolve_prepared_input_rejects_a_plain_directory(tmp_path):
+    with pytest.raises(ConfigurationError, match="not a prepared input bundle"):
+        resolve_prepared_input(tmp_path)
+
+
+def test_resolve_prepared_input_rejects_a_stale_npy(tmp_path):
+    source = tmp_path / "box.npy"
+    codes = np.full((3, 3, 2), -1, dtype=np.int16)
+    codes[0:2, :, :] = 4
+    np.save(source, codes)
+    _, output = write_normalized(source)
+    np.save(output.npy_path, codes)
+    with pytest.raises(ConfigurationError, match="stale"):
+        resolve_prepared_input(output.directory)
+
+
+def test_resolve_prepared_input_rejects_a_foreign_sidecar(tmp_path):
+    source = tmp_path / "box.npy"
+    codes = np.full((3, 3, 2), -1, dtype=np.int16)
+    codes[0:2, :, :] = 4
+    np.save(source, codes)
+    _, output = write_normalized(source)
+    output.sidecar_path.write_text(json.dumps({"schema": "something/else"}))
+    with pytest.raises(ConfigurationError, match="invalid"):
+        resolve_prepared_input(output.directory)
 
 
 def test_write_normalized_numbers_collisions(tmp_path):

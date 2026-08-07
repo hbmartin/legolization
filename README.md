@@ -30,13 +30,15 @@ npx skills add hbmartin/legolization --all
 The suite is Codex-first but works with every agent supported by
 `npx skills`. Each skill requires `legolization>=0.6.0`; when the CLI is
 missing or too old, the skill installs or upgrades the latest stable release
-automatically through `uvx.sh` and, if that installation fails, reports the
+automatically — via `uv tool install` or `pip`, falling back to the `uvx.sh`
+standalone installer — and, if that installation fails, reports the
 failure and stops the requested operation.
 
 ## Install the CLI
 
-The CLI is a normal Python package (PyPI publication of 0.6.0 is pending
-release):
+The CLI is a normal Python package. All of the commands below install the
+latest release from PyPI, so they deliver 0.6.0 only once its pending
+publication lands:
 
 ```sh
 uv tool install legolization   # persistent install via uv
@@ -44,7 +46,8 @@ uvx legolization --help        # ephemeral run via uv
 pip install legolization       # classic pip
 ```
 
-or use the `uvx.sh` one-liner (the same path the skills use):
+If no package manager is available, use the `uvx.sh` standalone
+installer (the same fallback the skills use):
 
 ```sh
 curl -LsSf https://uvx.sh/legolization/install.sh | sh
@@ -185,6 +188,7 @@ legolization bundle model.vox --config legolization.toml --render required
 # Inspect and normalize a source model before generating
 legolization input inspect model.obj
 legolization input inspect model.obj --write --up y --target-studs 24
+legolization bundle model-prepared/              # generate from the prepared bundle
 
 # Preserve-or-improve an existing LDraw assembly
 legolization bundle assembly.mpd                 # preserved by default
@@ -206,8 +210,8 @@ legolization instructions audit heart-legolization --render-dir steps/
 
 # Parts-catalog extensions
 legolization catalog infer 4070
-legolization catalog validate 4070-legolization-support
-legolization bundle model.vox --catalog 4070-legolization-support
+legolization catalog validate part_4070-legolization-support
+legolization bundle model.vox --catalog part_4070-legolization-support
 
 # Corpus evaluation
 legolization corpus evaluate --kind synthetic
@@ -305,7 +309,7 @@ lookups), captures provenance, and drafts geometry and physical estimates
 into a `-legolization-support` sibling bundle
 (`catalog-extension.json`, `draft-estimates.json`, `sources.json`,
 `validation.json`, `geometry/`). `legolization catalog validate PATH` runs
-the import, round-trip, collision, connector, and topology validation gate;
+the import, round-trip, collision, connector, and topology validation gates;
 only a validated support bundle activates, via `--catalog <dir>` on
 `build`, `bundle`, and `analyze`. Repeatable `--catalog-estimates PATH`
 sidecars carry labeled-provenance physical estimates. Changes to the
