@@ -66,4 +66,18 @@ class ProgressEvent(str):
 
 type ProgressCallback = Callable[[ProgressEvent], None]
 
-__all__ = ["Deadline", "ProgressCallback", "ProgressEvent", "ProgressLevel"]
+__all__ = [
+    "Deadline",
+    "ProgressCallback",
+    "ProgressEvent",
+    "ProgressLevel",
+    "logical_cpu_count",
+]
+
+
+def logical_cpu_count() -> int:
+    """Logical CPUs available to this process (the worker-cap authority)."""
+    import os  # noqa: PLC0415
+
+    counter = getattr(os, "process_cpu_count", None) or os.cpu_count
+    return counter() or 1

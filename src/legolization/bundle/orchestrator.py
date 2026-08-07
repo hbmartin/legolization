@@ -10,6 +10,7 @@ regeneration.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -28,6 +29,7 @@ from legolization.cli.exit_codes import (
     COMPLETE,
     INTERRUPTED,
     OPERATIONAL_ERROR,
+    PARTIAL,
     UNBUILDABLE,
 )
 from legolization.errors import ConfigurationError
@@ -36,7 +38,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from legolization.bundle.candidates import CandidatePlan
     from legolization.bundle.paths import BundleFlavor
+    from legolization.bundle.selection import BundleCandidate
     from legolization.configuration import ProjectConfig
     from legolization.grid import VoxelGrid
     from legolization.ldraw_in import ImportedLdrawModel
@@ -44,6 +48,8 @@ if TYPE_CHECKING:
 
 NATIVE_SUFFIXES = {".vox", ".npy", ".obj", ".stl", ".ply"}
 LDRAW_SUFFIXES = {".ldr", ".mpd"}
+
+_POLL_INTERVAL_S = 0.05
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -59,6 +65,7 @@ class BundleRequest:
     cancel_pending: bool = False
     render: Literal["auto", "required", "off"] = "auto"
     retile: bool = False
+    clock: Callable[[], float] = field(default=time.monotonic)
 
     def invocation_payload(self) -> dict[str, object]:
         """Result-affecting request options folded into the identity."""
@@ -79,11 +86,78 @@ class _BundleContext:
     record: BundleRecord
     directory: Path
     resume: bool
+    identity: BundleIdentity
     mode: BundleMode = "generate"
     grid: VoxelGrid | None = None
     result: PipelineResult | None = None
     imported: ImportedLdrawModel | None = None
+    plan: CandidatePlan | None = None
+    variant_grids: dict[str, VoxelGrid] = field(default_factory=dict)
+    candidates: list[BundleCandidate] = field(default_factory=list)
+    force_rerun: set[str] = field(default_factory=set)
+    publish: bool = True
+    exit_override: int | None = None
     reruns: list[str] = field(default_factory=list)
+
+    @property
+    def sweeping(self) -> bool:
+        """Whether this invocation runs the candidate sweep stages."""
+        return self.mode != "preserve" and self.request.quality != "direct"
+
+    def ensure_plan(self) -> CandidatePlan:
+        """Build the candidate plan and variant grids on first use."""
+        if self.plan is None:
+            from dataclasses import replace  # noqa: PLC0415
+
+            from legolization.bundle.candidates import (  # noqa: PLC0415
+                dedup_variants,
+                plan_candidates,
+            )
+            from legolization.placement.global_exact import (  # noqa: PLC0415
+                preflight_reason,
+            )
+
+            config = self.request.config
+            if self.mode == "retile":
+                canonical = self.ensure_grid()
+                self.variant_grids = {
+                    "hard": canonical,
+                    "soft": canonical,
+                    "soft-dither": canonical,
+                }
+            else:
+                from legolization.pipeline import load_grid  # noqa: PLC0415
+
+                base = config.to_pipeline(strategy="bond")
+                plain = load_grid(
+                    self.request.input_path,
+                    replace(base, dither=False),
+                )
+                dithered = load_grid(
+                    self.request.input_path,
+                    replace(base, dither=True),
+                )
+                self.variant_grids = {
+                    "hard": plain,
+                    "soft": plain,
+                    "soft-dither": dithered,
+                }
+            variants, collapsed = dedup_variants(self.variant_grids)
+            quality = self.request.quality
+            if quality == "direct":  # pragma: no cover - guarded by sweeping
+                msg = "candidate plans need a quality tier"
+                raise ConfigurationError(msg)
+            self.plan = plan_candidates(
+                quality=quality,
+                variants=variants,
+                collapsed=collapsed,
+                exact_skip_reason=preflight_reason(
+                    self.variant_grids["hard"],
+                    max_cells=config.placement.exact.max_cells,
+                ),
+                duration_s=self.request.duration_s,
+            )
+        return self.plan
 
     def ensure_imported(self) -> ImportedLdrawModel:
         """Import the LDraw source on first use (strict, warning-carrying)."""
@@ -111,14 +185,16 @@ class _BundleContext:
         """Produce the working result on first use.
 
         Generation modes run the pipeline (deterministic at fixed seed);
+        sweep mode re-runs the recorded winner with full outputs;
         preserve mode analyzes the imported assembly as-is.
         """
         if self.result is None:
-            self.result = (
-                self._imported_result()
-                if self.mode == "preserve"
-                else self._generated_result()
-            )
+            if self.mode == "preserve":
+                self.result = self._imported_result()
+            elif self.sweeping:
+                self.result = self._winner_result()
+            else:
+                self.result = self._generated_result()
         return self.result
 
     def _generated_result(self) -> PipelineResult:
@@ -132,6 +208,31 @@ class _BundleContext:
             grid,
             config.to_pipeline(strategy=strategy, automatic=automatic),
         )
+
+    def _winner_result(self) -> PipelineResult:
+        from dataclasses import replace  # noqa: PLC0415
+
+        from legolization.bundle.candidates import VARIANTS  # noqa: PLC0415
+        from legolization.pipeline import run  # noqa: PLC0415
+
+        winner = self.record.verdicts.get("winner")
+        if not isinstance(winner, dict) or "strategy" not in winner:
+            msg = "no selected winner is recorded for this bundle"
+            raise ConfigurationError(msg)
+        self.ensure_plan()
+        variant_name = str(winner.get("variant", "hard"))
+        variant = next(
+            (item for item in VARIANTS if item.name == variant_name),
+            VARIANTS[0],
+        )
+        grid = self.variant_grids.get(variant_name) or self.variant_grids["hard"]
+        pipeline = replace(
+            self.request.config.to_pipeline(strategy=str(winner["strategy"])),
+            seed=int(winner.get("seed") or 0),
+            colour_mode=variant.colour_mode,
+            dither=variant.dither,
+        )
+        return run(grid, pipeline)
 
     def _imported_result(self) -> PipelineResult:
         from legolization.graph import ConnectionGraph  # noqa: PLC0415
@@ -201,11 +302,21 @@ def _run_stages(
         record=_load_or_create_record(request, identity, decision),
         directory=decision.directory,
         resume=decision.resume,
+        identity=identity,
         mode=_mode(request),
+    )
+    if context.resume and (
+        context.record.pending or context.record.verdicts.get("provisional")
+    ):
+        context.force_rerun |= {"candidates", "selection"}
+    middle: tuple[tuple[str, _StageRunner], ...] = (
+        (("candidates", _stage_candidates), ("selection", _stage_selection))
+        if context.sweeping
+        else (("generate", _stage_generate),)
     )
     stages: tuple[tuple[str, _StageRunner], ...] = (
         ("ingest", _stage_ingest),
-        ("generate", _stage_generate),
+        *middle,
         ("model", _stage_model),
         ("bom", _stage_bom),
     )
@@ -222,6 +333,7 @@ def _run_stage(context: _BundleContext, name: str, runner: _StageRunner) -> None
     stage = context.record.stage(name)
     if (
         context.resume
+        and name not in context.force_rerun
         and stage.status in {"complete", "skipped"}
         and _artifacts_valid(context, name)
     ):
@@ -348,10 +460,215 @@ def _stage_generate(context: _BundleContext) -> None:
                 context.record.warnings.append(warning)
 
 
+def _stage_candidates(context: _BundleContext) -> None:
+    from legolization.bundle.workers import (  # noqa: PLC0415
+        is_alive,
+        prepare_worker,
+        scan_pending,
+        spawn_worker,
+    )
+    from legolization.runtime import logical_cpu_count  # noqa: PLC0415
+
+    stage = context.record.stage("candidates")
+    plan = context.ensure_plan()
+    stage.detail.update(plan.to_detail())
+    clock = context.request.clock
+    deadline = clock() + plan.time_budget_s
+    completed = _harvested_payloads(context)
+    spawned: set[str] = set()
+    while True:
+        live = {
+            worker.candidate_key
+            for worker in scan_pending(context.directory, identity=context.identity)
+            if worker.candidate_key not in completed and is_alive(worker)
+        }
+        waiting = [
+            spec
+            for spec in plan.specs
+            if spec.key() not in completed
+            and spec.key() not in live
+            and spec.key() not in spawned
+        ]
+        capacity = max(logical_cpu_count() - len(live), 0)
+        for spec in waiting[:capacity]:
+            directory = prepare_worker(
+                context.directory,
+                identity=context.identity,
+                candidate_key=spec.key(),
+                job=_candidate_job(context, spec),
+            )
+            spawn_worker(directory)
+            spawned.add(spec.key())
+        completed = _harvested_payloads(context)
+        unresolved = [spec for spec in plan.specs if spec.key() not in completed]
+        if not unresolved or clock() >= deadline:
+            break
+        time.sleep(_POLL_INTERVAL_S)
+    still_running = [
+        worker
+        for worker in scan_pending(context.directory, identity=context.identity)
+        if worker.candidate_key not in completed and is_alive(worker)
+    ]
+    context.record.pending = [
+        {"candidate_key": worker.candidate_key, "pid": worker.pid, "status": "running"}
+        for worker in still_running
+    ]
+    stage.detail.update(
+        {
+            "completed": len(completed),
+            "pending": len(still_running),
+        }
+    )
+    if still_running:
+        stage.status = "partial"
+    context.candidates = _bundle_candidates(context)
+
+
+def _harvested_payloads(context: _BundleContext) -> dict[str, dict[str, object]]:
+    from legolization.bundle.workers import harvest_results  # noqa: PLC0415
+
+    payloads: dict[str, dict[str, object]] = {}
+    for worker, payload in harvest_results(
+        context.directory,
+        identity=context.identity,
+    ):
+        enriched = dict(payload)
+        enriched["model_relpath"] = str(
+            (worker.directory / "model.ldr").relative_to(context.directory)
+        )
+        payloads[worker.candidate_key] = enriched
+    return payloads
+
+
+def _bundle_candidates(context: _BundleContext) -> list[BundleCandidate]:
+    from legolization.bundle.selection import BundleCandidate  # noqa: PLC0415
+
+    return [
+        BundleCandidate.from_payload(payload)
+        for payload in _harvested_payloads(context).values()
+    ]
+
+
+def _candidate_job(
+    context: _BundleContext,
+    spec: object,
+) -> dict[str, object]:
+    from legolization.bundle.candidates import CandidateSpec  # noqa: PLC0415
+
+    assert isinstance(spec, CandidateSpec)  # noqa: S101 - internal seam
+    return {
+        "kind": "candidate",
+        "input_path": str(context.request.input_path.resolve()),
+        "config": context.request.config.to_dict(),
+        "strategy": spec.strategy,
+        "seed": spec.seed,
+        "variant": spec.variant.to_dict(),
+        "retile": context.mode == "retile",
+    }
+
+
+def _stage_selection(context: _BundleContext) -> None:
+    from legolization.bundle.selection import select_bundle_winner  # noqa: PLC0415
+    from legolization.eval_artifacts import atomic_json, input_sha256  # noqa: PLC0415
+
+    stage = context.record.stage("selection")
+    selection = select_bundle_winner(context.candidates)
+    comparison_dir = context.directory / "comparison"
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+    report_path = comparison_dir / "report.json"
+    atomic_json(report_path, selection.to_report())
+    context.record.record_artifact(
+        path="comparison/report.json",
+        stage="selection",
+        kind="report",
+        sha256=input_sha256(report_path),
+    )
+    pending = bool(context.record.pending)
+    winner = selection.winner
+    buildable = bool(
+        winner is not None and winner.metrics is not None and winner.metrics.buildable
+    )
+    old_winner = context.record.verdicts.get("winner")
+    new_winner = (
+        {
+            "strategy": winner.strategy,
+            "seed": winner.seed,
+            "variant": winner.variant,
+        }
+        if winner is not None and buildable
+        else None
+    )
+    context.record.verdicts.update(
+        {
+            "buildable": buildable,
+            "stable": buildable,
+            "provisional": buildable and pending,
+            "winner": new_winner,
+        }
+    )
+    stage.detail.update({"reason": selection.reason, "pending": pending})
+    if new_winner is None:
+        context.publish = False
+        if pending:
+            context.exit_override = PARTIAL
+        elif winner is not None:
+            _retain_best_rejected(context, selection)
+        return
+    if buildable and pending:
+        context.exit_override = PARTIAL
+    if old_winner != new_winner:
+        context.force_rerun |= {"model", "bom"}
+
+
+def _retain_best_rejected(context: _BundleContext, selection: object) -> None:
+    """Keep the least-bad rejected model in diagnostics with reasons."""
+    import shutil  # noqa: PLC0415
+
+    from legolization.bundle.selection import BundleSelection  # noqa: PLC0415
+    from legolization.eval_artifacts import atomic_json, input_sha256  # noqa: PLC0415
+
+    assert isinstance(selection, BundleSelection)  # noqa: S101 - internal seam
+    winner = selection.winner
+    if winner is None or winner.model_relpath is None:
+        return
+    source = context.directory / winner.model_relpath
+    if not source.is_file():
+        return
+    diagnostics = context.directory / "diagnostics"
+    diagnostics.mkdir(parents=True, exist_ok=True)
+    model_path = diagnostics / "best-rejected.ldr"
+    shutil.copyfile(source, model_path)
+    atomic_json(
+        diagnostics / "best-rejected.json",
+        {
+            "reason": selection.reason,
+            "unbuildable": True,
+            "candidate": winner.to_dict(),
+        },
+    )
+    context.record.record_artifact(
+        path="diagnostics/best-rejected.ldr",
+        stage="selection",
+        kind="rejected-model",
+        sha256=input_sha256(model_path),
+    )
+    context.record.record_artifact(
+        path="diagnostics/best-rejected.json",
+        stage="selection",
+        kind="rejected-report",
+        sha256=input_sha256(diagnostics / "best-rejected.json"),
+    )
+
+
 def _stage_model(context: _BundleContext) -> None:
     from legolization.eval_artifacts import input_sha256  # noqa: PLC0415
     from legolization.ldraw_out import write_model  # noqa: PLC0415
 
+    if not context.publish:
+        stage = context.record.stage("model")
+        stage.status = "skipped"
+        stage.detail["reason"] = "no buildable candidate to publish"
+        return
     result = context.ensure_result()
     model_dir = context.directory / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
@@ -370,6 +687,11 @@ def _stage_bom(context: _BundleContext) -> None:
     from legolization.eval_artifacts import input_sha256  # noqa: PLC0415
     from legolization.instructions.bom import bill_of_materials  # noqa: PLC0415
 
+    if not context.publish:
+        stage = context.record.stage("bom")
+        stage.status = "skipped"
+        stage.detail["reason"] = "no buildable candidate to publish"
+        return
     result = context.ensure_result()
     bom_dir = context.directory / "bom"
     bom_dir.mkdir(parents=True, exist_ok=True)
@@ -417,8 +739,15 @@ def _load_or_create_record(
 
 def _finalize(context: _BundleContext) -> ResultEnvelope:
     buildable = bool(context.record.verdicts.get("buildable"))
-    context.record.status = "complete" if buildable else "unbuildable"
-    context.record.exit_code = COMPLETE if buildable else UNBUILDABLE
+    if context.exit_override is not None:
+        context.record.status = "partial"
+        context.record.exit_code = context.exit_override
+    elif buildable:
+        context.record.status = "complete"
+        context.record.exit_code = COMPLETE
+    else:
+        context.record.status = "unbuildable"
+        context.record.exit_code = UNBUILDABLE
     write_record(context.record, context.directory)
     return _envelope(context, exit_code=context.record.exit_code)
 

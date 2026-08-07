@@ -23,7 +23,6 @@ worker process.
 
 from __future__ import annotations
 
-import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
@@ -35,7 +34,11 @@ from legolization.instructions.sequencer import InstructionsConfig
 from legolization.pipeline import PipelineConfig, PipelineResult, run
 from legolization.placement.base import ObjectiveWeights, evaluate
 from legolization.placement.registry import strategy_names
-from legolization.runtime import ProgressCallback, ProgressEvent
+from legolization.runtime import (
+    ProgressCallback,
+    ProgressEvent,
+    logical_cpu_count,
+)
 from legolization.stability import (
     SolverConfig,
     build_model_from_config,
@@ -347,7 +350,7 @@ def run_all(  # noqa: PLR0913 - sweep knobs are all keyword-only
     )
     if not configs:
         return []
-    workers = jobs if jobs > 0 else min(len(configs), os.cpu_count() or 1)
+    workers = jobs if jobs > 0 else min(len(configs), logical_cpu_count())
     if workers == 1:
         candidates = _run_sequential(
             grid,

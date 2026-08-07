@@ -51,6 +51,34 @@ def configure(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--quality",
+        choices=("fast", "balanced", "exhaustive", "direct"),
+        default="balanced",
+        help=(
+            "candidate policy: fast (greedy, 2 min), balanced (full sweep "
+            "plus eligible exact, 15 min; default), exhaustive (seeds 0-2, "
+            "requires --duration), direct (single configured strategy)"
+        ),
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "candidate time budget; required for exhaustive quality and "
+            "for --retry-materials, overrides the tier default otherwise"
+        ),
+    )
+    parser.add_argument(
+        "--retry-materials",
+        action="store_true",
+        help=(
+            "run the approved retry ladder (four-plate shell, six-plate "
+            "shell, solid) sharing --duration fairly between rungs"
+        ),
+    )
+    parser.add_argument(
         "--cancel-pending",
         action="store_true",
         help=(
@@ -69,18 +97,28 @@ def _run(args: argparse.Namespace) -> ResultEnvelope:
         BundleRequest,
         run_bundle,
     )
+    from legolization.errors import ConfigurationError  # noqa: PLC0415
 
+    if args.retry_materials and args.duration is None:
+        msg = "--retry-materials requires a total --duration budget"
+        raise ConfigurationError(msg)
     config = resolve_config(args)
-    envelope = run_bundle(
-        BundleRequest(
-            input_path=args.input,
-            config=config,
-            output_dir=args.output,
-            fresh=args.fresh,
-            cancel_pending=args.cancel_pending,
-            retile=args.retile,
-        )
+    request = BundleRequest(
+        input_path=args.input,
+        config=config,
+        output_dir=args.output,
+        quality=args.quality,
+        duration_s=args.duration,
+        fresh=args.fresh,
+        cancel_pending=args.cancel_pending,
+        retile=args.retile,
     )
+    if args.retry_materials:
+        from legolization.bundle.retry import run_retry  # noqa: PLC0415
+
+        envelope = run_retry(request, total_budget_s=args.duration)
+    else:
+        envelope = run_bundle(request)
     if not args.json:
         _print_summary(envelope)
     return envelope

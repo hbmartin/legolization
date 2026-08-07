@@ -33,6 +33,7 @@ STAMP_FILENAME = "stamp.json"
 LOCK_FILENAME = "stamp.lock"
 JOB_FILENAME = "job.json"
 RESULT_FILENAME = "result.json"
+MODEL_FILENAME = "model.ldr"
 LOG_FILENAME = "log.txt"
 
 _CANCEL_GRACE_S = 5.0

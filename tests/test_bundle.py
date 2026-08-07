@@ -308,6 +308,8 @@ def test_bundle_cli_emits_single_envelope(box_npy, capsys):
         [
             "bundle",
             str(box_npy),
+            "--quality",
+            "direct",
             "--set",
             "placement.strategy=bond",
             "--json",
