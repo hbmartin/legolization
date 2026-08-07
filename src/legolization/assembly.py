@@ -43,7 +43,7 @@ from legolization.assembly_physics import (
     resolve_support,
 )
 from legolization.assembly_registry import build_registry
-from legolization.catalog import CATALOG_SCHEMA, load_catalog
+from legolization.catalog import CATALOG_SCHEMA, load_catalog, resolve_catalog
 from legolization.ldraw_in import OccurrenceImport, import_occurrences
 from legolization.ldraw_report import catalog_error, prepare_connection_catalog
 
@@ -99,6 +99,7 @@ class AssemblyAnalysisConfig:
     ldcad_metadata_paths: tuple[Path, ...] = ()
     studio_metadata_paths: tuple[Path, ...] = ()
     voxel_catalog_paths: tuple[Path, ...] = ()
+    estimate_sidecar_paths: tuple[Path, ...] = ()
     repair: bool = True
     repair_time_budget_s: float = 300.0
     seed: int = 0
@@ -160,6 +161,7 @@ class AssemblyAnalysisReport:
     physics: dict[str, Any]
     counterfactual: dict[str, Any]
     occurrences: tuple[dict[str, Any], ...]
+    catalog: dict[str, Any] = field(default_factory=dict)
     artifacts: dict[str, str] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
@@ -205,7 +207,16 @@ def analyze_assembly(
     started = time.perf_counter()
     input_payload = _input_payload(path)
     try:
-        voxel_catalog = load_catalog(*config.voxel_catalog_paths)
+        catalog_section: dict[str, Any] = {}
+        if config.voxel_catalog_paths or config.estimate_sidecar_paths:
+            resolved = resolve_catalog(
+                config.voxel_catalog_paths,
+                config.estimate_sidecar_paths,
+            )
+            voxel_catalog = resolved.catalog
+            catalog_section = resolved.provenance.to_payload()
+        else:
+            voxel_catalog = load_catalog()
         prepared = prepare_connection_catalog(
             connection_shadows=config.ldcad_metadata_paths,
             studio_metadata=config.studio_metadata_paths,
@@ -325,6 +336,12 @@ def analyze_assembly(
             paths=paths,
             physics=physics,
             counterfactual=counterfactual,
+            catalog_section=catalog_section,
+            verification=recommendation_verification(
+                topology_only=config.topology_only,
+                physics_verdict=physics.verdict,
+                verdict=verdict,
+            ),
             warnings=warnings,
             elapsed_s=time.perf_counter() - started,
         )
@@ -362,6 +379,30 @@ def write_counterfactual_candidate(
     return True
 
 
+def recommendation_verification(
+    *,
+    topology_only: bool,
+    physics_verdict: str,
+    verdict: str,
+) -> tuple[str, str]:
+    """Classify recommendations as physics-validated or unverified.
+
+    Topology-only runs, a physics solver that could not produce a
+    definite result, and indeterminate verdicts all force
+    ``unverified``.
+    """
+    if topology_only:
+        return ("unverified", "--topology-only analysis skipped physics validation")
+    if physics_verdict not in {"feasible", "infeasible"}:
+        return (
+            "unverified",
+            f"the physics solver produced no definite result ({physics_verdict})",
+        )
+    if verdict == "indeterminate":
+        return ("unverified", "the analysis verdict is indeterminate")
+    return ("physics-validated", "a successful physics run backs this recommendation")
+
+
 def _report(  # noqa: PLR0913 - explicit report evidence inputs
     *,
     status: AssemblyStatus,
@@ -377,6 +418,8 @@ def _report(  # noqa: PLR0913 - explicit report evidence inputs
     paths: tuple[RegionPath, ...],
     physics: AssemblyPhysicsResult,
     counterfactual: CounterfactualSearchResult,
+    catalog_section: dict[str, Any],
+    verification: tuple[str, str],
     warnings: tuple[str, ...],
     elapsed_s: float,
 ) -> AssemblyAnalysisReport:
@@ -431,8 +474,9 @@ def _report(  # noqa: PLR0913 - explicit report evidence inputs
             "verdict": physics.verdict,
             "scenarios": [asdict(item) for item in physics.scenarios],
         },
-        counterfactual=_counterfactual_payload(counterfactual),
+        counterfactual=_counterfactual_payload(counterfactual, verification),
         occurrences=tuple(_occurrence_payload(item) for item in model.occurrences),
+        catalog=catalog_section,
         warnings=warnings,
         elapsed_s=elapsed_s,
     )
@@ -632,8 +676,12 @@ def _occurrence_payload(item: AssemblyOccurrence) -> dict[str, Any]:
     }
 
 
-def _counterfactual_payload(result: CounterfactualSearchResult) -> dict[str, Any]:
+def _counterfactual_payload(
+    result: CounterfactualSearchResult,
+    verification: tuple[str, str],
+) -> dict[str, Any]:
     candidate = result.candidate
+    status, reason = verification
     return {
         "status": result.status,
         "tested_candidates": result.tested_candidates,
@@ -655,6 +703,8 @@ def _counterfactual_payload(result: CounterfactualSearchResult) -> dict[str, Any
                 "confirmed_connection_gain": candidate.confirmed_connection_gain,
                 "component_reduction": candidate.component_reduction,
                 "confidence": candidate.confidence,
+                "verification": status,
+                "verification_reason": reason,
             }
             if candidate is not None
             else None

@@ -100,12 +100,21 @@ def select_strategy(config: ProjectConfig, grid: VoxelGrid) -> tuple[str, bool]:
 def _run(args: argparse.Namespace) -> ResultEnvelope:
     from dataclasses import replace  # noqa: PLC0415
 
+    from legolization.catalog import resolve_catalog  # noqa: PLC0415
     from legolization.compare import restart_race  # noqa: PLC0415
     from legolization.pipeline import load_grid, run_file  # noqa: PLC0415
 
     require_file(args.input, label="input")
     require_output_path(args.output)
     config = build_configuration(args)
+    catalog = (
+        resolve_catalog(
+            config.catalog.extensions,
+            config.catalog.estimate_sidecars,
+        ).catalog
+        if config.catalog.extensions or config.catalog.estimate_sidecars
+        else None
+    )
     grid = load_grid(args.input, config.to_pipeline(strategy="bond"))
     strategy, automatic = select_strategy(config, grid)
     pipeline = config.to_pipeline(strategy=strategy, automatic=automatic)
@@ -131,7 +140,7 @@ def _run(args: argparse.Namespace) -> ResultEnvelope:
         config = replace(config, placement=replace(config.placement, seed=winner))
         pipeline = replace(pipeline, seed=winner)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    result = run_file(args.input, args.output, pipeline, grid=grid)
+    result = run_file(args.input, args.output, pipeline, grid=grid, catalog=catalog)
     manifest_path = _manifest_path(args, config=config)
     if manifest_path is not None:
         _write_build_manifest(

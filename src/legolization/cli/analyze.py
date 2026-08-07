@@ -95,6 +95,15 @@ def configure_args(parser: argparse.ArgumentParser) -> None:
         help="legacy voxel catalog extension; may be repeated",
     )
     parser.add_argument(
+        "--catalog-estimates",
+        type=Path,
+        action="append",
+        default=[],
+        dest="catalog_estimates",
+        metavar="PATH",
+        help="catalog estimate sidecar with labeled provenance; may be repeated",
+    )
+    parser.add_argument(
         "--connector-catalog",
         type=Path,
         action="append",
@@ -128,6 +137,23 @@ def configure_args(parser: argparse.ArgumentParser) -> None:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="enable or disable repaired-model search",
+    )
+    parser.add_argument(
+        "--effort",
+        choices=("fast", "balanced", "exhaustive"),
+        default=None,
+        help=(
+            "repair effort tier: fast=60s, balanced=300s (default), "
+            "exhaustive requires an explicit --time-budget"
+        ),
+    )
+    parser.add_argument(
+        "--repair-output",
+        type=Path,
+        default=None,
+        dest="repair_output",
+        metavar="DIR",
+        help="repair bundle directory (default: INPUT '-repair' sibling)",
     )
     parser.add_argument(
         "--no-step-check",
@@ -180,6 +206,8 @@ def _run(args: argparse.Namespace) -> ResultEnvelope:
         data["verdict"] = outcome.verdict
     if outcome.status is not None:
         data["status"] = outcome.status
+    if outcome.catalog is not None:
+        data["catalog"] = outcome.catalog
     return ResultEnvelope(
         command="analyze",
         exit_code=outcome.exit_code,

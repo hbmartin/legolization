@@ -206,14 +206,23 @@ class _PipelineState:
     placement: _PlacementPhase
 
 
-def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult:
-    """Run the full pipeline on a voxel grid."""
+def run(
+    grid: VoxelGrid,
+    config: PipelineConfig | None = None,
+    *,
+    catalog: Catalog | None = None,
+) -> PipelineResult:
+    """Run the full pipeline on a voxel grid.
+
+    ``catalog`` substitutes a resolved overlay catalog for the builtin
+    one (estimate sidecars applied verbatim by ``resolve_catalog``).
+    """
     if grid.filled_count == 0:
         msg = "input grid contains no filled voxels"
         raise ValueError(msg)
     config = config or PipelineConfig()
     working = _prepare_grid(grid, config)
-    catalog = default_catalog()
+    catalog = catalog if catalog is not None else default_catalog()
     rng = np.random.default_rng(config.seed)
     deadline = Deadline.after(config.time_budget_s)
     state = _PipelineState(
@@ -701,6 +710,7 @@ def run_file(  # noqa: PLR0913 - optional artifact paths + the preloaded grid
     bom_path: Path | None = None,
     instructions_path: Path | None = None,
     grid: VoxelGrid | None = None,
+    catalog: Catalog | None = None,
 ) -> PipelineResult:
     """Load a ``.vox``/``.npy`` grid, run the pipeline, write ``.ldr``/``.mpd``.
 
@@ -708,11 +718,14 @@ def run_file(  # noqa: PLR0913 - optional artifact paths + the preloaded grid
     suffix is ``.json``, text otherwise); ``instructions_path`` an
     instruction booklet (``.html`` or ``.pdf``). ``grid`` skips the
     load: the restart race already voxelized the input, and a mesh
-    voxelization is not free to repeat (PR #20 review).
+    voxelization is not free to repeat (PR #20 review). ``catalog``
+    substitutes a resolved overlay catalog for the builtin one.
     """
     config = config or PipelineConfig()
     result = run(
-        grid=grid if grid is not None else load_grid(input_path, config), config=config
+        grid=grid if grid is not None else load_grid(input_path, config),
+        config=config,
+        catalog=catalog,
     )
     write_outputs(
         result,

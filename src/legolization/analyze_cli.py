@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import zipfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from legolization.analysis import (
     AnalysisConfig,
@@ -32,17 +33,38 @@ from legolization.assembly_artifacts import (
     write_graph_json,
     write_html_report,
 )
+from legolization.assembly_counterfactual import CounterfactualSearchResult
+from legolization.bundle.paths import default_bundle_dir, numbered_sibling
+from legolization.bundle.record import StageRecord, read_record, write_record
+from legolization.catalog import catalog_content_hash, resolve_catalog
+from legolization.cli.exit_codes import (
+    COMPLETE,
+    PARTIAL,
+    UNBUILDABLE,
+)
 from legolization.configuration import (
     ProjectConfig,
     load_project_config,
     merge_overrides,
 )
 from legolization.errors import ConfigurationError, ManifestError
+from legolization.eval_artifacts import input_sha256
 from legolization.manifest import (
     manifest_for_analysis,
     write_manifest,
 )
-from legolization.redesign import write_repair_model
+from legolization.redesign import RepairSearchResult, search_repair, write_repair_model
+from legolization.repair_bundle import (
+    RepairPlan,
+    RepairRequest,
+    RepairRunResult,
+    effort_budget,
+    ensure_never_overwrites,
+    repair_bundle_record,
+    resolve_repair_dir,
+    run_repair,
+)
+from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
     from typing import TextIO
@@ -50,9 +72,23 @@ if TYPE_CHECKING:
     from legolization.assembly_connections import ConnectionAnalysis
     from legolization.assembly_model import AssemblyModel
     from legolization.assembly_physics import SupportResolution
+    from legolization.bundle.record import BundleStatus, StageStatus
     from legolization.layout import Layout
+    from legolization.repair_bundle import RepairDefect
 
 _LDRAW_SUFFIXES = {".ldr", ".mpd"}
+_PARITY_SOLVER = SolverConfig(torque_z=False, ground_pull=True)
+_STRICT_SOLVER = SolverConfig(torque_z=True, ground_pull=True)
+
+_BUNDLE_STATUS_BY_EXIT: dict[int, BundleStatus] = {
+    COMPLETE: "complete",
+    PARTIAL: "partial",
+    UNBUILDABLE: "unbuildable",
+}
+_STAGE_STATUS_BY_EXIT: dict[int, StageStatus] = {
+    COMPLETE: "complete",
+    PARTIAL: "partial",
+}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -65,6 +101,7 @@ class AnalyzeOutcome:
     artifacts: dict[str, str] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
     error_message: str | None = None
+    catalog: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +116,8 @@ class _OutputPaths:
     html: Path | None
     callout_dir: Path | None
     comparison_dir: Path | None
+    bundle_dir: Path
+    report_json: Path
 
 
 @dataclass(slots=True)
@@ -126,6 +165,8 @@ def run_analysis(
     report targets are rejected, keeping stdout free for the caller's
     single result envelope.
     """
+    # This boundary sequences validation, analyses, bundle, and repair.
+    # lizard forgives(cyclomatic_complexity, length)
     if args.input.suffix.lower() not in _LDRAW_SUFFIXES:
         parser.error("analyze input must end in .ldr or .mpd")
     if json_mode and "-" in {args.report, args.assembly_report}:
@@ -133,6 +174,13 @@ def run_analysis(
     try:
         project = _project_config(args)
         _validate_connection_sources(args)
+        catalog_paths, sidecar_paths = _catalog_sources(args, project)
+        catalog_section = (
+            resolve_catalog(catalog_paths, sidecar_paths).provenance.to_payload()
+            if catalog_paths or sidecar_paths
+            else None
+        )
+        input_sha = input_sha256(args.input)
     except (ConfigurationError, OSError) as error:
         return AnalyzeOutcome(
             exit_code=1,
@@ -140,12 +188,19 @@ def run_analysis(
             error_message=str(error),
         )
     _validate_option_combinations(parser, args)
+    plan = _repair_plan(parser, args)
     manifest_enabled = not args.no_manifest and (
         args.manifest is not None or project.output.manifest
     )
-    paths = _resolve_paths(args, manifest_enabled=manifest_enabled)
+    paths = _resolve_paths(args, manifest_enabled=manifest_enabled, input_sha=input_sha)
     _validate_paths(parser, args.input, paths=paths)
-    legacy_result, assembly_result = _run_analyses(args, project=project)
+    legacy_result, assembly_result = _run_analyses(
+        args,
+        project=project,
+        catalog_paths=catalog_paths,
+        sidecar_paths=sidecar_paths,
+        plan=plan,
+    )
     legacy_report, assembly_result = _write_candidate(
         legacy_result.report,
         legacy_result.repaired_layout,
@@ -157,6 +212,7 @@ def run_analysis(
         input_path=args.input,
         paths=paths,
     )
+    assembly_result = _write_report_json(assembly_result, path=paths.report_json)
     report = assembly_result.report
     try:
         _write_result_views(
@@ -173,7 +229,48 @@ def run_analysis(
             artifacts=dict(report.artifacts),
             warnings=tuple(report.warnings),
             error_message=f"report write failed: {error}",
+            catalog=catalog_section,
         )
+    exit_code = _exit_code(report)
+    artifacts = dict(report.artifacts)
+    if paths.manifest is not None and paths.manifest.is_file():
+        artifacts["manifest"] = str(paths.manifest)
+    warnings = list(report.warnings)
+    bundle_path, bundle_warnings = _write_analysis_bundle(
+        input_path=args.input,
+        bundle_dir=paths.bundle_dir,
+        project=project,
+        catalog_paths=catalog_paths,
+        sidecar_paths=sidecar_paths,
+        input_sha=input_sha,
+        report=report,
+        exit_code=exit_code,
+        catalog_section=catalog_section,
+        extra_artifacts=(
+            {"manifest": paths.manifest}
+            if paths.manifest is not None and paths.manifest.is_file()
+            else {}
+        ),
+    )
+    warnings.extend(bundle_warnings)
+    if bundle_path is not None:
+        artifacts["bundle"] = bundle_path
+    if plan is not None and report.status != "error":
+        repair_result = _run_repair_flow(
+            args,
+            parser=parser,
+            project=project,
+            plan=plan,
+            input_sha=input_sha,
+            catalog_paths=catalog_paths,
+            sidecar_paths=sidecar_paths,
+            catalog_section=catalog_section,
+            legacy_result=legacy_result,
+            assembly_result=assembly_result,
+        )
+        artifacts |= repair_result.artifacts
+        warnings.extend(repair_result.warnings)
+        exit_code = repair_result.exit_code
     _print_summary(
         report,
         legacy_path=paths.legacy_report,
@@ -181,12 +278,57 @@ def run_analysis(
         stream=sys.stderr if json_mode else None,
     )
     return AnalyzeOutcome(
-        exit_code=_exit_code(report),
+        exit_code=exit_code,
         verdict=report.verdict,
         status=report.status,
-        artifacts=dict(report.artifacts),
-        warnings=tuple(report.warnings),
+        artifacts=artifacts,
+        warnings=tuple(warnings),
+        catalog=catalog_section,
     )
+
+
+def _catalog_sources(
+    args: argparse.Namespace,
+    project: ProjectConfig,
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Merge TOML-declared and CLI catalog paths, CLI appended, deduped."""
+    return (
+        _merged_paths(project.catalog.extensions, args.catalog),
+        _merged_paths(
+            project.catalog.estimate_sidecars,
+            getattr(args, "catalog_estimates", None),
+        ),
+    )
+
+
+def _merged_paths(
+    existing: tuple[Path, ...],
+    extra: list[Path] | None,
+) -> tuple[Path, ...]:
+    merged = dict.fromkeys(
+        [*(str(path) for path in existing), *(str(path) for path in extra or [])]
+    )
+    return tuple(Path(value) for value in merged)
+
+
+def _repair_plan(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> RepairPlan | None:
+    """Resolve the effort tier when the repair engine was requested."""
+    if args.repair is not True:
+        return None
+    effort = args.effort or "balanced"
+    try:
+        budget = effort_budget(effort, args.time_budget)
+    except ConfigurationError as error:
+        parser.error(str(error))
+    if args.repair_output is not None:
+        try:
+            ensure_never_overwrites(args.input, args.repair_output)
+        except ConfigurationError as error:
+            parser.error(str(error))
+    return RepairPlan(effort=effort, time_budget_s=budget)
 
 
 def _validate_connection_sources(args: argparse.Namespace) -> None:
@@ -221,20 +363,31 @@ def _run_analyses(
     args: argparse.Namespace,
     *,
     project: ProjectConfig,
+    catalog_paths: tuple[Path, ...],
+    sidecar_paths: tuple[Path, ...],
+    plan: RepairPlan | None,
 ) -> tuple[AnalysisResult, AssemblyAnalysisResult]:
     seed = project.placement.seed
     time_budget = project.placement.time_budget_s or 300.0
     per_search_budget = time_budget / 2.0
     repair_enabled = project.stability.repair
+    # The repair engine drives the redesign search itself with the
+    # remaining budget, so the embedded legacy search stays off and the
+    # embedded counterfactual gets the counterfactual-first slice.
+    legacy_repair = repair_enabled and plan is None
+    assembly_budget = (
+        plan.counterfactual_slice_s if plan is not None else per_search_budget
+    )
     legacy = analyze_ldraw(
         args.input,
         AnalysisConfig(
             auto_ground=not args.preserve_origin,
             check_source_steps=not args.no_step_check,
-            repair=repair_enabled,
+            repair=legacy_repair,
             repair_time_budget_s=per_search_budget,
             seed=seed,
-            catalog_paths=tuple(args.catalog),
+            catalog_paths=catalog_paths,
+            estimate_sidecar_paths=sidecar_paths,
         ),
     )
     assembly = analyze_assembly(
@@ -251,9 +404,10 @@ def _run_analyses(
             connector_catalog_paths=tuple(args.connector_catalog),
             ldcad_metadata_paths=tuple(args.ldcad_metadata),
             studio_metadata_paths=tuple(args.studio_metadata),
-            voxel_catalog_paths=tuple(args.catalog),
+            voxel_catalog_paths=catalog_paths,
+            estimate_sidecar_paths=sidecar_paths,
             repair=repair_enabled,
-            repair_time_budget_s=per_search_budget,
+            repair_time_budget_s=assembly_budget,
             seed=seed,
             auto_ground_strict=not args.preserve_origin,
         ),
@@ -448,6 +602,203 @@ def _write_html_view(
     return report
 
 
+def _write_report_json(
+    result: AssemblyAnalysisResult,
+    *,
+    path: Path,
+) -> AssemblyAnalysisResult:
+    """Write the bundle's assembly schema-1 ``report.json`` view."""
+    report = replace(
+        result.report,
+        artifacts={**result.report.artifacts, "report": str(path)},
+    )
+    try:
+        write_assembly_report(report, path)
+    except (OSError, TypeError, ValueError) as error:
+        report = replace(
+            report,
+            status="partial" if report.status == "complete" else report.status,
+            warnings=(*report.warnings, f"report.json write failed: {error}"),
+            artifacts={
+                key: value for key, value in report.artifacts.items() if key != "report"
+            },
+        )
+    return replace(result, report=report)
+
+
+def _write_analysis_bundle(  # noqa: PLR0913 - the complete bundle record inputs
+    *,
+    input_path: Path,
+    bundle_dir: Path,
+    project: ProjectConfig,
+    catalog_paths: tuple[Path, ...],
+    sidecar_paths: tuple[Path, ...],
+    input_sha: str,
+    report: AssemblyAnalysisReport,
+    exit_code: int,
+    catalog_section: dict[str, Any] | None,
+    extra_artifacts: dict[str, Path] | None = None,
+) -> tuple[str | None, tuple[str, ...]]:
+    """Write ``bundle.json`` for the analysis bundle; failures warn only."""
+    try:
+        record = repair_bundle_record(
+            input_path,
+            bundle_dir,
+            input_sha=input_sha,
+            project=project,
+            catalog_sha256=catalog_content_hash(catalog_paths, sidecar_paths),
+        )
+    except (ConfigurationError, OSError) as error:
+        return (None, (f"analysis bundle record failed: {error}",))
+    record.status = _BUNDLE_STATUS_BY_EXIT.get(exit_code, "error")
+    record.exit_code = exit_code
+    stage = StageRecord(
+        status=_STAGE_STATUS_BY_EXIT.get(exit_code, "failed"),
+        warnings=list(report.warnings),
+        detail={"verdict": report.verdict, "status": report.status},
+    )
+    if catalog_section:
+        stage.detail["catalog"] = dict(catalog_section)
+    record.stages["analysis"] = stage
+    record.verdicts["analysis"] = report.verdict
+    listed: dict[str, Path] = {
+        kind: Path(raw_path) for kind, raw_path in report.artifacts.items()
+    } | (extra_artifacts or {})
+    for kind, artifact in sorted(listed.items()):
+        if not artifact.is_file():
+            continue
+        try:
+            sha256 = input_sha256(artifact)
+        except OSError:
+            continue
+        record.record_artifact(
+            path=Path(os.path.relpath(artifact, bundle_dir)).as_posix(),
+            stage="analysis",
+            kind=kind,
+            sha256=sha256,
+        )
+    try:
+        write_record(record, bundle_dir)
+    except (ManifestError, OSError) as error:
+        return (None, (f"analysis bundle record write failed: {error}",))
+    return (str(bundle_dir / "bundle.json"), ())
+
+
+def _repair_defect(
+    legacy_result: AnalysisResult,
+    assembly_result: AssemblyAnalysisResult,
+) -> RepairDefect:
+    """Classify the definite defect the repair engine must address."""
+    if assembly_result.report.verdict == "disconnected":
+        return "topological"
+    if (
+        assembly_result.report.verdict == "infeasible"
+        or legacy_result.report.verdict == "infeasible"
+    ):
+        return "physical"
+    return "none"
+
+
+def _run_repair_flow(  # noqa: PLR0913 - the repair engine's complete context
+    args: argparse.Namespace,
+    *,
+    parser: argparse.ArgumentParser,
+    project: ProjectConfig,
+    plan: RepairPlan,
+    input_sha: str,
+    catalog_paths: tuple[Path, ...],
+    sidecar_paths: tuple[Path, ...],
+    catalog_section: dict[str, Any] | None,
+    legacy_result: AnalysisResult,
+    assembly_result: AssemblyAnalysisResult,
+) -> RepairRunResult:
+    """Wire the already-computed analyses into the repair engine."""
+    try:
+        bundle_dir = resolve_repair_dir(
+            args.input,
+            args.repair_output,
+            input_sha=input_sha,
+        )
+        record = repair_bundle_record(
+            args.input,
+            bundle_dir,
+            input_sha=input_sha,
+            project=project,
+            catalog_sha256=catalog_content_hash(catalog_paths, sidecar_paths),
+        )
+    except (ConfigurationError, OSError) as error:
+        parser.error(str(error))
+    counterfactual = assembly_result.counterfactual
+
+    def counterfactual_search(budget: float) -> CounterfactualSearchResult:
+        del budget  # the embedded assembly search already ran with the slice
+        if counterfactual is not None:
+            return counterfactual
+        return CounterfactualSearchResult(
+            status="not_run",
+            candidate=None,
+            tested_candidates=0,
+            timed_out=False,
+            elapsed_s=0.0,
+            message="the assembly analysis produced no counterfactual result",
+        )
+
+    def redesign_search(budget: float) -> RepairSearchResult:
+        if legacy_result.imported is None:
+            return RepairSearchResult(
+                layout=None,
+                candidate=None,
+                attempts=0,
+                elapsed_seconds=0.0,
+                timed_out=False,
+                complete=False,
+                error="the strict import failed; redesign is unavailable",
+            )
+        return search_repair(
+            legacy_result.imported.layout,
+            physics_seed_ids=legacy_result.physics_seed_ids,
+            parity_solver=_PARITY_SOLVER,
+            strict_solver=_STRICT_SOLVER,
+            time_budget_s=budget,
+            seed=project.placement.seed,
+        )
+
+    def after_analysis(path: Path) -> dict[str, Any]:
+        return analyze_assembly(
+            path,
+            AssemblyAnalysisConfig(
+                topology_only=args.topology_only,
+                connector_catalog_paths=tuple(args.connector_catalog),
+                ldcad_metadata_paths=tuple(args.ldcad_metadata),
+                studio_metadata_paths=tuple(args.studio_metadata),
+                voxel_catalog_paths=catalog_paths,
+                estimate_sidecar_paths=sidecar_paths,
+                repair=False,
+            ),
+        ).report.to_dict()
+
+    source_refs = (
+        dict(legacy_result.imported.source_refs)
+        if legacy_result.imported is not None
+        else {}
+    )
+    return run_repair(
+        RepairRequest(
+            input_path=args.input,
+            plan=plan,
+            bundle_dir=bundle_dir,
+            record=record,
+            defect=_repair_defect(legacy_result, assembly_result),
+            before_payload=assembly_result.report.to_dict(),
+            counterfactual_search=counterfactual_search,
+            redesign_search=redesign_search,
+            after_analysis=after_analysis,
+            catalog_section=catalog_section,
+            source_refs=source_refs,
+        )
+    )
+
+
 def _degrade_assembly(
     result: AssemblyAnalysisResult,
     warning: str,
@@ -483,16 +834,43 @@ def _write_assembly_output(
         write_assembly_report(report, Path(report_path))
 
 
+def _analysis_bundle_dir(
+    input_path: Path,
+    explicit: Path | None,
+    *,
+    input_sha: str,
+) -> Path:
+    """Pick the ``-analysis`` sibling bundle directory for one input.
+
+    The unnumbered sibling is reused only when it already holds a
+    ``bundle.json`` for the same input bytes; anything else gets the
+    first free numbered sibling. ``--artifact-dir`` aliases the bundle
+    directory directly.
+    """
+    if explicit is not None:
+        return explicit
+    base = default_bundle_dir(input_path, "analysis")
+    if not base.exists():
+        return base
+    record = read_record(base)
+    if record is not None and record.identity.input_sha256 == input_sha:
+        return base
+    return numbered_sibling(base)
+
+
 def _resolve_paths(
     args: argparse.Namespace,
     *,
     manifest_enabled: bool,
+    input_sha: str,
 ) -> _OutputPaths:
     stem = args.input.stem
-    artifact_dir = args.artifact_dir
-    base = artifact_dir if artifact_dir is not None else args.input.parent
-    legacy_report = args.report
-    assembly_report = args.assembly_report
+    bundle_dir = _analysis_bundle_dir(
+        args.input,
+        args.artifact_dir,
+        input_sha=input_sha,
+    )
+    diagnostics = bundle_dir / "diagnostics"
     manifest = (
         args.manifest or args.input.with_name(f"{stem}.manifest.json")
         if manifest_enabled
@@ -504,29 +882,22 @@ def _resolve_paths(
     if args.no_data_artifacts:
         graph = components = floating = None
     else:
-        graph = args.graph or base / f"{stem}.connections.json"
-        components = args.diagnostic_mpd or base / f"{stem}.components.mpd"
-        floating = args.floating_mpd or base / f"{stem}.floating.mpd"
-    html_path = args.html_report or (
-        base / f"{stem}.analysis.html" if artifact_dir is not None else None
-    )
-    callout_dir = args.callout_dir or (
-        base / f"{stem}.callouts" if artifact_dir is not None else None
-    )
-    comparison_dir = args.comparison_dir or (
-        base / f"{stem}.comparison" if artifact_dir is not None else None
-    )
+        graph = args.graph or diagnostics / "connections.json"
+        components = args.diagnostic_mpd or diagnostics / "components.mpd"
+        floating = args.floating_mpd or diagnostics / "floating.mpd"
     return _OutputPaths(
-        legacy_report=legacy_report,
-        assembly_report=assembly_report,
+        legacy_report=args.report,
+        assembly_report=args.assembly_report,
         manifest=manifest,
         candidate=candidate,
         graph=graph,
         components=components,
         floating=floating,
-        html=html_path,
-        callout_dir=callout_dir,
-        comparison_dir=comparison_dir,
+        html=args.html_report or bundle_dir / "analysis.html",
+        callout_dir=args.callout_dir or diagnostics / "callouts",
+        comparison_dir=args.comparison_dir or bundle_dir / "renders",
+        bundle_dir=bundle_dir,
+        report_json=bundle_dir / "report.json",
     )
 
 
@@ -536,6 +907,11 @@ def _validate_option_combinations(
 ) -> None:
     if args.report == "-" and args.assembly_report == "-":
         parser.error("only one report may target stdout")
+    if args.repair is not True:
+        if getattr(args, "effort", None) is not None:
+            parser.error("--effort requires --repair")
+        if getattr(args, "repair_output", None) is not None:
+            parser.error("--repair-output requires --repair")
     if args.no_data_artifacts and any(
         value is not None
         for value in (args.graph, args.diagnostic_mpd, args.floating_mpd)

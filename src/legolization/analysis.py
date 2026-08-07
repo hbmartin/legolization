@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from ldraw import Severity
 
-from legolization.catalog import CATALOG_SCHEMA, load_catalog
+from legolization.catalog import CATALOG_SCHEMA, load_catalog, resolve_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.ldraw_in import (
     ImportedLdrawModel,
@@ -72,6 +72,7 @@ class AnalysisConfig:
     repair_time_budget_s: float = 300.0
     seed: int = 0
     catalog_paths: tuple[Path, ...] = ()
+    estimate_sidecar_paths: tuple[Path, ...] = ()
     parity_solver: SolverConfig = field(
         default_factory=lambda: SolverConfig(torque_z=False, ground_pull=True)
     )
@@ -136,6 +137,8 @@ class AnalysisResult:
     report: AnalysisReport
     imported: ImportedLdrawModel | None = None
     repaired_layout: Layout | None = None
+    physics_seed_ids: tuple[int, ...] = ()
+    """Brick ids implicated by physics; seeds an external redesign search."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,7 +285,15 @@ def _prepare_analysis_inputs(
         "extensions": [str(extension) for extension in config.catalog_paths],
     }
     try:
-        catalog = load_catalog(*config.catalog_paths)
+        if config.catalog_paths or config.estimate_sidecar_paths:
+            resolved = resolve_catalog(
+                config.catalog_paths,
+                config.estimate_sidecar_paths,
+            )
+            catalog = resolved.catalog
+            catalog_info |= resolved.provenance.to_payload()
+        else:
+            catalog = load_catalog()
     except (OSError, TypeError, ValueError) as error:
         return AnalysisResult(
             report=_error_report(
@@ -489,6 +500,7 @@ def analyze_ldraw(
         report=report,
         imported=imported,
         repaired_layout=repaired_layout,
+        physics_seed_ids=_physics_seed_ids(physics),
     )
 
 
@@ -687,14 +699,21 @@ def _repair_payload(
                 "status": "error",
                 "error": f"{type(error).__name__}: {error}",
                 "before_metrics": _physics_metrics(physics),
+                "verification": "unverified",
+                "verification_reason": (
+                    "the repair search failed before physics validation"
+                ),
             },
             None,
         )
+    report = result.to_report(imported.source_refs)
+    if report.get("status") == "found":
+        report["verification"] = "physics-validated"
+        report["verification_reason"] = (
+            "the candidate passed every official physics profile"
+        )
     return (
-        {
-            **result.to_report(imported.source_refs),
-            "before_metrics": _physics_metrics(physics),
-        },
+        {**report, "before_metrics": _physics_metrics(physics)},
         result.layout,
     )
 
@@ -832,6 +851,14 @@ def _analyze_step_groups(  # noqa: PLR0913 - explicit prefix-analysis state
                 "floating_count": topology.floating_count,
                 "feasible": feasible if result is not None else None,
                 "ground_offset_layers": ground_offset_layers,
+                "verification": (
+                    "physics-validated" if result is not None else "unverified"
+                ),
+                "verification_reason": (
+                    "prefix physics evaluated this step"
+                    if result is not None
+                    else "step physics was not evaluated"
+                ),
             }
         )
     return tuple(rows)

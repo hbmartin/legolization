@@ -139,13 +139,15 @@ body{{font:15px system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0
 table{{border-collapse:collapse;width:100%}}
 td,th{{border:1px solid #ccc;padding:.35rem}}
 pre{{background:#f6f8fa;padding:1rem;overflow:auto}}.bad{{color:#a00}}.ok{{color:#073}}
+.unverified{{background:#a00;color:#fff;padding:0 .4rem;border-radius:.3rem;
+font-weight:700}}
 </style></head><body>
 <h1>Geometry-first assembly analysis</h1>
 <p>Status: <strong>{html.escape(report.status)}</strong>; verdict:
 <strong>{html.escape(report.verdict)}</strong>; topology:
 <strong>{html.escape(report.topology_verdict)}</strong>; physics:
 <strong>{html.escape(report.physics_verdict)}</strong>.</p>
-<h2>Occurrence provenance</h2>
+{_recommendation_section(report)}<h2>Occurrence provenance</h2>
 <table><thead><tr><th>ID</th><th>Part</th><th>Source</th><th>Page</th></tr></thead>
 <tbody>{"".join(source_rows)}</tbody></table>
 <h2>Complete report</h2><pre>{serialized}</pre>
@@ -153,6 +155,25 @@ pre{{background:#f6f8fa;padding:1rem;overflow:auto}}.bad{{color:#a00}}.ok{{color
 """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(document, encoding="utf-8")
+
+
+def _recommendation_section(report: AssemblyAnalysisReport) -> str:
+    """Render report recommendations, badging unverified ones."""
+    candidate = report.counterfactual.get("candidate")
+    if not isinstance(candidate, dict):
+        return ""
+    description = html.escape(str(candidate.get("description", "counterfactual edit")))
+    location = html.escape(
+        f"{candidate.get('source_model')}:{candidate.get('source_line')}"
+    )
+    badge = ""
+    if candidate.get("verification") == "unverified":
+        reason = html.escape(str(candidate.get("verification_reason", "")))
+        badge = f' <span class="unverified" title="{reason}">UNVERIFIED</span>'
+    return (
+        "<h2>Recommendations</h2>"
+        f"<p>Counterfactual edit at {location}: {description}{badge}</p>\n"
+    )
 
 
 def write_callout_svg(
