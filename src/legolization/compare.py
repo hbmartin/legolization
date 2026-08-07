@@ -45,6 +45,7 @@ from legolization.stability import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Sequence
     from concurrent.futures import Future
+    from pathlib import Path
 
     from legolization.grid import VoxelGrid
 
@@ -568,11 +569,61 @@ def _report(progress: ProgressCallback | None, candidate: Candidate) -> None:
     )
 
 
+def print_candidate_table(candidates: Sequence[Candidate]) -> None:
+    """Print one summary line per (strategy, seed) candidate."""
+    multi_seed = len({candidate.seed for candidate in candidates}) > 1
+    seed_header = f" {'seed':>4}" if multi_seed else ""
+    print(
+        f"  {'strategy':<8}{seed_header} {'bricks':>6} {'buildable':>9} "
+        f"{'objective':>9} {'capacity':>8} {'seconds':>7}"
+    )
+    for candidate in candidates:
+        seed_cell = f" {candidate.seed:>4}" if multi_seed else ""
+        if (metrics := candidate.metrics) is None:
+            print(
+                f"  {candidate.strategy:<8}{seed_cell} "
+                f"error: {candidate.error} ({candidate.seconds:.1f}s)"
+            )
+        else:
+            print(
+                f"  {candidate.strategy:<8}{seed_cell} {metrics.brick_count:>6} "
+                f"{'yes' if metrics.buildable else 'no':>9} "
+                f"{metrics.objective_total:>9.4f} "
+                f"{metrics.maximin_capacity:>8.3f} {candidate.seconds:>7.1f}"
+            )
+
+
+def write_candidate_models(
+    report: SelectionReport,
+    *,
+    directory: Path,
+    output: Path,
+) -> tuple[Path, ...]:
+    """Write every successful candidate's model into ``directory``."""
+    from legolization.ldraw_out import write_model  # noqa: PLC0415 - avoids cycle
+
+    directory.mkdir(parents=True, exist_ok=True)
+    multi_seed = len({c.seed for c in report.candidates}) > 1
+    written: list[Path] = []
+    for candidate in report.candidates:
+        if candidate.result is None:
+            continue
+        seed_tag = f".seed{candidate.seed}" if multi_seed else ""
+        path = (
+            directory / f"{output.stem}.{candidate.strategy}{seed_tag}{output.suffix}"
+        )
+        write_model(candidate.result.layout, path, plan=candidate.result.plan)
+        written.append(path)
+    return tuple(written)
+
+
 __all__ = [
     "Candidate",
     "CandidateMetrics",
     "SelectionReport",
     "candidate_metrics",
+    "print_candidate_table",
     "run_all",
     "select_best",
+    "write_candidate_models",
 ]

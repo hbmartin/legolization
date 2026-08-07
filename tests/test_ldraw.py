@@ -556,15 +556,27 @@ def test_import_matches_ldraw_part_codes_case_insensitively(tmp_path: Path):
     assert next(iter(imported)).part_key == "tile_1x1"
 
 
-def test_import_cli_end_to_end(tmp_path):
-    from pathlib import Path
-
-    from legolization.main import main
+def test_import_end_to_end(tmp_path):
+    # The legacy CLI import flow: read an existing model back into a
+    # layout, then re-emit it plus its BOM through write_outputs.
+    from legolization.ldraw_in import layout_from_ldraw
+    from legolization.pipeline import PipelineResult, write_outputs
+    from legolization.stability import analyze
 
     source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
     out = tmp_path / "reimport.ldr"
     bom = tmp_path / "bom.json"
-    assert main([str(source), "-o", str(out), "--bom", str(bom)]) == 0
+    imported = layout_from_ldraw(source)
+    result = PipelineResult(
+        layout=imported,
+        stability=analyze(imported),
+        grid=None,
+        brick_count=len(imported),
+        mass_g=imported.total_mass_g(),
+        component_count=1,
+        floating_count=0,
+    )
+    write_outputs(result, out, bom_path=bom)
     assert out.read_text() != ""
     assert bom.read_text().startswith("{")
 
@@ -599,256 +611,27 @@ def test_write_heatmap_recolours_without_touching_the_source(layout, tmp_path):
     assert {b.colour_code for b in layout} == {4}
 
 
-def test_cli_heatmap_writes_direct_colour_model(tmp_path):
+def test_heatmap_covers_generated_and_imported_models(tmp_path):
     import numpy as np
 
-    from legolization.main import main
+    from legolization.ldraw_in import layout_from_ldraw
+    from legolization.pipeline import PipelineConfig, run_file
+    from legolization.stability import analyze
 
     npy = tmp_path / "box.npy"
     np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
+    model = tmp_path / "box.ldr"
     heat = tmp_path / "heat.ldr"
-    code = main(
-        [
-            str(npy),
-            "-o",
-            str(tmp_path / "box.ldr"),
-            "--restarts",
-            "1",
-            "--heatmap",
-            str(heat),
-        ]
-    )
-    assert code == 0
+    result = run_file(npy, model, PipelineConfig(seed=0))
+    write_heatmap(result.layout, result.stability.scores, heat)
     lines = _type1_lines(heat.read_text().splitlines())
     assert lines
     assert all(int(line.split()[1]) in {0, 320, 4, 12, 15} for line in lines)
     # The import path analyzes too: a heatmap of the generated model.
     reheat = tmp_path / "reheat.ldr"
-    assert (
-        main(
-            [
-                str(tmp_path / "box.ldr"),
-                "-o",
-                str(tmp_path / "roundtrip.ldr"),
-                "--heatmap",
-                str(reheat),
-            ]
-        )
-        == 0
-    )
+    imported = layout_from_ldraw(model)
+    write_heatmap(imported, analyze(imported).scores, reheat)
     assert _type1_lines(reheat.read_text().splitlines())
-
-
-def test_cli_heatmap_rejected_for_sweeps(tmp_path):
-    import numpy as np
-
-    from legolization.main import main
-
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(npy),
-                "-o",
-                str(tmp_path / "box.ldr"),
-                "--strategy",
-                "all",
-                "--heatmap",
-                str(tmp_path / "heat.ldr"),
-            ]
-        )
-    assert excinfo.value.code == 2
-
-
-def test_cli_heatmap_rejects_output_collision(tmp_path: Path) -> None:
-    import numpy as np
-
-    from legolization.main import main
-
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
-    output = tmp_path / "box.ldr"
-
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(npy),
-                "-o",
-                str(output),
-                "--heatmap",
-                str(output),
-            ]
-        )
-
-    assert excinfo.value.code == 2
-
-
-def test_cli_heatmap_rejects_case_folded_output_collision(tmp_path: Path) -> None:
-    # The default macOS filesystem is case-insensitive: BOX.LDR would
-    # overwrite box.ldr there, so the guard folds case on every platform.
-    import numpy as np
-
-    from legolization.main import main
-
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
-
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(npy),
-                "-o",
-                str(tmp_path / "box.ldr"),
-                "--heatmap",
-                str(tmp_path / "BOX.LDR"),
-            ]
-        )
-
-    assert excinfo.value.code == 2
-
-
-def test_cli_heatmap_rejects_input_collision(tmp_path: Path) -> None:
-    from legolization.main import main
-
-    source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
-
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(source),
-                "-o",
-                str(tmp_path / "roundtrip.ldr"),
-                "--heatmap",
-                str(source),
-            ]
-        )
-
-    assert excinfo.value.code == 2
-
-
-def test_cli_heatmap_requires_ldr_suffix(tmp_path: Path) -> None:
-    import numpy as np
-
-    from legolization.main import main
-
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
-
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(npy), "--heatmap", str(tmp_path / "heat.mpd")])
-
-    assert excinfo.value.code == 2
-
-
-def test_cli_heatmap_write_error_is_reported(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    import numpy as np
-
-    from legolization.main import main
-
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((1, 1, 1), 4, dtype=np.int16))
-
-    code = main(
-        [
-            str(npy),
-            "-o",
-            str(tmp_path / "box.ldr"),
-            "--restarts",
-            "1",
-            "--heatmap",
-            str(tmp_path / "missing" / "heat.ldr"),
-        ]
-    )
-
-    captured = capsys.readouterr()
-    assert code == 1
-    assert "error:" in captured.err
-    assert "already written" in captured.err
-    assert "Traceback" not in captured.err
-
-
-def test_import_cli_heatmap_write_error_is_reported(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from legolization.main import main
-
-    source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
-    code = main(
-        [
-            str(source),
-            "-o",
-            str(tmp_path / "roundtrip.ldr"),
-            "--heatmap",
-            str(tmp_path / "missing" / "heat.ldr"),
-        ]
-    )
-
-    captured = capsys.readouterr()
-    assert code == 1
-    assert "error:" in captured.err
-    assert "already written" in captured.err
-    assert "Traceback" not in captured.err
-
-
-def test_import_cli_rejects_placement_flags(tmp_path):
-    from pathlib import Path
-
-    from legolization.main import main
-
-    source = Path(__file__).parent.parent / "data" / "examples" / "heart.ldr"
-    for extra in (
-        [],  # no -o: default output would overwrite the input
-        ["-o", str(tmp_path / "x.ldr"), "--strategy", "luo"],
-        ["-o", str(tmp_path / "x.ldr"), "--slopes"],
-        ["-o", str(tmp_path / "x.ldr"), "--dither"],
-        # PR #18 pre-existing obs: these were silently ignored before.
-        ["-o", str(tmp_path / "x.ldr"), "--seed", "7"],
-        ["-o", str(tmp_path / "x.ldr"), "--time-budget", "5"],
-        ["-o", str(tmp_path / "x.ldr"), "--beauty-preset", "stability"],
-        ["-o", str(tmp_path / "x.ldr"), "--colour", "soft"],
-        ["-o", str(tmp_path / "x.ldr"), "--shell-plates", "2"],
-        ["-o", str(tmp_path / "x.ldr"), "--stability-weight", "2.0"],
-        ["-o", str(tmp_path / "x.ldr"), "--bridge-rephase"],
-        ["-o", str(tmp_path / "x.ldr"), "--hybrid-bridge"],
-    ):
-        with pytest.raises(SystemExit) as excinfo:
-            main([str(source), *extra])
-        assert excinfo.value.code == 2
-
-
-@pytest.mark.parametrize("suffix", [".ldr", ".mpd"])
-@pytest.mark.parametrize(
-    "race_flag",
-    [
-        ("--seeds", "7"),
-        ("--restarts", "3"),
-        ("--jobs", "0"),
-        ("--timeout", "5"),
-    ],
-)
-def test_import_cli_rejects_race_flags(
-    tmp_path,
-    suffix: str,
-    race_flag: tuple[str, str],
-):
-    from legolization.main import main
-
-    source = tmp_path / f"source{suffix}"
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(source),
-                "-o",
-                str(tmp_path / f"out{suffix}"),
-                *race_flag,
-            ]
-        )
-    assert excinfo.value.code == 2
 
 
 def test_import_plain_flat_tiles_roundtrip(layout, tmp_path):

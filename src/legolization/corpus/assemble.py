@@ -8,35 +8,30 @@ identities, then writes a scorecard and optionally the canonical baseline.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from typing import Any
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
 
 from legolization.compare import Candidate, select_best
+from legolization.corpus.collect import (
+    BASELINE,
+    MESH_BASELINE,
+    build_row,
+    compare_to_baseline,
+    to_markdown,
+)
+from legolization.corpus.manifest import load_manifest
 from legolization.eval_artifacts import atomic_json, candidate_from_payload
 from legolization.placement.registry import strategy_names
 
-_SCRIPTS = Path(__file__).resolve().parent
-_REPO = _SCRIPTS.parent
+if TYPE_CHECKING:
+    from legolization.corpus.collect import CorpusModelLike
+
+_REPO = Path(__file__).resolve().parents[3]
 _ASSEMBLED = _REPO / "eval" / "runs" / "assembled"
-
-
-def _load_evaluator() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "eval_corpus_script_for_assembly",
-        _SCRIPTS / "eval_corpus.py",
-    )
-    if spec is None or spec.loader is None:
-        msg = "cannot load scripts/eval_corpus.py"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _artifact_path(raw: str) -> Path:
@@ -81,7 +76,6 @@ def _load_candidate(
 
 
 def _rows(
-    evaluator: ModuleType,
     manifest: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     rows: list[dict[str, Any]] = []
@@ -102,13 +96,16 @@ def _rows(
         if len(candidates) != len(model_entry["candidates"]):
             continue
         report = select_best(candidates)
-        model = SimpleNamespace(
-            name=model_entry["model"],
-            kind=model_entry["kind"],
-            traits=tuple(model_entry["traits"]),
-            expect_min_buildable=model_entry["expect_min_buildable"],
+        model = cast(
+            "CorpusModelLike",
+            SimpleNamespace(
+                name=model_entry["model"],
+                kind=model_entry["kind"],
+                traits=tuple(model_entry["traits"]),
+                expect_min_buildable=model_entry["expect_min_buildable"],
+            ),
         )
-        row = evaluator.build_row(
+        row = build_row(
             model,
             report.to_dict(),
             "ok" if report.winner is not None else "error: all failed",
@@ -119,13 +116,11 @@ def _rows(
 
 
 def _canonical_scope(
-    evaluator: ModuleType,
     manifest: dict[str, Any],
 ) -> bool:
     scope = manifest["scope"]
-    corpus = evaluator.load_corpus_module()
     expected_models = {
-        model.name for model in corpus.load_manifest() if model.kind == scope["kind"]
+        model.name for model in load_manifest() if model.kind == scope["kind"]
     }
     return (
         set(scope["models"]) == expected_models
@@ -135,17 +130,12 @@ def _canonical_scope(
 
 
 def _baseline_path(
-    evaluator: ModuleType,
     manifest: dict[str, Any],
     explicit: Path | None,
 ) -> Path:
     if explicit is not None:
         return explicit
-    return (
-        evaluator.BASELINE
-        if manifest["scope"]["kind"] == "synthetic"
-        else evaluator.MESH_BASELINE
-    )
+    return BASELINE if manifest["scope"]["kind"] == "synthetic" else MESH_BASELINE
 
 
 def _assess(rows: list[dict[str, Any]]) -> tuple[int, list[dict[str, Any]]]:
@@ -197,7 +187,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:  # noqa: C901
     """Validate one collection and assemble its scorecard."""
     args = parse_args(argv)
-    evaluator = _load_evaluator()
     try:
         manifest = json.loads(args.collection.read_text())
     except (OSError, json.JSONDecodeError) as error:
@@ -206,13 +195,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     if manifest.get("schema") != 1:
         print("error: unsupported collection manifest schema", file=sys.stderr)
         return 1
-    rows, errors = _rows(evaluator, manifest)
+    rows, errors = _rows(manifest)
     if errors:
         print("collection is incomplete:", file=sys.stderr)
         for error in errors:
             print(f"  {error}", file=sys.stderr)
         return 1
-    if args.write_baseline and not _canonical_scope(evaluator, manifest):
+    if args.write_baseline and not _canonical_scope(manifest):
         print(
             "error: baseline assembly requires the full kind, every strategy, "
             "and seed 0",
@@ -224,19 +213,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     payload = _payload(manifest, rows, stamp)
     out_dir = args.out / str(manifest["collection_id"])
     atomic_json(out_dir / "scorecard.json", payload)
-    (out_dir / "scorecard.md").write_text(evaluator.to_markdown(rows) + "\n")
+    (out_dir / "scorecard.md").write_text(to_markdown(rows) + "\n")
     print(f"wrote {out_dir / 'scorecard.json'}")
-    print(evaluator.to_markdown(rows))
+    print(to_markdown(rows))
 
     exit_code, successful_rows = _assess(rows)
     seeds = manifest["scope"]["seeds"]
-    baseline = _baseline_path(evaluator, manifest, args.baseline)
+    baseline = _baseline_path(manifest, args.baseline)
     comparable_scope = len(seeds) == 1 and set(manifest["scope"]["strategies"]) == set(
         strategy_names()
     )
     if not args.write_baseline and comparable_scope and baseline.exists():
         known = json.loads(baseline.read_text())["models"]
-        hard, info = evaluator.compare_to_baseline(
+        hard, info = compare_to_baseline(
             rows=successful_rows,
             baseline_rows=known,
             tolerance=args.tolerance,

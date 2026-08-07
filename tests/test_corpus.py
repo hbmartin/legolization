@@ -1,9 +1,7 @@
 """Corpus manifest and synthetic-generator tests."""
 
 import hashlib
-import importlib.util
 import io
-import sys
 import urllib.error
 from pathlib import Path
 from types import ModuleType
@@ -11,25 +9,15 @@ from types import ModuleType
 import numpy as np
 import pytest
 
+import legolization.corpus
+from legolization.corpus import manifest as corpus_manifest
+from legolization.corpus import ops as corpus_ops
 from legolization.grid import EMPTY, VoxelGrid
-
-_SCRIPT = Path(__file__).parent.parent / "scripts" / "corpus.py"
-
-
-def _load_corpus() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("corpus_script", _SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    # slots=True dataclasses resolve their module via sys.modules at exec time.
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 @pytest.fixture(scope="module")
 def corpus() -> ModuleType:
-    return _load_corpus()
+    return legolization.corpus
 
 
 def test_manifest_parses_and_matches_registry(corpus: ModuleType) -> None:
@@ -110,7 +98,7 @@ def test_generate_writes_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(corpus, "_REPO", tmp_path)
+    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     models = [
         corpus.CorpusModel(
             name="cantilever",
@@ -130,7 +118,7 @@ def test_verify_flags_stale_synthetic(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(corpus, "_REPO", tmp_path)
+    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     model = corpus.CorpusModel(
         name="cantilever",
         kind="synthetic",
@@ -149,7 +137,7 @@ def test_verify_flags_missing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(corpus, "_REPO", tmp_path)
+    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     model = corpus.CorpusModel(
         name="cantilever",
         kind="synthetic",
@@ -166,7 +154,7 @@ def test_verify_reports_corrupt_synthetic_and_continues(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(corpus, "_REPO", tmp_path)
+    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     synthetic = tmp_path / "synthetic"
     synthetic.mkdir()
     (synthetic / "corrupt.npy").write_bytes(b"not a numpy file")
@@ -198,7 +186,7 @@ def test_download_isolates_failures_and_replaces_atomically(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(corpus, "_REPO", tmp_path)
+    monkeypatch.setattr(corpus_manifest, "_REPO", tmp_path)
     good_data = b"verified mesh"
     good_hash = hashlib.sha256(good_data).hexdigest()
     old_path = tmp_path / "meshes" / "failed.stl"
@@ -211,7 +199,7 @@ def test_download_isolates_failures_and_replaces_atomically(
             raise urllib.error.URLError("offline")
         return io.BytesIO(good_data)
 
-    monkeypatch.setattr(corpus.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(corpus_ops.urllib.request, "urlopen", fake_urlopen)
     models = [
         corpus.CorpusModel(
             name="failed",

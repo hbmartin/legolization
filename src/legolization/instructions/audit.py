@@ -8,7 +8,7 @@ per-step PNGs so the steps can be inspected visually.
 
 Usage::
 
-    uv run python scripts/check_instructions.py INPUT [--strategy greedy]
+    uv run python -m legolization.instructions.audit INPUT [--strategy greedy]
         [--seed 0] [--step-size 7] [--json PATH|-] [--render-dir DIR]
         [--target-studs N] [--up x|y|z]
 

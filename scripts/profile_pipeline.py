@@ -32,7 +32,6 @@ from __future__ import annotations
 import argparse
 import cProfile
 import hashlib
-import importlib.util
 import json
 import os
 import platform
@@ -45,18 +44,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from legolization import telemetry
+from legolization.corpus import generators
+from legolization.corpus.collect import model_grid, model_mesh_options
+from legolization.corpus.manifest import load_manifest
 from legolization.eval_artifacts import atomic_json
 from legolization.instructions.sequencer import InstructionsConfig
 from legolization.mesh import MeshOptions
 from legolization.pipeline import PipelineConfig, PipelineResult, load_grid, run
 
 if TYPE_CHECKING:
-    from types import ModuleType
-
     from legolization.grid import VoxelGrid
 
-_SCRIPTS = Path(__file__).resolve().parent
-_REPO = _SCRIPTS.parent
+_REPO = Path(__file__).resolve().parent.parent
 PROFILES = _REPO / "eval" / "profiles"
 _WATCHED_STAGES = frozenset(
     {
@@ -126,21 +125,6 @@ def _sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _load_eval_corpus_module() -> ModuleType:
-    """Load the corpus CLI module shared by validation and grid resolution."""
-    spec = importlib.util.spec_from_file_location(
-        "eval_corpus_script",
-        _SCRIPTS / "eval_corpus.py",
-    )
-    if spec is None or spec.loader is None:
-        msg = "cannot load scripts/eval_corpus.py"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def _resolve_grid(
     model: str,
     config: PipelineConfig,
@@ -156,18 +140,19 @@ def _resolve_grid(
             mesh=config.mesh,
             input_hash=_sha256_of(path),
         )
-    module = _load_eval_corpus_module()
-    corpus = module.load_corpus_module()
-    matches = [m for m in corpus.load_manifest() if m.name == model]
+    matches = [m for m in load_manifest() if m.name == model]
     if not matches:
         msg = f"{model!r} is neither an existing input file nor a corpus model"
         raise SystemExit(msg)
     entry = matches[0]
-    grid = module.model_grid(corpus, entry)
+    grid = model_grid(generators, entry)
     if grid is None:
-        msg = f"corpus mesh {model!r} is not on disk; run scripts/corpus.py download"
+        msg = (
+            f"corpus mesh {model!r} is not on disk; "
+            "run python -m legolization.corpus.ops download"
+        )
         raise SystemExit(msg)
-    mesh_options = module.model_mesh_options(entry)
+    mesh_options = model_mesh_options(entry)
     return ResolvedInput(
         name=entry.name,
         input=str(entry.path),
@@ -357,9 +342,7 @@ def _validate_model_reference(model: str) -> None:
     path = Path(model)
     if path.suffix and path.exists():
         return
-    module = _load_eval_corpus_module()
-    corpus = module.load_corpus_module()
-    if model not in {entry.name for entry in corpus.load_manifest()}:
+    if model not in {entry.name for entry in load_manifest()}:
         msg = f"{model!r} is neither an existing input file nor a corpus model"
         raise SystemExit(msg)
 

@@ -15,7 +15,7 @@ from ldraw import Diagnostic, DiagnosticCode, Severity
 from legolization import AnalysisConfig, AnalysisResult, analyze_ldraw
 from legolization.catalog import Category, load_catalog
 from legolization.layout import Layout
-from legolization.ldraw_in import import_ldraw, layout_from_ldraw
+from legolization.ldraw_in import LdrawImportError, import_ldraw, layout_from_ldraw
 from legolization.ldraw_out import write_model
 from legolization.main import main
 from legolization.redesign import (
@@ -1300,58 +1300,55 @@ def test_analyze_cli_stdout_report_keeps_summary_on_stderr(
     assert not source.with_suffix(".analysis.json").exists()
 
 
-def test_ordinary_ldraw_conversion_prints_tolerant_load_warnings(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-):
+def _unknown_meta_warnings(diagnostics: tuple[Diagnostic, ...]) -> list[Diagnostic]:
+    return [
+        diagnostic
+        for diagnostic in diagnostics
+        if diagnostic.severity is Severity.WARNING
+        and diagnostic.code is DiagnosticCode.MODEL_UNKNOWN_META
+    ]
+
+
+def test_ordinary_ldraw_conversion_surfaces_tolerant_load_warnings(tmp_path: Path):
     source = tmp_path / "warning.ldr"
     source.write_text(
         "0 warning\n0 !UNRECOGNIZED report-me\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
     )
     output = tmp_path / "converted.ldr"
 
-    code = main([str(source), "-o", str(output)])
+    imported = import_ldraw(source)
+    write_model(imported.layout, output)
 
-    captured = capsys.readouterr()
-    assert code == 0
     assert output.is_file()
-    assert "warning: model.unknown_meta: unknown meta-command" in captured.err
+    warnings = _unknown_meta_warnings(imported.diagnostics)
+    assert warnings
+    assert any("unknown meta-command" in item.message for item in warnings)
 
 
-def test_failed_ldraw_import_prints_tolerant_load_warnings_before_error(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-):
+def test_failed_ldraw_import_keeps_tolerant_load_warnings(tmp_path: Path):
     source = tmp_path / "warning-and-error.ldr"
     source.write_text(
         "0 warning and error\n"
         "0 !UNRECOGNIZED report-me\n"
         "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 9999.dat\n"
     )
-    output = tmp_path / "converted.ldr"
 
-    code = main([str(source), "-o", str(output)])
+    with pytest.raises(LdrawImportError, match="cannot import model") as excinfo:
+        import_ldraw(source)
 
-    captured = capsys.readouterr()
-    warning = "warning: model.unknown_meta: unknown meta-command"
-    error = "error: cannot import model"
-    assert code == 1
-    assert warning in captured.err
-    assert error in captured.err
-    assert captured.err.index(warning) < captured.err.index(error)
-    assert not output.exists()
+    # The tolerant-load warnings survive alongside the strict error.
+    assert _unknown_meta_warnings(excinfo.value.load_diagnostics)
 
 
 def test_analyze_cli_rejects_unsafe_artifact_paths(tmp_path: Path):
     source = tmp_path / "heart.ldr"
     source.write_bytes(_HEART.read_bytes())
 
-    with pytest.raises(SystemExit):
-        main(["analyze", str(source), "--report", str(tmp_path / "evidence.txt")])
-    with pytest.raises(SystemExit):
-        main(["analyze", str(source), "-o", str(tmp_path / "repair.txt")])
-    with pytest.raises(SystemExit):
-        main(["analyze", str(source), "-o", str(source)])
+    assert (
+        main(["analyze", str(source), "--report", str(tmp_path / "evidence.txt")]) == 1
+    )
+    assert main(["analyze", str(source), "-o", str(tmp_path / "repair.txt")]) == 1
+    assert main(["analyze", str(source), "-o", str(source)]) == 1
 
 
 def test_catalog_extension_cannot_shadow_builtin_key(tmp_path: Path):

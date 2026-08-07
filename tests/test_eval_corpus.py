@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +12,7 @@ import numpy as np
 import pytest
 
 from legolization.compare import Candidate, CandidateMetrics
+from legolization.corpus import collect
 from legolization.eval_artifacts import SourceIdentity
 from legolization.mesh import MeshOptions
 
@@ -21,22 +20,10 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
-_SCRIPT = Path(__file__).parent.parent / "scripts" / "eval_corpus.py"
-
-
-def _load_eval() -> _EvaluatorModule:
-    spec = importlib.util.spec_from_file_location("eval_corpus_script", _SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return cast("_EvaluatorModule", module)
-
 
 @pytest.fixture(scope="module")
 def evaluator() -> _EvaluatorModule:
-    return _load_eval()
+    return cast("_EvaluatorModule", collect)
 
 
 @dataclass(frozen=True)

@@ -197,20 +197,22 @@ def test_cli_end_to_end(tmp_path, capsys):
     npy = tmp_path / "box.npy"
     np.save(npy, _box_codes())
     out = tmp_path / "box.ldr"
-    code = main([str(npy), "-o", str(out), "--seed", "1"])
+    code = main(
+        ["build", str(npy), "-o", str(out), "--strategy", "greedy", "--seed", "1"]
+    )
     captured = capsys.readouterr()
     assert code == 0
     assert out.exists()
-    assert "STABLE" in captured.out
+    assert "stable=True" in captured.out
 
 
 def test_cli_reports_missing_file(tmp_path, capsys):
-    code = main([str(tmp_path / "nope.npy"), "-o", str(tmp_path / "o.ldr")])
+    code = main(["build", str(tmp_path / "nope.npy"), "-o", str(tmp_path / "o.ldr")])
     assert code == 1
     assert "error" in capsys.readouterr().err
 
 
-def test_cli_instructions_pdf_end_to_end(tmp_path, capsys, monkeypatch):
+def test_instructions_pdf_end_to_end(tmp_path, monkeypatch):
     import math
 
     import pypdf
@@ -220,37 +222,11 @@ def test_cli_instructions_pdf_end_to_end(tmp_path, capsys, monkeypatch):
     np.save(npy, _box_codes())
     out = tmp_path / "box.ldr"
     pdf = tmp_path / "box.pdf"
-    code = main([str(npy), "-o", str(out), "--instructions", str(pdf)])
-    captured = capsys.readouterr()
-    assert code == 0
-    assert str(pdf) in captured.out
+    run_file(npy, out, PipelineConfig(seed=0), instructions_path=pdf)
+    assert pdf.exists()
     steps = out.read_text().count("0 STEP")
     # Small box: BOM fits the cover, so pages = cover + 2-step pages.
     assert len(pypdf.PdfReader(pdf).pages) == 1 + math.ceil(steps / 2)
-
-
-def test_cli_instructions_requires_smart_steps(tmp_path):
-    npy = tmp_path / "box.npy"
-    np.save(npy, _box_codes())
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(npy),
-                "--steps",
-                "layer",
-                "--instructions",
-                str(tmp_path / "box.html"),
-            ]
-        )
-    assert excinfo.value.code == 2
-
-
-def test_cli_instructions_rejects_unknown_suffix(tmp_path):
-    npy = tmp_path / "box.npy"
-    np.save(npy, _box_codes())
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(npy), "--instructions", str(tmp_path / "box.docx")])
-    assert excinfo.value.code == 2
 
 
 def test_hollow_restore_loop_fires_on_instability(monkeypatch):
@@ -336,10 +312,26 @@ def test_disjoint_islands_are_not_buildable(tmp_path, capsys):
     codes[2, 0, 0] = 4
     npy = tmp_path / "islands.npy"
     np.save(npy, codes)
-    code = main([str(npy), "-o", str(tmp_path / "islands.ldr"), "--solid"])
+    code = main(
+        [
+            "build",
+            str(npy),
+            "-o",
+            str(tmp_path / "islands.ldr"),
+            "--strategy",
+            "greedy",
+            "--set",
+            "geometry.hollow=false",
+        ]
+    )
     captured = capsys.readouterr()
     assert code == 2
-    assert "2 components" in captured.err
+    assert "buildable=False" in captured.out
+    result = run(
+        VoxelGrid.from_array(codes, plates_per_voxel=3),
+        PipelineConfig(hollow=False, seed=0),
+    )
+    assert result.component_count == 2
 
 
 def test_tiles_and_slopes_flags(tmp_path):

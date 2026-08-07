@@ -194,22 +194,6 @@ def test_run_file_mesh_end_to_end(tmp_path: Path) -> None:
     assert result.buildable
 
 
-def test_cli_mesh_flags_reject_voxel_input(tmp_path: Path) -> None:
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(npy), "--target-studs", "8"])
-    assert excinfo.value.code == 2
-
-
-def test_cli_voxel_flags_reject_mesh_input(tmp_path: Path) -> None:
-    path = tmp_path / "box.stl"
-    _box().export(path)
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(path), "--plates-per-voxel", "2"])
-    assert excinfo.value.code == 2
-
-
 def test_cli_mesh_happy_path(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -217,7 +201,18 @@ def test_cli_mesh_happy_path(
     path = tmp_path / "box.stl"
     _box().export(path)
     out = tmp_path / "box.ldr"
-    exit_code = main([str(path), "-o", str(out), "--target-studs", "6"])
+    exit_code = main(
+        [
+            "build",
+            str(path),
+            "-o",
+            str(out),
+            "--strategy",
+            "greedy",
+            "--target-studs",
+            "6",
+        ]
+    )
     assert exit_code == 0
     assert out.exists()
     assert "wrote" in capsys.readouterr().out
@@ -231,12 +226,16 @@ def test_cli_largest_component_only_reports_removal(tmp_path: Path) -> None:
     with pytest.warns(UserWarning, match="dropped"):
         exit_code = main(
             [
+                "build",
                 str(path),
                 "-o",
                 str(out),
+                "--strategy",
+                "greedy",
                 "--target-studs",
                 "12",
-                "--largest-component-only",
+                "--set",
+                "input.mesh.keep_largest=true",
             ]
         )
 
@@ -378,22 +377,17 @@ def test_cli_sampled_colour_mode_on_ply(tmp_path: Path) -> None:
     out = tmp_path / "box.ldr"
     exit_code = main(
         [
+            "build",
             str(path),
             "-o",
             str(out),
+            "--strategy",
+            "greedy",
             "--target-studs",
             "6",
-            "--mesh-colour-mode",
-            "sampled",
+            "--set",
+            "input.mesh.colour_mode=sampled",
         ]
     )
     assert exit_code == 0
     assert out.exists()
-
-
-def test_cli_colour_mode_rejects_voxel_input(tmp_path: Path) -> None:
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(npy), "--mesh-colour-mode", "sampled"])
-    assert excinfo.value.code == 2

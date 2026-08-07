@@ -13,15 +13,16 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 import legolization.compare
-import legolization.main as main_module
 from legolization.compare import (
     Candidate,
     CandidateMetrics,
     _candidate_config,
     _collect,
     candidate_metrics,
+    print_candidate_table,
     run_all,
     select_best,
+    write_candidate_models,
 )
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.main import main
@@ -526,222 +527,83 @@ def test_parallel_matches_sequential_with_seeds() -> None:
     assert [c.metrics for c in sequential] == [c.metrics for c in parallel]
 
 
-# --- CLI ------------------------------------------------------------------
+# --- sweeps end to end (the --strategy all CLI is gone until phase 4) ------
 
 
-def test_cli_sweep_end_to_end(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((4, 3, 2), 4, dtype=np.int16))
+def test_sweep_end_to_end(tmp_path: Path) -> None:
     out = tmp_path / "box.ldr"
-    report_path = tmp_path / "reports" / "report.json"
     candidates_dir = tmp_path / "candidates"
-    code = main(
-        [
-            str(npy),
-            "-o",
-            str(out),
-            "--strategy",
-            "all",
-            "--jobs",
-            "1",
-            "--time-budget",
-            "5",
-            "--report",
-            str(report_path),
-            "--keep-candidates",
-            str(candidates_dir),
-        ]
+    candidates = run_all(
+        _box_grid(),
+        PipelineConfig(seed=0, time_budget_s=5.0),
+        jobs=1,
     )
-    assert code == 0
-    assert out.exists()
-    payload = json.loads(report_path.read_text())
+    report = select_best(candidates)
+    payload = json.loads(json.dumps(report.to_dict()))
     assert len(payload["candidates"]) == len(strategy_names())
     names = {c["strategy"] for c in payload["candidates"]}
     assert payload["winner"] in names
     assert payload["buildable"] is True
+    written = write_candidate_models(report, directory=candidates_dir, output=out)
     succeeded = [c for c in payload["candidates"] if c["error"] is None]
     assert {p.name for p in candidates_dir.iterdir()} == {
         f"box.{c['strategy']}.ldr" for c in succeeded
     }
-    captured = capsys.readouterr()
-    assert f"selected {payload['winner']}" in captured.out
-    assert "wrote" in captured.out
-
-
-def test_cli_sweep_flags_require_strategy_all(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    # --jobs/--timeout/--seeds now also serve single-strategy restart
-    # races (v5); only the sweep-reporting flags stay sweep-only.
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(tmp_path / "x.npy"), "--report", str(tmp_path / "r.json")])
-    assert excinfo.value.code == 2
-    assert "--strategy all" in capsys.readouterr().err
-
-
-def test_cli_restarts_rejects_nonpositive(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(tmp_path / "x.npy"), "--restarts", "0"])
-    assert excinfo.value.code == 2
-    assert "--restarts" in capsys.readouterr().err
-
-
-def test_cli_profile_requires_single_seed(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(tmp_path / "x.npy"), "--profile", str(tmp_path / "p.json")])
-    assert excinfo.value.code == 2
-    assert "--restarts 1" in capsys.readouterr().err
-
-
-def test_cli_single_explicit_seed_updates_profile(tmp_path: Path) -> None:
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
-    profile = tmp_path / "profile.json"
-    out = tmp_path / "box.ldr"
-    code = main(
-        [
-            str(npy),
-            "-o",
-            str(out),
-            "--seeds",
-            "7",
-            "--profile",
-            str(profile),
-        ]
-    )
-    assert code == 0
-    assert json.loads(profile.read_text())["seed"] == 7
-
-
-@pytest.mark.parametrize("value", ["", "a,b", "0,,1"])
-def test_cli_seeds_reject_malformed_lists(tmp_path: Path, value: str) -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(tmp_path / "x.npy"), "--strategy", "all", "--seeds", value])
-    assert excinfo.value.code == 2
-
-
-def test_cli_sweep_multi_seed_end_to_end(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((4, 3, 2), 4, dtype=np.int16))
-    out = tmp_path / "box.ldr"
-    report_path = tmp_path / "report.json"
-    candidates_dir = tmp_path / "candidates"
-    code = main(
-        [
-            str(npy),
-            "-o",
-            str(out),
-            "--strategy",
-            "all",
-            "--jobs",
-            "1",
-            "--seeds",
-            "0,1",
-            "--report",
-            str(report_path),
-            "--keep-candidates",
-            str(candidates_dir),
-        ]
-    )
-    assert code == 0
-    payload = json.loads(report_path.read_text())
-    assert payload["seeds"] == [0, 1]
-    assert len(payload["candidates"]) == 2 * len(strategy_names())
-    assert {c["seed"] for c in payload["candidates"]} == {0, 1}
-    assert payload["winner_seed"] in (0, 1)
-    succeeded = [c for c in payload["candidates"] if c["error"] is None]
-    assert {p.name for p in candidates_dir.iterdir()} == {
-        f"box.{c['strategy']}.seed{c['seed']}.ldr" for c in succeeded
-    }
-    captured = capsys.readouterr()
-    assert " seed " in captured.out
-    assert "(seed " in captured.out
+    assert set(written) == set(candidates_dir.iterdir())
 
 
 @pytest.mark.parametrize(
-    ("flag", "value", "message"),
+    ("flag", "value"),
     [
-        ("--jobs", "-1", "greater than or equal to zero"),
-        ("--timeout", "0", "greater than zero"),
-        ("--timeout", "-1", "greater than zero"),
-        ("--timeout", "nan", "greater than zero"),
-        ("--timeout", "inf", "greater than zero"),
+        ("--restarts", "0"),
+        ("--jobs", "0"),
+        ("--jobs", "-1"),
     ],
 )
-def test_cli_sweep_rejects_invalid_numeric_options(
+def test_cli_build_rejects_nonpositive_counts(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     flag: str,
     value: str,
-    message: str,
 ) -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(tmp_path / "x.npy"),
-                "--strategy",
-                "all",
-                flag,
-                value,
-            ]
-        )
-
-    assert excinfo.value.code == 2
-    assert message in capsys.readouterr().err
-
-
-def test_cli_sweep_reports_output_oserror(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    npy = tmp_path / "box.npy"
-    np.save(npy, np.full((4, 3, 2), 4, dtype=np.int16))
-    result = run(grid=_box_grid(), config=PipelineConfig(seed=0))
-    candidate = Candidate(
-        strategy="greedy",
-        seconds=0.1,
-        result=result,
-        metrics=_metrics(),
-    )
-
-    def fake_run_all(*args: object, **kwargs: object) -> list[Candidate]:
-        return [candidate]
-
-    def fail_write_outputs(*args: object, **kwargs: object) -> None:
-        message = "disk full"
-        raise OSError(message)
-
-    monkeypatch.setattr(main_module, "run_all", fake_run_all)
-    monkeypatch.setattr(main_module, "write_outputs", fail_write_outputs)
-
     code = main(
         [
-            str(npy),
+            "build",
+            str(tmp_path / "x.npy"),
             "-o",
-            str(tmp_path / "box.ldr"),
-            "--strategy",
-            "all",
-            "--jobs",
-            "1",
+            str(tmp_path / "x.ldr"),
+            flag,
+            value,
         ]
     )
-
     assert code == 1
-    assert "error: disk full" in capsys.readouterr().err
+    assert flag in capsys.readouterr().err
+
+
+def test_sweep_multi_seed_end_to_end(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = tmp_path / "box.ldr"
+    candidates_dir = tmp_path / "candidates"
+    candidates = run_all(
+        _box_grid(),
+        PipelineConfig(seed=0),
+        jobs=1,
+        seeds=(0, 1),
+    )
+    report = select_best(candidates)
+    payload = json.loads(json.dumps(report.to_dict()))
+    assert len(payload["candidates"]) == 2 * len(strategy_names())
+    assert {c["seed"] for c in payload["candidates"]} == {0, 1}
+    assert payload["winner_seed"] in (0, 1)
+    write_candidate_models(report, directory=candidates_dir, output=out)
+    succeeded = [c for c in payload["candidates"] if c["error"] is None]
+    assert {p.name for p in candidates_dir.iterdir()} == {
+        f"box.{c['strategy']}.seed{c['seed']}.ldr" for c in succeeded
+    }
+    print_candidate_table(candidates)
+    assert " seed " in capsys.readouterr().out
 
 
 @pytest.mark.slow

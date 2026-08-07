@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import math
 import sys
 import zipfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,21 +45,26 @@ from legolization.manifest import (
 from legolization.redesign import write_repair_model
 
 if TYPE_CHECKING:
+    from typing import TextIO
+
     from legolization.assembly_connections import ConnectionAnalysis
     from legolization.assembly_model import AssemblyModel
     from legolization.assembly_physics import SupportResolution
     from legolization.layout import Layout
 
 _LDRAW_SUFFIXES = {".ldr", ".mpd"}
-_SCENARIOS = (
-    "auto",
-    "rest",
-    "lift-body",
-    "lift-chassis",
-    "front-torsion",
-    "rear-torsion",
-    "side-load",
-)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AnalyzeOutcome:
+    """Machine-readable result of one analysis invocation."""
+
+    exit_code: int
+    verdict: str | None = None
+    status: str | None = None
+    artifacts: dict[str, str] = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
+    error_message: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,165 +92,15 @@ class _ArtifactState:
     warnings: list[str]
 
 
-def _positive_float(value: str) -> float:
-    try:
-        parsed = float(value)
-    except ValueError as error:
-        msg = f"{value!r} is not a number"
-        raise argparse.ArgumentTypeError(msg) from error
-    if not math.isfinite(parsed) or parsed <= 0:
-        msg = f"{value!r} must be finite and greater than zero"
-        raise argparse.ArgumentTypeError(msg)
-    return parsed
-
-
-def _nonnegative_float(value: str) -> float:
-    try:
-        parsed = float(value)
-    except ValueError as error:
-        msg = f"{value!r} is not a number"
-        raise argparse.ArgumentTypeError(msg) from error
-    if not math.isfinite(parsed) or parsed < 0:
-        msg = f"{value!r} must be finite and non-negative"
-        raise argparse.ArgumentTypeError(msg)
-    return parsed
-
-
 def build_parser() -> argparse.ArgumentParser:
-    """Build the parser independently from the legacy generation CLI."""
-    # Declarative argparse registration is intentionally kept contiguous.
-    # lizard forgives(length)
+    """Build the parser independently from the unified command hierarchy."""
+    from legolization.cli.analyze import configure_args  # noqa: PLC0415
+
     parser = argparse.ArgumentParser(
         prog="legolization analyze",
         description="Analyze arbitrary LDraw geometry and search for a valid repair.",
     )
-    parser.add_argument("input", type=Path, help="input .ldr or .mpd model")
-    parser.add_argument("--config", type=Path, default=None)
-    manifest = parser.add_mutually_exclusive_group()
-    manifest.add_argument("--manifest", type=Path, default=None)
-    manifest.add_argument("--no-manifest", action="store_true")
-    parser.add_argument(
-        "--report",
-        default=None,
-        metavar="PATH",
-        help="optional legacy schema-2 JSON view ('-' = stdout)",
-    )
-    parser.add_argument(
-        "--assembly-report",
-        default=None,
-        metavar="PATH",
-        help="optional legacy assembly schema-1 JSON view ('-' = stdout)",
-    )
-    parser.add_argument("--graph", type=Path, default=None, metavar="PATH")
-    parser.add_argument("--diagnostic-mpd", type=Path, default=None, metavar="PATH")
-    parser.add_argument("--floating-mpd", type=Path, default=None, metavar="PATH")
-    parser.add_argument("--html-report", type=Path, default=None, metavar="PATH")
-    parser.add_argument("--callout-dir", type=Path, default=None, metavar="DIR")
-    parser.add_argument("--comparison-dir", type=Path, default=None, metavar="DIR")
-    parser.add_argument(
-        "--artifact-dir",
-        type=Path,
-        default=None,
-        metavar="DIR",
-        help="collect assembly artifacts and enable HTML/rendered diagnostics",
-    )
-    parser.add_argument(
-        "--no-data-artifacts",
-        action="store_true",
-        help="suppress default graph, component MPD, and floating MPD outputs",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        help="best repair path (default: INPUT.repaired.ldr/.mpd when found)",
-    )
-    parser.add_argument(
-        "--time-budget",
-        type=_positive_float,
-        default=None,
-        metavar="SECONDS",
-        help="hard repair-search budget (default: 300)",
-    )
-    parser.add_argument(
-        "--catalog",
-        type=Path,
-        action="append",
-        default=[],
-        metavar="PATH",
-        help="legacy voxel catalog extension; may be repeated",
-    )
-    parser.add_argument(
-        "--connector-catalog",
-        type=Path,
-        action="append",
-        default=[],
-        metavar="PATH",
-        help="schema-1 connector catalog (mass, tags, custom kinds); may be repeated",
-    )
-    parser.add_argument(
-        "--ldcad-metadata",
-        type=Path,
-        action="append",
-        default=[],
-        metavar="PATH",
-        help="LDCad shadow directory or .csl/.zip archive; may be repeated",
-    )
-    parser.add_argument(
-        "--studio-metadata",
-        type=Path,
-        action="append",
-        default=[],
-        metavar="PATH",
-        help="Studio connectivity JSON export (connections only); may be repeated",
-    )
-    parser.add_argument(
-        "--preserve-origin",
-        action="store_true",
-        help="keep LDraw layer zero authoritative in legacy and adaptive support",
-    )
-    parser.add_argument(
-        "--repair",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="enable or disable repaired-model search",
-    )
-    parser.add_argument(
-        "--no-step-check",
-        action="store_true",
-        help="skip informational checks of source STEP prefixes",
-    )
-    parser.add_argument("--seed", type=int, default=None, help="repair search seed")
-    parser.add_argument(
-        "--topology-only",
-        action="store_true",
-        help="skip mass, support, and equilibrium analysis",
-    )
-    parser.add_argument(
-        "--support",
-        default=None,
-        metavar="MODE",
-        help=("auto, free, wheels, auto-ground, anchored-baseplate, or selected:IDS"),
-    )
-    parser.add_argument(
-        "--path-between",
-        nargs=2,
-        action="append",
-        default=[],
-        metavar=("LEFT", "RIGHT"),
-        help="region path selectors, e.g. pages:1-4 occurrences:20-30",
-    )
-    parser.add_argument(
-        "--scenario",
-        action="append",
-        choices=_SCENARIOS,
-        default=None,
-        help="assembly load scenario; may be repeated",
-    )
-    parser.add_argument("--gravity-g", type=_nonnegative_float, default=None)
-    parser.add_argument("--side-load-g", type=_nonnegative_float, default=None)
-    parser.add_argument("--torsion-load-g", type=_nonnegative_float, default=None)
+    configure_args(parser)
     return parser
 
 
@@ -254,14 +108,37 @@ def main(argv: list[str]) -> int:
     """Run both report surfaces and return the assembly-driven exit code."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    outcome = run_analysis(args, parser)
+    if outcome.error_message is not None:
+        print(f"error: {outcome.error_message}", file=sys.stderr)
+    return outcome.exit_code
+
+
+def run_analysis(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    *,
+    json_mode: bool = False,
+) -> AnalyzeOutcome:
+    """Run both report surfaces and return the machine-readable outcome.
+
+    Under ``json_mode`` the human summary goes to stderr and stdout
+    report targets are rejected, keeping stdout free for the caller's
+    single result envelope.
+    """
     if args.input.suffix.lower() not in _LDRAW_SUFFIXES:
         parser.error("analyze input must end in .ldr or .mpd")
+    if json_mode and "-" in {args.report, args.assembly_report}:
+        parser.error("--json forbids '-' report targets (stdout carries the envelope)")
     try:
         project = _project_config(args)
         _validate_connection_sources(args)
     except (ConfigurationError, OSError) as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 1
+        return AnalyzeOutcome(
+            exit_code=1,
+            status="error",
+            error_message=str(error),
+        )
     _validate_option_combinations(parser, args)
     manifest_enabled = not args.no_manifest and (
         args.manifest is not None or project.output.manifest
@@ -280,6 +157,7 @@ def main(argv: list[str]) -> int:
         input_path=args.input,
         paths=paths,
     )
+    report = assembly_result.report
     try:
         _write_result_views(
             project=project,
@@ -288,14 +166,27 @@ def main(argv: list[str]) -> int:
             assembly_result=assembly_result,
         )
     except (ManifestError, OSError) as error:
-        print(f"error: report write failed: {error}", file=sys.stderr)
-        return 1
+        return AnalyzeOutcome(
+            exit_code=1,
+            verdict=report.verdict,
+            status="error",
+            artifacts=dict(report.artifacts),
+            warnings=tuple(report.warnings),
+            error_message=f"report write failed: {error}",
+        )
     _print_summary(
-        assembly_result.report,
+        report,
         legacy_path=paths.legacy_report,
         assembly_path=paths.assembly_report,
+        stream=sys.stderr if json_mode else None,
     )
-    return _exit_code(assembly_result.report)
+    return AnalyzeOutcome(
+        exit_code=_exit_code(report),
+        verdict=report.verdict,
+        status=report.status,
+        artifacts=dict(report.artifacts),
+        warnings=tuple(report.warnings),
+    )
 
 
 def _validate_connection_sources(args: argparse.Namespace) -> None:
@@ -710,8 +601,10 @@ def _print_summary(
     *,
     legacy_path: str | None,
     assembly_path: str | None,
+    stream: TextIO | None = None,
 ) -> None:
-    stream = sys.stderr if "-" in {legacy_path, assembly_path} else sys.stdout
+    if stream is None:
+        stream = sys.stderr if "-" in {legacy_path, assembly_path} else sys.stdout
     print(f"analysis: {report.verdict.upper()}", file=stream)
     if report.geometry:
         print(

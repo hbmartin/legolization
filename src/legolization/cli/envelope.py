@@ -25,7 +25,7 @@ RESULT_SCHEMA = "legolization.result/v1"
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ArtifactRecord:
-    """One artifact produced by a command; ``path`` is never absolute."""
+    """One artifact produced by a command, path as the command reports it."""
 
     path: str
     kind: str

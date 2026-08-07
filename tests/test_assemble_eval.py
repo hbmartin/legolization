@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from legolization.compare import Candidate, CandidateMetrics
+from legolization.corpus import assemble
 from legolization.eval_artifacts import (
     SourceIdentity,
     atomic_json,
@@ -18,24 +16,13 @@ from legolization.eval_artifacts import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from types import ModuleType
-
-_SCRIPT = Path(__file__).parent.parent / "scripts" / "assemble_eval.py"
-
-
-def _load_assembler() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("assemble_eval_script", _SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 @pytest.fixture(scope="module")
 def assembler() -> ModuleType:
-    return _load_assembler()
+    return assemble
 
 
 def _metrics() -> CandidateMetrics:

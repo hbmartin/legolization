@@ -6,24 +6,24 @@ atomic, identity-stamped JSON artifact. Exact successful artifacts are reused;
 failed, missing, corrupt, or identity-mismatched candidates are retried.
 
 Collection deliberately does not assemble a scorecard or write a baseline.
-Pass its emitted manifest to ``scripts/assemble_eval.py`` after collection.
+Pass its emitted manifest to :mod:`legolization.corpus.assemble` after
+collection.
 
 Usage::
 
-    uv run python scripts/eval_corpus.py [--models a,b] [--traits fast]
+    uv run python -m legolization.corpus.collect [--models a,b] [--traits fast]
         [--kind mesh|synthetic] [--strategies greedy,fast] [--jobs 0]
         [--timeout 300] [--seeds 0,1] [--fresh]
 
 Synthetic models are regenerated in memory and are the default fast scope.
 Mesh evaluation is deliberately opt-in via ``--kind mesh``; run
-``scripts/corpus.py download`` first for full coverage.
+``python -m legolization.corpus.ops download`` first for full coverage.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import sys
 from dataclasses import replace
@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from legolization.compare import Candidate, run_all, select_best
+from legolization.corpus import generators
+from legolization.corpus.manifest import load_manifest, select_models
 from legolization.eval_artifacts import (
     SourceIdentity,
     atomic_json,
@@ -47,10 +49,10 @@ from legolization.mesh import MeshOptions, mesh_to_grid
 from legolization.pipeline import PipelineConfig
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from types import ModuleType
 
-_SCRIPTS = Path(__file__).resolve().parent
-_REPO = _SCRIPTS.parent
+_REPO = Path(__file__).resolve().parents[3]
 BASELINE = _REPO / "eval" / "baselines" / "scorecard.json"
 MESH_BASELINE = _REPO / "eval" / "baselines" / "scorecard-mesh.json"
 _BASELINE_BY_KIND = {"synthetic": BASELINE, "mesh": MESH_BASELINE}
@@ -58,36 +60,57 @@ RUNS = _REPO / "eval" / "runs"
 
 
 class CorpusModelLike(Protocol):
-    """Shape of scripts/corpus.py's CorpusModel (loaded dynamically)."""
+    """Read-only shape of :class:`legolization.corpus.manifest.CorpusModel`."""
 
-    name: str
-    kind: str
-    traits: tuple[str, ...]
-    expect_min_buildable: int
-    plates_per_voxel: int
-    target_studs: int | None
-    up: Literal["x", "y", "z"] | None
-    generator: str | None
-    largest_component_only: bool
+    @property
+    def name(self) -> str:
+        """Unique manifest model name."""
+        ...
+
+    @property
+    def kind(self) -> str:
+        """Corpus kind: ``mesh`` or ``synthetic``."""
+        ...
+
+    @property
+    def traits(self) -> tuple[str, ...]:
+        """Manifest trait tags used for sweep filtering."""
+        ...
+
+    @property
+    def expect_min_buildable(self) -> int:
+        """Minimum buildable strategies the manifest expects."""
+        ...
+
+    @property
+    def plates_per_voxel(self) -> int:
+        """Vertical plates each voxel layer expands to."""
+        ...
+
+    @property
+    def target_studs(self) -> int | None:
+        """Mesh voxelization width in studs, if pinned."""
+        ...
+
+    @property
+    def up(self) -> Literal["x", "y", "z"] | None:
+        """The mesh's vertical axis, if pinned."""
+        ...
+
+    @property
+    def generator(self) -> str | None:
+        """Registered synthetic generator name, if any."""
+        ...
+
+    @property
+    def largest_component_only(self) -> bool:
+        """Whether voxelization keeps only the largest component."""
+        ...
 
     @property
     def abs_path(self) -> Path:
         """Absolute on-disk location of this model's file."""
         ...
-
-
-def load_corpus_module() -> ModuleType:
-    """Import the neighbouring corpus.py script as a module."""
-    spec = importlib.util.spec_from_file_location(
-        "corpus_script", _SCRIPTS / "corpus.py"
-    )
-    if spec is None or spec.loader is None:
-        msg = "cannot load scripts/corpus.py"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def model_mesh_options(model: CorpusModelLike) -> MeshOptions | None:
@@ -511,7 +534,7 @@ def _selected_seeds(args: argparse.Namespace) -> tuple[int, ...]:
 
 
 def _initial_manifest(
-    models: list[CorpusModelLike],
+    models: Sequence[CorpusModelLike],
     args: argparse.Namespace,
     *,
     identity: SourceIdentity,
@@ -698,8 +721,7 @@ def main(argv: list[str] | None = None) -> int:
             "pass it the collection manifest written by this command"
         )
         raise SystemExit(msg)
-    corpus = load_corpus_module()
-    models = corpus.select_models(corpus.load_manifest(), args.models)
+    models = select_models(load_manifest(), args.models)
     if args.traits is not None:
         wanted = {trait.strip() for trait in args.traits.split(",")}
         models = [m for m in models if wanted & set(m.traits)]
@@ -722,7 +744,7 @@ def main(argv: list[str] | None = None) -> int:
     atomic_json(manifest_path, manifest)
     outcomes = [
         _collect_model(
-            corpus,
+            generators,
             model,
             args,
             manifest,

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -12,17 +10,17 @@ import numpy as np
 import pytest
 
 from legolization.catalog import default_catalog
+from legolization.corpus.generators import press_tower
+from legolization.instructions import audit
 from legolization.instructions.bom import bill_of_materials
 from legolization.instructions.sequencer import BuildStep, InstructionPlan
 from legolization.layout import Layout
 
-_SCRIPT = Path(__file__).parent.parent / "scripts" / "check_instructions.py"
-_CORPUS_SCRIPT = Path(__file__).parent.parent / "scripts" / "corpus.py"
 _HEART = Path(__file__).parent.parent / "data" / "examples" / "heart.vox"
 
 
 class _CheckerModule(Protocol):
-    """Typed surface of the dynamically loaded checker script."""
+    """Typed surface of the instruction-audit module."""
 
     def check_steps(
         self,
@@ -40,39 +38,9 @@ class _CheckerModule(Protocol):
         ...
 
 
-class _CorpusModule(Protocol):
-    """Typed surface of the dynamically loaded corpus script."""
-
-    def press_tower(self, arms: int = 3) -> np.ndarray:
-        """Return the deterministic insertion-audit fixture."""
-        ...
-
-
-def _load_checker() -> _CheckerModule:
-    spec = importlib.util.spec_from_file_location("check_instructions", _SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return cast("_CheckerModule", module)
-
-
-def _load_corpus() -> _CorpusModule:
-    spec = importlib.util.spec_from_file_location(
-        "corpus_for_instructions", _CORPUS_SCRIPT
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return cast("_CorpusModule", module)
-
-
 @pytest.fixture(scope="module")
 def checker() -> _CheckerModule:
-    return _load_checker()
+    return cast("_CheckerModule", audit)
 
 
 def test_check_steps_flags_floating_prefix(checker: _CheckerModule) -> None:
@@ -220,25 +188,16 @@ def test_insertion_check_flags_press_fragile_steps(checker: _CheckerModule) -> N
 def test_unsupported_ratio_measures_overhang() -> None:
     import numpy as np
 
+    from legolization.corpus.collect import unsupported_ratio
     from legolization.grid import VoxelGrid
-
-    spec = importlib.util.spec_from_file_location(
-        "eval_corpus_for_cs",
-        Path(__file__).parent.parent / "scripts" / "eval_corpus.py",
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
 
     codes = np.full((2, 1, 2), -1, dtype=np.int16)
     codes[0, 0, 0] = 4  # grounded column
     codes[0, 0, 1] = 4  # supported
     codes[1, 0, 1] = 4  # overhang (nothing below)
     grid = VoxelGrid(codes=codes)
-    assert module.unsupported_ratio(grid) == pytest.approx(1 / 3, abs=1e-4)
-    assert module.unsupported_ratio(None) is None
+    assert unsupported_ratio(grid) == pytest.approx(1 / 3, abs=1e-4)
+    assert unsupported_ratio(None) is None
 
 
 def test_press_tower_pins_the_insertion_audit(
@@ -251,7 +210,7 @@ def test_press_tower_pins_the_insertion_audit(
     # Build it from the committed generator so an ignored local corpus
     # artifact cannot make a clean-checkout regression pass by accident.
     model = tmp_path / "press-tower.npy"
-    np.save(model, _load_corpus().press_tower())
+    np.save(model, press_tower())
     plain = tmp_path / "plain.json"
     assert checker.main([str(model), "--json", str(plain)]) == 0
     plain_rows = json.loads(plain.read_text())["steps"]
