@@ -10,18 +10,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from ldraw import load_model
-from pyldcad import ConnectivityConfig, analyze_connectivity
+
+from legolization.assembly_connections import analyze_connections
+from legolization.assembly_model import source_line, source_model
 
 if TYPE_CHECKING:
     from ldraw import BoundingBox, ModelAnalysis
     from ldraw.parts import Parts
-    from pyldcad import ConnectivityAnalysis
 
+    from legolization.assembly_connections import ConnectionAnalysis, ConnectionConfig
     from legolization.assembly_model import (
         AssemblyBounds,
         AssemblyModel,
         AssemblyOccurrence,
     )
+    from legolization.assembly_registry import ConnectorRegistry
 
 type EditKind = Literal["rotate", "translate", "mirror"]
 type Matrix3 = tuple[
@@ -76,9 +79,10 @@ def search_counterfactuals(  # noqa: C901, PLR0913 - bounded search orchestratio
     path: Path,
     *,
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
     parts: Parts,
-    connectivity_config: ConnectivityConfig,
+    registry: ConnectorRegistry,
+    config: ConnectionConfig,
     time_budget_s: float,
 ) -> CounterfactualSearchResult:
     """Search implicated placements for one connector-improving edit."""
@@ -102,7 +106,7 @@ def search_counterfactuals(  # noqa: C901, PLR0913 - bounded search orchestratio
     tested = 0
     timed_out = False
     for occurrence in candidates:
-        if (source_line := occurrence.source.source_line) is None:
+        if (edit_line := source_line(occurrence.source)) is None:
             continue
         for edit in _edits():
             if time.perf_counter() - started >= time_budget_s:
@@ -111,7 +115,7 @@ def search_counterfactuals(  # noqa: C901, PLR0913 - bounded search orchestratio
             if (
                 candidate_text := _apply_edit(
                     original,
-                    source_line=source_line,
+                    source_line=edit_line,
                     expected_reference=occurrence.reference,
                     edit=edit,
                 )
@@ -126,9 +130,10 @@ def search_counterfactuals(  # noqa: C901, PLR0913 - bounded search orchestratio
             )
             if candidate_analysis is None or candidate_analysis.inspection is None:
                 continue
-            candidate_connectivity = analyze_connectivity(
-                candidate_analysis,
-                connectivity_config,
+            candidate_connectivity = analyze_connections(
+                candidate_analysis.inspection,
+                registry=registry,
+                config=config,
             )
             component_reduction = (
                 connectivity.confirmed_component_count
@@ -152,8 +157,8 @@ def search_counterfactuals(  # noqa: C901, PLR0913 - bounded search orchestratio
                 best_score = score
                 best = CounterfactualCandidate(
                     occurrence_id=occurrence.occurrence_id,
-                    source_model=occurrence.source.source_model,
-                    source_line=source_line,
+                    source_model=source_model(occurrence.source),
+                    source_line=edit_line,
                     part_id=occurrence.part_id,
                     kind=edit.kind,
                     description=edit.description,
@@ -199,7 +204,7 @@ def search_counterfactuals(  # noqa: C901, PLR0913 - bounded search orchestratio
 
 def _candidate_occurrences(
     model: AssemblyModel,
-    connectivity: ConnectivityAnalysis,
+    connectivity: ConnectionAnalysis,
 ) -> tuple[AssemblyOccurrence, ...]:
     sizes = {
         occurrence_id: len(component)

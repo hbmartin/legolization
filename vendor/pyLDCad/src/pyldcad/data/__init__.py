@@ -1,2 +1,0 @@
-"""Bundled connector registry resources."""
-

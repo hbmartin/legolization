@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import math
 import sys
+import zipfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -45,8 +46,7 @@ from legolization.manifest import (
 from legolization.redesign import write_repair_model
 
 if TYPE_CHECKING:
-    from pyldcad import ConnectivityAnalysis
-
+    from legolization.assembly_connections import ConnectionAnalysis
     from legolization.assembly_model import AssemblyModel
     from legolization.assembly_physics import SupportResolution
     from legolization.layout import Layout
@@ -82,7 +82,7 @@ class _ArtifactState:
     """Shared typed state for best-effort artifact writers."""
 
     model: AssemblyModel
-    connectivity: ConnectivityAnalysis
+    connectivity: ConnectionAnalysis
     support: SupportResolution
     written: dict[str, str]
     warnings: list[str]
@@ -183,7 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="PATH",
-        help="native pyLDCad connector catalog; may be repeated",
+        help="schema-1 connector catalog (mass, tags, custom kinds); may be repeated",
     )
     parser.add_argument(
         "--ldcad-metadata",
@@ -191,7 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="PATH",
-        help="LDCad SNAP metadata source; may be repeated",
+        help="LDCad shadow directory or .csl/.zip archive; may be repeated",
     )
     parser.add_argument(
         "--studio-metadata",
@@ -199,7 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="PATH",
-        help="Studio connectivity JSON export; may be repeated",
+        help="Studio connectivity JSON export (connections only); may be repeated",
     )
     parser.add_argument(
         "--preserve-origin",
@@ -258,6 +258,7 @@ def main(argv: list[str]) -> int:
         parser.error("analyze input must end in .ldr or .mpd")
     try:
         project = _project_config(args)
+        _validate_connection_sources(args)
     except (ConfigurationError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -295,6 +296,20 @@ def main(argv: list[str]) -> int:
         assembly_path=paths.assembly_report,
     )
     return _exit_code(assembly_result.report)
+
+
+def _validate_connection_sources(args: argparse.Namespace) -> None:
+    for path in args.ldcad_metadata:
+        if not path.exists():
+            msg = f"LDCad shadow source does not exist: {path}"
+            raise ConfigurationError(msg)
+        if not path.is_dir() and not zipfile.is_zipfile(path):
+            msg = f"LDCad shadow source must be a directory or ZIP/CSL archive: {path}"
+            raise ConfigurationError(msg)
+    for path in args.studio_metadata:
+        if not path.is_file():
+            msg = f"Studio connectivity source is not a readable file: {path}"
+            raise ConfigurationError(msg)
 
 
 def _project_config(args: argparse.Namespace) -> ProjectConfig:
