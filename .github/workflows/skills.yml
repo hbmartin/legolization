@@ -1,0 +1,77 @@
+name: Skills
+on: push
+
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Exact skill inventory
+      run: |
+        set -euo pipefail
+        printf '%s\n' \
+          analyze-lego-assembly \
+          eval-corpus \
+          extend-lego-part-support \
+          inspect-instructions \
+          legolize-model \
+          optimize-lego-build \
+          prepare-lego-input \
+          publish-lego-instructions \
+          render-ldraw \
+          repair-lego-assembly \
+          > /tmp/expected-skills.txt
+        ls -1 skills | LC_ALL=C sort > /tmp/actual-skills.txt
+        diff -u /tmp/expected-skills.txt /tmp/actual-skills.txt
+    - name: Install uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+    - name: Validate every skill with the vendored quick_validate
+      run: |
+        set -euo pipefail
+        for d in skills/*/; do
+          echo "validating $d"
+          uv run --no-project --with pyyaml python tools/vendored/quick_validate.py "$d"
+        done
+    - name: Skill discovery smoke test
+      run: |
+        set -euo pipefail
+        npx --yes skills@1 add . --list 2>&1 \
+          | sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' > /tmp/discovery.txt
+        cat /tmp/discovery.txt
+        status=0
+        for name in \
+            legolize-model prepare-lego-input optimize-lego-build \
+            publish-lego-instructions analyze-lego-assembly \
+            repair-lego-assembly extend-lego-part-support render-ldraw \
+            inspect-instructions eval-corpus; do
+          if ! grep -q "$name" /tmp/discovery.txt; then
+            echo "missing from discovery output: $name" >&2
+            status=1
+          fi
+        done
+        exit "$status"
+    - name: Validate SVG icons
+      run: |
+        set -euo pipefail
+        sudo apt-get install -y libxml2-utils
+        find skills -name '*.svg' -print0 | xargs -0 -r -n1 xmllint --noout
+    - name: Shell script syntax
+      run: |
+        set -euo pipefail
+        find skills -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+    - name: PowerShell script parse
+      shell: pwsh
+      run: |
+        $failed = $false
+        Get-ChildItem -Path skills -Recurse -Filter *.ps1 | ForEach-Object {
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            $_.FullName, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            Write-Output "Parse errors in $($_.FullName):"
+            $errors | ForEach-Object { Write-Output $_.ToString() }
+            $failed = $true
+          }
+        }
+        if ($failed) { exit 1 }

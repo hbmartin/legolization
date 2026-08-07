@@ -12,7 +12,7 @@ regression regardless of how much faster it is.
 
 The development inner loop is intentionally bounded:
 `uv run pytest` skips tests marked `slow`, and a bare
-`scripts/eval_corpus.py` sweep selects synthetics only. Use
+`legolization corpus collect` sweep selects synthetics only. Use
 `uv run pytest --run-slow` for the full test suite and opt into mesh
 evaluation explicitly with `--kind mesh`; CI uses the full-test flag.
 
@@ -189,12 +189,13 @@ alters placements — keep it green when adding spans.
 Hard failures (any one blocks the change):
 
 - any golden `.ldr` byte diff (`tests/test_examples_regression.py`);
-- any corpus scorecard row change that `eval_corpus` classifies as
+- any corpus scorecard row change that `legolization corpus assemble`
+  classifies as
   hard (buildable-count drop, expectation failure, winner objective
   worsening beyond tolerance);
 - a dual-engine plan test diff (`tests/test_prefix_solver.py`);
 - a changed `result` verdict block on any pinned profile input;
-- unstable-step counts changing in `scripts/check_instructions.py`
+- unstable-step counts changing in `legolization instructions audit`
   output on spot/suzanne/mushroom/heart.
 
 Soft signals to investigate:
@@ -210,7 +211,7 @@ Soft signals to investigate:
 Every perf commit runs the full standard gates (ruff, pytest, ty,
 pyrefly, lizard CCN 18) **plus**: goldens byte-identical; `eval-corpus`
 synthetic scorecard vs the committed baseline; dual-engine plan
-equality tests; `verify_plan`/`check_instructions` clean on the proof
+equality tests; `verify_plan`/`legolization instructions audit` clean on the proof
 models; and at least one `engine_cross_check=True` run over a rescue-
 heavy model with zero mismatch spans. Optimizations must be
 verdict-preserving with a cold fallback: near-threshold results

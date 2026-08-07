@@ -550,6 +550,7 @@ def _wrap_xvfb(cmd: list[str]) -> list[str]:
 
 
 def render_single_image(  # noqa: PLR0913 - one bag of render state
+    # lizard forgives(parameter_count)
     model: Path,
     output: Path,
     *,

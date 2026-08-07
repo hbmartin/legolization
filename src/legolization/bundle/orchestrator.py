@@ -497,6 +497,8 @@ def _stage_generate(context: _BundleContext) -> None:
 
 
 def _stage_candidates(context: _BundleContext) -> None:
+    # The spawn/harvest/deadline loop is one orchestration boundary.
+    # lizard forgives(cyclomatic_complexity)
     from legolization.bundle.workers import (  # noqa: PLC0415
         is_alive,
         prepare_worker,

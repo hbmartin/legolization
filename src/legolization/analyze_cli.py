@@ -640,6 +640,8 @@ def _write_analysis_bundle(  # noqa: PLR0913 - the complete bundle record inputs
     extra_artifacts: dict[str, Path] | None = None,
 ) -> tuple[str | None, tuple[str, ...]]:
     """Write ``bundle.json`` for the analysis bundle; failures warn only."""
+    # One bag of bundle-record inputs.
+    # lizard forgives(parameter_count)
     try:
         record = repair_bundle_record(
             input_path,
@@ -782,6 +784,8 @@ def _run_repair_flow(  # noqa: PLR0913 - the repair engine's complete context
         if legacy_result.imported is not None
         else {}
     )
+    # The repair engine's complete context in one flow.
+    # lizard forgives(parameter_count)
     return run_repair(
         RepairRequest(
             input_path=args.input,

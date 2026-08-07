@@ -613,9 +613,6 @@ def _validate_candidate(  # noqa: C901, PLR0911 - fail-fast validation gates
     parity_solver: SolverConfig,
     strict_solver: SolverConfig,
 ) -> RepairCandidate | RejectedCandidate:
-    # Fail-fast acceptance gates are one cold-certification transaction;
-    # a failing gate names itself in the returned rejection.
-    # lizard forgives(cyclomatic_complexity, length)
     original_placements = set(signatures(original))
     candidate_placements = set(signatures(candidate))
     added_cell_count = len(set(candidate.occupancy) - set(original.occupancy))
@@ -640,6 +637,9 @@ def _validate_candidate(  # noqa: C901, PLR0911 - fail-fast validation gates
         )
 
     if tier == "envelope-retile":
+        # Fail-fast acceptance gates are one cold-certification
+        # transaction; a failing gate names itself in the rejection.
+        # lizard forgives(cyclomatic_complexity, length)
         if set(candidate.occupancy) != set(original.occupancy):
             return rejected(
                 "geometry-preservation",

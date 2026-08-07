@@ -45,9 +45,10 @@ Score exactly 1.0 on a prefix therefore means one of:
 counterweight (a later band) lands*. Both are prefix-time topology
 problems, not solver noise.
 
-## 2. Evidence (reproduce: `scripts/check_instructions.py INPUT --json -`)
+## 2. Evidence (reproduce: `legolization instructions audit MODEL --report r.json`)
 
-Seed 0, default config, corpus at `data/corpus/` (`corpus.py generate`):
+Seed 0, default config, corpus inputs from `legolization corpus generate`
+(user-data storage):
 
 | model | steps | unstable | flagged steps (floating_after) |
 |---|---|---|---|
@@ -114,7 +115,7 @@ would buy nothing and cost 2–4× sequencing time.
 1. **Subassembly steps (MPD submodels)** — the only approach that
    resolves the mushroom/arch class outright: detect maximal floating
    clusters that later bond (the per-prefix `floating_after` sets in
-   `check_instructions.py` output are exactly these), emit them as a
+   `legolization instructions audit` output are exactly these), emit them as a
    sub-booklet built table-up, and one "attach subassembly" step in the
    main sequence. Already on the roadmap as deferred; this report
    supplies the trigger condition and the evidence that nothing cheaper
@@ -137,8 +138,8 @@ would buy nothing and cost 2–4× sequencing time.
 
 ## 6. Pointers
 
-- Reproduce any table row: `uv run python scripts/check_instructions.py
-  <input> --json - [--render-dir steps/]`.
+- Reproduce any table row: `uv run legolization instructions audit
+  <model-or-bundle> --report r.json [--render-dir steps/]`.
 - The experiment script pattern lives in this report's history (a
   15-line `plan_instructions` loop over `InstructionsConfig` variants).
 - Related: `docs/self-evaluation-playbook.md` §6 failure signatures;
