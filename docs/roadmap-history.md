@@ -52,6 +52,17 @@ the released dataset's per-object `stability_score.npy` under a
 documented convention (stands iff all scores finite and < 1.0), with
 deterministic sampling and an agreement report.
 
+### 2026-08-07 — WS-T: thin-shell bridge residual closed by note
+
+The structure-preserving-bridge residual (`fast` 370 vs kollsker 386
+on thin-shell) is closed without implementation — the cross-slab
+bond-variable formulation is not funded for a 16-brick gap on one
+stable, single-component synthetic row after four built mechanisms
+(per-slab MILP, WS-F flow escalation, `--bridge-rephase`, the hybrid
+phase-1 completion) all failed to promote past the production
+acceptance key. Closure note with the evidence base and reopen
+triggers: `docs/kollsker-drift-report.md`, "v8 closure".
+
 ## v7 progress notes
 
 Living log of the v7 program (PR-19/PR-21 residual remediation,
@@ -1305,6 +1316,17 @@ tests confirm a side-stud connection transmits the expected friction load.
   scorecard, and dual-engine gates. Until then the v8 budget guardrail
   (`time_budget_s` → one pipeline deadline honoured by repair,
   hollow-restore, and Luo stabilize) bounds the tails.
+  *2026-08-07 — the accept/reject direction now has a concrete
+  mechanism:* BrickSim's reduced-variable parameterization
+  (arXiv:2603.16853; `references/bricksim-*/paper.md`) is ported as an
+  opt-in candidate screen — `stability/reduced.py` (affine per-interface
+  fields, a provable restriction of the exact LP so errors skew to
+  false rejects) + `stability/screen.py` (single OSQP QP mirroring the
+  certifier objective), wired into `FrozenBoundaryAnalyzer.certify` and
+  Luo `_stabilize` behind `SolverConfig.screen = "bricksim"` (default
+  "off", every historical byte preserved; accepted candidates still
+  cold-solve). Measurement gate: `scripts/benchmark_screen.py` with
+  pre-registered thresholds in `docs/performance-testing.md`.
 - **Candidate caching in greedy `_fill`.** `_placements` recomputes rotations
   and validity per seed; memoize per (part, yaw) footprints and test cells
   against numpy masks instead of Python sets.

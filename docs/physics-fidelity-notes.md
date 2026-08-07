@@ -105,6 +105,31 @@ is **not warranted yet** — there is no data to fill it with. Recorded
 revisit trigger: access to an Abaqus seat (or a port of BrickFEM's
 clamping-step trick to an open FE code such as CalculiX).
 
+### 2026-08-07 addendum: the BrickSim ground truth is not published
+
+BrickSim (arXiv:2603.16853, the same CMU lab's successor — see
+`references/bricksim-a-physics-based-simulator-for-manipulating-interlocking-brick-assemblies/`)
+reports 100% static-stability accuracy on **150 assemblies whose
+ground truth was established by physically building them** — exactly
+the calibration target this section lacks, and one that needs no
+Abaqus seat. Checked at the source (repo
+`intelligent-control-lab/BrickSim` and its released dataset,
+`bricksim_dataset.tar.xz` from the author's CMU page): the released
+`simulator_testset/dataset.json` catalogs 3_358 StableText2Brick
+structures with StableLego-*computed* metadata (`stable_with_plate`,
+`max_stability_score_with_plate`, per-brick `stability_score.npy`) —
+useful as a format reference — and the evaluation script
+(`experiments/evaluate_stability.py`) consumes optional `gt_stable`
+annotations, but **no physical-build labels ship anywhere**. The
+150-assembly subset and its real-world verdicts are not recoverable
+from the public artifacts.
+
+The per-contact-type capacity item therefore **stays blocked**, now
+with two recorded revisit triggers instead of one: (a) the original
+Abaqus/CalculiX path above, and (b) publication of BrickSim's
+physical-build labels (or obtaining them from the authors), which
+would let T be fit or falsified against reality directly.
+
 ## 3. The BrickFEM calibration path (when runnable)
 
 Each item is one small `assembly` dictionary in BrickFEM's input
