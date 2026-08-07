@@ -18,6 +18,7 @@ from legolization.bundle.identity import BundleIdentity, bundle_identity
 from legolization.bundle.paths import ResumeDecision, resolve_output_dir
 from legolization.bundle.record import (
     BundleRecord,
+    StageRecord,
     read_identity_key,
     read_record,
     source_payload,
@@ -38,9 +39,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from legolization.bundle.candidates import CandidatePlan
+    from legolization.bundle.candidates import CandidatePlan, CandidateSpec
     from legolization.bundle.paths import BundleFlavor
-    from legolization.bundle.selection import BundleCandidate
+    from legolization.bundle.selection import BundleCandidate, BundleSelection
     from legolization.configuration import ProjectConfig
     from legolization.grid import VoxelGrid
     from legolization.ldraw_in import ImportedLdrawModel
@@ -186,28 +187,57 @@ class _BundleContext:
 
         Generation modes run the pipeline (deterministic at fixed seed);
         sweep mode re-runs the recorded winner with full outputs;
-        preserve mode analyzes the imported assembly as-is.
+        preserve mode analyzes the imported assembly as-is. Every mode
+        finishes with a publication instruction plan: automatic step
+        density with subassemblies and insertion auditing always on.
         """
         if self.result is None:
             if self.mode == "preserve":
-                self.result = self._imported_result()
+                result = self._imported_result()
             elif self.sweeping:
-                self.result = self._winner_result()
+                result = self._winner_result()
             else:
-                self.result = self._generated_result()
+                result = self._generated_result()
+            self.result = self._with_publication_plan(result)
         return self.result
 
+    def _with_publication_plan(self, result: PipelineResult) -> PipelineResult:
+        from dataclasses import replace  # noqa: PLC0415
+
+        from legolization.instructions.sequencer import (  # noqa: PLC0415
+            InstructionsConfig,
+            automatic_target_step_size,
+            plan_instructions,
+        )
+
+        plan = plan_instructions(
+            result.layout,
+            config=InstructionsConfig(
+                target_step_size=automatic_target_step_size(len(result.layout)),
+                subassemblies=True,
+                insertion_check=True,
+                solver=self.request.config.stability.effective_solver(),
+            ),
+        )
+        return replace(result, plan=plan)
+
     def _generated_result(self) -> PipelineResult:
+        from dataclasses import replace  # noqa: PLC0415
+
         from legolization.cli.build import select_strategy  # noqa: PLC0415
+        from legolization.instructions.sequencer import (  # noqa: PLC0415
+            InstructionsConfig,
+        )
         from legolization.pipeline import run  # noqa: PLC0415
 
         grid = self.ensure_grid()
         config = self.request.config
         strategy, automatic = select_strategy(config, grid)
-        return run(
-            grid,
+        pipeline = replace(
             config.to_pipeline(strategy=strategy, automatic=automatic),
+            instructions=InstructionsConfig(mode="layer"),
         )
+        return run(grid, pipeline)
 
     def _winner_result(self) -> PipelineResult:
         from dataclasses import replace  # noqa: PLC0415
@@ -225,12 +255,17 @@ class _BundleContext:
             (item for item in VARIANTS if item.name == variant_name),
             VARIANTS[0],
         )
+        from legolization.instructions.sequencer import (  # noqa: PLC0415
+            InstructionsConfig,
+        )
+
         grid = self.variant_grids.get(variant_name) or self.variant_grids["hard"]
         pipeline = replace(
             self.request.config.to_pipeline(strategy=str(winner["strategy"])),
             seed=int(winner.get("seed") or 0),
             colour_mode=variant.colour_mode,
             dither=variant.dither,
+            instructions=InstructionsConfig(mode="layer"),
         )
         return run(grid, pipeline)
 
@@ -319,6 +354,7 @@ def _run_stages(
         *middle,
         ("model", _stage_model),
         ("bom", _stage_bom),
+        ("instructions", _stage_instructions),
     )
     try:
         for name, runner in stages:
@@ -551,11 +587,8 @@ def _bundle_candidates(context: _BundleContext) -> list[BundleCandidate]:
 
 def _candidate_job(
     context: _BundleContext,
-    spec: object,
+    spec: CandidateSpec,
 ) -> dict[str, object]:
-    from legolization.bundle.candidates import CandidateSpec  # noqa: PLC0415
-
-    assert isinstance(spec, CandidateSpec)  # noqa: S101 - internal seam
     return {
         "kind": "candidate",
         "input_path": str(context.request.input_path.resolve()),
@@ -620,14 +653,15 @@ def _stage_selection(context: _BundleContext) -> None:
         context.force_rerun |= {"model", "bom"}
 
 
-def _retain_best_rejected(context: _BundleContext, selection: object) -> None:
+def _retain_best_rejected(
+    context: _BundleContext,
+    selection: BundleSelection,
+) -> None:
     """Keep the least-bad rejected model in diagnostics with reasons."""
     import shutil  # noqa: PLC0415
 
-    from legolization.bundle.selection import BundleSelection  # noqa: PLC0415
     from legolization.eval_artifacts import atomic_json, input_sha256  # noqa: PLC0415
 
-    assert isinstance(selection, BundleSelection)  # noqa: S101 - internal seam
     winner = selection.winner
     if winner is None or winner.model_relpath is None:
         return
@@ -707,6 +741,132 @@ def _stage_bom(context: _BundleContext) -> None:
         kind="bom",
         sha256=input_sha256(path),
     )
+
+
+def _stage_instructions(context: _BundleContext) -> None:
+    """Publish the instruction surfaces per the render mode.
+
+    The step-annotated MPD (written by the model stage) and the audit
+    report are emitted in every mode; HTML/PDF booklets appear only
+    when rendering is available, with explicit missing-step markers —
+    never placeholder pages — when some steps fail.
+    """
+    from legolization.eval_artifacts import atomic_json, input_sha256  # noqa: PLC0415
+    from legolization.instructions.audit import audit_model  # noqa: PLC0415
+
+    stage = context.record.stage("instructions")
+    render_mode = context.request.render
+    stage.detail["render"] = render_mode
+    if not context.publish:
+        stage.status = "skipped"
+        stage.detail["reason"] = "no buildable candidate to publish"
+        return
+    instructions_dir = context.directory / "instructions"
+    instructions_dir.mkdir(parents=True, exist_ok=True)
+    audit_payload = audit_model(context.directory / "model" / "model.mpd")
+    audit_path = instructions_dir / "audit.json"
+    atomic_json(audit_path, audit_payload)
+    context.record.record_artifact(
+        path="instructions/audit.json",
+        stage="instructions",
+        kind="audit",
+        sha256=input_sha256(audit_path),
+    )
+    stage.detail["audit_verdict"] = audit_payload["verdict"]
+    if audit_payload["verdict"] != "certified" and context.record.verdicts.get(
+        "buildable"
+    ):
+        # A buildable model with an incomplete stable/insertion-safe
+        # order is a warned partial (exit 3); an unbuildable result
+        # keeps its own exit 2.
+        context.exit_override = PARTIAL
+        stage.status = "partial"
+    if render_mode == "off":
+        stage.detail["booklet"] = "omitted (--render=off)"
+        return
+    _publish_booklet(context, stage, instructions_dir)
+
+
+def _publish_booklet(
+    context: _BundleContext,
+    stage: StageRecord,
+    instructions_dir: Path,
+) -> None:
+    from legolization.eval_artifacts import input_sha256  # noqa: PLC0415
+    from legolization.instructions.booklet import (  # noqa: PLC0415
+        BookletConfig,
+        ModelStats,
+        booklet_html,
+        build_booklet,
+        default_page_size,
+        write_booklet_pdf,
+    )
+    from legolization.instructions.render import (  # noqa: PLC0415
+        detect_renderer,
+        render_step_images,
+    )
+
+    renderer = detect_renderer()
+    if renderer is None:
+        stage.detail["booklet"] = "omitted (no renderer available)"
+        if context.request.render == "required":
+            context.exit_override = PARTIAL
+            stage.status = "partial"
+        return
+    result = context.ensure_result()
+    plan = result.plan
+    if plan is None:  # pragma: no cover - publication plans always exist
+        stage.detail["booklet"] = "omitted (no instruction plan)"
+        return
+    images = render_step_images(context.directory / "model" / "model.mpd", plan)
+    if not any(png is not None for png in images.images):
+        stage.detail["booklet"] = "omitted (rendering failed for every step)"
+        for warning in images.warnings:
+            if warning not in context.record.warnings:
+                context.record.warnings.append(warning)
+        context.exit_override = PARTIAL
+        stage.status = "partial"
+        return
+    booklet = build_booklet(
+        plan,
+        ModelStats(
+            name=context.request.input_path.stem,
+            brick_count=result.brick_count,
+            mass_g=result.mass_g,
+            step_count=result.step_count,
+            stable=result.stability.stable,
+            buildable=result.buildable,
+            component_count=result.component_count,
+            floating_count=result.floating_count,
+        ),
+        images,
+        config=BookletConfig(
+            page_size=default_page_size(),
+            title=context.request.input_path.stem,
+        ),
+    )
+    html_path = instructions_dir / "instructions.html"
+    html_path.write_text(booklet_html(booklet), encoding="utf-8")
+    pdf_path = instructions_dir / "instructions.pdf"
+    write_booklet_pdf(booklet, pdf_path)
+    for name, kind in (
+        ("instructions.html", "booklet"),
+        ("instructions.pdf", "booklet"),
+    ):
+        context.record.record_artifact(
+            path=f"instructions/{name}",
+            stage="instructions",
+            kind=kind,
+            sha256=input_sha256(instructions_dir / name),
+        )
+    if booklet.missing_steps:
+        listed = ", ".join(str(index) for index in booklet.missing_steps)
+        message = f"booklet has explicit missing-step markers for step(s) {listed}"
+        if message not in context.record.warnings:
+            context.record.warnings.append(message)
+        context.exit_override = PARTIAL
+        stage.status = "partial"
+    stage.detail["missing_steps"] = list(booklet.missing_steps)
 
 
 def _load_or_create_record(

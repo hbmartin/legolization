@@ -151,6 +151,10 @@ def detect_ldraw_dir(
     env = env if env is not None else os.environ
     if (value := env.get(_ENV_LDRAW_DIR)) and _is_ldraw_dir(candidate := Path(value)):
         return candidate
+    from legolization.parts_library import library_dir, managed_root  # noqa: PLC0415
+
+    if (managed := library_dir(managed_root())) is not None:
+        return managed
     for base, pattern in _LDRAW_GLOBS:
         for match in sorted(Path(base).expanduser().glob(pattern)):
             if _is_ldraw_dir(match):
@@ -543,6 +547,66 @@ def _wrap_xvfb(cmd: list[str]) -> list[str]:
     if platform.system() == "Linux" and shutil.which("xvfb-run"):
         return ["xvfb-run", "-a", "-s", "-screen 0 1600x1200x24", *cmd]
     return cmd
+
+
+def render_single_image(  # noqa: PLR0913 - one bag of render state
+    model: Path,
+    output: Path,
+    *,
+    renderer: Renderer,
+    latitude: float,
+    longitude: float,
+    width: int = 800,
+    height: int = 600,
+    ldraw_dir: Path | None = None,
+    timeout_s: float = 240.0,
+    run: Runner | None = None,
+) -> str | None:
+    """Render one whole-model view; return a warning on failure, else None.
+
+    Success is judged by a non-empty PNG on disk, never the exit code —
+    the shared rule for both renderer backends.
+    """
+    effective_run = run if run is not None else _run_subprocess
+    if renderer.kind == "leocad":
+        cmd = [
+            str(renderer.executable),
+            str(model),
+            "--image",
+            str(output),
+            "--width",
+            str(width),
+            "--height",
+            str(height),
+            "--camera-angles",
+            f"{latitude:g}",
+            f"{longitude:g}",
+        ]
+        if ldraw_dir is not None:
+            cmd += ["--libpath", str(ldraw_dir)]
+        cmd = _wrap_xvfb(cmd)
+    else:
+        cmd = [
+            str(renderer.executable),
+            str(model),
+            f"-SaveSnapshot={output}",
+            f"-SaveWidth={width}",
+            f"-SaveHeight={height}",
+            f"-DefaultLatLong={latitude:g},{longitude:g}",
+            "-AutoCrop=1",
+            "-SaveAlpha=0",
+        ]
+        if ldraw_dir is not None:
+            cmd.append(f"-LDrawDir={ldraw_dir}")
+    warnings: list[str] = []
+    stderr = _invoke(effective_run, cmd, timeout_s, warnings)
+    if warnings:
+        return warnings[0]
+    if output.is_file() and output.stat().st_size > 0:
+        return None
+    trimmed = stderr.strip() if stderr is not None else ""
+    detail = f": {trimmed}" if trimmed else ""
+    return f"renderer produced no image{detail}"
 
 
 def _run_subprocess(cmd: list[str], timeout_s: float) -> str:

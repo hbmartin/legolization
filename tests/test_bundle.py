@@ -54,6 +54,7 @@ def _request(
     config: ProjectConfig,
     **kwargs,
 ) -> orchestrator.BundleRequest:
+    kwargs.setdefault("render", "off")
     return orchestrator.BundleRequest(input_path=box_npy, config=config, **kwargs)
 
 
@@ -110,7 +111,9 @@ def test_run_bundle_writes_portable_layout(box_npy, config):
     assert record is not None
     assert record.status == "complete"
     assert record.verdicts["buildable"] is True
-    assert {entry.kind for entry in record.artifacts} == {"model", "bom"}
+    assert {entry.kind for entry in record.artifacts} == {"model", "bom", "audit"}
+    assert (bundle_dir / "instructions" / "audit.json").is_file()
+    assert not (bundle_dir / "instructions" / "instructions.html").exists()
     assert all(entry.sha256 is not None for entry in record.artifacts)
     source = record.source
     assert source["filename"] == "box.npy"
@@ -122,7 +125,7 @@ def test_run_bundle_writes_portable_layout(box_npy, config):
 def test_run_bundle_unbuildable_islands_exit_two(tmp_path, config):
     islands = _write_box(tmp_path / "islands.npy", islands=2)
     envelope = orchestrator.run_bundle(
-        orchestrator.BundleRequest(input_path=islands, config=config)
+        orchestrator.BundleRequest(input_path=islands, config=config, render="off")
     )
     assert envelope.exit_code == 2
     record = read_record(tmp_path / "islands-legolization")
@@ -255,7 +258,7 @@ def golden_ldr(tmp_path) -> Path:
 
 def test_ldraw_preserve_skips_generation(golden_ldr, config):
     envelope = orchestrator.run_bundle(
-        orchestrator.BundleRequest(input_path=golden_ldr, config=config)
+        orchestrator.BundleRequest(input_path=golden_ldr, config=config, render="off")
     )
     bundle_dir = golden_ldr.parent / "simple-instructions"
     record = read_record(bundle_dir)
@@ -266,9 +269,9 @@ def test_ldraw_preserve_skips_generation(golden_ldr, config):
     assert record.verdicts["winner"]["strategy"] == "imported"
     assert (bundle_dir / "model" / "model.mpd").is_file()
     assert (bundle_dir / "bom" / "bom.json").is_file()
-    assert envelope.exit_code in {0, 2}
+    assert envelope.exit_code in {0, 2, 3}
     resumed = orchestrator.run_bundle(
-        orchestrator.BundleRequest(input_path=golden_ldr, config=config)
+        orchestrator.BundleRequest(input_path=golden_ldr, config=config, render="off")
     )
     assert resumed.data is not None
     assert resumed.data["resume"] is True
@@ -277,7 +280,12 @@ def test_ldraw_preserve_skips_generation(golden_ldr, config):
 
 def test_ldraw_retile_regenerates_from_occupancy(golden_ldr, config):
     envelope = orchestrator.run_bundle(
-        orchestrator.BundleRequest(input_path=golden_ldr, config=config, retile=True)
+        orchestrator.BundleRequest(
+            input_path=golden_ldr,
+            config=config,
+            retile=True,
+            render="off",
+        )
     )
     bundle_dir = golden_ldr.parent / "simple-optimized"
     record = read_record(bundle_dir)
@@ -286,7 +294,7 @@ def test_ldraw_retile_regenerates_from_occupancy(golden_ldr, config):
     assert record.stages["ingest"].detail["shape_authority"] == "imported-assembly"
     assert record.stages["generate"].status == "complete"
     assert record.verdicts["winner"]["strategy"] != "imported"
-    assert envelope.exit_code in {0, 2}
+    assert envelope.exit_code in {0, 2, 3}
     preserve_identity = bundle_identity(golden_ldr, config)
     retile_identity = bundle_identity(
         golden_ldr,
@@ -321,3 +329,100 @@ def test_bundle_cli_emits_single_envelope(box_npy, capsys):
     assert payload["command"] == "bundle"
     assert payload["status"] == "complete"
     assert payload["data"]["stages"]["model"] == "complete"
+
+
+_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\rIDATx\xdac\xfc\xcf\xc0"
+    b"\xd0\x00\x00\x04\x85\x01\x80\x84\xa9\x8c!\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def test_render_auto_without_renderer_omits_booklet_cleanly(
+    box_npy,
+    config,
+    monkeypatch,
+):
+    from legolization.instructions import render as render_module
+
+    monkeypatch.setattr(render_module, "detect_renderer", lambda **kwargs: None)
+    envelope = orchestrator.run_bundle(_request(box_npy, config, render="auto"))
+    assert envelope.exit_code == 0
+    record = read_record(box_npy.parent / "box-legolization")
+    assert record is not None
+    stage = record.stages["instructions"]
+    assert stage.detail["booklet"] == "omitted (no renderer available)"
+    bundle_dir = box_npy.parent / "box-legolization"
+    assert not (bundle_dir / "instructions" / "instructions.html").exists()
+    assert (bundle_dir / "instructions" / "audit.json").is_file()
+
+
+def test_render_required_without_renderer_is_partial(box_npy, config, monkeypatch):
+    from legolization.instructions import render as render_module
+
+    monkeypatch.setattr(render_module, "detect_renderer", lambda **kwargs: None)
+    envelope = orchestrator.run_bundle(_request(box_npy, config, render="required"))
+    assert envelope.exit_code == 3
+    record = read_record(box_npy.parent / "box-legolization")
+    assert record is not None
+    assert record.status == "partial"
+    assert record.stages["instructions"].status == "partial"
+
+
+def test_render_partial_failure_marks_booklet(box_npy, config, monkeypatch):
+    from legolization.instructions import render as render_module
+    from legolization.instructions.render import Renderer, StepImages
+
+    monkeypatch.setattr(
+        render_module,
+        "detect_renderer",
+        lambda **kwargs: Renderer(kind="ldview", executable=Path("/usr/bin/false")),
+    )
+
+    def _fake_render(model_path, plan, **kwargs) -> StepImages:
+        images: list[bytes | None] = [_PNG] * len(plan.steps)
+        images[0] = None
+        return StepImages(images=tuple(images), renderer=None, warnings=())
+
+    monkeypatch.setattr(render_module, "render_step_images", _fake_render)
+    envelope = orchestrator.run_bundle(_request(box_npy, config, render="auto"))
+    assert envelope.exit_code == 3
+    bundle_dir = box_npy.parent / "box-legolization"
+    record = read_record(bundle_dir)
+    assert record is not None
+    assert record.status == "partial"
+    assert record.stages["instructions"].detail["missing_steps"] == [1]
+    html = (bundle_dir / "instructions" / "instructions.html").read_text()
+    assert "image missing" in html
+    assert (bundle_dir / "instructions" / "instructions.pdf").is_file()
+    assert any("missing-step markers" in warning for warning in envelope.warnings)
+
+
+def test_render_total_failure_omits_booklet_partial(box_npy, config, monkeypatch):
+    from legolization.instructions import render as render_module
+    from legolization.instructions.render import Renderer, StepImages
+
+    monkeypatch.setattr(
+        render_module,
+        "detect_renderer",
+        lambda **kwargs: Renderer(kind="ldview", executable=Path("/usr/bin/false")),
+    )
+
+    def _fake_render(model_path, plan, **kwargs) -> StepImages:
+        return StepImages(
+            images=(None,) * len(plan.steps),
+            renderer=None,
+            warnings=("step 1: renderer produced no image",),
+        )
+
+    monkeypatch.setattr(render_module, "render_step_images", _fake_render)
+    envelope = orchestrator.run_bundle(_request(box_npy, config, render="auto"))
+    assert envelope.exit_code == 3
+    bundle_dir = box_npy.parent / "box-legolization"
+    assert not (bundle_dir / "instructions" / "instructions.html").exists()
+    record = read_record(bundle_dir)
+    assert record is not None
+    assert (
+        record.stages["instructions"].detail["booklet"]
+        == "omitted (rendering failed for every step)"
+    )

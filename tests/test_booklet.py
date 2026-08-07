@@ -339,3 +339,44 @@ def test_aggregate_keeps_kinds_separate() -> None:
         "step 3: temporary support needed while building (unstable prefix)",
         "step 4: press bricks home gently (insertion-fragile)",
     )
+
+
+def test_missing_steps_property_and_warning():
+    from legolization.instructions.render import StepImages
+
+    plan = _plan(4, 3)
+    partial = StepImages(
+        images=(_PNG, None, _PNG, None),
+        renderer=None,
+        warnings=(),
+    )
+    booklet = build_booklet(plan, _STATS, partial)
+    assert booklet.missing_steps == (2, 4)
+    assert any("missing" in warning for warning in booklet.warnings)
+    html = booklet_html(booklet)
+    assert "Step 2 image missing" in html
+    assert "rendering failed" in html
+
+
+def test_complete_images_have_no_missing_steps():
+    booklet = build_booklet(_plan(3, 3), _STATS, _images(3, _PNG))
+    assert booklet.missing_steps == ()
+    assert not any("missing" in warning.lower() for warning in booklet.warnings)
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({"LANG": "en_US.UTF-8"}, "letter"),
+        ({"LANG": "de_DE.UTF-8"}, "a4"),
+        ({"LANG": "en_GB.UTF-8"}, "a4"),
+        ({"LC_PAPER": "es_MX.UTF-8", "LANG": "de_DE.UTF-8"}, "letter"),
+        ({"LC_ALL": "fr_CA.UTF-8"}, "letter"),
+        ({"LANG": "C"}, "letter"),
+        ({}, "letter"),
+    ],
+)
+def test_default_page_size_locale_table(env, expected):
+    from legolization.instructions.booklet import default_page_size
+
+    assert default_page_size(env) == expected

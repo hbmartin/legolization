@@ -112,13 +112,8 @@ def test_handler_failure_with_json_emits_single_envelope(capsys, tmp_path):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["model", "render", "model.ldr"],
-        ["instructions", "audit", "model.mpd"],
         ["catalog", "infer", "3001"],
         ["catalog", "validate", "ext.json"],
-        ["corpus", "list"],
-        ["corpus", "evaluate"],
-        ["parts", "sync"],
     ],
 )
 def test_stub_commands_return_valid_error_envelopes(argv, capsys):

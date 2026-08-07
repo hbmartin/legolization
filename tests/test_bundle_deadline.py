@@ -132,6 +132,7 @@ def test_deadline_publishes_provisional_and_adopts_late_result(
         config=config,
         quality="fast",
         clock=clock,
+        render="off",
     )
     envelope = orchestrator.run_bundle(request)
     assert envelope.exit_code == 3
@@ -206,6 +207,7 @@ def test_worker_cap_limits_concurrent_spawns(pair_npy, monkeypatch):
             config=config,
             quality="fast",
             clock=clock,
+            render="off",
         )
     )
     try:
@@ -237,6 +239,7 @@ def test_no_buildable_candidate_with_pending_is_indeterminate(
             config=ProjectConfig(),
             quality="fast",
             clock=clock,
+            render="off",
         )
     )
     try:
@@ -261,6 +264,7 @@ def test_fast_quality_runs_real_worker_end_to_end(tmp_path):
             input_path=box,
             config=ProjectConfig(),
             quality="fast",
+            render="off",
         )
     )
     assert envelope.exit_code == 0

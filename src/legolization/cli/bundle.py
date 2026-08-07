@@ -79,6 +79,16 @@ def configure(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--render",
+        choices=("auto", "required", "off"),
+        default="auto",
+        help=(
+            "booklet rendering: auto omits HTML/PDF cleanly when no "
+            "renderer is available, required makes that partial (exit 3), "
+            "off never renders"
+        ),
+    )
+    parser.add_argument(
         "--cancel-pending",
         action="store_true",
         help=(
@@ -112,6 +122,7 @@ def _run(args: argparse.Namespace) -> ResultEnvelope:
         fresh=args.fresh,
         cancel_pending=args.cancel_pending,
         retile=args.retile,
+        render=args.render,
     )
     if args.retry_materials:
         from legolization.bundle.retry import run_retry  # noqa: PLC0415

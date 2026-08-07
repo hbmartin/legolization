@@ -19,6 +19,7 @@ Exit codes: 0 = clean, 2 = warnings only (unstable or flagged steps),
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import math
 import sys
@@ -297,3 +298,143 @@ def _emit_json(payload: dict, json_path: str | None) -> None:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+AUDIT_SCHEMA = "legolization.instructions-audit/v1"
+
+
+def reconstruct_plan(imported: object) -> InstructionPlan:
+    """Rebuild a flat instruction plan from a model's STEP annotations.
+
+    Groups bricks by their source step so an existing step-annotated
+    ``.ldr``/``.mpd`` can be audited without re-running placement.
+    Steps declare ``prefix_stable=True``; the certification's cold
+    physics decides whether the declared order actually holds up.
+    """
+    from collections import defaultdict  # noqa: PLC0415
+
+    from legolization.instructions.bom import bill_of_materials  # noqa: PLC0415
+    from legolization.instructions.sequencer import (  # noqa: PLC0415
+        BuildStep,
+        InstructionPlan,
+    )
+    from legolization.ldraw_in import ImportedLdrawModel  # noqa: PLC0415
+
+    assert isinstance(imported, ImportedLdrawModel)  # noqa: S101 - internal seam
+    groups: dict[int, list[int]] = defaultdict(list)
+    for brick in imported.layout:
+        ref = imported.source_refs.get(brick.brick_id)
+        step_no = 1
+        if ref is not None:
+            step_no = ref.global_step or ref.source_step or 1
+        groups[step_no].append(brick.brick_id)
+    steps = tuple(
+        BuildStep(
+            index=index,
+            brick_ids=tuple(sorted(groups[key])),
+            prefix_stable=True,
+            prefix_max_score=0.0,
+        )
+        for index, key in enumerate(sorted(groups), start=1)
+    )
+    return InstructionPlan(
+        steps=steps,
+        warnings=(),
+        bom=bill_of_materials(imported.layout),
+    )
+
+
+def audit_model(
+    path: Path,
+    *,
+    insertion_mass_kg: float = 1.0,
+    render_dir: Path | None = None,
+) -> dict:
+    """Audit an existing step-annotated model file.
+
+    Returns the ``legolization.instructions-audit/v1`` report payload;
+    the ``verdict`` key is ``certified``, ``findings``, or
+    ``infeasible`` (the completed model itself is disconnected).
+    """
+    from legolization.eval_artifacts import input_sha256  # noqa: PLC0415
+    from legolization.instructions.sequencer import (  # noqa: PLC0415
+        automatic_target_step_size,
+    )
+    from legolization.instructions.verification import (  # noqa: PLC0415
+        certify_instructions,
+    )
+    from legolization.ldraw_in import import_ldraw  # noqa: PLC0415
+
+    imported = import_ldraw(path)
+    plan = reconstruct_plan(imported)
+    layout = imported.layout
+    config = InstructionsConfig(
+        insertion_check=True,
+        insertion_mass_kg=insertion_mass_kg,
+        solver=SolverConfig(),
+    )
+    certification = certify_instructions(layout, plan, config=config)
+    target = automatic_target_step_size(len(layout))
+    rows = check_steps(
+        layout,
+        plan,
+        target,
+        insertion_mass_kg=insertion_mass_kg,
+        solver=config.solver,
+    )
+    render_warnings: list[str] = []
+    if render_dir is not None:
+        render_warnings = _render_existing_steps(path, plan, render_dir)
+    final = rows[-1] if rows else None
+    infeasible = final is not None and (
+        final["components_after"] != 1 or final["floating_after"] > 0
+    )
+    flagged = [row for row in rows if row["flags"]]
+    findings = bool(
+        certification.violations or certification.earliest_failure or flagged
+    )
+    if infeasible:
+        verdict = "infeasible"
+    elif findings:
+        verdict = "findings"
+    else:
+        verdict = "certified"
+    return {
+        "schema": AUDIT_SCHEMA,
+        "input": {
+            "filename": path.name,
+            "sha256": input_sha256(path),
+            "brick_count": len(layout),
+            "step_count": len(plan.steps),
+            "has_explicit_steps": imported.has_explicit_steps,
+        },
+        "target_step_size": target,
+        "certification": {
+            "valid": certification.valid,
+            "violations": list(certification.violations),
+            "cold_prefix_count": certification.cold_prefix_count,
+            "earliest_failure": (
+                dataclasses.asdict(certification.earliest_failure)
+                if certification.earliest_failure is not None
+                else None
+            ),
+        },
+        "steps": rows,
+        "quality": dataclasses.asdict(plan_quality(plan)),
+        "render_warnings": render_warnings,
+        "verdict": verdict,
+    }
+
+
+def _render_existing_steps(
+    model_path: Path,
+    plan: InstructionPlan,
+    render_dir: Path,
+) -> list[str]:
+    """Render the annotated model's own steps for visual inspection."""
+    render_dir.mkdir(parents=True, exist_ok=True)
+    images = render_step_images(model_path, plan)
+    for index, png in enumerate(images.images, start=1):
+        if png is not None:
+            (render_dir / f"step-{index:03d}.png").write_bytes(png)
+    return list(images.warnings)
