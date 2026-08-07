@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from legolization.catalog import DEFAULT_CATALOG_PATH
+from legolization.cli.exit_codes import exit_code_for_exception
 from legolization.compare import restart_race
 from legolization.configuration import (
     ProjectConfig,
@@ -18,13 +19,7 @@ from legolization.configuration import (
     mapping_hash,
     merge_overrides,
 )
-from legolization.errors import (
-    ConfigurationError,
-    ExactPlacementLimitError,
-    LegolizationError,
-    ManifestError,
-    PlacementInfeasibleError,
-)
+from legolization.errors import ConfigurationError, LegolizationError
 from legolization.manifest import (
     BuildManifestMetadata,
     manifest_for_build,
@@ -66,21 +61,9 @@ def main(argv: list[str]) -> int:
                 return _cache(args)
             case _:
                 parser.error("a command is required")
-    except ExactPlacementLimitError as error:
+    except (LegolizationError, OSError, ValueError) as error:
         _error(error)
-        return 4
-    except PlacementInfeasibleError as error:
-        _error(error)
-        return 2
-    except (
-        ConfigurationError,
-        ManifestError,
-        LegolizationError,
-        OSError,
-        ValueError,
-    ) as error:
-        _error(error)
-        return 1
+        return exit_code_for_exception(error)
 
 
 def _parser() -> argparse.ArgumentParser:

@@ -36,6 +36,7 @@ from legolization.pipeline import (
 from legolization.placement.base import ObjectiveWeights
 from legolization.placement.registry import strategy_names
 from legolization.stability.solver import SolverConfig, analyze
+from legolization.version import __version__
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -926,6 +927,9 @@ def _explicit_command(argv: list[str]) -> int | None:
     """Dispatch explicit subcommands before the legacy generation parser."""
     if not argv:
         return None
+    if argv[0] == "--version":
+        print(f"legolization {__version__}")
+        return 0
     if argv[0] == "analyze":
         from legolization.analyze_cli import main as analyze_main  # noqa: PLC0415
 
