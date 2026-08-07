@@ -1,0 +1,9 @@
+interface:
+  display_name: "Optimize Lego Build"
+  short_description: "Validate, retile, or improve an existing LDraw brick assembly without touching the original."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $optimize-lego-build to improve my existing brick assembly."
+policy:
+  allow_implicit_invocation: true

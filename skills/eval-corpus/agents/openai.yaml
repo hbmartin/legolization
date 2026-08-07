@@ -1,0 +1,9 @@
+interface:
+  display_name: "Eval Corpus"
+  short_description: "Sweep the evaluation corpus, build an aggregate scorecard, and diff it against the committed baseline."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $eval-corpus to evaluate the corpus and diff the scorecard against the baseline."
+policy:
+  allow_implicit_invocation: true

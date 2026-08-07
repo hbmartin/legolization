@@ -58,6 +58,7 @@ dev = [
     "pyroma>=5.0.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "pyyaml>=6.0.2",
     "ruff>=0.15.20",
     "ty>=0.0.57",
 ]
@@ -67,7 +68,7 @@ docs = [
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "venv"]
+exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "tools", "venv"]
 
 line-length = 88
 indent-width = 4
@@ -100,7 +101,7 @@ pyldraw3 = { git = "https://github.com/hbmartin/pyldraw3.git", rev = "465f783723
 
 [tool.deptry]
 known_first_party = ["legolization"]
-extend_exclude = ["papers PDFs"]
+extend_exclude = ["papers PDFs", "tools"]
 package_module_name_map = { pyldraw3 = ["ldraw"] }
 
 [tool.deptry.per_rule_ignores]

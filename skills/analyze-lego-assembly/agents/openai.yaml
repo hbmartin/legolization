@@ -1,0 +1,9 @@
+interface:
+  display_name: "Analyze Lego Assembly"
+  short_description: "Diagnose stability, load paths, floating parts, and assembly risks with a full diagnostics bundle."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $analyze-lego-assembly to check whether my brick model is stable and buildable."
+policy:
+  allow_implicit_invocation: true

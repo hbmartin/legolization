@@ -1,0 +1,9 @@
+interface:
+  display_name: "Extend Lego Part Support"
+  short_description: "Research, estimate, validate, and activate catalog support for an unsupported part."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $extend-lego-part-support to add catalog support for an unsupported part."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,9 @@
+interface:
+  display_name: "Repair Lego Assembly"
+  short_description: "Search for a validated repair or redesign of a failing brick model without overwriting the source."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $repair-lego-assembly to find a validated fix for my failing brick model."
+policy:
+  allow_implicit_invocation: true
