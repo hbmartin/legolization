@@ -22,6 +22,9 @@ accept directly. Every component of the source is always preserved.
 
 Needs `legolization` 0.6.0 or newer — check with `legolization --version`.
 If it is missing or older, install the latest stable release with
+`uv tool install legolization@latest`
+(or `pip install --upgrade legolization`). Only if neither package
+manager is available, fall back to the standalone installer:
 `curl -LsSf https://uvx.sh/legolization/install.sh | sh`
 (PowerShell: `irm https://uvx.sh/legolization/install.ps1 | iex`).
 If installation fails, report the failure and stop.

@@ -84,7 +84,11 @@ def _run_infer(args: argparse.Namespace) -> ResultEnvelope:
     key = args.key or _default_key(part_id)
     geometry = catalog_infer.infer_geometry(part_id)
     sources = catalog_infer.lookup_sources(part_id, offline=args.offline)
-    estimate = catalog_infer.draft_mass_estimate(key, geometry.cell_count, sources)
+    estimate = catalog_infer.draft_mass_estimate(
+        part_key=key,
+        cell_count=geometry.cell_count,
+        sources=sources,
+    )
     directory = support.resolve_support_dir(
         key,
         output=args.output,
@@ -166,7 +170,7 @@ def _run_validate(args: argparse.Namespace) -> ResultEnvelope:
             raise ConfigurationError(msg)
         sidecar = path / SUPPORT_ESTIMATES_FILENAME
         sidecars = (sidecar,) if sidecar.is_file() else ()
-        gates = validate_extension(extension, sidecars)
+        gates = validate_extension(extension_path=extension, sidecars=sidecars)
         validation_path = path / SUPPORT_VALIDATION_FILENAME
         atomic_json(
             validation_path,
@@ -184,7 +188,8 @@ def _run_validate(args: argparse.Namespace) -> ResultEnvelope:
     else:
         msg = f"catalog validate target does not exist: {path}"
         raise ConfigurationError(msg)
-    exit_code = COMPLETE if all_gates_passed(gates) else PARTIAL
+    all_passed = all_gates_passed(gates)
+    exit_code = COMPLETE if all_passed else PARTIAL
     if not args.json:
         print(f"validated: {path}")
         print("\n".join(_gate_lines(gates)))
@@ -194,7 +199,7 @@ def _run_validate(args: argparse.Namespace) -> ResultEnvelope:
         artifacts=artifacts,
         data={
             "path": str(path),
-            "all_passed": all_gates_passed(gates),
+            "all_passed": all_passed,
             "gates": [gate.to_dict() for gate in gates],
         },
     )

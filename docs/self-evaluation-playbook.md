@@ -57,7 +57,8 @@ shell's venv hook aborts them) — use absolute paths.
   complete expected matrix and assembles `scorecard.{json,md}` without
   running placement. Baseline comparison and `--write-baseline` live
   here; `uv run legolization corpus evaluate` collects and assembles in
-  one operation. Meshes are never part of the default inner loop; opt
+  one operation and defaults to both kinds (`--kind` restricts it).
+  Meshes are never part of `corpus collect`'s default inner loop; opt
   in with `--kind mesh`.
 - **Stability heatmap**: write one with the Python helper
   `legolization.ldraw_out.write_heatmap` (the CLI flag is retired),
@@ -224,6 +225,7 @@ so drift stays visible:
 
       uv run legolization corpus collect --kind mesh
       uv run legolization corpus assemble
+      # only after reading the comparison and accepting every change (§5 step 8):
       uv run legolization corpus assemble --write-baseline
       uv run legolization corpus generate
       uv run legolization corpus collect --seeds 0,1,2 --models thin-shell

@@ -88,10 +88,14 @@ def bundle_identity(
     from legolization.catalog import catalog_hash  # noqa: PLC0415
     from legolization.configuration import mapping_hash  # noqa: PLC0415
     from legolization.eval_artifacts import input_sha256  # noqa: PLC0415
+    from legolization.inspection import resolve_prepared_input  # noqa: PLC0415
     from legolization.version import package_version  # noqa: PLC0415
 
+    prepared = resolve_prepared_input(input_path)
     return BundleIdentity(
-        input_sha256=input_sha256(input_path),
+        input_sha256=(
+            prepared.npy_sha256 if prepared is not None else input_sha256(input_path)
+        ),
         config_sha256=mapping_hash(
             result_affecting_config(config, invocation=invocation)
         ),

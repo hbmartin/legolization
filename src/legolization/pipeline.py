@@ -609,7 +609,16 @@ def _phase_gauge(
 
 
 def load_grid(input_path: Path, config: PipelineConfig | None = None) -> VoxelGrid:
-    """Load a ``.vox``/``.npy``/mesh grid using the config's voxelization knobs."""
+    """Load a ``.vox``/``.npy``/mesh grid using the config's voxelization knobs.
+
+    A ``-prepared`` bundle directory loads its ``normalized.npy`` as-is:
+    the sidecar's orientation, scale, and colour decisions are already
+    baked in, so the config's voxelization knobs do not apply.
+    """
+    from legolization.inspection import resolve_prepared_input  # noqa: PLC0415
+
+    if (prepared := resolve_prepared_input(input_path)) is not None:
+        return VoxelGrid.from_npy(prepared.npy_path, plates_per_voxel=1)
     config = config or PipelineConfig()
     match input_path.suffix.lower():
         case ".vox":

@@ -10,6 +10,7 @@ general converter, and ``.ldr``/``.mpd`` assemblies route through
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
@@ -33,6 +34,10 @@ if TYPE_CHECKING:
 VOXEL_SUFFIXES = frozenset({".vox", ".npy"})
 NATIVE_SUFFIXES = VOXEL_SUFFIXES | MESH_SUFFIXES
 _LDRAW_SUFFIXES = frozenset({".ldr", ".mpd"})
+
+PREPARED_NPY_FILENAME = "normalized.npy"
+PREPARED_SIDECAR_FILENAME = "normalized.json"
+PREPARED_SCHEMA = "legolization.input-normalized/v1"
 
 _UP_AXES: tuple[Literal["x", "y", "z"], ...] = ("x", "y", "z")
 _UP_CONFIDENCE_MARGIN = 0.15
@@ -262,9 +267,9 @@ def write_normalized(
         else out_dir
     )
     directory.mkdir(parents=True, exist_ok=True)
-    npy_path = directory / "normalized.npy"
+    npy_path = directory / PREPARED_NPY_FILENAME
     np.save(npy_path, grid.codes)
-    sidecar_path = directory / "normalized.json"
+    sidecar_path = directory / PREPARED_SIDECAR_FILENAME
     atomic_json(
         sidecar_path, _sidecar_payload(inspection, npy_hash=input_sha256(npy_path))
     )
@@ -273,6 +278,67 @@ def write_normalized(
         directory=directory,
         npy_path=npy_path,
         sidecar_path=sidecar_path,
+    )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PreparedInput:
+    """A ``-prepared`` bundle resolved to its normalized target grid."""
+
+    directory: Path
+    npy_path: Path
+    sidecar_path: Path
+    npy_sha256: str
+
+
+def resolve_prepared_input(path: Path) -> PreparedInput | None:
+    """Resolve a ``-prepared`` bundle directory input; ``None`` for files.
+
+    The sidecar's recorded decisions (orientation, scale, colours) are
+    already baked into ``normalized.npy``, so the grid must be loaded
+    with ``plates_per_voxel=1`` and no further quantization. The file
+    must match the sidecar's recorded ``npy_sha256``.
+    """
+    from legolization.eval_artifacts import input_sha256  # noqa: PLC0415
+
+    if not path.is_dir():
+        return None
+    npy_path = path / PREPARED_NPY_FILENAME
+    sidecar_path = path / PREPARED_SIDECAR_FILENAME
+    if not npy_path.is_file() or not sidecar_path.is_file():
+        msg = (
+            f"{path} is not a prepared input bundle: it has no "
+            f"{PREPARED_NPY_FILENAME} plus {PREPARED_SIDECAR_FILENAME} "
+            "(write one with 'legolization input inspect SOURCE --write')"
+        )
+        raise ConfigurationError(msg)
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        msg = (
+            f"prepared bundle {path} has an unreadable {PREPARED_SIDECAR_FILENAME}; "
+            "rerun 'legolization input inspect SOURCE --write'"
+        )
+        raise ConfigurationError(msg) from error
+    if not isinstance(payload, dict) or payload.get("schema") != PREPARED_SCHEMA:
+        msg = (
+            f"prepared bundle {path} has an invalid {PREPARED_SIDECAR_FILENAME}: "
+            f"expected a {PREPARED_SCHEMA} document"
+        )
+        raise ConfigurationError(msg)
+    digest = input_sha256(npy_path)
+    if payload.get("npy_sha256") != digest:
+        msg = (
+            f"prepared bundle {path} is stale: {PREPARED_NPY_FILENAME} does not "
+            "match the sidecar's recorded hash; rerun "
+            "'legolization input inspect SOURCE --write'"
+        )
+        raise ConfigurationError(msg)
+    return PreparedInput(
+        directory=path,
+        npy_path=npy_path,
+        sidecar_path=sidecar_path,
+        npy_sha256=digest,
     )
 
 
@@ -500,7 +566,7 @@ def _sidecar_payload(
             },
         }
     return {
-        "schema": "legolization.input-normalized/v1",
+        "schema": PREPARED_SCHEMA,
         "version": package_version(),
         "source": {"filename": inspection.filename, "sha256": inspection.sha256},
         "npy_sha256": npy_hash,
@@ -545,7 +611,7 @@ def _write_prepared_record(
         status="complete",
         exit_code=0,
     )
-    for name in ("normalized.npy", "normalized.json"):
+    for name in (PREPARED_NPY_FILENAME, PREPARED_SIDECAR_FILENAME):
         record.record_artifact(
             path=name,
             stage="normalize",

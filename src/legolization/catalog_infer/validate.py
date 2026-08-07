@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from legolization.catalog import (
     CATALOG_VALIDATION_SCHEMA,
     DOWN,
+    GATE_NAMES,
     UP,
     Catalog,
     Part,
@@ -40,14 +41,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from legolization.catalog import Cell
-
-GATE_NAMES: tuple[str, ...] = (
-    "import",
-    "round-trip",
-    "collision",
-    "connector",
-    "topology",
-)
 
 type GateStatus = Literal["passed", "failed", "skipped"]
 
@@ -269,7 +262,10 @@ def _mate_above(merged: Catalog, part: Part) -> str | None:
     from legolization.graph import GROUND_ID, ConnectionGraph  # noqa: PLC0415
 
     layout = Layout(catalog=merged)
-    placed = layout.add(part.key, 0, 0, 0, _gate_yaw(part), _ROUND_TRIP_COLOUR)
+    try:
+        placed = layout.add(part.key, 0, 0, 0, _gate_yaw(part), _ROUND_TRIP_COLOUR)
+    except CollisionError as error:
+        return f"cannot place in an empty layout: {error}"
     seated = 0
     for dx, dy, dz in _world_connector_cells(part, layer=0, top=True):
         try:
@@ -293,7 +289,10 @@ def _mate_below(merged: Catalog, part: Part) -> str | None:
     from legolization.graph import GROUND_ID, ConnectionGraph  # noqa: PLC0415
 
     layout = Layout(catalog=merged)
-    placed = layout.add(part.key, 0, 0, 1, _gate_yaw(part), _ROUND_TRIP_COLOUR)
+    try:
+        placed = layout.add(part.key, 0, 0, 1, _gate_yaw(part), _ROUND_TRIP_COLOUR)
+    except CollisionError as error:
+        return f"cannot place in an empty layout: {error}"
     supported = 0
     for dx, dy, dz in _world_connector_cells(part, layer=1, top=False):
         try:

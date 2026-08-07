@@ -37,7 +37,11 @@ BUILD_STRATEGIES = (
 
 def configure(parser: argparse.ArgumentParser) -> None:
     """Register the ``build`` arguments and handler."""
-    parser.add_argument("input", type=Path, help="input .vox/.npy/.obj/.stl/.ply model")
+    parser.add_argument(
+        "input",
+        type=Path,
+        help="input .vox/.npy/.obj/.stl/.ply model or -prepared bundle directory",
+    )
     parser.add_argument("-o", "--output", type=Path, required=True)
     parser.add_argument("--strategy", choices=BUILD_STRATEGIES)
     parser.add_argument("--seed", type=int)
@@ -102,9 +106,11 @@ def _run(args: argparse.Namespace) -> ResultEnvelope:
 
     from legolization.catalog import resolve_catalog  # noqa: PLC0415
     from legolization.compare import restart_race  # noqa: PLC0415
+    from legolization.inspection import resolve_prepared_input  # noqa: PLC0415
     from legolization.pipeline import load_grid, run_file  # noqa: PLC0415
 
-    require_file(args.input, label="input")
+    if resolve_prepared_input(args.input) is None:
+        require_file(args.input, label="input")
     require_output_path(args.output)
     config = build_configuration(args)
     catalog = (

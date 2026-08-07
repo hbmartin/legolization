@@ -15,6 +15,7 @@ so the caller can require generic complete geometry instead.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -125,7 +126,11 @@ class _PartLibrary:
                     break
             parts_lst = shim_root / "parts.lst"
             parts_lst.write_text("")
-        self.parts = Parts(parts_lst)
+        try:
+            self.parts = Parts(parts_lst)
+        except Exception:
+            self.close()
+            raise
 
     def close(self) -> None:
         """Release the shim directory, if one was created."""
@@ -134,10 +139,18 @@ class _PartLibrary:
             self._shim = None
 
 
+_PART_ID_PATTERN = re.compile(r"^[0-9a-z][0-9a-z._-]*$")
+
+
 def normalize_part_id(part_id: str) -> str:
-    """Normalize one user-supplied LDraw part identifier."""
+    """Normalize one user-supplied LDraw part identifier.
+
+    The normalized id reaches filesystem paths (the support-bundle
+    directory, ``geometry/<id>.dat``) and source-lookup URLs, so only
+    LDraw part-code characters are accepted.
+    """
     normalized = part_id.strip().lower().removesuffix(".dat")
-    if not normalized:
+    if not _PART_ID_PATTERN.match(normalized) or ".." in normalized:
         msg = f"invalid LDraw part id {part_id!r}"
         raise ConfigurationError(msg)
     return normalized
