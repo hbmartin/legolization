@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import asdict, dataclass, field, replace
-from functools import lru_cache
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
 from legolization import telemetry
-from legolization.catalog import DEFAULT_CATALOG_PATH, default_catalog
+from legolization.catalog import catalog_hash, default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import IGNORE, VoxelGrid
 from legolization.hollow import hollow_grid, restore_columns
@@ -208,14 +206,23 @@ class _PipelineState:
     placement: _PlacementPhase
 
 
-def run(grid: VoxelGrid, config: PipelineConfig | None = None) -> PipelineResult:
-    """Run the full pipeline on a voxel grid."""
+def run(
+    grid: VoxelGrid,
+    config: PipelineConfig | None = None,
+    *,
+    catalog: Catalog | None = None,
+) -> PipelineResult:
+    """Run the full pipeline on a voxel grid.
+
+    ``catalog`` substitutes a resolved overlay catalog for the builtin
+    one (estimate sidecars applied verbatim by ``resolve_catalog``).
+    """
     if grid.filled_count == 0:
         msg = "input grid contains no filled voxels"
         raise ValueError(msg)
     config = config or PipelineConfig()
     working = _prepare_grid(grid, config)
-    catalog = default_catalog()
+    catalog = catalog if catalog is not None else default_catalog()
     rng = np.random.default_rng(config.seed)
     deadline = Deadline.after(config.time_budget_s)
     state = _PipelineState(
@@ -390,7 +397,7 @@ def _canonicalize_templates(
         repeated,
         cache=cache,
         context=TemplateContext(
-            catalog_hash=_catalog_hash(),
+            catalog_hash=catalog_hash(),
             configuration_hash=config.template_configuration_hash,
             physics_profile=config.template_physics_profile,
         ),
@@ -408,11 +415,6 @@ def _canonicalize_templates(
         )
         return stability, rejected
     return certified, tuple(asdict(item) for item in applications)
-
-
-@lru_cache(maxsize=1)
-def _catalog_hash() -> str:
-    return hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes()).hexdigest()
 
 
 def _selected_strategy(state: _PipelineState) -> str:
@@ -708,6 +710,7 @@ def run_file(  # noqa: PLR0913 - optional artifact paths + the preloaded grid
     bom_path: Path | None = None,
     instructions_path: Path | None = None,
     grid: VoxelGrid | None = None,
+    catalog: Catalog | None = None,
 ) -> PipelineResult:
     """Load a ``.vox``/``.npy`` grid, run the pipeline, write ``.ldr``/``.mpd``.
 
@@ -715,11 +718,14 @@ def run_file(  # noqa: PLR0913 - optional artifact paths + the preloaded grid
     suffix is ``.json``, text otherwise); ``instructions_path`` an
     instruction booklet (``.html`` or ``.pdf``). ``grid`` skips the
     load: the restart race already voxelized the input, and a mesh
-    voxelization is not free to repeat (PR #20 review).
+    voxelization is not free to repeat (PR #20 review). ``catalog``
+    substitutes a resolved overlay catalog for the builtin one.
     """
     config = config or PipelineConfig()
     result = run(
-        grid=grid if grid is not None else load_grid(input_path, config), config=config
+        grid=grid if grid is not None else load_grid(input_path, config),
+        config=config,
+        catalog=catalog,
     )
     write_outputs(
         result,

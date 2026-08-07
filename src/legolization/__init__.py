@@ -22,6 +22,7 @@ from legolization.grid import VoxelGrid
 from legolization.layout import Layout, PlacedBrick
 from legolization.mesh import MeshOptions, mesh_to_grid
 from legolization.pipeline import PipelineConfig, PipelineResult, run, run_file
+from legolization.version import __version__
 
 __all__ = [
     "AnalysisConfig",
@@ -39,6 +40,7 @@ __all__ = [
     "PipelineResult",
     "PlacedBrick",
     "VoxelGrid",
+    "__version__",
     "analyze_assembly",
     "analyze_ldraw",
     "mesh_to_grid",

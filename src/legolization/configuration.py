@@ -257,6 +257,14 @@ class CacheConfig:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class CatalogConfig:
+    """Parts-catalog overlays and estimate sidecars."""
+
+    extensions: tuple[Path, ...] = ()
+    estimate_sidecars: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ProjectConfig:
     """Complete strict configuration used by the redesigned CLI."""
 
@@ -268,6 +276,7 @@ class ProjectConfig:
     instructions: InstructionSection = field(default_factory=InstructionSection)
     output: OutputConfig = field(default_factory=OutputConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
+    catalog: CatalogConfig = field(default_factory=CatalogConfig)
 
     def __post_init__(self) -> None:
         if self.output.emit_support and self.stability.support != "baseplate":
@@ -375,6 +384,14 @@ def project_config_from_mapping(
     instructions_data = _table(payload, "instructions")
     output_data = _table(payload, "output")
     cache_data = _table(payload, "cache")
+    catalog_data = _table(payload, "catalog")
+    for key in ("extensions", "estimate_sidecars"):
+        if key in catalog_data:
+            catalog_data[key] = _path_tuple(
+                catalog_data[key],
+                f"catalog.{key}",
+                base_dir,
+            )
 
     mesh_data = _pop_table(input_data, "mesh")
     target_studs_explicit = "target_studs" in mesh_data
@@ -437,6 +454,7 @@ def project_config_from_mapping(
         ),
         output=_construct(OutputConfig, output_data, "output"),
         cache=_construct(CacheConfig, cache_data, "cache"),
+        catalog=_construct(CatalogConfig, catalog_data, "catalog"),
     )
 
 
@@ -466,6 +484,24 @@ def merge_overrides(
             raise ConfigurationError(msg)
         target[segments[-1]] = value
     return project_config_from_mapping(payload)
+
+
+def _path_tuple(
+    value: object,
+    label: str,
+    base_dir: Path | None,
+) -> tuple[Path, ...]:
+    """Parse a list of paths, resolving relative entries against the TOML."""
+    if not isinstance(value, list | tuple):
+        msg = f"{label} must be a list of paths"
+        raise ConfigurationError(msg)
+    resolved: list[Path] = []
+    for entry in cast("list[object]", value):
+        path = Path(str(entry)).expanduser()
+        if not path.is_absolute():
+            path = (base_dir or Path.cwd()) / path
+        resolved.append(path.resolve())
+    return tuple(resolved)
 
 
 def _construct[T](cls: type[T], payload: dict[str, Any], label: str) -> T:

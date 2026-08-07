@@ -16,8 +16,7 @@ from scipy import ndimage
 from legolization.analysis import PlacementSignature, placement_signature, signatures
 from legolization.catalog import Category
 from legolization.graph import ConnectionGraph
-from legolization.grid import EMPTY, VoxelGrid
-from legolization.layout import CollisionError, Layout
+from legolization.layout import CollisionError, Layout, occupancy_grid
 from legolization.pipeline import PipelineConfig
 from legolization.placement.layered.engine import place_rect
 from legolization.placement.registry import make_strategy
@@ -64,6 +63,39 @@ _BridgePair = tuple[int, _BridgeStud, _BridgeStud]
 
 
 @dataclass(frozen=True, slots=True)
+class RejectedCandidate:
+    """A candidate rejected by one named validation gate.
+
+    ``metrics`` always carries ``added_cells`` and
+    ``visible_added_cells`` plus whatever the failing gate measured.
+    """
+
+    layout: Layout
+    tier: RepairTier
+    failed_gate: str
+    detail: str
+    metrics: dict[str, float | int | bool]
+
+    @property
+    def rank(self) -> tuple[int, int, int]:
+        """Least-invasive ordering: tier, visible additions, additions."""
+        return (
+            _TIER_RANK[self.tier],
+            int(self.metrics.get("visible_added_cells", 0)),
+            int(self.metrics.get("added_cells", 0)),
+        )
+
+    def to_payload(self) -> dict[str, object]:
+        """Serialize the rejection without embedding its full layout."""
+        return {
+            "tier": self.tier,
+            "failed_gate": self.failed_gate,
+            "detail": self.detail,
+            "metrics": dict(self.metrics),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class RepairCandidate:
     """One candidate that passed every official final-model check."""
 
@@ -105,12 +137,18 @@ class RepairSearchResult:
     timed_out: bool
     complete: bool
     error: str | None = None
+    best_rejected: RejectedCandidate | None = None
 
     def to_report(
         self,
         source_refs: dict[int, LdrawSourceRef],
     ) -> dict[str, object]:
         """Serialize the candidate diff without embedding its full layout."""
+        rejected_block: dict[str, dict[str, object]] = (
+            {"rejected": self.best_rejected.to_payload()}
+            if self.best_rejected is not None
+            else {}
+        )
         if self.candidate is None:
             return {
                 "status": "error" if self.error is not None else "not_found",
@@ -120,6 +158,7 @@ class RepairSearchResult:
                 "complete": self.complete,
                 "exhausted": self.complete and not self.timed_out,
                 "error": self.error,
+                **rejected_block,
             }
         removed: list[dict[str, object]] = []
         for signature, brick_id in zip(
@@ -171,6 +210,7 @@ class RepairSearchResult:
                 "removed": removed,
                 "added": [list(item) for item in self.candidate.added_signatures],
             },
+            **rejected_block,
         }
 
 
@@ -179,6 +219,7 @@ class _WorkerState:
     """Latest repair-search state streamed from the worker process."""
 
     candidate: RepairCandidate | None = None
+    best_rejected: RejectedCandidate | None = None
     attempts: int = 0
     complete: bool = False
     timed_out: bool = False
@@ -193,6 +234,8 @@ def _apply_worker_update(
     match kind:
         case "candidate":
             state.candidate = cast("RepairCandidate", payload)
+        case "rejected":
+            state.best_rejected = cast("RejectedCandidate", payload)
         case "progress":
             state.attempts = int(cast("int | str", payload))
         case "complete":
@@ -295,6 +338,7 @@ def search_repair(  # noqa: PLR0913 - public search configuration
         timed_out=timed_out,
         complete=state.complete and not timed_out,
         error=state.error,
+        best_rejected=state.best_rejected,
     )
 
 
@@ -332,6 +376,7 @@ def _search_body(  # noqa: PLR0913
     updates: Queue[Any],
 ) -> None:
     attempts = 0
+    best_rejected: RejectedCandidate | None = None
     for tier, layouts in (
         (
             "envelope-retile",
@@ -373,7 +418,12 @@ def _search_body(  # noqa: PLR0913
                 parity_solver=parity_solver,
                 strict_solver=strict_solver,
             )
-            if validated is not None and (best is None or validated.rank < best.rank):
+            if isinstance(validated, RejectedCandidate):
+                if best_rejected is None or validated.rank < best_rejected.rank:
+                    best_rejected = validated
+                    updates.put(("rejected", best_rejected))
+                continue
+            if best is None or validated.rank < best.rank:
                 best = validated
                 updates.put(("candidate", best))
         if best is not None:
@@ -399,7 +449,7 @@ def _envelope_candidates(
         return
     replaceable = layout.subset(replaceable_ids)
     frozen = layout.subset(set(layout.bricks) - replaceable_ids)
-    grid, normalized, offset = _grid_and_normalized_layout(replaceable)
+    grid, normalized, offset = occupancy_grid(replaceable)
     for round_seed in range(seed, seed + 3):
         if time.monotonic() >= deadline:
             return
@@ -555,39 +605,83 @@ def _exterior_candidates(
         yield candidate
 
 
-def _validate_candidate(  # noqa: PLR0911 - fail-fast validation gates
+def _validate_candidate(  # noqa: C901, PLR0911 - fail-fast validation gates
     original: Layout,
     candidate: Layout,
     *,
     tier: RepairTier,
     parity_solver: SolverConfig,
     strict_solver: SolverConfig,
-) -> RepairCandidate | None:
-    # Fail-fast acceptance gates are one cold-certification transaction.
-    # lizard forgives(cyclomatic_complexity)
+) -> RepairCandidate | RejectedCandidate:
     original_placements = set(signatures(original))
     candidate_placements = set(signatures(candidate))
+    added_cell_count = len(set(candidate.occupancy) - set(original.occupancy))
+
+    def rejected(
+        gate: str,
+        detail: str,
+        **extra: float | bool,
+    ) -> RejectedCandidate:
+        return RejectedCandidate(
+            layout=candidate,
+            tier=tier,
+            failed_gate=gate,
+            detail=detail,
+            metrics={
+                "added_cells": added_cell_count,
+                "visible_added_cells": (
+                    0 if tier == "interior-support" else added_cell_count
+                ),
+                **extra,
+            },
+        )
+
     if tier == "envelope-retile":
+        # Fail-fast acceptance gates are one cold-certification
+        # transaction; a failing gate names itself in the rejection.
+        # lizard forgives(cyclomatic_complexity, length)
         if set(candidate.occupancy) != set(original.occupancy):
-            return None
+            return rejected(
+                "geometry-preservation",
+                "retile changed the original occupied envelope",
+            )
     elif not original_placements <= candidate_placements:
-        return None
+        return rejected(
+            "geometry-preservation",
+            "support tier removed or moved original placements",
+        )
     for cell, original_id in original.occupancy.items():
         candidate_brick = candidate.brick_at(cell)
         if (
             candidate_brick is None
             or candidate_brick.colour_code != original.bricks[original_id].colour_code
         ):
-            return None
+            return rejected(
+                "colour-preservation",
+                f"cell {cell} lost its original colour",
+            )
     graph = ConnectionGraph.from_layout(candidate)
     if graph.component_count() != 1 or graph.floating_ids():
-        return None
+        return rejected(
+            "connectivity",
+            "candidate is not one grounded component",
+            component_count=graph.component_count(),
+            floating_count=len(graph.floating_ids()),
+        )
     parity = analyze(layout=candidate, config=parity_solver, graph=graph)
     if not parity.stable:
-        return None
+        return rejected(
+            "parity-stability",
+            "candidate fails the 5-DoF parity profile",
+            parity_max_score=parity.max_score,
+        )
     strict = analyze(layout=candidate, config=strict_solver, graph=graph)
     if not strict.stable:
-        return None
+        return rejected(
+            "strict-stability",
+            "candidate fails the 6-DoF strict profile",
+            strict_max_score=strict.max_score,
+        )
     maximin = solve_maximin(
         build_model_from_config(
             layout=candidate,
@@ -596,14 +690,18 @@ def _validate_candidate(  # noqa: PLR0911 - fail-fast validation gates
         )
     )
     if not maximin.feasible or maximin.capacity <= 0.0:
-        return None
+        return rejected(
+            "capacity",
+            "candidate has no positive maximin capacity",
+            capacity_feasible=maximin.feasible,
+            strict_capacity_n=maximin.capacity,
+        )
     removed = tuple(sorted(original_placements - candidate_placements))
     added = tuple(sorted(candidate_placements - original_placements))
     original_ids = {
         placement_signature(original, brick_id): brick_id
         for brick_id in original.bricks
     }
-    added_cells = set(candidate.occupancy) - set(original.occupancy)
     return RepairCandidate(
         layout=candidate,
         tier=tier,
@@ -613,35 +711,9 @@ def _validate_candidate(  # noqa: PLR0911 - fail-fast validation gates
         added_signatures=added,
         removed_signatures=removed,
         removed_brick_ids=tuple(original_ids[item] for item in removed),
-        added_cells=len(added_cells),
-        visible_added_cells=(0 if tier == "interior-support" else len(added_cells)),
+        added_cells=added_cell_count,
+        visible_added_cells=(0 if tier == "interior-support" else added_cell_count),
     )
-
-
-def _grid_and_normalized_layout(
-    layout: Layout,
-) -> tuple[VoxelGrid, Layout, tuple[int, int, int]]:
-    xs, ys, zs = zip(*layout.occupancy, strict=True)
-    offset = (min(xs), min(ys), min(zs))
-    shape = (
-        max(xs) - offset[0] + 1,
-        max(ys) - offset[1] + 1,
-        max(zs) - offset[2] + 1,
-    )
-    codes = np.full(shape, EMPTY, dtype=np.int16)
-    normalized = Layout(catalog=layout.catalog)
-    for brick in layout:
-        normalized.add(
-            part_key=brick.part_key,
-            x=brick.x - offset[0],
-            y=brick.y - offset[1],
-            layer=brick.layer - offset[2],
-            yaw=brick.yaw,
-            colour_code=brick.colour_code,
-        )
-        for x, y, z in layout.cells_of(brick):
-            codes[x - offset[0], y - offset[1], z - offset[2]] = brick.colour_code
-    return VoxelGrid(codes=codes), normalized, offset
 
 
 def _denormalize_layout(layout: Layout, offset: tuple[int, int, int]) -> Layout:

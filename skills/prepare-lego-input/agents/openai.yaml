@@ -1,0 +1,9 @@
+interface:
+  display_name: "Prepare Lego Input"
+  short_description: "Inspect, orient, colour, and normalize a source model before brick generation."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $prepare-lego-input to inspect and normalize my model before generation."
+policy:
+  allow_implicit_invocation: true

@@ -15,10 +15,12 @@ from ldraw import Diagnostic, DiagnosticCode, Severity
 from legolization import AnalysisConfig, AnalysisResult, analyze_ldraw
 from legolization.catalog import Category, load_catalog
 from legolization.layout import Layout
-from legolization.ldraw_in import import_ldraw, layout_from_ldraw
+from legolization.ldraw_in import LdrawImportError, import_ldraw, layout_from_ldraw
 from legolization.ldraw_out import write_model
 from legolization.main import main
 from legolization.redesign import (
+    RejectedCandidate,
+    RepairCandidate,
     _BridgeStud,
     _eligible_bridge_pairs,
     _enclosed_cells,
@@ -246,8 +248,11 @@ def test_initial_rotation_only_step_is_preserved_as_unevaluated(tmp_path: Path):
     assert first["evaluated"] is False
     assert first["stable"] is None
     assert first["feasible"] is None
+    assert first["verification"] == "unverified"
+    assert first["verification_reason"] == "step physics was not evaluated"
     assert second["geometry_changed"] is True
     assert second["evaluated"] is True
+    assert second["verification"] == "physics-validated"
 
 
 def test_incremental_prefix_topology_matches_full_graph_rebuilds():
@@ -786,6 +791,54 @@ def test_analyze_cli_uses_derived_report_path(
     assert source.read_bytes() == _HEART.read_bytes()
 
 
+def test_analyze_cli_writes_complete_analysis_bundle(tmp_path: Path):
+    source = tmp_path / "heart.ldr"
+    source.write_bytes(_HEART.read_bytes())
+
+    code = main(["analyze", str(source), "--no-repair"])
+
+    assert code == 0
+    bundle_dir = tmp_path / "heart-analysis"
+    assert (bundle_dir / "report.json").is_file()
+    assert (bundle_dir / "analysis.html").is_file()
+    assert (bundle_dir / "diagnostics" / "connections.json").is_file()
+    assert (bundle_dir / "diagnostics" / "components.mpd").is_file()
+    assert (bundle_dir / "diagnostics" / "floating.mpd").is_file()
+    assert (
+        bundle_dir / "diagnostics" / "callouts" / "missing-connections.svg"
+    ).is_file()
+    record = json.loads((bundle_dir / "bundle.json").read_text())
+    assert record["schema"] == "legolization.bundle/v1"
+    assert record["quality"] == "direct"
+    assert record["status"] == "complete"
+    assert record["exit_code"] == 0
+    assert record["stages"]["analysis"]["status"] == "complete"
+    assert record["verdicts"]["analysis"] == "feasible"
+    by_kind = {entry["kind"]: entry for entry in record["artifacts"]}
+    assert by_kind["report"]["path"] == "report.json"
+    assert by_kind["graph"]["path"] == "diagnostics/connections.json"
+    for entry in record["artifacts"]:
+        assert entry["sha256"] is not None
+    report = json.loads((bundle_dir / "report.json").read_text())
+    assert report["schema"] == 1
+    assert report["verdict"] == "feasible"
+
+
+def test_analysis_bundle_reuses_matching_dir_and_numbers_siblings(tmp_path: Path):
+    source = tmp_path / "heart.ldr"
+    source.write_bytes(_HEART.read_bytes())
+
+    assert main(["analyze", str(source), "--no-repair"]) == 0
+    assert main(["analyze", str(source), "--no-repair"]) == 0
+    assert (tmp_path / "heart-analysis").is_dir()
+    assert not (tmp_path / "heart-analysis-2").exists()
+
+    # A different input under the same name lands in a numbered sibling.
+    source.write_bytes(_HEART.read_bytes() + b"0 trailing comment\n")
+    assert main(["analyze", str(source), "--no-repair"]) == 0
+    assert (tmp_path / "heart-analysis-2" / "bundle.json").is_file()
+
+
 def test_analyze_cli_writes_validated_repair_but_returns_infeasible(tmp_path: Path):
     layout = Layout(catalog=load_catalog())
     layout.add("brick_1x1", 0, 0, 3, 0, 4)
@@ -812,6 +865,7 @@ def test_analyze_cli_writes_validated_repair_but_returns_infeasible(tmp_path: Pa
     assert report["verdict"] == "infeasible"
     assert report["repair"]["timed_out"] is False
     assert report["repair"]["status"] == "found"
+    assert report["repair"]["verification"] == "physics-validated"
     assert report["repair"]["before_metrics"]["feasible"] is False
     assert report["repair"]["after_metrics"]["feasible"] is True
     repaired = layout_from_ldraw(repair_path)
@@ -958,19 +1012,19 @@ def test_interior_support_candidate_fills_only_enclosed_cells(tmp_path: Path):
         parity_solver=_PARITY,
         strict_solver=_STRICT,
     )
-    assert validated is not None
+    assert isinstance(validated, RepairCandidate)
     assert validated.visible_added_cells == 0
     path = tmp_path / "interior.ldr"
     write_repair_model(candidates[0], path)
-    assert (
+    assert isinstance(
         _validate_candidate(
             original,
             layout_from_ldraw(path),
             tier="interior-support",
             parity_solver=_PARITY,
             strict_solver=_STRICT,
-        )
-        is not None
+        ),
+        RepairCandidate,
     )
 
 
@@ -993,7 +1047,7 @@ def test_exterior_support_candidate_is_reimportable(tmp_path: Path):
         parity_solver=_PARITY,
         strict_solver=_STRICT,
     )
-    assert validated is not None
+    assert isinstance(validated, RepairCandidate)
 
     path = tmp_path / "repair.ldr"
     write_repair_model(candidate, path)
@@ -1131,29 +1185,31 @@ def test_envelope_retile_can_repair_bad_bridge(bad_bridge, tmp_path: Path):
         (
             candidate
             for candidate in candidates
-            if _validate_candidate(
-                original,
-                candidate,
-                tier="envelope-retile",
-                parity_solver=_PARITY,
-                strict_solver=_STRICT,
+            if isinstance(
+                _validate_candidate(
+                    original,
+                    candidate,
+                    tier="envelope-retile",
+                    parity_solver=_PARITY,
+                    strict_solver=_STRICT,
+                ),
+                RepairCandidate,
             )
-            is not None
         ),
         None,
     )
     assert validated_layout is not None
     path = tmp_path / "envelope.ldr"
     write_repair_model(validated_layout, path)
-    assert (
+    assert isinstance(
         _validate_candidate(
             original,
             layout_from_ldraw(path),
             tier="envelope-retile",
             parity_solver=_PARITY,
             strict_solver=_STRICT,
-        )
-        is not None
+        ),
+        RepairCandidate,
     )
 
 
@@ -1199,16 +1255,21 @@ def test_candidate_validation_rejects_changed_original_geometry():
     changed = Layout(catalog=original.catalog)
     changed.add("brick_1x1", 0, 0, 0, 0, 1)
 
-    assert (
-        _validate_candidate(
-            original,
-            changed,
-            tier="envelope-retile",
-            parity_solver=_PARITY,
-            strict_solver=_STRICT,
-        )
-        is None
+    rejected = _validate_candidate(
+        original,
+        changed,
+        tier="envelope-retile",
+        parity_solver=_PARITY,
+        strict_solver=_STRICT,
     )
+
+    assert isinstance(rejected, RejectedCandidate)
+    assert rejected.failed_gate == "colour-preservation"
+    assert rejected.metrics["added_cells"] == 0
+    assert rejected.rank == (0, 0, 0)
+    payload = rejected.to_payload()
+    assert payload["failed_gate"] == "colour-preservation"
+    assert "layout" not in payload
 
 
 def test_repair_worker_failure_keeps_infeasible_verdict(
@@ -1241,6 +1302,8 @@ def test_repair_worker_failure_keeps_infeasible_verdict(
     assert report["status"] == "partial"
     assert report["verdict"] == "infeasible"
     assert report["repair"]["status"] == "error"
+    assert report["repair"]["verification"] == "unverified"
+    assert "before physics validation" in report["repair"]["verification_reason"]
     assert "simulated worker start failure" in report["repair"]["error"]
 
 
@@ -1300,58 +1363,55 @@ def test_analyze_cli_stdout_report_keeps_summary_on_stderr(
     assert not source.with_suffix(".analysis.json").exists()
 
 
-def test_ordinary_ldraw_conversion_prints_tolerant_load_warnings(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-):
+def _unknown_meta_warnings(diagnostics: tuple[Diagnostic, ...]) -> list[Diagnostic]:
+    return [
+        diagnostic
+        for diagnostic in diagnostics
+        if diagnostic.severity is Severity.WARNING
+        and diagnostic.code is DiagnosticCode.MODEL_UNKNOWN_META
+    ]
+
+
+def test_ordinary_ldraw_conversion_surfaces_tolerant_load_warnings(tmp_path: Path):
     source = tmp_path / "warning.ldr"
     source.write_text(
         "0 warning\n0 !UNRECOGNIZED report-me\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n"
     )
     output = tmp_path / "converted.ldr"
 
-    code = main([str(source), "-o", str(output)])
+    imported = import_ldraw(source)
+    write_model(imported.layout, output)
 
-    captured = capsys.readouterr()
-    assert code == 0
     assert output.is_file()
-    assert "warning: model.unknown_meta: unknown meta-command" in captured.err
+    warnings = _unknown_meta_warnings(imported.diagnostics)
+    assert warnings
+    assert any("unknown meta-command" in item.message for item in warnings)
 
 
-def test_failed_ldraw_import_prints_tolerant_load_warnings_before_error(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-):
+def test_failed_ldraw_import_keeps_tolerant_load_warnings(tmp_path: Path):
     source = tmp_path / "warning-and-error.ldr"
     source.write_text(
         "0 warning and error\n"
         "0 !UNRECOGNIZED report-me\n"
         "1 4 0 -24 0 1 0 0 0 1 0 0 0 1 9999.dat\n"
     )
-    output = tmp_path / "converted.ldr"
 
-    code = main([str(source), "-o", str(output)])
+    with pytest.raises(LdrawImportError, match="cannot import model") as excinfo:
+        import_ldraw(source)
 
-    captured = capsys.readouterr()
-    warning = "warning: model.unknown_meta: unknown meta-command"
-    error = "error: cannot import model"
-    assert code == 1
-    assert warning in captured.err
-    assert error in captured.err
-    assert captured.err.index(warning) < captured.err.index(error)
-    assert not output.exists()
+    # The tolerant-load warnings survive alongside the strict error.
+    assert _unknown_meta_warnings(excinfo.value.load_diagnostics)
 
 
 def test_analyze_cli_rejects_unsafe_artifact_paths(tmp_path: Path):
     source = tmp_path / "heart.ldr"
     source.write_bytes(_HEART.read_bytes())
 
-    with pytest.raises(SystemExit):
-        main(["analyze", str(source), "--report", str(tmp_path / "evidence.txt")])
-    with pytest.raises(SystemExit):
-        main(["analyze", str(source), "-o", str(tmp_path / "repair.txt")])
-    with pytest.raises(SystemExit):
-        main(["analyze", str(source), "-o", str(source)])
+    assert (
+        main(["analyze", str(source), "--report", str(tmp_path / "evidence.txt")]) == 1
+    )
+    assert main(["analyze", str(source), "-o", str(tmp_path / "repair.txt")]) == 1
+    assert main(["analyze", str(source), "-o", str(source)]) == 1
 
 
 def test_catalog_extension_cannot_shadow_builtin_key(tmp_path: Path):

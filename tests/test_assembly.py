@@ -13,9 +13,12 @@ from ldraw.pieces import Piece
 from legolization.analyze_cli import main as analyze_main
 from legolization.assembly import (
     AssemblyAnalysisConfig,
+    AssemblyAnalysisReport,
     analyze_assembly,
+    recommendation_verification,
     write_counterfactual_candidate,
 )
+from legolization.assembly_artifacts import write_html_report
 from legolization.assembly_connections import ConnectionConfig, analyze_connections
 from legolization.assembly_registry import build_registry
 from legolization.catalog import load_catalog
@@ -110,6 +113,9 @@ def test_scout_counterfactual_finds_and_writes_bom_preserving_ry90(
     assert result.candidate.part_id == "3035"
     assert result.candidate.description == "rotate local Y by 90 degrees"
     assert result.candidate.confirmed_connection_gain >= 16
+    candidate_payload = result.report.counterfactual["candidate"]
+    assert candidate_payload["verification"] == "unverified"
+    assert "--topology-only" in candidate_payload["verification_reason"]
     output = tmp_path / "scout.repaired.mpd"
     assert write_counterfactual_candidate(result, output)
     assert "1 0 0 0 0 0 0 -1 0 1 0 1 0 0 3035.dat" in output.read_text()
@@ -233,7 +239,9 @@ def test_free_support_reports_topology_without_static_verdict() -> None:
     assert result.report.verdict == "connected"
 
 
-def test_cli_writes_parallel_reports_and_default_data_artifacts(tmp_path: Path) -> None:
+def test_cli_writes_parallel_reports_and_default_analysis_bundle(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "heart.ldr"
     source.write_bytes(_HEART.read_bytes())
 
@@ -245,9 +253,13 @@ def test_cli_writes_parallel_reports_and_default_data_artifacts(tmp_path: Path) 
     assert manifest["version"] == 1
     assert not source.with_suffix(".analysis.json").exists()
     assert not source.with_suffix(".assembly.json").exists()
-    assert source.with_suffix(".connections.json").is_file()
-    assert source.with_suffix(".components.mpd").is_file()
-    assert source.with_suffix(".floating.mpd").is_file()
+    bundle = tmp_path / "heart-analysis"
+    assert (bundle / "diagnostics" / "connections.json").is_file()
+    assert (bundle / "diagnostics" / "components.mpd").is_file()
+    assert (bundle / "diagnostics" / "floating.mpd").is_file()
+    assert (bundle / "report.json").is_file()
+    assert (bundle / "analysis.html").is_file()
+    assert (bundle / "bundle.json").is_file()
 
 
 def test_cli_artifact_directory_adds_html_and_callout(tmp_path: Path) -> None:
@@ -258,8 +270,79 @@ def test_cli_artifact_directory_adds_html_and_callout(tmp_path: Path) -> None:
     code = analyze_main([str(source), "--no-repair", "--artifact-dir", str(artifacts)])
 
     assert code == 0
-    assert (artifacts / "heart.analysis.html").is_file()
-    assert (artifacts / "heart.callouts" / "missing-connections.svg").is_file()
+    assert (artifacts / "analysis.html").is_file()
+    assert (
+        artifacts / "diagnostics" / "callouts" / "missing-connections.svg"
+    ).is_file()
+
+
+@pytest.mark.parametrize(
+    ("topology_only", "physics_verdict", "verdict", "expected"),
+    [
+        (True, "not_run", "disconnected", "unverified"),
+        (False, "indeterminate", "indeterminate", "unverified"),
+        (False, "error", "indeterminate", "unverified"),
+        (False, "feasible", "indeterminate", "unverified"),
+        (False, "infeasible", "infeasible", "physics-validated"),
+        (False, "feasible", "feasible", "physics-validated"),
+    ],
+)
+def test_recommendation_verification_rules(
+    topology_only,
+    physics_verdict,
+    verdict,
+    expected,
+) -> None:
+    status, reason = recommendation_verification(
+        topology_only=topology_only,
+        physics_verdict=physics_verdict,
+        verdict=verdict,
+    )
+
+    assert status == expected
+    assert reason
+
+
+def _report_with_candidate(verification: str) -> AssemblyAnalysisReport:
+    return AssemblyAnalysisReport(
+        status="complete",
+        verdict="disconnected",
+        topology_verdict="disconnected",
+        physics_verdict="not_run",
+        input={"path": "model.ldr"},
+        geometry={},
+        connectivity={},
+        grid_frames=(),
+        support={},
+        regions=(),
+        load_paths=(),
+        physics={},
+        counterfactual={
+            "status": "found",
+            "candidate": {
+                "description": "rotate local Y by 90 degrees",
+                "source_model": "model.ldr",
+                "source_line": 7,
+                "verification": verification,
+                "verification_reason": "test reason",
+            },
+        },
+        occurrences=(),
+    )
+
+
+def test_html_report_badges_unverified_recommendations(tmp_path: Path) -> None:
+    unverified = tmp_path / "unverified.html"
+    write_html_report(_report_with_candidate("unverified"), unverified)
+    document = unverified.read_text()
+    assert "Recommendations" in document
+    assert "UNVERIFIED" in document
+
+    validated = tmp_path / "validated.html"
+    write_html_report(_report_with_candidate("physics-validated"), validated)
+    validated_document = validated.read_text()
+    assert "Recommendations" in validated_document
+    assert "UNVERIFIED" not in validated_document
 
 
 def test_topology_only_rejects_explicit_support(
@@ -397,7 +480,11 @@ def test_cli_registers_ldcad_shadow_sources(tmp_path: Path) -> None:
     )
 
     assert code == 0
-    graph = json.loads(source.with_suffix(".connections.json").read_text())
+    graph = json.loads(
+        (
+            tmp_path / "shadowed-analysis" / "diagnostics" / "connections.json"
+        ).read_text()
+    )
     providers = {
         evidence["provider"]
         for edge in graph["connections"]
@@ -452,7 +539,9 @@ def test_cli_registers_studio_metadata_sources(tmp_path: Path) -> None:
     )
 
     assert code == 0
-    graph = json.loads(source.with_suffix(".connections.json").read_text())
+    graph = json.loads(
+        (tmp_path / "studio-analysis" / "diagnostics" / "connections.json").read_text()
+    )
     providers = {
         evidence["provider"]
         for edge in graph["connections"]

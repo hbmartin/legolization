@@ -1,0 +1,9 @@
+interface:
+  display_name: "Publish Lego Instructions"
+  short_description: "Produce a step-annotated build plan and, when rendering is available, an HTML/PDF instruction booklet."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $publish-lego-instructions to produce building instructions for my model."
+policy:
+  allow_implicit_invocation: true

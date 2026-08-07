@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from legolization.catalog import Catalog, Cell, Connector, Part
+    from legolization.grid import VoxelGrid
     from legolization.physical import LduBox, LduConnector
 
 
@@ -248,3 +249,39 @@ class Layout:
     def layers(self) -> list[int]:
         """Sorted distinct base layers present in the layout."""
         return sorted({b.layer for b in self})
+
+
+def occupancy_grid(layout: Layout) -> tuple[VoxelGrid, Layout, tuple[int, int, int]]:
+    """Convert a placed layout into a coloured occupancy grid.
+
+    Returns the grid, the layout normalized to the grid origin, and the
+    (x, y, layer) offset mapping normalized coordinates back to the
+    source layout. This is the shared retile/repair conversion: the
+    imported assembly is the shape authority and every cell keeps its
+    brick's colour code.
+    """
+    import numpy as np  # noqa: PLC0415 - keep layout import-light
+
+    from legolization.grid import EMPTY, VoxelGrid  # noqa: PLC0415
+
+    xs, ys, zs = zip(*layout.occupancy, strict=True)
+    offset = (min(xs), min(ys), min(zs))
+    shape = (
+        max(xs) - offset[0] + 1,
+        max(ys) - offset[1] + 1,
+        max(zs) - offset[2] + 1,
+    )
+    codes = np.full(shape, EMPTY, dtype=np.int16)
+    normalized = Layout(catalog=layout.catalog)
+    for brick in layout:
+        normalized.add(
+            part_key=brick.part_key,
+            x=brick.x - offset[0],
+            y=brick.y - offset[1],
+            layer=brick.layer - offset[2],
+            yaw=brick.yaw,
+            colour_code=brick.colour_code,
+        )
+        for x, y, z in layout.cells_of(brick):
+            codes[x - offset[0], y - offset[1], z - offset[2]] = brick.colour_code
+    return VoxelGrid(codes=codes), normalized, offset

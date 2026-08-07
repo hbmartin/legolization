@@ -9,7 +9,7 @@ that has this repo but not this context.
 | You want to... | Use |
 |---|---|
 | just see what a model looks like | `render-ldraw` skill (front/iso/top PNGs) |
-| know which strategy is best on one model, or sanity-check a sweep winner | `compare-strategies` skill |
+| know which strategy is best on one model, or sanity-check a sweep winner | the bundle comparison report (`comparison/report.json` via `legolization bundle`) + the `optimize-lego-build` skill |
 | judge whether the build instructions make sense (dangling parts, step order/sizes) | `inspect-instructions` skill |
 | know whether the project got better/worse overall; find the worst case to fix next | `eval-corpus` skill |
 | check one metric fact quickly (is X stable? how many bricks?) | run the CLI; exit 0 = buildable, 2 = not |
@@ -20,33 +20,48 @@ shell's venv hook aborts them) — use absolute paths.
 
 ## 2. Tooling map
 
-- **CLI sweep**: `uv run legolization INPUT --strategy all --jobs 0
-  --report report.json --keep-candidates candidates/` — runs all 6
-  strategies, gated lexicographic winner (`src/legolization/compare.py`).
+- **CLI sweep**: `uv run legolization bundle INPUT` — the balanced-quality
+  candidate sweep runs every ordinary strategy (plus global exact when
+  preflight qualifies it), gated lexicographic winner
+  (`src/legolization/compare.py`); the full per-candidate comparison
+  lands in the bundle's `comparison/report.json`, and diagnostics retain
+  the best rejected candidate when nothing is buildable.
 - **Mesh inputs** (since M6): `.obj/.stl/.ply` accepted directly;
-  `--up y` for most .obj files, `--target-studs N` for size
-  (`src/legolization/mesh.py`). Mesh grids are always aspect-correct.
-- **Corpus**: `data/corpus/manifest.toml` (committed truth: pinned mesh
-  URLs + sha256, generator names, traits, `expect_min_buildable`);
-  `scripts/corpus.py generate|download|verify|list`. Binaries gitignored.
-- **Instruction audit**: `scripts/check_instructions.py INPUT --json r.json
-  --render-dir steps/` — `verify_plan` invariants + per-step floating
-  (dangling) and component counts + step PNG dump. Exit 1 = violation
-  (always a bug), 2 = warnings.
-- **Corpus collection**: `scripts/eval_corpus.py` defaults to the
-  synthetic fast scope. It writes one atomic artifact per
-  model/strategy/seed plus a collection manifest, reuses exact successful
+  `uv run legolization input inspect MODEL` classifies the up-axis
+  (`--up y` overrides — needed for most .obj files) and recommends a
+  size; `--target-studs N` sets it (`src/legolization/mesh.py`). Mesh
+  grids are always aspect-correct.
+- **Corpus**: the packaged manifest
+  `src/legolization/data/corpus/manifest.toml` (committed truth: pinned
+  mesh URLs + sha256, generator names, traits, `expect_min_buildable`);
+  `uv run legolization corpus generate|download|verify|list`. Generated
+  and downloaded inputs live in platform user-data storage
+  (`$LEGOLIZATION_DATA_HOME` overrides), not the repo.
+- **Instruction audit**: `uv run legolization instructions audit MODEL
+  --report r.json --render-dir steps/` (a step-annotated `.ldr`/`.mpd`
+  or a bundle directory) — `verify_plan` invariants + per-step floating
+  (dangling) and component counts + step PNG dump. Exit 2 = violation
+  (always a bug), 3 = warnings.
+- **Corpus collection**: `uv run legolization corpus collect` defaults to
+  the synthetic fast scope. It writes one atomic artifact per
+  model/strategy/seed plus a collection manifest under
+  `./legolization-eval/runs/` (`--out` overrides; inputs come from
+  user-data storage), reuses exact successful
   commit/source/config/input identities, and retries failures. Use
   `--fresh` only when an exact success should be ignored. A sweep covers
   exactly one kind per run (mixed-kind sweeps no longer exist); naming a
   mesh model without `--kind mesh` fails with a hint.
-- **Scorecard assembly**: `scripts/assemble_eval.py COLLECTION_MANIFEST`
-  validates the complete expected matrix and assembles
-  `scorecard.{json,md}` without running placement. Baseline comparison
-  and `--write-baseline` live here. Meshes are never part of the default
-  inner loop; opt in with `--kind mesh`.
-- **Stability heatmap**: add `--heatmap heat.ldr` to any single-strategy
-  or import run, then render it (render-ldraw skill) — black bricks are
+- **Scorecard assembly**: `uv run legolization corpus assemble` (newest
+  collection under `./legolization-eval/runs/` by default; `--runs`
+  points at another root or one `collection.json`) validates the
+  complete expected matrix and assembles `scorecard.{json,md}` without
+  running placement. Baseline comparison and `--write-baseline` live
+  here; `uv run legolization corpus evaluate` collects and assembles in
+  one operation. Meshes are never part of the default inner loop; opt
+  in with `--kind mesh`.
+- **Stability heatmap**: write one with the Python helper
+  `legolization.ldraw_out.write_heatmap` (the CLI flag is retired),
+  then render it (render-ldraw skill) — black bricks are
   at rest, dark red → red → light red rising stress, white at/beyond
   capacity. Palette-quantized on purpose: headless LeoCAD draws LDraw
   direct colours as grey.
@@ -87,7 +102,8 @@ shell's venv hook aborts them) — use absolute paths.
 
 ## 4. Visual checklists
 
-Whole model (compare-strategies): silhouette matches source; no holes;
+Whole model (bundle comparison / optimize-lego-build): silhouette
+matches source; no holes;
 colours right; running-bond seams (not aligned stacks); no detached
 clusters; slopes stair-step gently.
 
@@ -101,21 +117,24 @@ weights (`ObjectiveWeights`) worth reporting.
 
 ## 5. The improvement loop
 
-1. `scripts/corpus.py verify` — corpus present and honest.
-2. `scripts/eval_corpus.py --kind synthetic`, then
-   `scripts/assemble_eval.py eval/runs/collections/COLLECTION.json`
+1. `uv run legolization corpus verify` — corpus present and honest.
+2. `uv run legolization corpus collect --kind synthetic`, then
+   `uv run legolization corpus assemble`
    (add meshes in an isolated offline run when the change could affect
    them).
 3. Pick the worst row: expectation FAIL you didn't expect, lowest
    buildable_count, or highest winner objective.
-4. Drill in: `compare-strategies` on that model (all six, rendered), then
-   `inspect-instructions` if the weakness is sequencing.
+4. Drill in: run the bundle comparison on that model (`legolization
+   bundle`, reading `comparison/report.json` — the `optimize-lego-build`
+   skill drives this conversationally; render candidates with
+   render-ldraw), then `inspect-instructions` if the weakness is
+   sequencing.
 5. Localize with §6 and fix the subsystem.
 6. Re-run the slice, then the synthetic sweep. Improvements should show as
    higher buildable_count / lower objective; regressions elsewhere exit 1.
 7. If the change *intentionally* moved placement output:
    - collect the full synthetic scope, then refresh the baseline with
-     `scripts/assemble_eval.py COLLECTION --write-baseline`; commit it
+     `uv run legolization corpus assemble --write-baseline`; commit it
      with the code change;
    - regenerate the example goldens exactly as
      `tests/test_examples_regression.py` prescribes (counts and shipped
@@ -141,10 +160,11 @@ weights (`ObjectiveWeights`) worth reporting.
 - Add a mesh: pin a raw URL at a specific commit of
   `alecjacobson/common-3d-test-models`, download once, record sha256 (from
   `shasum -a 256`), set `up`/`target_studs`/traits/expectation, note the
-  licence (that's why meshes aren't vendored). `corpus.py verify` must
-  pass.
+  licence (that's why meshes aren't vendored). `uv run legolization
+  corpus verify` must pass.
 - Add a synthetic: write a pure deterministic generator in
-  `scripts/corpus.py` (no RNG, no dates), register it in `GENERATORS`, add
+  `src/legolization/corpus/generators.py` (no RNG, no dates), register
+  it in `GENERATORS`, add
   a manifest entry naming the subsystem it stresses, and extend
   `tests/test_corpus.py` trait sanity if the trait is new.
 - `expect_min_buildable` encodes *current reality*, not aspiration: 0 for
@@ -173,7 +193,8 @@ weights (`ObjectiveWeights`) worth reporting.
   the baseline scope only after a clean run.
 - Known-hard rows: `topple-arm`, `sparse-pillars`, `letter-h-bicolour`
   expect 0 by design; `thin-shell` has real seed variance — quantify it
-  with `eval_corpus.py --models thin-shell --seeds 0,1,2` (seed_spread).
+  with `legolization corpus collect --models thin-shell --seeds 0,1,2`
+  (seed_spread).
 - The heart example ships with two warned unstable steps (its lobes start
   as floating islands that join later) — the canonical example of a
   *tolerated* dangling step: machine-flagged, warned, buildable. The full
@@ -195,25 +216,29 @@ so drift stays visible:
   intentional moves.
 - **Each session that touches output quality**: render the flagship set
   (heart, mushroom, suzanne@16, one SNOT wall model) via `render-ldraw`
-  against the §4 checklists; `compare-strategies` on the worst corpus
-  row; ratchet `expect_min_buildable` when reality improves — that
-  ratchet is the point.
+  against the §4 checklists; the bundle comparison (optimize-lego-build)
+  on the worst corpus row; ratchet `expect_min_buildable` when reality
+  improves — that ratchet is the point.
 - **Periodically (roughly monthly, or before a release)** — the exact
   commands, copy-pasteable (PR #20 review):
 
-      uv run python scripts/eval_corpus.py --kind mesh
-      uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json
-      uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json --write-baseline
-      uv run python scripts/corpus.py generate
-      uv run python scripts/eval_corpus.py --seeds 0,1,2 --models thin-shell
-      uv run python scripts/check_instructions.py data/examples/heart.vox --insertion-check
-      uv run python scripts/check_instructions.py data/corpus/synthetic/mushroom.npy --insertion-check
-      uv run python scripts/check_instructions.py data/corpus/synthetic/press-tower.npy --insertion-check
+      uv run legolization corpus collect --kind mesh
+      uv run legolization corpus assemble
+      uv run legolization corpus assemble --write-baseline
+      uv run legolization corpus generate
+      uv run legolization corpus collect --seeds 0,1,2 --models thin-shell
+      uv run legolization bundle data/examples/heart.vox
+      uv run legolization instructions audit heart-legolization
+      uv run legolization instructions audit mushroom-legolization
+      uv run legolization instructions audit press-tower-legolization
 
-  (`press-tower` is the audit's flagship input — statically clean with
-  known press-fragile arm steps, so a silently broken audit shows up as
-  zero flags.) Re-run the physics A/B harness if any SolverConfig
-  default moved.
+  (`instructions audit` takes a step-annotated model or bundle directory,
+  so bundle each flagship input first — the mushroom and press-tower
+  `.npy` inputs live in corpus user-data storage after `corpus generate`.
+  Insertion-press auditing is always on. `press-tower` is the audit's
+  flagship input — statically clean with known press-fragile arm steps,
+  so a silently broken audit shows up as zero flags.) Re-run the physics
+  A/B harness if any SolverConfig default moved.
 - **Every new capability adds a corpus model that stresses it** (the v5
   additions, landed in v6: `torsion-bridge` for `torque_z`,
   `press-tower` for the insertion audit).

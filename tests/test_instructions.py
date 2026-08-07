@@ -253,33 +253,35 @@ def test_model_lines_legacy_path_unchanged():
     assert not any(line.startswith("0 ROTSTEP") for line in legacy)
 
 
-def test_cli_smart_steps_and_bom(tmp_path, capsys):
-    from legolization.main import main
+def test_smart_steps_and_bom(tmp_path):
+    from legolization.pipeline import run_file
 
     codes = np.full((4, 4, 2), 4, dtype=np.int16)
     npy = tmp_path / "box.npy"
     np.save(npy, codes)
     out = tmp_path / "box.ldr"
     bom_path = tmp_path / "box-bom.json"
-    code = main(["--restarts", "1", str(npy), "-o", str(out), "--bom", str(bom_path)])
-    captured = capsys.readouterr()
-    assert code == 0
-    assert "steps:" in captured.out
+    result = run_file(npy, out, PipelineConfig(seed=0), bom_path=bom_path)
+    assert result.step_count > 0
     payload = json.loads(bom_path.read_text())
     assert payload["brick_count"] > 0
     assert "0 STEP" in out.read_text()
 
 
-def test_cli_layer_steps_keep_legacy_output(tmp_path):
-    from legolization.main import main
+def test_layer_steps_keep_legacy_output(tmp_path):
+    from legolization.pipeline import run_file
 
     codes = np.full((4, 4, 2), 4, dtype=np.int16)
     npy = tmp_path / "box.npy"
     np.save(npy, codes)
     smart = tmp_path / "smart.ldr"
     layer = tmp_path / "layer.ldr"
-    assert main(["--restarts", "1", str(npy), "-o", str(smart)]) == 0
-    assert main([str(npy), "-o", str(layer), "--steps", "layer"]) == 0
+    run_file(npy, smart, PipelineConfig(seed=0))
+    run_file(
+        npy,
+        layer,
+        PipelineConfig(seed=0, instructions=InstructionsConfig(mode="layer")),
+    )
     assert "ROTSTEP" not in layer.read_text()
     # The legacy path steps once per plate layer.
     layout_layers = layer.read_text().count("0 STEP")
@@ -502,30 +504,6 @@ def test_layout_translated_preserves_ids() -> None:
         top.translated(dz=100)
 
 
-def test_profile_rejected_for_sweep_and_import(tmp_path):
-    from legolization.main import main
-
-    npy = tmp_path / "m.npy"
-    np.save(npy, np.full((2, 2, 2), 4, dtype=np.int16))
-    with pytest.raises(SystemExit) as excinfo:
-        main([str(npy), "--strategy", "all", "--profile", str(tmp_path / "p.json")])
-    assert excinfo.value.code == 2
-
-    source = tmp_path / "m.ldr"
-    source.write_text("0 m\n1 4 0 -24 0 1 0 0 0 1 0 0 0 1 3005.dat\n")
-    with pytest.raises(SystemExit) as excinfo:
-        main(
-            [
-                str(source),
-                "-o",
-                str(tmp_path / "out.ldr"),
-                "--profile",
-                str(tmp_path / "p.json"),
-            ]
-        )
-    assert excinfo.value.code == 2
-
-
 def test_verify_plan_requires_exactly_one_attach():
     # Removing the attach step used to leave plan.order complete while
     # the emitted world lost the whole subassembly (PR #17 review).
@@ -654,26 +632,6 @@ def test_strict_with_subassemblies_still_raises_when_unfixable(bad_bridge):
                 rotstep=False, stability_policy="strict", subassemblies=True
             ),
         )
-
-
-def test_cli_profile_payload_is_schema_two(tmp_path):
-    from legolization.main import main
-
-    npy = tmp_path / "m.npy"
-    np.save(npy, np.full((3, 3, 2), 4, dtype=np.int16))
-    profile = tmp_path / "profile.json"
-    out = tmp_path / "m.ldr"
-    assert (
-        main(["--restarts", "1", str(npy), "-o", str(out), "--profile", str(profile)])
-        == 0
-    )
-    payload = json.loads(profile.read_text())
-    assert payload["schema"] == 2
-    assert payload["source"] == "cli"
-    sha = payload["git_sha"]
-    assert isinstance(sha, str)
-    assert len(sha) == 40
-    assert payload["spans"]["stability.analyze"]["calls"] >= 1
 
 
 def _verdict(*, stable: bool, score: float) -> StabilityResult:

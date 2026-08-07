@@ -25,6 +25,7 @@ from reportlab.pdfgen.canvas import Canvas
 from legolization.color import default_palette
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from legolization.instructions.bom import BomEntry
@@ -95,6 +96,20 @@ class Booklet:
             + len(self.step_pages)
         )
 
+    @property
+    def missing_steps(self) -> tuple[int, ...]:
+        """Step indices whose image failed to render.
+
+        A non-empty result makes the publication partial (exit 3):
+        markers replace the images, never placeholder pages.
+        """
+        return tuple(
+            entry.step.index
+            for page in self.step_pages
+            for entry in page
+            if entry.image_png is None
+        )
+
 
 def build_booklet(
     plan: InstructionPlan,
@@ -106,6 +121,17 @@ def build_booklet(
     """Paginate a plan into a booklet; image presence never changes layout."""
     config = config or BookletConfig()
     warnings = _aggregate_support_warnings(plan.warnings) + images.warnings
+    if missing := [
+        index
+        for index, step in enumerate(plan.steps, start=1)
+        if index - 1 >= len(images.images) or images.images[index - 1] is None
+    ]:
+        listed = ", ".join(str(index) for index in missing)
+        marker = (
+            f"step image(s) missing for step(s) {listed} — the booklet "
+            f"carries explicit markers and the publication is partial"
+        )
+        warnings = (*warnings, marker)
     entries = tuple(
         StepEntry(
             step=step,
@@ -408,8 +434,8 @@ def _html_step(entry: StepEntry) -> list[str]:
         )
     else:
         lines.append(
-            '<div class="placeholder">step image unavailable — '
-            "no LDraw renderer found</div>"
+            f'<div class="placeholder">Step {step.index} image missing — '
+            "rendering failed for this step</div>"
         )
     if step.attaches is not None:
         lines.append(
@@ -603,7 +629,7 @@ def _pdf_step_slot(
         canvas.drawCentredString(
             _PDF_MARGIN + image_width / 2,
             image_top - image_height / 2,
-            "step image unavailable",
+            f"Step {entry.step.index} image missing — rendering failed",
         )
 
     callout_x = _PDF_MARGIN + image_width + 16
@@ -624,3 +650,29 @@ def _part_line(entry: BomEntry) -> str:
         f"{entry.quantity:>4}  {entry.part_key:<14} {entry.ldraw_part:<10} "
         f"{entry.colour_name}  {entry.mass_g:.1f} g"
     )
+
+
+_LETTER_TERRITORIES = frozenset(
+    ("US", "CA", "MX", "PH", "CL", "CO", "CR", "GT", "PA", "DO", "SV", "VE", "PR")
+)
+
+
+def default_page_size(env: Mapping[str, str] | None = None) -> Literal["letter", "a4"]:
+    """Infer Letter or A4 from the locale, falling back to Letter.
+
+    Reads the territory from ``LC_PAPER``/``LC_ALL``/``LC_CTYPE``/``LANG``
+    (``en_US.UTF-8`` -> ``US``); unknown or unset locales fall back to
+    Letter per the confirmed booklet policy.
+    """
+    import os  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    environment = os.environ if env is None else env
+    for variable in ("LC_PAPER", "LC_ALL", "LC_CTYPE", "LANG"):
+        value = environment.get(variable)
+        if not value:
+            continue
+        if match := re.match(r"[a-z]{2,3}[-_]([A-Za-z]{2})", value):
+            territory = match.group(1).upper()
+            return "letter" if territory in _LETTER_TERRITORIES else "a4"
+    return "letter"

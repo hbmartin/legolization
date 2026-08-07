@@ -1431,3 +1431,19 @@ class _PlanVerifier:
                 f"step {step.index}: flagged insertion-fragile but the "
                 f"press verdict is stable"
             )
+
+
+def automatic_target_step_size(part_count: int) -> int:
+    """Size-based step density: larger models earn denser steps.
+
+    Targets 3, 5, 7, and 10 parts per step at model sizes under 50,
+    50-149, 150-399, and 400+ parts; physics, subassembly, and
+    insertion splits still subdivide below the target.
+    """
+    if part_count < 50:
+        return 3
+    if part_count < 150:
+        return 5
+    if part_count < 400:
+        return 7
+    return 10

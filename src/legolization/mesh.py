@@ -506,3 +506,55 @@ def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, int]:
     keep = int(np.argmax(sizes)) + 1
     kept = labels == keep
     return kept, int(np.count_nonzero(mask)) - int(np.count_nonzero(kept))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class VoxelizationRecommendation:
+    """The deterministic scale/phase choice the selector would make."""
+
+    target_studs: int
+    pitch: float
+    phase: tuple[float, float, float]
+    surface_error: float
+    constructibility: float
+    grid_shape: tuple[int, int, int]
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the JSON payload for this recommendation."""
+        return {
+            "target_studs": self.target_studs,
+            "pitch": round(self.pitch, 6),
+            "phase": list(self.phase),
+            "surface_error": round(self.surface_error, 6),
+            "constructibility": round(self.constructibility, 6),
+            "grid_shape": list(self.grid_shape),
+        }
+
+
+def recommend_voxelization(
+    mesh: trimesh.Trimesh,
+    options: MeshOptions | None = None,
+) -> VoxelizationRecommendation:
+    """Run the deterministic scale/phase selector without building a grid.
+
+    Inspection defaults sweep a wide stud range so the recommendation is
+    meaningful without user-provided scale options.
+    """
+    options = options or MeshOptions(auto_scale=(16, 64), grid_phases=8)
+    working = _orient_z_up(mesh, options.up)
+    working.apply_scale((1.0, 1.0, _PLATES_PER_STUD))
+    choice = _select_voxelization(working, options)
+    shape = tuple(int(value) for value in choice.mask.shape)
+    return VoxelizationRecommendation(
+        target_studs=choice.target_studs,
+        pitch=choice.pitch,
+        phase=choice.phase,
+        surface_error=choice.surface_error,
+        constructibility=choice.constructibility,
+        grid_shape=cast("tuple[int, int, int]", shape),
+    )
+
+
+def has_colour_data(mesh: trimesh.Trimesh) -> bool:
+    """Return whether the mesh carries usable texture or vertex colours."""
+    return _vertex_colours(mesh) is not None

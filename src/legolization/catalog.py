@@ -14,15 +14,17 @@ rotates counterclockwise in the x-y plane (viewed from above) in steps of 90°.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from functools import lru_cache
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast
 
+from legolization.errors import ConfigurationError
 from legolization.ldraw_units import GRID_TOLERANCE_LDU, PLATE_LDU, STUD_LDU
 from legolization.physical import (
     LduBox,
@@ -32,6 +34,9 @@ from legolization.physical import (
     placement_offset,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
 Cell = tuple[int, int, int]
 """A unit grid cell offset ``(dx, dy, dz)``; ``dz`` counts plate heights."""
 
@@ -40,6 +45,20 @@ DOWN: Cell = (0, 0, -1)
 
 DEFAULT_CATALOG_PATH = Path(__file__).parent / "data" / "catalog.json"
 CATALOG_SCHEMA = 2
+CATALOG_ESTIMATES_SCHEMA = "legolization.catalog-estimates/v1"
+CATALOG_VALIDATION_SCHEMA = "legolization.catalog-validation/v1"
+
+SUPPORT_BUNDLE_SUFFIX = "-legolization-support"
+SUPPORT_EXTENSION_FILENAME = "catalog-extension.json"
+SUPPORT_ESTIMATES_FILENAME = "draft-estimates.json"
+SUPPORT_VALIDATION_FILENAME = "validation.json"
+
+ESTIMATE_METHODS = frozenset(
+    {"volumetric", "analogous-part", "catalog-measured", "user-supplied"}
+)
+"""Allowed provenance methods for estimate-sidecar values."""
+
+_ESTIMATE_FIELD_NAMES = frozenset({"mass_g"})
 
 _FULL_YAWS = (0, 90, 180, 270)
 
@@ -163,6 +182,16 @@ class Part:
             )
 
     @property
+    def has_mass(self) -> bool:
+        """Whether this part carries a physical mass usable by physics.
+
+        Extension drafts may omit ``mass_g`` (stored as NaN) until an
+        estimate sidecar supplies the value through
+        :func:`resolve_catalog`.
+        """
+        return not math.isnan(self.mass_g)
+
+    @property
     def footprint(self) -> frozenset[tuple[int, int]]:
         """The set of ``(dx, dy)`` columns this part covers."""
         return frozenset((dx, dy) for dx, dy, _ in self.occupied_cells)
@@ -243,6 +272,11 @@ class Part:
         return tuple(item.rotated_yaw(yaw).translated(offset) for item in source)
 
 
+def _spec_mass(spec: dict[str, Any]) -> float:
+    """Return the declared mass, or NaN for a massless extension draft."""
+    return float(spec["mass_g"]) if "mass_g" in spec else math.nan
+
+
 def _rect_cells(width: int, length: int, height: int) -> frozenset[Cell]:
     return frozenset(
         (dx, dy, dz)
@@ -283,7 +317,7 @@ def _rect_part(spec: dict[str, Any]) -> Part:
         top_connectors=top,
         bottom_connectors=bottom,
         height_plates=height,
-        mass_g=float(spec["mass_g"]),
+        mass_g=_spec_mass(spec),
         orientations=orientations,
         collision_boxes_ldu=collision_boxes,
         top_connectors_ldu=top_ldu,
@@ -557,7 +591,7 @@ def _explicit_part(spec: dict[str, Any]) -> Part:
         top_connectors=_connectors(spec["top_connectors"]),
         bottom_connectors=_connectors(spec["bottom_connectors"]),
         height_plates=int(spec["height_plates"]),
-        mass_g=float(spec["mass_g"]),
+        mass_g=_spec_mass(spec),
         orientations=tuple(int(value) for value in spec["orientations"]),
         origin_offset=origin,
         mount_normal=(
@@ -739,10 +773,358 @@ def default_catalog() -> Catalog:
     return Catalog.load()
 
 
+@lru_cache(maxsize=1)
+def catalog_hash() -> str:
+    """Hash the built-in catalog bytes for identity records."""
+    return hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes()).hexdigest()
+
+
 def load_catalog(*extensions: Path) -> Catalog:
     """Load the built-in catalog plus optional versioned extensions."""
     catalog = default_catalog()
     return catalog if not extensions else catalog.with_extensions(extensions)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EstimateProvenance:
+    """Labeled origin of one estimated physical value."""
+
+    method: str
+    basis: str
+    source_url: str | None = None
+    confidence: float | None = None
+    retrieved_at: str | None = None
+
+    def to_payload(self) -> dict[str, Any]:
+        """Return the JSON payload for this provenance record."""
+        return {
+            "method": self.method,
+            "basis": self.basis,
+            "source_url": self.source_url,
+            "confidence": self.confidence,
+            "retrieved_at": self.retrieved_at,
+        }
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EstimateRecord:
+    """One part's estimated fields (``mass_g`` only for now)."""
+
+    part: str
+    fields: Mapping[str, float]
+    provenance: EstimateProvenance
+
+    def to_payload(self) -> dict[str, Any]:
+        """Return the JSON payload for this estimate."""
+        return {
+            "part": self.part,
+            "fields": dict(self.fields),
+            "provenance": self.provenance.to_payload(),
+        }
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CatalogProvenance:
+    """Reporting-only description of how a catalog was resolved."""
+
+    extensions: tuple[Path, ...]
+    estimate_sidecars: tuple[Path, ...]
+    estimated_parts: Mapping[str, tuple[EstimateRecord, ...]]
+    content_hash: str
+
+    def to_payload(self) -> dict[str, Any]:
+        """Return the report/bundle ``catalog`` section."""
+        return {
+            "builtin_sha256": catalog_hash(),
+            "extensions": [str(path) for path in self.extensions],
+            "estimate_sidecars": [str(path) for path in self.estimate_sidecars],
+            "estimated_parts": {
+                part: [record.to_payload() for record in records]
+                for part, records in sorted(self.estimated_parts.items())
+            },
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedCatalog:
+    """A physics-complete catalog plus its resolution provenance."""
+
+    catalog: Catalog
+    provenance: CatalogProvenance
+
+
+def _sidecar_error(path: Path, message: str) -> ConfigurationError:
+    return ConfigurationError(f"estimate sidecar {path}: {message}")
+
+
+def _validate_sidecar_keys(
+    payload: Mapping[str, Any],
+    *,
+    allowed: frozenset[str],
+    path: Path,
+    label: str,
+) -> None:
+    if unknown := sorted(set(payload) - allowed):
+        raise _sidecar_error(path, f"{label} has unknown keys: {', '.join(unknown)}")
+
+
+def _estimate_fields(raw: Any, *, path: Path, part: str) -> dict[str, float]:  # noqa: ANN401 - untrusted JSON
+    if not isinstance(raw, dict) or not raw:
+        raise _sidecar_error(
+            path, f"estimate for {part!r} needs a non-empty fields map"
+        )
+    fields = cast("dict[str, Any]", raw)
+    if unknown := sorted(set(fields) - _ESTIMATE_FIELD_NAMES):
+        message = f"estimate for {part!r} has unknown fields: {', '.join(unknown)}"
+        raise _sidecar_error(path, message)
+    values: dict[str, float] = {}
+    for name, value in fields.items():
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError) as error:
+            raise _sidecar_error(path, f"{part!r} {name} is not a number") from error
+        if not math.isfinite(parsed) or parsed <= 0:
+            message = f"{part!r} {name} must be finite and positive"
+            raise _sidecar_error(path, message)
+        values[name] = parsed
+    return values
+
+
+def _estimate_provenance(raw: Any, *, path: Path, part: str) -> EstimateProvenance:  # noqa: ANN401 - untrusted JSON
+    if not isinstance(raw, dict):
+        raise _sidecar_error(path, f"estimate for {part!r} needs a provenance object")
+    provenance = cast("dict[str, Any]", raw)
+    _validate_sidecar_keys(
+        provenance,
+        allowed=frozenset(
+            {"method", "basis", "source_url", "confidence", "retrieved_at"}
+        ),
+        path=path,
+        label=f"provenance for {part!r}",
+    )
+    method = str(provenance.get("method", ""))
+    if method not in ESTIMATE_METHODS:
+        listed = ", ".join(sorted(ESTIMATE_METHODS))
+        raise _sidecar_error(path, f"{part!r} method must be one of: {listed}")
+    basis = provenance.get("basis")
+    if not isinstance(basis, str) or not basis:
+        raise _sidecar_error(path, f"{part!r} provenance needs a non-empty basis")
+    confidence = provenance.get("confidence")
+    if confidence is not None:
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError) as error:
+            message = f"{part!r} confidence is not a number"
+            raise _sidecar_error(path, message) from error
+        if not 0.0 <= confidence <= 1.0:
+            raise _sidecar_error(path, f"{part!r} confidence must be within [0, 1]")
+    for name in ("source_url", "retrieved_at"):
+        value = provenance.get(name)
+        if value is not None and not isinstance(value, str):
+            raise _sidecar_error(path, f"{part!r} {name} must be a string")
+    return EstimateProvenance(
+        method=method,
+        basis=basis,
+        source_url=cast("str | None", provenance.get("source_url")),
+        confidence=confidence,
+        retrieved_at=cast("str | None", provenance.get("retrieved_at")),
+    )
+
+
+def load_estimate_sidecar(path: Path) -> tuple[EstimateRecord, ...]:
+    """Load and strictly validate one catalog-estimates sidecar document."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        msg = f"cannot load estimate sidecar {path}: {error}"
+        raise ConfigurationError(msg) from error
+    if not isinstance(payload, dict):
+        raise _sidecar_error(path, "document must be a JSON object")
+    document = cast("dict[str, Any]", payload)
+    if document.get("schema") != CATALOG_ESTIMATES_SCHEMA:
+        raise _sidecar_error(path, f"must declare schema {CATALOG_ESTIMATES_SCHEMA!r}")
+    _validate_sidecar_keys(
+        document,
+        allowed=frozenset({"schema", "estimates"}),
+        path=path,
+        label="document",
+    )
+    estimates = document.get("estimates")
+    if not isinstance(estimates, list):
+        raise _sidecar_error(path, "estimates must be a list")
+    records: list[EstimateRecord] = []
+    for index, raw_entry in enumerate(estimates, start=1):
+        if not isinstance(raw_entry, dict):
+            raise _sidecar_error(path, f"estimate {index} must be an object")
+        entry = cast("dict[str, Any]", raw_entry)
+        _validate_sidecar_keys(
+            entry,
+            allowed=frozenset({"part", "fields", "provenance"}),
+            path=path,
+            label=f"estimate {index}",
+        )
+        part = entry.get("part")
+        if not isinstance(part, str) or not part:
+            raise _sidecar_error(path, f"estimate {index} needs a non-empty part key")
+        records.append(
+            EstimateRecord(
+                part=part,
+                fields=_estimate_fields(entry.get("fields"), path=path, part=part),
+                provenance=_estimate_provenance(
+                    entry.get("provenance"),
+                    path=path,
+                    part=part,
+                ),
+            )
+        )
+    return tuple(records)
+
+
+def catalog_content_hash(
+    extensions: Sequence[Path] = (),
+    estimate_sidecars: Sequence[Path] = (),
+) -> str:
+    """Hash the builtin catalog plus every overlay file's bytes in order.
+
+    With no arguments this equals :func:`catalog_hash`.
+    """
+    digest = hashlib.sha256(DEFAULT_CATALOG_PATH.read_bytes())
+    for path in (*extensions, *estimate_sidecars):
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def support_bundle_files(directory: Path) -> tuple[Path, Path | None]:
+    """Resolve a ``-legolization-support`` directory's overlay files.
+
+    Returns the ``catalog-extension.json`` path plus its
+    ``draft-estimates.json`` sidecar (``None`` when absent) — but only
+    when the bundle's ``validation.json`` shows every gate passed;
+    anything else is a :class:`ConfigurationError` pointing at
+    ``legolization catalog validate``.
+    """
+    extension = directory / SUPPORT_EXTENSION_FILENAME
+    if not extension.is_file():
+        msg = (
+            f"catalog directory {directory} is not a support bundle: "
+            f"it has no {SUPPORT_EXTENSION_FILENAME}"
+        )
+        raise ConfigurationError(msg)
+    _require_validated_support(directory)
+    sidecar = directory / SUPPORT_ESTIMATES_FILENAME
+    return extension, sidecar if sidecar.is_file() else None
+
+
+def _require_validated_support(directory: Path) -> None:
+    """Reject a support bundle whose gates have not all passed."""
+    hint = f"run 'legolization catalog validate {directory}' and fix the failures"
+    path = directory / SUPPORT_VALIDATION_FILENAME
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        msg = (
+            f"catalog support bundle {directory} has no readable "
+            f"validation.json; {hint}"
+        )
+        raise ConfigurationError(msg) from error
+    gates = payload.get("gates") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != CATALOG_VALIDATION_SCHEMA
+        or not isinstance(gates, list)
+        or not gates
+    ):
+        msg = (
+            f"catalog support bundle {directory} has an invalid validation.json; {hint}"
+        )
+        raise ConfigurationError(msg)
+    unpassed = sorted(
+        str(gate.get("gate", "?"))
+        for gate in cast("list[Any]", gates)
+        if not isinstance(gate, dict) or gate.get("status") != "passed"
+    )
+    if unpassed:
+        listed = ", ".join(unpassed)
+        msg = (
+            f"catalog support bundle {directory} is not fully validated "
+            f"(gates not passed: {listed}); {hint}"
+        )
+        raise ConfigurationError(msg)
+
+
+def _expand_support_overlays(
+    extensions: Sequence[Path],
+    estimate_sidecars: Sequence[Path],
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Expand ``-legolization-support`` directories into their files.
+
+    File paths pass through untouched; a directory contributes its
+    validated ``catalog-extension.json`` and auto-includes its
+    ``draft-estimates.json`` after the explicit sidecars.
+    """
+    expanded: list[Path] = []
+    bundled_sidecars: list[Path] = []
+    for path in extensions:
+        if not path.is_dir():
+            expanded.append(path)
+            continue
+        extension, sidecar = support_bundle_files(path)
+        expanded.append(extension)
+        if sidecar is not None:
+            bundled_sidecars.append(sidecar)
+    return tuple(expanded), (*estimate_sidecars, *bundled_sidecars)
+
+
+def resolve_catalog(
+    extensions: Sequence[Path] = (),
+    estimate_sidecars: Sequence[Path] = (),
+) -> ResolvedCatalog:
+    """Build the physics-complete catalog for one invocation.
+
+    Loads the builtin catalog plus extensions, applies sidecar values
+    verbatim to massless extension drafts (no safety adjustment), then
+    re-validates. Parts left without a mass are a configuration error.
+    A ``--catalog`` path that is a validated ``-legolization-support``
+    directory activates its extension and bundled draft estimates.
+    """
+    extensions, estimate_sidecars = _expand_support_overlays(
+        extensions,
+        estimate_sidecars,
+    )
+    try:
+        catalog = load_catalog(*extensions)
+    except (OSError, TypeError, ValueError) as error:
+        msg = f"catalog extension loading failed: {error}"
+        raise ConfigurationError(msg) from error
+    parts = dict(catalog.parts)
+    estimated: dict[str, tuple[EstimateRecord, ...]] = {}
+    for sidecar in estimate_sidecars:
+        for record in load_estimate_sidecar(sidecar):
+            part = parts.get(record.part)
+            if part is None or part.has_mass:
+                continue
+            parts[record.part] = replace(part, mass_g=record.fields["mass_g"])
+            estimated[record.part] = (*estimated.get(record.part, ()), record)
+    if massless := sorted(key for key, part in parts.items() if not part.has_mass):
+        listed = ", ".join(massless)
+        msg = f"catalog parts have no mass; pass --catalog-estimates covering: {listed}"
+        raise ConfigurationError(msg)
+    resolved = Catalog(parts=parts)
+    _validate_decode_ambiguity(resolved)
+    try:
+        content_hash = catalog_content_hash(extensions, estimate_sidecars)
+    except OSError as error:
+        msg = f"catalog content hashing failed: {error}"
+        raise ConfigurationError(msg) from error
+    return ResolvedCatalog(
+        catalog=resolved,
+        provenance=CatalogProvenance(
+            extensions=tuple(extensions),
+            estimate_sidecars=tuple(estimate_sidecars),
+            estimated_parts=estimated,
+            content_hash=content_hash,
+        ),
+    )
 
 
 _RECT_CATEGORIES = frozenset((Category.BRICK, Category.PLATE, Category.TILE))
@@ -766,14 +1148,21 @@ def _validate_part_spec(
     index: int,
     require_explicit_nonrect: bool,
 ) -> None:
-    """Reject incomplete physical metadata before constructing a part."""
-    required = {"key", "ldraw_part", "category", "mass_g"}
+    """Reject incomplete physical metadata before constructing a part.
+
+    Extension documents (``require_explicit_nonrect=True``) may omit
+    ``mass_g``: the part stays a massless draft until an estimate
+    sidecar supplies the value through :func:`resolve_catalog`.
+    """
+    required = {"key", "ldraw_part", "category"}
+    if not require_explicit_nonrect:
+        required.add("mass_g")
     missing = sorted(required - spec.keys())
     if missing:
         msg = f"catalog {path} part {index} is missing {', '.join(missing)}"
         raise ValueError(msg)
     category, mass_g = _category_and_mass(spec, path=path, index=index)
-    if not math.isfinite(mass_g) or mass_g <= 0:
+    if mass_g is not None and (not math.isfinite(mass_g) or mass_g <= 0):
         msg = f"catalog {path} part {index} mass_g must be finite and positive"
         raise ValueError(msg)
     fields = _geometry_fields(
@@ -802,9 +1191,10 @@ def _category_and_mass(
     *,
     path: Path,
     index: int,
-) -> tuple[Category, float]:
+) -> tuple[Category, float | None]:
     try:
-        return Category(str(spec["category"])), float(spec["mass_g"])
+        mass = float(spec["mass_g"]) if "mass_g" in spec else None
+        return Category(str(spec["category"])), mass
     except (TypeError, ValueError) as error:
         msg = f"catalog {path} part {index} has invalid category or mass"
         raise ValueError(msg) from error

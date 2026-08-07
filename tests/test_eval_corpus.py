@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +12,7 @@ import numpy as np
 import pytest
 
 from legolization.compare import Candidate, CandidateMetrics
+from legolization.corpus import collect
 from legolization.eval_artifacts import SourceIdentity
 from legolization.mesh import MeshOptions
 
@@ -21,22 +20,10 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
-_SCRIPT = Path(__file__).parent.parent / "scripts" / "eval_corpus.py"
-
-
-def _load_eval() -> _EvaluatorModule:
-    spec = importlib.util.spec_from_file_location("eval_corpus_script", _SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return cast("_EvaluatorModule", module)
-
 
 @pytest.fixture(scope="module")
 def evaluator() -> _EvaluatorModule:
-    return _load_eval()
+    return cast("_EvaluatorModule", collect)
 
 
 @dataclass(frozen=True)
@@ -350,12 +337,26 @@ def test_write_baseline_rejects_noncanonical_scope(
     evaluator: _EvaluatorModule,
     scope_args: list[str],
 ) -> None:
-    with pytest.raises(SystemExit, match=r"assemble_eval\.py"):
+    with pytest.raises(SystemExit, match="corpus assemble"):
         evaluator.main(argv=[*scope_args, "--write-baseline"])
 
 
 def test_default_scope_is_synthetic(evaluator: _EvaluatorModule) -> None:
     assert evaluator.parse_args([]).kind == "synthetic"
+
+
+def test_default_out_is_local_eval_runs(evaluator: _EvaluatorModule) -> None:
+    assert evaluator.parse_args([]).out == Path("legolization-eval") / "runs"
+
+
+def test_baseline_root_depends_on_checkout(evaluator: _EvaluatorModule) -> None:
+    # Inside a checkout the committed baselines stay authoritative;
+    # outside one, baselines live next to the local run output.
+    inside = collect.baseline_root(in_checkout=True)
+    assert inside.is_absolute()
+    assert inside.parts[-2:] == ("eval", "baselines")
+    outside = collect.baseline_root(in_checkout=False)
+    assert outside == Path("legolization-eval") / "baselines"
 
 
 def test_baseline_paths_route_by_kind(evaluator: _EvaluatorModule) -> None:
@@ -493,7 +494,7 @@ def test_multi_seed_skips_baseline_diff(
         ]
     )
     assert exit_code == 0
-    manifest_path = next((tmp_path / "runs" / "collections").glob("*.json"))
+    manifest_path = next((tmp_path / "runs").glob("*/collection.json"))
     manifest = json.loads(manifest_path.read_text())
     assert manifest["scope"]["seeds"] == [0, 1]
     assert len(manifest["models"][0]["candidates"]) == 2
@@ -532,7 +533,7 @@ def test_failed_sweep_does_not_replace_baseline(
     baseline = tmp_path / "baseline.json"
     baseline.write_text("existing baseline\n")
     del monkeypatch
-    with pytest.raises(SystemExit, match=r"assemble_eval\.py"):
+    with pytest.raises(SystemExit, match="corpus assemble"):
         evaluator.main(
             argv=[
                 "--kind",
@@ -554,7 +555,7 @@ def test_clean_canonical_sweep_writes_baseline(
 ) -> None:
     baseline = tmp_path / "baseline.json"
     del monkeypatch
-    with pytest.raises(SystemExit, match=r"assemble_eval\.py"):
+    with pytest.raises(SystemExit, match="corpus assemble"):
         evaluator.main(
             argv=[
                 "--kind",
@@ -587,7 +588,7 @@ def test_smoke_sweep_two_models(
         ]
     )
     assert exit_code == 0
-    manifests = list((tmp_path / "runs" / "collections").glob("*.json"))
+    manifests = list((tmp_path / "runs").glob("*/collection.json"))
     assert len(manifests) == 1
     payload = json.loads(manifests[0].read_text())
     assert payload["status"] == "complete"

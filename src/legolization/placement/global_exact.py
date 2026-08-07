@@ -707,3 +707,15 @@ def _exact_deadline(
         return pipeline_deadline or time.monotonic() + config.exact_time_limit_s
     own = time.monotonic() + config.exact_time_limit_s
     return min(own, pipeline_deadline) if pipeline_deadline is not None else own
+
+
+def preflight_reason(grid: VoxelGrid, *, max_cells: int) -> str | None:
+    """Why the whole-model exact strategy is ineligible, or ``None``.
+
+    The shared preflight for the auto strategy selector and the bundle
+    candidate planner: no preflight-ineligible exact run may start, and
+    the reason is recorded wherever the skip happens.
+    """
+    if grid.filled_count > max_cells:
+        return f"target has {grid.filled_count} cells; exact cap is {max_cells}"
+    return None

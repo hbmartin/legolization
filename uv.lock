@@ -537,7 +537,7 @@ wheels = [
 
 [[package]]
 name = "legolization"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "clarabel" },
@@ -566,6 +566,7 @@ dev = [
     { name = "pyroma" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "ty" },
 ]
@@ -601,6 +602,7 @@ dev = [
     { name = "pyroma", specifier = ">=5.0.1" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "ruff", specifier = ">=0.15.20" },
     { name = "ty", specifier = ">=0.0.57" },
 ]

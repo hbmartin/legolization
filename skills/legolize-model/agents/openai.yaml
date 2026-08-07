@@ -1,0 +1,9 @@
+interface:
+  display_name: "Legolize Model"
+  short_description: "Turn a 3D model into a stable brick-built model with a complete buildable bundle."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $legolize-model to turn my 3D model into a stable brick-built model bundle."
+policy:
+  allow_implicit_invocation: true

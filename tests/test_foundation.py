@@ -11,7 +11,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from legolization.catalog import default_catalog
-from legolization.commands import main as commands_main
+from legolization.cli import main as commands_main
 from legolization.configuration import (
     ProjectConfig,
     load_project_config,

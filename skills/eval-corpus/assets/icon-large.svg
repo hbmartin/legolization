@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect x="11" y="11" width="234" height="234" rx="53" fill="#F6F1E7" stroke="#252A33" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M48 53 V213 H229" fill="none" stroke="#252A33" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="75" y="115" width="11" height="13" fill="#D92B2B" stroke="#252A33" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="93" y="115" width="11" height="13" fill="#D92B2B" stroke="#252A33" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="69" y="128" width="38" height="85" fill="#D92B2B" stroke="#252A33" stroke-width="9" stroke-linejoin="round"/>
+  <rect x="76" y="136" width="12" height="6" fill="#FFFFFF" opacity="0.55"/>
+  <rect x="134" y="72" width="11" height="13" fill="#F2B705" stroke="#252A33" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="152" y="72" width="11" height="13" fill="#F2B705" stroke="#252A33" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="128" y="85" width="38" height="128" fill="#F2B705" stroke="#252A33" stroke-width="9" stroke-linejoin="round"/>
+  <rect x="135" y="93" width="12" height="6" fill="#FFFFFF" opacity="0.55"/>
+  <rect x="193" y="147" width="11" height="13" fill="#2C6BD9" stroke="#252A33" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="211" y="147" width="11" height="13" fill="#2C6BD9" stroke="#252A33" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="187" y="160" width="38" height="53" fill="#2C6BD9" stroke="#252A33" stroke-width="9" stroke-linejoin="round"/>
+  <rect x="194" y="168" width="12" height="6" fill="#FFFFFF" opacity="0.55"/>
+  <path d="M53 107 H229" fill="none" stroke="#2E9E4F" stroke-width="9" stroke-dasharray="16 13" stroke-linecap="round"/>
+</svg>
