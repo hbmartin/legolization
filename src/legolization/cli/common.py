@@ -16,9 +16,7 @@ from legolization.errors import ConfigurationError
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Callable
 
-    from legolization.cli.envelope import ResultEnvelope
     from legolization.configuration import ProjectConfig
 
 
@@ -165,19 +163,3 @@ def require_output_path(path: Path) -> None:
 def error_line(error: object) -> None:
     """Print one diagnostic line to stderr."""
     print(f"error: {error}", file=sys.stderr)
-
-
-def stub_handler(
-    command: str,
-    phase: str,
-) -> Callable[[argparse.Namespace], ResultEnvelope]:
-    """Build a placeholder handler for a command landing in a later phase."""
-
-    def _run(args: argparse.Namespace) -> ResultEnvelope:
-        from legolization.cli.envelope import envelope_for_error  # noqa: PLC0415
-
-        del args
-        msg = f"'{command}' is not implemented yet; it lands with {phase}"
-        return envelope_for_error(command, NotImplementedError(msg))
-
-    return _run

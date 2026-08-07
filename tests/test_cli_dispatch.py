@@ -109,23 +109,6 @@ def test_handler_failure_with_json_emits_single_envelope(capsys, tmp_path):
     assert payload["exit_code"] == 1
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["catalog", "infer", "3001"],
-        ["catalog", "validate", "ext.json"],
-    ],
-)
-def test_stub_commands_return_valid_error_envelopes(argv, capsys):
-    assert main([*argv, "--json"]) == 1
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-    assert payload["schema"] == "legolization.result/v1"
-    assert payload["error"]["type"] == "NotImplementedError"
-    assert "not implemented yet" in payload["error"]["message"]
-    assert "not implemented yet" in captured.err
-
-
 def test_cache_inspect_json_envelope_carries_entries(capsys, tmp_path):
     config = tmp_path / "config.toml"
     config.write_text(f'[cache]\npath = "{tmp_path / "cache"}"\n')

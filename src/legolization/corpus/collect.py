@@ -281,6 +281,8 @@ def compare_to_baseline(
     tolerance: float,
 ) -> tuple[list[str], list[str]]:
     """Diff a run against the baseline; returns (hard, informational)."""
+    # One regression-classification decision table per metric.
+    # lizard forgives(cyclomatic_complexity)
     hard: list[str] = []
     info: list[str] = []
     baseline_by_name = {row["model"]: row for row in baseline_rows}

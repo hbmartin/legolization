@@ -247,6 +247,8 @@ def evaluate(  # noqa: PLR0913 - the scoped-down evaluate surface
     recorded as skipped. There is deliberately no way to write a
     baseline from here.
     """
+    # One end-to-end evaluation boundary: ensure, collect, assemble.
+    # lizard forgives(cyclomatic_complexity, parameter_count)
     manifest = load_manifest()
     kinds = _KINDS if kind is None else (kind,)
     selected = [model for model in manifest if model.kind in kinds]

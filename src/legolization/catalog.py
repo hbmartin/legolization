@@ -46,6 +46,12 @@ DOWN: Cell = (0, 0, -1)
 DEFAULT_CATALOG_PATH = Path(__file__).parent / "data" / "catalog.json"
 CATALOG_SCHEMA = 2
 CATALOG_ESTIMATES_SCHEMA = "legolization.catalog-estimates/v1"
+CATALOG_VALIDATION_SCHEMA = "legolization.catalog-validation/v1"
+
+SUPPORT_BUNDLE_SUFFIX = "-legolization-support"
+SUPPORT_EXTENSION_FILENAME = "catalog-extension.json"
+SUPPORT_ESTIMATES_FILENAME = "draft-estimates.json"
+SUPPORT_VALIDATION_FILENAME = "validation.json"
 
 ESTIMATE_METHODS = frozenset(
     {"volumetric", "analogous-part", "catalog-measured", "user-supplied"}
@@ -988,6 +994,87 @@ def catalog_content_hash(
     return digest.hexdigest()
 
 
+def support_bundle_files(directory: Path) -> tuple[Path, Path | None]:
+    """Resolve a ``-legolization-support`` directory's overlay files.
+
+    Returns the ``catalog-extension.json`` path plus its
+    ``draft-estimates.json`` sidecar (``None`` when absent) — but only
+    when the bundle's ``validation.json`` shows every gate passed;
+    anything else is a :class:`ConfigurationError` pointing at
+    ``legolization catalog validate``.
+    """
+    extension = directory / SUPPORT_EXTENSION_FILENAME
+    if not extension.is_file():
+        msg = (
+            f"catalog directory {directory} is not a support bundle: "
+            f"it has no {SUPPORT_EXTENSION_FILENAME}"
+        )
+        raise ConfigurationError(msg)
+    _require_validated_support(directory)
+    sidecar = directory / SUPPORT_ESTIMATES_FILENAME
+    return extension, sidecar if sidecar.is_file() else None
+
+
+def _require_validated_support(directory: Path) -> None:
+    """Reject a support bundle whose gates have not all passed."""
+    hint = f"run 'legolization catalog validate {directory}' and fix the failures"
+    path = directory / SUPPORT_VALIDATION_FILENAME
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        msg = (
+            f"catalog support bundle {directory} has no readable "
+            f"validation.json; {hint}"
+        )
+        raise ConfigurationError(msg) from error
+    gates = payload.get("gates") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != CATALOG_VALIDATION_SCHEMA
+        or not isinstance(gates, list)
+        or not gates
+    ):
+        msg = (
+            f"catalog support bundle {directory} has an invalid validation.json; {hint}"
+        )
+        raise ConfigurationError(msg)
+    unpassed = sorted(
+        str(gate.get("gate", "?"))
+        for gate in cast("list[Any]", gates)
+        if not isinstance(gate, dict) or gate.get("status") != "passed"
+    )
+    if unpassed:
+        listed = ", ".join(unpassed)
+        msg = (
+            f"catalog support bundle {directory} is not fully validated "
+            f"(gates not passed: {listed}); {hint}"
+        )
+        raise ConfigurationError(msg)
+
+
+def _expand_support_overlays(
+    extensions: Sequence[Path],
+    estimate_sidecars: Sequence[Path],
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """Expand ``-legolization-support`` directories into their files.
+
+    File paths pass through untouched; a directory contributes its
+    validated ``catalog-extension.json`` and auto-includes its
+    ``draft-estimates.json`` after the explicit sidecars.
+    """
+    expanded: list[Path] = []
+    bundled_sidecars: list[Path] = []
+    for path in extensions:
+        if not path.is_dir():
+            expanded.append(path)
+            continue
+        extension, sidecar = support_bundle_files(path)
+        expanded.append(extension)
+        if sidecar is not None:
+            bundled_sidecars.append(sidecar)
+    return tuple(expanded), (*estimate_sidecars, *bundled_sidecars)
+
+
 def resolve_catalog(
     extensions: Sequence[Path] = (),
     estimate_sidecars: Sequence[Path] = (),
@@ -997,7 +1084,13 @@ def resolve_catalog(
     Loads the builtin catalog plus extensions, applies sidecar values
     verbatim to massless extension drafts (no safety adjustment), then
     re-validates. Parts left without a mass are a configuration error.
+    A ``--catalog`` path that is a validated ``-legolization-support``
+    directory activates its extension and bundled draft estimates.
     """
+    extensions, estimate_sidecars = _expand_support_overlays(
+        extensions,
+        estimate_sidecars,
+    )
     try:
         catalog = load_catalog(*extensions)
     except (OSError, TypeError, ValueError) as error:
