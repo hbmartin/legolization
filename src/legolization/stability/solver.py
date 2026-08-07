@@ -119,6 +119,35 @@ class SolverConfig:
     table: the ground pushes but never pulls, so top-heavy structures
     may tip."""
 
+    screen: Literal["off", "bricksim"] = "off"
+    """Reduced-QP candidate screen (BrickSim, arXiv:2603.16853).
+
+    ``"bricksim"`` screens ALNS/Luo candidates with the reduced
+    affine-field QP before the mandatory cold certify; a confident
+    screen rejection skips the cold solve for that candidate only —
+    accepted layouts always cold-solve. ``"off"`` preserves every
+    historical byte."""
+
+    screen_fields: Literal["restricted", "bricksim"] = "restricted"
+    """Reduced-field basis. ``"restricted"`` evaluates affine normal and
+    drag fields at the exact model's own contact points, making the
+    reduced polytope a provable restriction of the exact LP's (screen
+    errors skew conservative — false rejects only). ``"bricksim"`` is
+    the paper's three-component friction-pyramid basis, kept for
+    accuracy studies and never the production default."""
+
+    screen_margin: float = 0.1
+    """Relative q-band around the screen baseline inside which the
+    screen abstains (``confident=False``) and callers fall through to
+    the cold solve — the screen analogue of ``boundary_margin``."""
+
+    screen_eps: float = 1e-5
+    """OSQP ``eps_abs``/``eps_rel`` for the screen's three QP stages."""
+
+    screen_max_iter: int = 4_000
+    """OSQP iteration cap per screen stage; exceeding it falls back to
+    the cold solve (``stability.screen.nonconverged``)."""
+
     def __post_init__(self) -> None:
         positive = (
             self.tol_force,
@@ -126,12 +155,26 @@ class SolverConfig:
             self.drag_big_m,
             self.normal_big_m,
             self.boundary_margin,
+            self.screen_margin,
+            self.screen_eps,
         )
         if any(not math.isfinite(value) or value <= 0 for value in positive):
             msg = "solver tolerances, bounds, and margin must be finite and positive"
             raise ValueError(msg)
         if self.rescue_direct_min_bricks <= 0:
             msg = "rescue_direct_min_bricks must be positive"
+            raise ValueError(msg)
+        if self.screen_max_iter <= 0:
+            msg = "screen_max_iter must be positive"
+            raise ValueError(msg)
+        if self.screen not in ("off", "bricksim"):
+            msg = f"screen must be 'off' or 'bricksim', got {self.screen!r}"
+            raise ValueError(msg)
+        if self.screen_fields not in ("restricted", "bricksim"):
+            msg = (
+                "screen_fields must be 'restricted' or 'bricksim', "
+                f"got {self.screen_fields!r}"
+            )
             raise ValueError(msg)
 
 

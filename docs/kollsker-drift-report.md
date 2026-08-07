@@ -252,3 +252,40 @@ determinism tests, while default results remain unchanged. The
 remaining blocker is not candidate visibility alone: the selected
 minimal re-phased cover still loses to a heavier fully connected
 random repair under the production acceptance key.
+
+### v8 closure (2026-08-07): the thin-shell residual is closed by decision
+
+The residual this report leaves open — `fast` 370 vs kollsker 386 on
+thin-shell — is formally closed without further placement work, the
+same way the unstable-prefix report's recommendation 2 was closed.
+
+Four mechanisms were built against the shell class and none was
+promoted, which is the evidence base for the decision:
+
+- the v5 per-slab `BridgeSynthesizer` (optimal on clean straight
+  seams; its own component guard declines interleaved shells);
+- the WS-F cross-slab flow escalation (closes the cover-coordination
+  class, but thin-shell's ring at 1_364 rects / 15_752 arcs cannot
+  close in 60 s and declines at the 600/8_000 defaults);
+- the v7 `--bridge-rephase` ablation (exposes the predicted shell
+  candidates — thin-shell's partial phase-2 at 17 / 380 — but the
+  minimal cover loses to a heavier fully connected random repair
+  under the production acceptance key);
+- the opt-in hybrid phase-1 completion (closes mushroom at 1
+  component / 198 bricks vs 251, yet remains opt-in; thin-shell's
+  default result is unchanged at 386).
+
+The recorded diagnosis stands: stitching interleaved shell
+fragmentation needs a cross-slab formulation with explicit bond
+variables, and — the deeper v7 finding — the production acceptance
+key (components, then bricks) prefers heavier fully connected
+repairs over minimal covers, so candidate visibility alone cannot
+win. Funding that formulation is not justified by a 16-brick
+residual on one synthetic model where every strategy is stable and
+single-component and `fast` already holds the row's best.
+
+Reopen triggers: a future model (in particular a mesh-corpus row)
+widening a fast-vs-layered residual well beyond thin-shell's 16
+bricks, or evidence of kollsker-specific fragmentation (§5's
+recorded reconsideration condition). Until one fires, this item is
+closed.

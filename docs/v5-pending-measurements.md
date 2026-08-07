@@ -47,11 +47,26 @@ partially repaired verdict instead of a watchdog kill. Whether such a
 budget-truncated row is acceptable as the mesh baseline reference — or
 whether Armadillo waits for incremental re-analysis to land — is the
 explicit release decision to make at the next attempt.
-Then collect and assemble it with:
 
-    uv run python scripts/eval_corpus.py --kind mesh --timeout SECONDS
-    uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json
-    uv run python scripts/assemble_eval.py eval/runs/collections/COLLECTION.json --write-baseline
+*2026-08-07 status:* the release decision is made — **a documented
+budget-truncated Armadillo row is acceptable** if the row still cannot
+finish untruncated, and the attempt is sequenced after the reduced-QP
+screen (the incremental-re-analysis mechanism, see
+`docs/performance-testing.md`, "The reduced-QP screen") merges. The
+cut was deliberately NOT taken from the uncommitted screen worktree:
+the baseline must reference a committed state. Next attempt, on an
+otherwise idle machine after the screen lands:
+
+    uv run legolization corpus collect --kind mesh --timeout 900
+    uv run legolization corpus assemble
+    uv run legolization corpus assemble --write-baseline
+
+(the 0.6 CLI replaced the old `scripts/eval_corpus.py` /
+`scripts/assemble_eval.py` commands). Note the corpus runner pins its
+own per-candidate `PipelineConfig` — a screen-assisted or
+budget-truncated Armadillo row needs the runner to grow config
+plumbing (`corpus/collect.py::_effective_config`) first; whichever
+levers are used, record them next to the baseline.
 
 Run it after any change that moves placement or physics, on the state
 you want as the reference. Do not share the machine with other sweeps,

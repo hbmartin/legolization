@@ -38,6 +38,7 @@ from legolization.placement.merge import (
     maximal_random_merge,
     split_to_atoms,
 )
+from legolization.stability.screen import ReducedScreen, ScreenReport
 from legolization.stability.solver import (
     SolverConfig,
     StabilityResult,
@@ -129,6 +130,11 @@ class LuoStrategy:
             telemetry.value("luo.stabilize.deadline_stop", 0.0)
             return
         capacity = self._capacity(layout)
+        screen = (
+            ReducedScreen.create(layout, self.solver_config)
+            if self.solver_config.screen == "bricksim"
+            else None
+        )
         failures = 0
         while not result.stable and failures < self.fail_max:
             if deadline is not None and time.monotonic() >= deadline:
@@ -147,15 +153,40 @@ class LuoStrategy:
                 colour_mode=self.colour_mode,
                 colour_weight=self.colour_weight,
             )
+            report, rejected = self._screened_out(screen, candidate, deadline)
+            if rejected:
+                failures += 1
+                continue
             candidate_result = analyze(candidate, self.solver_config)
             candidate_capacity = self._capacity(candidate)
             if self._better(candidate_result, result, candidate_capacity, capacity):
                 layout.replace_with(candidate)
                 result = candidate_result
                 capacity = candidate_capacity
+                if screen is not None and report is not None:
+                    screen.rebase(report)
                 failures = 0
             else:
                 failures += 1
+
+    def _screened_out(
+        self,
+        screen: ReducedScreen | None,
+        candidate: Layout,
+        deadline: float | None,
+    ) -> tuple[ScreenReport | None, bool]:
+        """Screen a candidate against the current layout's reduced verdict.
+
+        A confidently-worse candidate skips its two exact solves
+        (analyze + maximin) and counts a failure.
+        """
+        if screen is None:
+            return None, False
+        report = screen.evaluate(candidate, deadline=deadline)
+        if screen.should_reject(report, self.solver_config.screen_margin):
+            telemetry.value("stability.screen.reject", 1.0)
+            return report, True
+        return report, False
 
     def _seeds(
         self,

@@ -142,6 +142,96 @@ fix remains the incremental re-analysis workstream (warm append-only
 scoring, frozen-boundary ring analysis with exact-on-accept), which
 must clear the section-3 gates before it can ship.
 
+### The reduced-QP screen: BrickSim port measurements (2026-08-07)
+
+BrickSim (arXiv:2603.16853; `references/bricksim-*/paper.md`) collapses
+per-contact-point force variables into affine per-interface fields.
+That parameterization is ported over OUR force families and capacity
+(`stability/reduced.py`, a provable restriction of the exact LP's
+polytope) and solved as ONE OSQP QP mirroring the certifier objective
+(`stability/screen.py`) — not the paper's three-stage lexicographic
+scheme, whose stage-2 exact equality pinning measured 20_000+ ADMM
+iterations on force-propagation chains. It ships as an opt-in
+accept/reject screen (`SolverConfig.screen = "bricksim"`, default
+"off" — every historical byte preserved) inside
+`FrozenBoundaryAnalyzer.certify` and Luo `_stabilize`; accepted
+candidates always cold-solve.
+
+Measured by `scripts/benchmark_screen.py` (thin-shell greedy layouts,
+seed 0, default `SolverConfig`; same-session cold `analyze` per row per
+the section-2 protocol; artifact
+`eval/profiles/20260807T175431Z-screen-bench.json`):
+
+| bricks | cold analyze | screen total | screen build | ratio |
+|---:|---:|---:|---:|---:|
+| 378 | 2.69 s | 0.849 s* | 0.036 s | 0.316* |
+| 622 | 13.35 s | 0.322 s | 0.061 s | 0.024 |
+| 673 (collapsing) | 8.37 s | 2.007 s | 0.058 s | 0.240 |
+| 1_172 | 51.54 s | 1.374 s | 0.149 s | **0.027** |
+
+\* the 378-brick row absorbs first-call warmup; repeat runs measure
+0.187 s / ratio 0.077. The collapsing 673-brick shell shows the QP's
+honest worst case — a large active set still solves 4x faster than
+cold.
+
+Every pre-registered threshold passed: screen ≤ 1/10 of cold at the
+largest shell (0.027), setup ≤ 30% of screen total (11%), candidate
+pairwise-ranking agreement ≥ 95% (measured 100% over 305 pairs with
+cold-q gaps above the margin), confident-false-reject ≤ 2% (0%),
+stable/unstable verdict agreement ≥ 98% (100% across all shells plus
+the 13 synthetic corpus models, both unstable rows correctly flagged),
+OSQP nonconverged < 1% (0%).
+
+Three conditioning requirements were measured, not assumed — all three
+are load-bearing and documented in the modules:
+
+- **Torque rows must be scaled to force units** (`1/KNOB_PITCH_M`):
+  unscaled, a first-order solver "converges" with entire overhang
+  torques unbalanced (their metric coefficients sit below its stopping
+  tolerance) — the cantilever screen verdict was silently wrong.
+- **The affine basis must be in stud units**: with meter offsets the
+  field coefficients are O(1e3) and the ridge regularizer competes
+  with the actual objective (a 26-brick tower stuck at a 3.7e-4
+  false optimum).
+- **Never form the Gram matrix `A^T A`**: force-propagation chains
+  make it numerically singular; explicit residual variables keep the
+  Hessian identity-conditioned (the BrickSim paper's own long-chain
+  caveat, rediscovered at QP level).
+
+Two honest caveats. Conservatism ("screen q >= exact q") is a strong
+tendency, not a theorem — the soft equilibrium term permits small
+undershoots (measured 0.090 vs 0.151 at 1_172 bricks); either
+direction is safe because accepts are always cold-certified. And the
+accept/reject gate needs an absolute margin floor on top of the
+relative one (`should_reject`): a purely relative gate measured a 30%
+confident-false-reject rate in the relaxed regime (candidate stress a
+few percent of capacity, where restriction noise dwarfs real
+differences); with the floor, 0%.
+
+Enablement evidence (2026-08-07, full-pipeline A/B at seed 0, screen
+off vs on): cantilever, staircase-overhang, mushroom, wide-arch, and
+topple-arm all produce **identical outputs** in both arms. Four of the
+five never engage the screen — ALNS repair only runs on unstable
+initial placements — which is itself the correct dark-by-default
+behaviour. Topple-arm is the engaged case: 3 confident rejects + 9
+passes, 57 cold analyzes instead of 63, same final layout and verdict.
+The `engine_cross_check=True` sequencing run over mushroom is
+span-for-span identical between screen off and on (14
+`stability.rescue.cross_check_mismatch` + 13
+`stability.prefix.cross_check_mismatch` + 3 warm-fails in BOTH arms) —
+the screen adds zero mismatches; those pre-existing mushroom mismatch
+spans are independent of this work (plausibly the section-5
+degenerate-alternative-optima drift class, but flagged for a look —
+the historical proof runs on spot showed none). No
+`stability.screen.nonconverged`/`.error` fired anywhere in the A/B or
+the gate runs.
+
+Enablement status: **dark by default.** The screen is recommended only
+as an explicit opt-in (`[stability.solver] screen = "bricksim"`) for
+`time_budget_s`-constrained runs on repair-heavy models. A default
+flip would be an intentional output move (baseline + goldens
+regenerated in the same commit) and is not currently planned.
+
 ### `legolization ... --profile out.json` (CLI convenience)
 
 Writes a leaner schema-2 payload (`source: "cli"`, `git_sha`, input,

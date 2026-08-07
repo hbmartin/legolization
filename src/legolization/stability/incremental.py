@@ -6,8 +6,10 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Self
 
+from legolization import telemetry
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.stability.constants import T_CAPACITY_N
+from legolization.stability.screen import ReducedScreen, ScreenReport
 from legolization.stability.solver import (
     StabilityDeadlineError,
     StabilityResult,
@@ -38,6 +40,9 @@ class IncrementalCertification:
 
     screen: FrozenBoundaryScreen
     cold_result: StabilityResult | None
+    reduced_report: ScreenReport | None = None
+    """Reduced-QP screen evidence when ``SolverConfig.screen`` enabled
+    it — advisory only; ``cold_result`` remains the sole verdict."""
 
     @property
     def cold_certified(self) -> bool:
@@ -53,6 +58,10 @@ class FrozenBoundaryAnalyzer:
     result: StabilityResult
     config: SolverConfig
     k_rings: int = 2
+    reduced: ReducedScreen | None = None
+    """Optional reduced-QP pre-screen (``SolverConfig.screen``); a
+    declined build silently degrades to the heuristic-screen-only
+    behaviour."""
 
     @classmethod
     def create(
@@ -68,7 +77,18 @@ class FrozenBoundaryAnalyzer:
             msg = "k_rings must be non-negative"
             raise ValueError(msg)
         cold = result if result is not None else analyze(layout, config)
-        return cls(layout=layout.copy(), result=cold, config=config, k_rings=k_rings)
+        reduced = (
+            ReducedScreen.create(layout, config)
+            if config.screen == "bricksim"
+            else None
+        )
+        return cls(
+            layout=layout.copy(),
+            result=cold,
+            config=config,
+            k_rings=k_rings,
+            reduced=reduced,
+        )
 
     def screen(
         self,
@@ -136,8 +156,29 @@ class FrozenBoundaryAnalyzer:
         changed_ids: Iterable[int] = (),
         deadline: float | None = None,
     ) -> IncrementalCertification:
-        """Run the screen and always cold-solve candidates that survive it."""
+        """Run the screens and always cold-solve candidates that survive.
+
+        With ``SolverConfig.screen`` enabled, a candidate the reduced QP
+        confidently ranks worse than the baseline skips its cold solve
+        (``cold_result=None`` — the caller treats it as a failed
+        candidate); everything else, including every non-confident or
+        non-"ok" screen outcome, falls through to the cold solve.
+        """
         screen = self.screen(candidate, changed_ids=changed_ids)
+        reduced_report: ScreenReport | None = None
+        if screen.feasible and self.reduced is not None:
+            reduced_report = self.reduced.evaluate(candidate, deadline=deadline)
+            if self.reduced.should_reject(reduced_report, self.config.screen_margin):
+                telemetry.value("stability.screen.reject", 1.0)
+                return IncrementalCertification(
+                    screen=screen,
+                    cold_result=None,
+                    reduced_report=reduced_report,
+                )
+            if reduced_report.status == "ok" and reduced_report.confident:
+                telemetry.value("stability.screen.pass", 1.0)
+            else:
+                telemetry.value("stability.screen.boundary", 1.0)
         try:
             cold = (
                 analyze(candidate, self.config, deadline=deadline)
@@ -148,7 +189,9 @@ class FrozenBoundaryAnalyzer:
             )
         except StabilityDeadlineError:
             cold = None
-        return IncrementalCertification(screen=screen, cold_result=cold)
+        return IncrementalCertification(
+            screen=screen, cold_result=cold, reduced_report=reduced_report
+        )
 
     def accept(
         self, candidate: Layout, certification: IncrementalCertification
@@ -159,6 +202,8 @@ class FrozenBoundaryAnalyzer:
             raise ValueError(msg)
         self.layout = candidate.copy()
         self.result = certification.cold_result
+        if self.reduced is not None and certification.reduced_report is not None:
+            self.reduced.rebase(certification.reduced_report)
 
 
 def _changed_ids(baseline: Layout, candidate: Layout) -> set[int]:
