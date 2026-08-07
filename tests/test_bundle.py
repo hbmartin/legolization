@@ -243,13 +243,62 @@ def test_cancel_pending_without_bundle_is_an_error(box_npy, config):
         orchestrator.run_bundle(_request(box_npy, config, cancel_pending=True))
 
 
-def test_ldraw_input_is_rejected_until_import_phase(tmp_path, config):
-    model = tmp_path / "model.ldr"
-    model.write_text("0 empty\n")
-    with pytest.raises(ConfigurationError, match="analyze"):
-        orchestrator.run_bundle(
-            orchestrator.BundleRequest(input_path=model, config=config)
-        )
+GOLDEN_LDR = Path(__file__).parent / "data" / "golden" / "simple.ldr"
+
+
+@pytest.fixture
+def golden_ldr(tmp_path) -> Path:
+    target = tmp_path / "simple.ldr"
+    target.write_text(GOLDEN_LDR.read_text())
+    return target
+
+
+def test_ldraw_preserve_skips_generation(golden_ldr, config):
+    envelope = orchestrator.run_bundle(
+        orchestrator.BundleRequest(input_path=golden_ldr, config=config)
+    )
+    bundle_dir = golden_ldr.parent / "simple-instructions"
+    record = read_record(bundle_dir)
+    assert record is not None
+    assert record.stages["ingest"].detail["mode"] == "preserve"
+    assert record.stages["ingest"].detail["shape_authority"] == "imported-assembly"
+    assert record.stages["generate"].status == "skipped"
+    assert record.verdicts["winner"]["strategy"] == "imported"
+    assert (bundle_dir / "model" / "model.mpd").is_file()
+    assert (bundle_dir / "bom" / "bom.json").is_file()
+    assert envelope.exit_code in {0, 2}
+    resumed = orchestrator.run_bundle(
+        orchestrator.BundleRequest(input_path=golden_ldr, config=config)
+    )
+    assert resumed.data is not None
+    assert resumed.data["resume"] is True
+    assert resumed.data["regenerated_stages"] == []
+
+
+def test_ldraw_retile_regenerates_from_occupancy(golden_ldr, config):
+    envelope = orchestrator.run_bundle(
+        orchestrator.BundleRequest(input_path=golden_ldr, config=config, retile=True)
+    )
+    bundle_dir = golden_ldr.parent / "simple-optimized"
+    record = read_record(bundle_dir)
+    assert record is not None
+    assert record.stages["ingest"].detail["mode"] == "retile"
+    assert record.stages["ingest"].detail["shape_authority"] == "imported-assembly"
+    assert record.stages["generate"].status == "complete"
+    assert record.verdicts["winner"]["strategy"] != "imported"
+    assert envelope.exit_code in {0, 2}
+    preserve_identity = bundle_identity(golden_ldr, config)
+    retile_identity = bundle_identity(
+        golden_ldr,
+        config,
+        invocation={"retile": True},
+    )
+    assert preserve_identity != retile_identity
+
+
+def test_retile_rejected_for_native_input(box_npy, config):
+    with pytest.raises(ConfigurationError, match="retile"):
+        orchestrator.run_bundle(_request(box_npy, config, retile=True))
 
 
 def test_bundle_cli_emits_single_envelope(box_npy, capsys):

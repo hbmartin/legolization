@@ -16,8 +16,7 @@ from scipy import ndimage
 from legolization.analysis import PlacementSignature, placement_signature, signatures
 from legolization.catalog import Category
 from legolization.graph import ConnectionGraph
-from legolization.grid import EMPTY, VoxelGrid
-from legolization.layout import CollisionError, Layout
+from legolization.layout import CollisionError, Layout, occupancy_grid
 from legolization.pipeline import PipelineConfig
 from legolization.placement.layered.engine import place_rect
 from legolization.placement.registry import make_strategy
@@ -399,7 +398,7 @@ def _envelope_candidates(
         return
     replaceable = layout.subset(replaceable_ids)
     frozen = layout.subset(set(layout.bricks) - replaceable_ids)
-    grid, normalized, offset = _grid_and_normalized_layout(replaceable)
+    grid, normalized, offset = occupancy_grid(replaceable)
     for round_seed in range(seed, seed + 3):
         if time.monotonic() >= deadline:
             return
@@ -616,32 +615,6 @@ def _validate_candidate(  # noqa: PLR0911 - fail-fast validation gates
         added_cells=len(added_cells),
         visible_added_cells=(0 if tier == "interior-support" else len(added_cells)),
     )
-
-
-def _grid_and_normalized_layout(
-    layout: Layout,
-) -> tuple[VoxelGrid, Layout, tuple[int, int, int]]:
-    xs, ys, zs = zip(*layout.occupancy, strict=True)
-    offset = (min(xs), min(ys), min(zs))
-    shape = (
-        max(xs) - offset[0] + 1,
-        max(ys) - offset[1] + 1,
-        max(zs) - offset[2] + 1,
-    )
-    codes = np.full(shape, EMPTY, dtype=np.int16)
-    normalized = Layout(catalog=layout.catalog)
-    for brick in layout:
-        normalized.add(
-            part_key=brick.part_key,
-            x=brick.x - offset[0],
-            y=brick.y - offset[1],
-            layer=brick.layer - offset[2],
-            yaw=brick.yaw,
-            colour_code=brick.colour_code,
-        )
-        for x, y, z in layout.cells_of(brick):
-            codes[x - offset[0], y - offset[1], z - offset[2]] = brick.colour_code
-    return VoxelGrid(codes=codes), normalized, offset
 
 
 def _denormalize_layout(layout: Layout, offset: tuple[int, int, int]) -> Layout:

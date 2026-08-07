@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from legolization.bundle.paths import BundleFlavor
     from legolization.configuration import ProjectConfig
     from legolization.grid import VoxelGrid
+    from legolization.ldraw_in import ImportedLdrawModel
     from legolization.pipeline import PipelineResult
 
 NATIVE_SUFFIXES = {".vox", ".npy", ".obj", ".stl", ".ply"}
@@ -67,6 +68,9 @@ class BundleRequest:
         return payload
 
 
+type BundleMode = Literal["generate", "preserve", "retile"]
+
+
 @dataclass(slots=True, kw_only=True)
 class _BundleContext:
     """Mutable working state shared by the stage runners."""
@@ -75,33 +79,80 @@ class _BundleContext:
     record: BundleRecord
     directory: Path
     resume: bool
+    mode: BundleMode = "generate"
     grid: VoxelGrid | None = None
     result: PipelineResult | None = None
+    imported: ImportedLdrawModel | None = None
     reruns: list[str] = field(default_factory=list)
 
-    def ensure_grid(self) -> VoxelGrid:
-        """Load the source grid on first use."""
-        if self.grid is None:
-            from legolization.pipeline import load_grid  # noqa: PLC0415
+    def ensure_imported(self) -> ImportedLdrawModel:
+        """Import the LDraw source on first use (strict, warning-carrying)."""
+        if self.imported is None:
+            from legolization.ldraw_in import import_ldraw  # noqa: PLC0415
 
-            pipeline = self.request.config.to_pipeline(strategy="bond")
-            self.grid = load_grid(self.request.input_path, pipeline)
+            self.imported = import_ldraw(self.request.input_path)
+        return self.imported
+
+    def ensure_grid(self) -> VoxelGrid:
+        """Load or derive the target grid on first use."""
+        if self.grid is None:
+            if self.mode == "retile":
+                from legolization.layout import occupancy_grid  # noqa: PLC0415
+
+                self.grid, _, _ = occupancy_grid(self.ensure_imported().layout)
+            else:
+                from legolization.pipeline import load_grid  # noqa: PLC0415
+
+                pipeline = self.request.config.to_pipeline(strategy="bond")
+                self.grid = load_grid(self.request.input_path, pipeline)
         return self.grid
 
     def ensure_result(self) -> PipelineResult:
-        """Run generation on first use (deterministic at fixed seed)."""
-        if self.result is None:
-            from legolization.cli.build import select_strategy  # noqa: PLC0415
-            from legolization.pipeline import run  # noqa: PLC0415
+        """Produce the working result on first use.
 
-            grid = self.ensure_grid()
-            config = self.request.config
-            strategy, automatic = select_strategy(config, grid)
-            self.result = run(
-                grid,
-                config.to_pipeline(strategy=strategy, automatic=automatic),
+        Generation modes run the pipeline (deterministic at fixed seed);
+        preserve mode analyzes the imported assembly as-is.
+        """
+        if self.result is None:
+            self.result = (
+                self._imported_result()
+                if self.mode == "preserve"
+                else self._generated_result()
             )
         return self.result
+
+    def _generated_result(self) -> PipelineResult:
+        from legolization.cli.build import select_strategy  # noqa: PLC0415
+        from legolization.pipeline import run  # noqa: PLC0415
+
+        grid = self.ensure_grid()
+        config = self.request.config
+        strategy, automatic = select_strategy(config, grid)
+        return run(
+            grid,
+            config.to_pipeline(strategy=strategy, automatic=automatic),
+        )
+
+    def _imported_result(self) -> PipelineResult:
+        from legolization.graph import ConnectionGraph  # noqa: PLC0415
+        from legolization.pipeline import PipelineResult  # noqa: PLC0415
+        from legolization.stability.solver import analyze  # noqa: PLC0415
+
+        layout = self.ensure_imported().layout
+        stability = analyze(
+            layout,
+            self.request.config.stability.effective_solver(),
+        )
+        graph = ConnectionGraph.from_layout(layout)
+        return PipelineResult(
+            layout=layout,
+            stability=stability,
+            grid=None,
+            brick_count=len(layout),
+            mass_g=layout.total_mass_g(),
+            component_count=graph.component_count(),
+            floating_count=len(graph.floating_ids()),
+        )
 
 
 type _StageRunner = Callable[[_BundleContext], None]
@@ -150,6 +201,7 @@ def _run_stages(
         record=_load_or_create_record(request, identity, decision),
         directory=decision.directory,
         resume=decision.resume,
+        mode=_mode(request),
     )
     stages: tuple[tuple[str, _StageRunner], ...] = (
         ("ingest", _stage_ingest),
@@ -170,7 +222,7 @@ def _run_stage(context: _BundleContext, name: str, runner: _StageRunner) -> None
     stage = context.record.stage(name)
     if (
         context.resume
-        and stage.status == "complete"
+        and stage.status in {"complete", "skipped"}
         and _artifacts_valid(context, name)
     ):
         return
@@ -192,7 +244,8 @@ def _run_stage(context: _BundleContext, name: str, runner: _StageRunner) -> None
         context.record.exit_code = OPERATIONAL_ERROR
         write_record(context.record, context.directory)
         raise
-    stage.status = "complete"
+    if stage.status == "running":
+        stage.status = "complete"
     write_record(context.record, context.directory)
 
 
@@ -212,26 +265,73 @@ def _artifacts_valid(context: _BundleContext, stage_name: str) -> bool:
 
 def _stage_ingest(context: _BundleContext) -> None:
     stage = context.record.stage("ingest")
+    stage.detail["format"] = context.request.input_path.suffix.lower().lstrip(".")
+    stage.detail["mode"] = context.mode
+    if context.mode == "preserve":
+        imported = context.ensure_imported()
+        stage.detail.update(
+            {
+                "shape_authority": "imported-assembly",
+                "brick_count": len(imported.layout),
+            }
+        )
+        _record_import_warnings(context, imported)
+        return
+    if context.mode == "retile":
+        imported = context.ensure_imported()
+        stage.detail["shape_authority"] = "imported-assembly"
+        _record_import_warnings(context, imported)
     grid = context.ensure_grid()
     stage.detail.update(
         {
-            "format": context.request.input_path.suffix.lower().lstrip("."),
             "filled_count": int(grid.filled_count),
             "shape": list(grid.codes.shape),
         }
     )
 
 
+def _record_import_warnings(
+    context: _BundleContext,
+    imported: ImportedLdrawModel,
+) -> None:
+    from ldraw import Severity  # noqa: PLC0415
+
+    for diagnostic in imported.diagnostics:
+        if diagnostic.severity is Severity.WARNING:
+            message = f"{diagnostic.code}: {diagnostic.message}"
+            if message not in context.record.warnings:
+                context.record.warnings.append(message)
+
+
 def _stage_generate(context: _BundleContext) -> None:
     stage = context.record.stage("generate")
     result = context.ensure_result()
-    stage.detail.update(
-        {
+    if context.mode == "preserve":
+        stage.status = "skipped"
+        stage.detail.update(
+            {
+                "reason": "imported assembly preserved",
+                "buildable": result.buildable,
+                "stable": result.stability.stable,
+                "brick_count": result.brick_count,
+            }
+        )
+    else:
+        stage.detail.update(
+            {
+                "strategy": result.placement_strategy,
+                "seed": context.request.config.placement.seed,
+                "buildable": result.buildable,
+                "stable": result.stability.stable,
+                "brick_count": result.brick_count,
+            }
+        )
+    winner = (
+        {"strategy": "imported", "seed": None}
+        if context.mode == "preserve"
+        else {
             "strategy": result.placement_strategy,
             "seed": context.request.config.placement.seed,
-            "buildable": result.buildable,
-            "stable": result.stability.stable,
-            "brick_count": result.brick_count,
         }
     )
     context.record.verdicts.update(
@@ -239,10 +339,7 @@ def _stage_generate(context: _BundleContext) -> None:
             "buildable": result.buildable,
             "stable": result.stability.stable,
             "provisional": False,
-            "winner": {
-                "strategy": result.placement_strategy,
-                "seed": context.request.config.placement.seed,
-            },
+            "winner": winner,
         }
     )
     if result.plan is not None:
@@ -400,20 +497,23 @@ def _flavor(request: BundleRequest) -> BundleFlavor:
     return "legolization"
 
 
+def _mode(request: BundleRequest) -> BundleMode:
+    if request.input_path.suffix.lower() not in LDRAW_SUFFIXES:
+        return "generate"
+    return "retile" if request.retile else "preserve"
+
+
 def _validate_input(request: BundleRequest) -> None:
     from legolization.cli.common import require_file  # noqa: PLC0415
 
     require_file(request.input_path, label="input")
     suffix = request.input_path.suffix.lower()
-    if suffix in LDRAW_SUFFIXES:
-        msg = (
-            ".ldr/.mpd bundle input lands with the imported-model phase; "
-            "use 'legolization analyze' meanwhile"
-        )
-        raise ConfigurationError(msg)
-    if suffix not in NATIVE_SUFFIXES:
+    if suffix not in NATIVE_SUFFIXES | LDRAW_SUFFIXES:
         msg = (
             f"unsupported input {request.input_path.name}: expected one of "
             f"{', '.join(sorted(NATIVE_SUFFIXES | LDRAW_SUFFIXES))}"
         )
+        raise ConfigurationError(msg)
+    if request.retile and suffix not in LDRAW_SUFFIXES:
+        msg = "--retile applies only to .ldr/.mpd inputs"
         raise ConfigurationError(msg)

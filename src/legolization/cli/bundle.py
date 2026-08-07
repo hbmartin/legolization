@@ -43,6 +43,14 @@ def configure(parser: argparse.ArgumentParser) -> None:
         help="force a fresh numeric-sibling run instead of resuming",
     )
     parser.add_argument(
+        "--retile",
+        action="store_true",
+        help=(
+            "turn an imported .ldr/.mpd assembly into a coloured occupancy "
+            "target and regenerate it (default preserves the assembly)"
+        ),
+    )
+    parser.add_argument(
         "--cancel-pending",
         action="store_true",
         help=(
@@ -70,6 +78,7 @@ def _run(args: argparse.Namespace) -> ResultEnvelope:
             output_dir=args.output,
             fresh=args.fresh,
             cancel_pending=args.cancel_pending,
+            retile=args.retile,
         )
     )
     if not args.json:
