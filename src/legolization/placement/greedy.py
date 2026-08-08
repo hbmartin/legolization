@@ -16,6 +16,7 @@ keeping changes only when the weighted objective improves.
 from __future__ import annotations
 
 import math
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from legolization.catalog import Catalog, Cell, Part
     from legolization.graph import ConnectionGraph
     from legolization.grid import VoxelGrid
+    from legolization.stability.solver import StabilityResult
 
 _RING_GROWTH = 10  # failures per extra ring (Luo's N)
 _STUD_LENGTHS = (1, 2, 3, 4, 6, 8)  # catalog part lengths
@@ -97,7 +99,6 @@ class GreedyStrategy:
         deadline: float | None = None,
     ) -> Layout:
         """Cover the grid greedily, then reinforce until stable or exhausted."""
-        del deadline  # greedy's historical refinement remains iteration-bounded
         layout = Layout(catalog=self.catalog)
         uncovered = {
             (int(x), int(y), int(z))
@@ -105,7 +106,7 @@ class GreedyStrategy:
         }
         self._fill(layout, grid, uncovered, rng)
         if self.refine:
-            self._reinforce(layout, grid, rng)
+            self._reinforce(layout, grid, rng, deadline=deadline)
             compact_vertical(layout)
         return layout
 
@@ -218,12 +219,21 @@ class GreedyStrategy:
         layout: Layout,
         grid: VoxelGrid,
         rng: np.random.Generator,
+        *,
+        deadline: float | None = None,
     ) -> None:
-        """Repair connectivity, then delete-and-rebuild until stable."""
+        """Repair connectivity, then delete-and-rebuild until stable or out of time.
+
+        The deadline is enforced at round boundaries, immediately before each
+        solve: ``layout`` only ever holds an accepted rollback state, so
+        returning early yields a complete cover, just a less reinforced one.
+        """
         # Bounded reinforcement gates are kept together as one rollback loop.
         # lizard forgives(cyclomatic_complexity)
         from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
 
+        if _expired(deadline):
+            return
         # Straight seams can strand towers no greedy refill bridges (the
         # largest-first fill would just recreate them); random remerging
         # across the seam does. Grounded-but-disconnected towers count too.
@@ -231,21 +241,31 @@ class GreedyStrategy:
         # the grid's own island count, not one component.
         component_target = _grid_component_count(grid)
         if _floating(layout) or _component_count(layout) > component_target:
-            improve_connectivity(layout, grid, rng, fail_max=self.fail_max)
+            improve_connectivity(
+                layout,
+                grid,
+                rng,
+                fail_max=self.fail_max,
+                deadline=deadline,
+            )
+        if _expired(deadline):
+            return
         report = evaluate(layout, grid, self.weights, self.solver_config)
         failures = 0
-        while failures < self.fail_max:
+        while failures < self.fail_max and not _expired(deadline):
             stability = report.stability
             graph = ConnectionGraph.from_layout(layout)
             floating = set(graph.floating_ids())
             components = graph.component_count()
             if stability.stable and not floating and components <= component_target:
                 return
-            seeds = set(stability.unstable_ids) | floating
-            if components > component_target:
-                seeds |= _non_primary_component_ids(graph)
-            if stability.weakest_pair is not None:
-                seeds |= {bid for bid in stability.weakest_pair if bid >= 0}
+            seeds = _rebuild_seeds(
+                graph,
+                stability,
+                floating=floating,
+                components=components,
+                component_target=component_target,
+            )
             if not seeds:
                 return
             rings = failures // _RING_GROWTH + 1
@@ -258,6 +278,8 @@ class GreedyStrategy:
                 candidate_layout.remove(brick_id)
             freed = {c for c in freed if _is_filled(grid, c)}
             self._fill(candidate_layout, grid, freed, rng, shuffle_within_layers=True)
+            if _expired(deadline):
+                return
             candidate_report = evaluate(
                 candidate_layout, grid, self.weights, self.solver_config
             )
@@ -357,6 +379,28 @@ def _seam_distance(  # noqa: PLR0913, PLR0917 - a border probe is naturally six 
         if is_seam(distance) or (distance > 0 and is_seam(-distance)):
             return distance
     return None
+
+
+def _expired(deadline: float | None) -> bool:
+    """Whether the shared placement deadline has passed."""
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def _rebuild_seeds(
+    graph: ConnectionGraph,
+    stability: StabilityResult,
+    *,
+    floating: set[int],
+    components: int,
+    component_target: int,
+) -> set[int]:
+    """Bricks whose neighbourhood the next rebuild round should re-fill."""
+    seeds = set(stability.unstable_ids) | floating
+    if components > component_target:
+        seeds |= _non_primary_component_ids(graph)
+    if stability.weakest_pair is not None:
+        seeds |= {bid for bid in stability.weakest_pair if bid >= 0}
+    return seeds
 
 
 def _floating(layout: Layout) -> set[int]:

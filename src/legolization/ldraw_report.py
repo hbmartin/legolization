@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from ldraw import (
@@ -34,18 +33,51 @@ if TYPE_CHECKING:
 _CONTACT_OCCURRENCE_LIMIT = 1_000
 
 
-@lru_cache(maxsize=1)
+_CATALOG_CAPABILITIES = (
+    LDrawCapability.CATALOG,
+    LDrawCapability.GENERATED_MODULES,
+)
+_CATALOG_CACHE_MAX = 4
+_CatalogKey = tuple[tuple["Path", ...], tuple["Path", ...]]
+
+# Only *usable* preparations are memoized. A failed one nearly always means
+# the parts library has not been downloaded yet, which the user fixes out of
+# band (`ldraw download --yes`); caching that verdict would pin the failure
+# for the life of the process, so failures are re-attempted on the next call.
+_USABLE_CATALOGS: dict[_CatalogKey, CatalogPreparationResult] = {}
+
+
+def clear_catalog_cache() -> None:
+    """Force the next preparation to re-inspect the configured library."""
+    _USABLE_CATALOGS.clear()
+
+
+def _prepare_cached(key: _CatalogKey) -> CatalogPreparationResult:
+    """Prepare one capability set, memoizing the result only if it is usable."""
+    if (cached := _USABLE_CATALOGS.get(key)) is not None:
+        return cached
+    connection_shadows, studio_metadata = key
+    result = (
+        prepare_catalog(
+            capabilities=_CATALOG_CAPABILITIES,
+            connection_shadows=connection_shadows,
+            studio_metadata=studio_metadata,
+        )
+        if connection_shadows or studio_metadata
+        else prepare_catalog(capabilities=_CATALOG_CAPABILITIES)
+    )
+    if catalog_error(result) is None:
+        _USABLE_CATALOGS[key] = result
+        while len(_USABLE_CATALOGS) > _CATALOG_CACHE_MAX:
+            del _USABLE_CATALOGS[next(iter(_USABLE_CATALOGS))]
+    return result
+
+
 def prepare_analysis_catalog() -> CatalogPreparationResult:
     """Prepare the two pyldraw capabilities legolization actually imports."""
-    return prepare_catalog(
-        capabilities=(
-            LDrawCapability.CATALOG,
-            LDrawCapability.GENERATED_MODULES,
-        )
-    )
+    return _prepare_cached(((), ()))
 
 
-@lru_cache(maxsize=4)
 def prepare_connection_catalog(
     *,
     connection_shadows: tuple[Path, ...] = (),
@@ -56,16 +88,7 @@ def prepare_connection_catalog(
     An unreadable shadow source raises ``FileNotFoundError`` or
     ``zipfile.BadZipFile`` at registration; callers own that boundary.
     """
-    if not connection_shadows and not studio_metadata:
-        return prepare_analysis_catalog()
-    return prepare_catalog(
-        capabilities=(
-            LDrawCapability.CATALOG,
-            LDrawCapability.GENERATED_MODULES,
-        ),
-        connection_shadows=connection_shadows,
-        studio_metadata=studio_metadata,
-    )
+    return _prepare_cached((connection_shadows, studio_metadata))
 
 
 def catalog_error(result: CatalogPreparationResult) -> str | None:

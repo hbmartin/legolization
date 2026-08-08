@@ -679,6 +679,47 @@ def test_press_subset_skips_remainder_solve_for_unstable_press() -> None:
     assert remainder_calls == 0
 
 
+def test_press_subset_probe_budget_bounds_the_combinatorial_search() -> None:
+    # The subset scan walks combinations() and pays an LP solve per
+    # admissible subset, so a wide fragile base used to cost C(n, k) solves.
+    # The budget caps that, and a size that spends it stops the descent —
+    # the next size down is only larger.
+    from legolization.instructions.sequencer import (
+        _PRESS_SUBSET_PROBE_LIMIT,
+        _best_press_subset,
+    )
+
+    layout = Layout(catalog=default_catalog())
+    chunk = tuple(layout.add("brick_1x1", x, 0, 0, 0, 4).brick_id for x in range(20))
+    unstable = _verdict(stable=False, score=1.2)
+    probe_calls = 0
+
+    def analyze_prefix(_subset: tuple[int, ...]) -> StabilityResult:
+        nonlocal probe_calls
+        probe_calls += 1
+        return unstable
+
+    def unreached(*_args: tuple[int, ...]) -> StabilityResult:
+        msg = "no subset is statically stable, so no press solve should run"
+        raise AssertionError(msg)
+
+    result = _best_press_subset(
+        layout,
+        chunk,
+        placed=set(),
+        supports={brick_id: set() for brick_id in chunk},
+        blockers=dict.fromkeys(chunk, frozenset()),
+        blocks={brick_id: set() for brick_id in chunk},
+        max_step_size=10,
+        analyze_prefix=analyze_prefix,
+        press_prefix=unreached,
+        press_selection=unreached,
+    )
+
+    assert result is None
+    assert probe_calls == _PRESS_SUBSET_PROBE_LIMIT
+
+
 def test_scan_window_defers_press_fragile_candidates() -> None:
     # WS-I: with the check on, a statically-stable-but-press-fragile
     # candidate is skipped when the window holds a press-stable

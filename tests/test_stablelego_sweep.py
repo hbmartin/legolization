@@ -89,6 +89,13 @@ def dataset(tmp_path: Path) -> Path:
         np.zeros((20, 20, 20)),
     )
     (malformed / "task_graph.json").write_text("{")
+    malformed_shape = _write_object(
+        root,
+        "malformed_shape",
+        "stick_light",
+        np.zeros((20, 20, 20)),
+    )
+    (malformed_shape / "task_graph.json").write_text("[]")
     # A directory without the release files is not an object.
     (root / "not_an_object").mkdir()
     return root
@@ -109,7 +116,7 @@ def test_discovery_matches_release_category_object_models_layout(
     dataset: Path,
 ) -> None:
     objects = sweep.discover_objects(dataset)
-    assert [path.name for path in objects] == ["models", "models", "models"]
+    assert [path.name for path in objects] == ["models"] * 4
     assert all(path.parent.parent.name == "02691156" for path in objects)
 
 
@@ -143,8 +150,8 @@ def test_sweep_reports_agreement_and_skips(
     report = json.loads(next(out.glob("*/report.json")).read_text())
     assert report["agree"] == 1
     assert report["disagree"] == 1
-    assert len(report["skipped"]) == 1
-    assert "malformed" in report["skipped"][0]
+    assert len(report["skipped"]) == 2
+    assert all("malformed" in reason for reason in report["skipped"])
     assert report["all_zero_heatmaps"] == 1
     by_name = {row["name"]: row for row in report["rows"]}
     assert by_name["02691156/agree_stable"]["agree"] is True
@@ -155,7 +162,7 @@ def test_sweep_reports_agreement_and_skips(
     markdown = next(out.glob("*/report.md")).read_text()
     assert "| 02691156/disagree |" in markdown
     assert "collapses" in markdown
-    assert "objects=2 agree=1 disagree=1 skipped=1 all-zero-heatmaps=1" in markdown
+    assert "objects=2 agree=1 disagree=1 skipped=2 all-zero-heatmaps=1" in markdown
     assert "CAUTION" in markdown
     assert "wrote" in capsys.readouterr().out
 

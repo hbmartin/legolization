@@ -7,7 +7,7 @@ from legolization.catalog import default_catalog
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.layout import Layout
-from legolization.placement.base import _seam_alignment, evaluate
+from legolization.placement.base import ObjectiveReport, _seam_alignment, evaluate
 from legolization.placement.greedy import (
     GreedyStrategy,
     _grid_component_count,
@@ -469,6 +469,74 @@ def test_reinforce_accepts_disjoint_grid_islands(monkeypatch):
     assert not graph.floating_ids()
 
 
+def test_greedy_reinforce_propagates_deadline_to_connectivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Greedy used to drop the shared budget on the floor, so connectivity
+    # repair ran unbudgeted even though it accepts a deadline of its own.
+    import legolization.placement.greedy as greedy_module
+
+    seen_deadlines: list[object] = []
+
+    def monotonic() -> float:
+        return 0.0
+
+    def always_floating(_layout: Layout) -> set[int]:
+        return {0}
+
+    def capture_connectivity(*_args: object, **kwargs: object) -> int:
+        seen_deadlines.append(kwargs["deadline"])
+        return 1
+
+    monkeypatch.setattr(greedy_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(greedy_module, "_floating", always_floating)
+    monkeypatch.setattr(greedy_module, "improve_connectivity", capture_connectivity)
+    grid = VoxelGrid(codes=np.full((1, 1, 3), 4, dtype=np.int16))
+
+    GreedyStrategy().place(grid, rng=np.random.default_rng(0), deadline=10.0)
+
+    assert seen_deadlines == [10.0]
+
+
+def test_greedy_reinforce_rechecks_deadline_before_candidate_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Each rebuild round ends in an LP solve. Once the budget expires mid
+    # round, the candidate must never be evaluated.
+    import legolization.placement.greedy as greedy_module
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x4", 0, 0, 9, 0, 4)
+    grid = VoxelGrid(codes=np.full((2, 4, 12), 4, dtype=np.int16))
+    initial_report = evaluate(layout, grid)
+    clock = iter((0.0, 0.0, 0.0, 10.0))
+    evaluate_calls = 0
+
+    def monotonic() -> float:
+        return next(clock)
+
+    def skip_connectivity(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def capture_evaluate(*_args: object, **_kwargs: object) -> ObjectiveReport:
+        nonlocal evaluate_calls
+        evaluate_calls += 1
+        return initial_report
+
+    monkeypatch.setattr(greedy_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(greedy_module, "improve_connectivity", skip_connectivity)
+    monkeypatch.setattr(greedy_module, "evaluate", capture_evaluate)
+
+    GreedyStrategy()._reinforce(  # noqa: SLF001 - deadline regression seam
+        layout,
+        grid,
+        np.random.default_rng(0),
+        deadline=5.0,
+    )
+
+    assert evaluate_calls == 1
+
+
 def test_hollow_sphere_brick_count_regression():
     # The audit's F3 case: repaired hollow shells used to carry ~3x the
     # parts as permanent plate rafts. Guard the reclaimed count.
@@ -671,6 +739,47 @@ def test_layered_zero_budget_is_an_instant_deadline(
 
     assert len(captured) == 1
     assert captured[0] is not None
+
+
+def test_layered_layer_budgets_split_the_remaining_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Each layer's share divides the *remaining* budget, so it has to be a
+    # share of the *remaining* columns. Against the fixed total, every layer
+    # took a shrinking cut of a shrinking clock and the budget was never
+    # spent — the last layer here would have been handed 10s, not 30s.
+    import legolization.placement.layered.engine as engine_mod
+    from legolization.placement.layered.bond import BondStrategy
+    from legolization.placement.layered.engine import (
+        LayerContext,
+        LayerProblem,
+        Rect2D,
+    )
+
+    captured: list[float | None] = []
+    original_tile = BondStrategy.tile
+
+    def capture_tile(
+        self: BondStrategy,
+        problem: LayerProblem,
+        below: LayerContext,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> list[Rect2D]:
+        captured.append(deadline)
+        return original_tile(self, problem, below, rng=rng, deadline=deadline)
+
+    def monotonic() -> float:
+        return 0.0
+
+    monkeypatch.setattr(engine_mod.time, "monotonic", monotonic)
+    monkeypatch.setattr(BondStrategy, "tile", capture_tile)
+    grid = VoxelGrid(codes=np.full((2, 4, 9), 4, dtype=np.int16))  # three slabs
+
+    BondStrategy(time_budget_s=30.0).place(grid, rng=np.random.default_rng(0))
+
+    assert captured == [10.0, 15.0, 30.0]
 
 
 def test_greedy_sweeps_layers_bottom_up():

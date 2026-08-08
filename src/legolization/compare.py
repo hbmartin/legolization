@@ -383,7 +383,7 @@ def _candidate_configs(
     chosen_seeds = tuple(dict.fromkeys(seeds)) if seeds else (config.seed,)
     skipped = set(skip)
     return {
-        (name, seed): _candidate_config(
+        (name, seed): candidate_config(
             config, strategy=name, seed=seed, timeout_s=timeout_s
         )
         for name in chosen
@@ -422,14 +422,18 @@ def _run_sequential(
     return candidates
 
 
-def _candidate_config(
+def candidate_config(
     config: PipelineConfig,
     *,
     strategy: str,
     seed: int,
     timeout_s: float | None,
 ) -> PipelineConfig:
-    """Clone the config for one job; strip the unpicklable progress."""
+    """Clone the config for one job; strip the unpicklable progress.
+
+    Public because a candidate's configuration hash has to be computed from
+    exactly what the sweep will run: anyone re-deriving it by hand drifts.
+    """
     budgets = [
         budget for budget in (config.time_budget_s, timeout_s) if budget is not None
     ]

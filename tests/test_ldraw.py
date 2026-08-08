@@ -3,9 +3,11 @@
 from pathlib import Path
 
 import pytest
+from ldraw import Diagnostic, Severity
 
 from legolization.catalog import default_catalog
 from legolization.layout import Layout
+from legolization.ldraw_in import LdrawImportError
 from legolization.ldraw_out import (
     heatmap_colour,
     model_lines,
@@ -323,8 +325,23 @@ def test_import_rejects_parser_errors_but_preserves_all_valid_occurrences(
     assert excinfo.value.details == ()
 
 
-def test_import_reports_non_utf8_input_structurally(tmp_path: Path):
-    from legolization.ldraw_in import LdrawImportError, import_ldraw
+def _error_codes(error: LdrawImportError) -> list[str]:
+    """Fatal diagnostic codes only.
+
+    Asserting on the whole diagnostic list couples these tests to whatever
+    warnings pyldraw3 happens to emit alongside the failure.
+    """
+    return [
+        str(item.code) for item in error.diagnostics if item.severity is Severity.ERROR
+    ]
+
+
+def _diagnostic(error: LdrawImportError, code: str) -> Diagnostic:
+    return next(item for item in error.diagnostics if str(item.code) == code)
+
+
+def test_import_reports_non_utf8_input_structurally(tmp_path: Path) -> None:
+    from legolization.ldraw_in import import_ldraw
 
     path = tmp_path / "binary.ldr"
     path.write_bytes(b"0 invalid utf-8: \xff\n")
@@ -332,22 +349,20 @@ def test_import_reports_non_utf8_input_structurally(tmp_path: Path):
     with pytest.raises(LdrawImportError) as excinfo:
         import_ldraw(path)
 
-    assert [str(item.code) for item in excinfo.value.diagnostics] == [
-        "io.decode_failed"
-    ]
-    assert excinfo.value.diagnostics[0].path == path
+    assert _error_codes(excinfo.value) == ["io.decode_failed"]
+    assert _diagnostic(excinfo.value, "io.decode_failed").path == path
 
 
-def test_import_reports_unreadable_input_structurally(tmp_path: Path):
-    from legolization.ldraw_in import LdrawImportError, import_ldraw
+def test_import_reports_unreadable_input_structurally(tmp_path: Path) -> None:
+    from legolization.ldraw_in import import_ldraw
 
     path = tmp_path / "missing.ldr"
 
     with pytest.raises(LdrawImportError) as excinfo:
         import_ldraw(path)
 
-    assert [str(item.code) for item in excinfo.value.diagnostics] == ["io.read_failed"]
-    assert excinfo.value.diagnostics[0].path == path
+    assert _error_codes(excinfo.value) == ["io.read_failed"]
+    assert _diagnostic(excinfo.value, "io.read_failed").path == path
 
 
 def test_import_preserves_warning_only_load_diagnostics(tmp_path: Path):
