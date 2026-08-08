@@ -8,6 +8,7 @@ sense or a transposed footprint produces plausible numbers and wrong answers.
 
 from __future__ import annotations
 
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -19,6 +20,16 @@ from legolization.stability import analyze
 
 _REPO = Path(__file__).parent.parent
 _REGISTRY = _REPO / "scripts" / "datasets.toml"
+
+# Every path a dataset fetch or an analysis writes to. None may ever be tracked:
+# the payloads run to gigabytes, several carry licences that forbid
+# redistribution, and `datasets` is a symlink to an external volume on at least
+# one machine, so committing it would also commit a path meaningless elsewhere.
+_MUST_STAY_UNTRACKED = (
+    "datasets",  # scripts/fetch_datasets.py, scripts/fetch_omr.py
+    "eval/datasets",  # every analysis report
+    "eval/stablelego",  # scripts/stablelego_sweep.py
+)
 
 # The release's complete brick library, from the BrickGPT paper's appendix:
 # "Allowed brick dimensions are 2x4, 4x2, 2x6, 6x2, 1x2, 2x1, 1x4, 4x1, 1x6,
@@ -155,3 +166,32 @@ def test_unavailable_sources_explain_themselves():
     for entry in entries:
         if not entry.get("available", True):
             assert "UNAVAILABLE" in entry["notes"]
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+
+
+@pytest.mark.parametrize("path", _MUST_STAY_UNTRACKED)
+def test_dataset_payloads_are_not_tracked(path):
+    # The guarantee that matters. An ignore rule can be edited away or bypassed
+    # with `git add -f`; this fails loudly if a payload ever lands in the index.
+    tracked = [line for line in _git("ls-files", "--", path).splitlines() if line]
+    assert not tracked, f"{path} must never be committed; tracked: {tracked[:5]}"
+
+
+@pytest.mark.parametrize("path", _MUST_STAY_UNTRACKED)
+def test_dataset_paths_are_ignored_however_they_exist(path):
+    # `datasets` is a SYMLINK on at least one machine, and a trailing-slash
+    # pattern (`datasets/`) does not match a symlink - git treats it as a file.
+    # `check-ignore --no-index` answers for the pattern itself, so this holds
+    # whether the path is currently a directory, a symlink, or absent.
+    assert _git("check-ignore", "--no-index", "-v", path).strip(), (
+        f"{path} is not covered by .gitignore; a fetch would leave it stageable"
+    )

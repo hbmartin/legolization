@@ -57,6 +57,17 @@ class BrickParseError(ValueError):
     """A ``bricks`` payload contained a line this reader cannot decode."""
 
 
+def _string_tuple(value: object) -> tuple[str, ...]:
+    """Coerce a parquet list column to strings, tolerating a missing column.
+
+    Parquet rows arrive as ``Mapping[str, object]``, so the element type has to
+    be narrowed at runtime rather than asserted. Captions are metadata - a row
+    without them is still a usable structure, so this degrades to empty instead
+    of failing the row.
+    """
+    return tuple(str(item) for item in value) if isinstance(value, list) else ()
+
+
 @dataclass(frozen=True, slots=True)
 class BrickRow:
     """One parsed brick: an ``x_extent`` by ``y_extent`` footprint at ``(x, y, z)``."""
@@ -93,7 +104,7 @@ class Structure:
             structure_id=str(row["structure_id"]),
             object_id=str(row["object_id"]),
             category_id=str(row["category_id"]),
-            captions=tuple(str(item) for item in row["captions"]),  # ty: ignore[not-iterable]
+            captions=_string_tuple(row["captions"]),
             bricks=parse_bricks(str(row["bricks"])),
             scores=np.asarray(row["stability_scores"], dtype=float),
         )
