@@ -11,6 +11,17 @@ verification gap it closes, the exact access path, the licence, and the
 practical caveat. **Nothing here is a commitment** — this ranks a space,
 `ROADMAP.md` owns what actually gets built.
 
+> **Scope, decided after this survey was written.** The programme it fed
+> narrowed to **voxel and brick data only**. **Thingi10K**, **ShapeNetCore**,
+> and **ShapeStacks** are therefore *not* adopted: they are pure geometry or
+> non-brick physics, and none of them tests a brick placement, a connector, or
+> an assembly order. They are out of the dataset registry
+> (`scripts/datasets.toml`) and recorded as **speculative follow-up work at the
+> end of `ROADMAP.md`**. Their sections below are kept as the dated record of
+> what the survey found — read them as research, not as plans. COMPAS CRA is
+> the one non-brick source that *was* adopted, because it is the only
+> independent check on the equilibrium formulation itself.
+
 ## The gaps, in priority order
 
 | # | Gap today | Best dataset | Why it closes the gap |
@@ -398,12 +409,11 @@ These two are independent.
 3. **OMR via LTRON** — real MPDs for parser robustness plus a
    catalog-coverage metric. CC BY, attribution is machine-readable from
    the file headers.
-4. **Thingi10K stratified subset** — pick ~10 models by *metadata
-   pathology*, not by looks; pin hashes in the manifest the same way the
-   six meshes are pinned.
-5. **ShapeStacks cuboid subset** — the only independent check on the
-   toppling branch. Needs a converter; worth it because it tests the one
-   claim no LEGO dataset can.
+4. ~~**Thingi10K stratified subset**~~ — **cut on scope** (pure geometry); see
+   the banner at the top and `ROADMAP.md` "Speculative follow-up work".
+5. ~~**ShapeStacks cuboid subset**~~ — **cut on scope**, and separately its host
+   turned out to be dead (see the addendum). COMPAS CRA took over its role as
+   the independent check.
 6. **COMPAS CRA** — cross-validate the LP formulation itself. Highest
    evidentiary value, highest effort.
 7. Request **BrickNet** access and watch for the **WorkBenchMark**
@@ -427,4 +437,188 @@ These two are independent.
 | Toys4K | Form-gated, CC/royalty-free | Test-only |
 | BrickNet | Form-gated, unstated | Unknown — do not plan on it |
 | lquesada voxel-3d-models | CC BY-NC-SA 3.0 | **No** (non-commercial) |
-| MobileBrick | CC BY-NC-ND 4.0 | **No** (NC + ND) |
+| MobileBrick | ~~CC BY-NC-ND 4.0~~ **MIT** | **Yes** — corrected, see addendum |
+
+---
+
+# Addendum, 2026-08-08 — corrections and measured figures
+
+Written the same day as the survey above, after acquisition planning. The survey
+body is left as written; this section supersedes it where they disagree.
+
+## Two licence corrections
+
+**MobileBrick is MIT, not CC BY-NC-ND 4.0.** The survey read the licence badge
+off the arXiv abstract page, which describes *the paper*. The dataset and code
+are MIT: <https://github.com/ActiveVisionLab/MobileBrick/blob/main/LICENSE>
+("MIT License, Copyright (c) 2023 Active Vision Laboratory"). It is therefore
+usable, and it is adopted — see `ROADMAP.md`, "External validation datasets".
+
+**BrickNet's licence is MIT and most of its value is not gated.** The survey
+listed it as "form-gated, unstated, do not plan on it". Verified: the repo is
+MIT (`api.github.com/repos/kulits/BrickNet` → `spdx_id: MIT`), it ships on PyPI
+as `bricknet`, and the request form covers **only** the training graph splits.
+Not gated, and adopted:
+
+- bundled in the wheel — `part_names.json` (14,583 parts), `labels.json.xz`
+  (per-part connector labels, 14,603 parts), `part_aliases.json.xz`
+  (2,522 rows), `color_names.json` (258 colours). Vendored to
+  `references/bricknet-data/`.
+- direct download, no form — `inset.tar.xz` (368,855,964 B, per-part watertight
+  collision PLYs) and `ldraw.tar.xz` (97,779,272 B, the part-library snapshot
+  the vocabulary was built from).
+
+The gated splits (pt 253,623 / sft 67,185 / val 512 graphs) are **declined** on
+terms, not on value.
+
+## Measured download figures
+
+Every figure below is a measured `Content-Length` or `Content-Range` from an
+HTTP probe on 2026-08-08, not a published estimate.
+
+| Dataset | Download | Resident after extract |
+|---|---:|---:|
+| StableText2Brick (7 parquet) | 44.3 MB | 44 MB |
+| BrickNet `inset.tar.xz` | 368.9 MB | ~1.6 GB |
+| BrickNet `ldraw.tar.xz` | 97.8 MB | ~350 MB |
+| LDraw `complete.zip` | 144.7 MB | ~450 MB |
+| Rebrickable bulk CSVs (12 files) | 17.6 MB | ~90 MB |
+| COMPAS CRA samples (16 JSON) | 221 KB | 221 KB |
+| 3D-Craft `house_data.tar.gz` | 562.6 MB | ~2.5 GB |
+| 3D-Craft `instance_segmentation_data.tar.gz` | 2.0 MB | ~10 MB |
+| MobileBrick `MobileBrick_Mar23.zip` | **13.1 GB** | ~300 MB selective |
+| OMR `.mpd` crawl | ~0.6–1.5 GB | same |
+
+Measured but **cut on scope** — kept for the speculative section in
+`ROADMAP.md`, not in the registry:
+
+| Dataset | Download | Resident after extract |
+|---|---:|---:|
+| ShapeStacks `mjcf` + `meta` | 39.2 MB | ~150 MB |
+| Thingi10K metadata CSVs (6) | 6.6 MB | 6.6 MB |
+| Thingi10K `raw_meshes.tar.gz` | 9.6 GB | ~12 GB |
+
+Two figures worth calling out because they are far off the published
+impressions:
+
+- **MobileBrick is 13.1 GB** (13,128,305,497 B), not the tens of megabytes its
+  "153 objects" framing suggests. It is ~99% RGBD imagery. Only
+  `*/mesh/gt_mesh.ply` matters here, so extract selectively — ~300 MB — and
+  never unpack the archive whole.
+- **Thingi10K's full HF repo is 70.3 GB**; the raw meshes alone are 9.6 GB. The
+  `metadata/` CSVs are 6.6 MB and carry the manifoldness / closure /
+  component-count / self-intersection / licence columns, so a stratified subset
+  can be *chosen* for 6.6 MB and only the selected meshes fetched.
+
+## Access notes the survey did not have
+
+- **ShapeStacks** does not need the 33 GB RGB tarball. `shapestacks-mjcf.tar.gz`
+  (39 MB) plus `shapestacks-meta.tar.gz` (156 KB) carry the geometry and the
+  stability labels, which is the whole of what a solver check needs.
+- **OMR has no bulk archive and no API.** Set pages are
+  `https://library.ldraw.org/omr/sets/<id>` for id ≈ 1..4000 (5000 → 404), each
+  linking direct MPDs at `https://library.ldraw.org/library/omr/<name>.mpd`
+  (`10001-1.mpd` is 621,839 B). `library.ldraw.org/library/omr/` itself returns
+  403, so a polite id crawl is the only route. `scripts/fetch_omr.py` does this
+  at ≥1 s/request, resumably, and records each file's `0 !LICENSE` header so
+  attribution is machine-derived.
+- **LTRON** (the survey's suggested OMR bulk path) is Ubuntu-oriented — its
+  renderer needs OpenGL 4.6 and `splendor-render` is Linux-only. The direct
+  crawl avoids a 3 GB install for files we can fetch in the open.
+- **ShapeStacks is gone.** Diagnosed rather than assumed:
+  `shapestacks-file.robots.ox.ac.uk` resolves (129.67.94.117) but ports 80 and
+  443 are closed/filtered; `http://shapestacks.robots.ox.ac.uk/static/download/v1/…`
+  301-redirects to `https://ogroth.github.io/shapestacks/static/download/v1/…`,
+  which 404s; and the `ogroth/shapestacks` GitHub release (v1.0) carries no
+  assets. No public mirror found. **COMPAS CRA** is substituted as the
+  independent physics check — MIT, 22 sample discrete-element assemblies
+  (3.5 MB of JSON, readable without installing the package, which pins
+  `pyomo==6.4.2`). Its `shelf-stable` vs `shelf-s1/s2/s3` variants are the
+  independent verdict pairs, and `tests/test_cra.py` pins its force convention
+  (a unit cube on a unit interface puts 0.25 on each of four corners), which is
+  directly comparable to our per-contact forces.
+
+## First results, 2026-08-08
+
+Everything below is from a run of the scripts this addendum introduces.
+
+### The score conventions of the two brick datasets are inverted
+
+Established empirically, not read off a paper. Over the StableText2Brick test
+shard, **every unoccupied voxel is exactly 1.0** (all 355,660 across 50
+structures) and occupied voxels lie in [0.7176, 1.0]. So its `stability_scores`
+is a **margin** — higher is better, and the paper's rule is "stable iff every
+brick scores > 0".
+
+StableLego's `stability_score.npy` is the **opposite**: its README legend reads
+*"Black: more stable. Red: higher internal stress. White: collapsing bricks"*,
+i.e. a stress, matching our `max_score` and confirming the convention already
+assumed in `scripts/stablelego_sweep.py:112`. That assumption is correct; the
+two datasets simply disagree with each other. Reading either backwards would
+invert every verdict while still producing numbers in [0, 1], so both
+conventions are now pinned by tests in `tests/test_datasets.py`.
+
+### Solver agreement: 150/150, matching BrickSim
+
+`stabletext2brick_sweep.py --sample 150 --seed 0` — the same sample size
+BrickSim reports (`references/bricksim-*/paper.md:194`, scoring 150/150 at
+`:200`):
+
+- **150 agree, 0 disagree, 0 skipped.**
+- Score residual `|(1 − their margin) − our max_score|`: median 0.0020,
+  mean 0.0223, p95 0.0959, **max 0.5244**.
+- Correlation of `(1 − margin)` with `max_score`: 0.781.
+
+The median says the two quantities track each other almost exactly; the tail
+says they are not the same function. The handful of large residuals (structures
+where they see 5–25% stress and we see under 3%) are the interesting cases and
+have not been diagnosed. Caveat that bounds all of it: the set is
+**positive-only**, so this measures false negatives and says nothing about
+false positives.
+
+### Catalog coverage over real sets: 14.4%
+
+`ldraw_coverage.py --cross-check` over the first 154 OMR sets, 78,409 part
+occurrences:
+
+- **0 of 154 models import completely**; coverage is 14.4% of occurrences.
+- Failures: 62,494 part-not-in-catalog, 2,240 rotation-not-yaw,
+  1,532 colour-not-solid, 178 collision, 83 off-grid, 82 sideways-unsupported.
+- The 1,421 rejected codes are **not all parts**: classified against the
+  official library, 41,916 occurrences are real parts, 19,914 are geometric
+  primitives (`stud`, `4-4ring3`, `box4o8a`), and 664 are unknown. The
+  primitives arrive because some OMR MPDs inline unofficial part *definitions*
+  as submodels and the analysis descends into them. Only the real-part count is
+  addressable by extending the catalog — reporting the raw 1,421 would have put
+  primitives at the top of a what-to-support-next list where they can never
+  belong.
+- Top real parts by occurrence: `166` (7,387), `2780` (2,588), `u9190` (2,380),
+  `77` (2,038), `6558` (1,296), `54200` (891).
+- **BrickNet's independent parser disagrees with ours on 7 of 154 models**,
+  always by 1–3 parts (e.g. `885-1.mpd` 26 vs 28, `891-1.mpd` 45 vs 48). Not yet
+  diagnosed; one of the two parsers is wrong in each case.
+
+### The beauty scalar: one term is pointing the wrong way
+
+`aesthetics_baseline.py` — the ROADMAP's *"validate the beauty scalar against
+human judgement"* item. Both terms are errors, lower is better. Medians:
+
+| term | human (OMR) | ours | algorithmic (S2B) |
+|---|---:|---:|---:|
+| `symmetry` | **0.0761** | 0.3478 | 0.4694 |
+| `perpendicularity` | 0.6165 | **0.5380** | 0.4698 |
+
+- **`symmetry` points the right way.** Human builds are ~4.5x better than ours
+  at the median, and the algorithmic set is worst. That gap is real headroom.
+- **`perpendicularity` does not.** We already score *better* than official LEGO
+  sets, and the delete-and-rebuild algorithmic set scores better still — an
+  ordering exactly inverted from how the three populations actually look. Being
+  ahead of human designers on a beauty term while our output still reads as
+  machine-made is evidence the term is not measuring what makes a build look
+  right, and a reason to revisit its weight in `ObjectiveWeights` rather than
+  optimize harder into it.
+
+Methodological limit: no OMR model imports completely, so the human rows score
+each set's *basic-brick skeleton*. That skeleton is the vocabulary our generator
+works in, which is why the comparison is meaningful, but it is not a comparison
+of finished sets.

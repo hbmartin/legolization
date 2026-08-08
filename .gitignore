@@ -42,5 +42,7 @@ eval/datasets/
 legolization-eval/
 
 # external validation datasets fetched by scripts/fetch_datasets.py and
-# scripts/fetch_omr.py (a symlink here; the registry TOML is the committed truth)
-datasets/
+# scripts/fetch_omr.py. No trailing slash: this is a symlink to an external
+# volume on at least one machine, and `datasets/` would not match a symlink.
+# scripts/datasets.toml + datasets.lock.toml are the committed truth.
+/datasets

@@ -228,10 +228,24 @@ and nothing is vendored except small attribution-carrying reference tables.
   stability regression and the set BrickSim's headline 150-assembly number is
   sampled from, so our figure is directly comparable. **StableLego** (MIT repo)
   supplies the mixed valid/invalid negative class the existing
-  `scripts/stablelego_sweep.py` already consumes. **ShapeStacks** is the only
-  independent check on the toppling/CoM branch, which `topple-arm` pins with a
-  single fixture. **Thingi10K** stratifies mesh pathologies that `mesh.py`'s
-  fallback paths currently meet one fixture at a time.
+  `scripts/stablelego_sweep.py` already consumes.
+
+- **3D-Craft / CraftAssist** (MIT repo, 2,586 crowd-built structures, 563 MB) —
+  the voxel side: large multi-colour inputs for the colour-constraint path,
+  which `letter-h-bicolour` currently exercises with two colours, plus recorded
+  **human build order** as an external reference for the instruction sequencer.
+
+- **COMPAS CRA** (MIT, 22 discrete-element assemblies, 3.5 MB of JSON) — the one
+  non-brick source in the programme, and deliberately so: every brick dataset
+  above was labelled by the same solver family we implement, so agreement with
+  them is consistency, not correctness. CRA is an independent rigid-block
+  formulation from the ETH Block Research Group, with stable/unstable variants
+  (`shelf-stable` vs `shelf-s1/s2/s3`) and a pinned force convention that is
+  directly comparable to our per-contact forces.
+
+**Scope:** this programme covers **voxel and brick data only**. Pure-geometry
+mesh corpora and non-brick stacking benchmarks are out of scope and recorded
+under "Speculative follow-up work" at the end of this document.
 
 ## Research traceability
 
@@ -348,3 +362,50 @@ threshold). The guide paragraph is deliberately left unedited — updating it
 is the open action, together with deciding whether the restricted basis's own
 pre-split numbers quoted in `ScreenReport.lateral`'s docstring (90.5% / 5.6%)
 should be restated on the current protocol.
+
+## Speculative follow-up work
+
+Not planned, not scoped, and deliberately not in the dataset registry. Recorded
+here so the reasoning survives and a future session does not have to re-run the
+survey — the full analysis is in
+[`docs/reports/dataset-survey.md`](docs/reports/dataset-survey.md).
+
+These were investigated during the 2026-08-08 external-dataset workstream and
+then cut when that programme narrowed to **voxel and brick data only**. Each is
+pure geometry or non-brick physics: useful eventually, but none of them tests a
+brick placement, a connector, or an assembly order, which is where the current
+verification gap is.
+
+- **Thingi10K** (10,000 real 3D-printing meshes) — the mesh-robustness angle.
+  Its `metadata/` CSVs are 6.6 MB and carry manifoldness, closure,
+  component-count, self-intersection, degenerate-face and per-model licence
+  columns, so a stratified *pathology* subset can be chosen without downloading
+  the 9.6 GB mesh tarball; individual `raw_meshes/<id>.stl` paths are served
+  separately. It would target the `mesh.py` fallback paths that today have
+  exactly one fixture each — the fill fallback (`suzanne`) and
+  `largest_component_only` (`homer`). Take it up only if mesh-input robustness
+  becomes the live problem; it says nothing about bricks.
+  <https://huggingface.co/datasets/Thingi10K/Thingi10K>
+
+- **ShapeNetCore** — the source meshes behind both StableLego and
+  StableText2Brick, joinable via the `object_id` column already present in the
+  StableText2Brick parquet. That join is the only route to a genuine
+  *same-input* comparison: their published layout and ours for the identical
+  object, each scorable by both solvers. The strongest available evidence for a
+  placement-quality claim, and the reason this entry is the most likely of the
+  three to be revived. Requires a research-use account.
+
+- **ShapeStacks** (20,000 labelled block stacks) — would have been the
+  independent check on the toppling/CoM branch (`ground_pull=False`,
+  `docs/reports/physics-fidelity-notes.md` §1), which `topple-arm` pins with a
+  single fixture, and it uniquely labels *which* object violates stability, so
+  it would check per-brick attribution rather than only the global verdict.
+  **Its host is dead** (diagnosed 2026-08-08: ports 80/443 closed, the documented
+  redirect 404s, the GitHub release carries no assets, no mirror found), so this
+  is blocked on the data reappearing, not on a decision. COMPAS CRA now covers
+  the independent-formulation role instead.
+
+Also surveyed and not pursued: **Objaverse** (800K objects, ODC-By),
+**Toys4K** (4,179 toy-shaped objects, form-gated), and **MobileBrick**'s
+non-curated 135 random-shape sequences. MobileBrick's 18 curated LEGO models
+*are* in scope and remain listed under "External validation datasets".

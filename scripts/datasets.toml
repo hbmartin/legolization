@@ -1,0 +1,354 @@
+# External validation dataset registry, read by scripts/fetch_datasets.py.
+#
+# This file is the committed source of truth for WHAT we fetch and under WHAT
+# terms. Content hashes live in the generated companion
+# `scripts/datasets.lock.toml`, written on first successful fetch and committed
+# alongside it — registry plus lock, so a re-fetch is verified rather than
+# trusted.
+#
+# Payloads land under `datasets/` (a symlink here; gitignored) and are never
+# vendored. The one exception is `references/bricknet-data/`, four small
+# attribution-carrying reference tables copied out of the MIT `bricknet` wheel.
+#
+# `bytes` is the measured Content-Length recorded when the entry was added; it
+# drives `--dry-run` and is a sanity check, not an integrity check — that is the
+# lock's job. A changed size on a pinned entry is reported, never silently
+# accepted.
+#
+# Groups:
+#   core   - small, fetched by default
+#   large  - multi-gigabyte; opt in with --group large
+#   manual - acquired outside this script (licence gate, or already in flight)
+#
+# SCOPE: this registry covers voxel and brick data only. Pure-geometry mesh
+# corpora (Thingi10K, ShapeNetCore) and non-brick stacking benchmarks
+# (ShapeStacks) are deliberately out of the current programme and are recorded
+# as speculative follow-up work at the end of ROADMAP.md. COMPAS CRA is the one
+# non-brick source kept, because it is the only independent check on the
+# equilibrium formulation itself.
+#
+# Provenance and licence analysis: docs/reports/dataset-survey.md
+# Programme rationale: ROADMAP.md, "External validation datasets"
+
+# --- core ----------------------------------------------------------------
+
+[[dataset]]
+name = "stabletext2brick"
+group = "core"
+license = "MIT"
+source = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego"
+citation = "Pun et al., Generating Physically Stable and Buildable LEGO Designs from Text, ICCV 2025 (arXiv:2505.05469)"
+notes = """
+47,389 brick structures on a 20x20x20 grid with per-voxel stability scores and
+captions. Every row passed the StableLego analyser during construction, so the
+whole set is a positive-only stability regression. BrickSim's headline
+150-assembly evaluation is sampled from exactly this dataset
+(references/bricksim-*/paper.md:194), so our 150-sample figure is comparable.
+"""
+
+[[dataset.file]]
+name = "data/test-00000-of-00001.parquet"
+url = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego/resolve/main/data/test-00000-of-00001.parquet"
+bytes = 4_528_870
+
+[[dataset.file]]
+name = "data/train-00000-of-00006.parquet"
+url = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego/resolve/main/data/train-00000-of-00006.parquet"
+bytes = 5_694_575
+
+[[dataset.file]]
+name = "data/train-00001-of-00006.parquet"
+url = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego/resolve/main/data/train-00001-of-00006.parquet"
+bytes = 6_070_550
+
+[[dataset.file]]
+name = "data/train-00002-of-00006.parquet"
+url = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego/resolve/main/data/train-00002-of-00006.parquet"
+bytes = 7_982_623
+
+[[dataset.file]]
+name = "data/train-00003-of-00006.parquet"
+url = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego/resolve/main/data/train-00003-of-00006.parquet"
+bytes = 6_080_586
+
+[[dataset.file]]
+name = "data/train-00004-of-00006.parquet"
+url = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego/resolve/main/data/train-00004-of-00006.parquet"
+bytes = 8_027_392
+
+[[dataset.file]]
+name = "data/train-00005-of-00006.parquet"
+url = "https://huggingface.co/datasets/AvaLovelace/StableText2Lego/resolve/main/data/train-00005-of-00006.parquet"
+bytes = 5_936_622
+
+[[dataset]]
+name = "bricknet"
+group = "core"
+license = "MIT"
+source = "https://github.com/kulits/BrickNet"
+citation = "Kulits & Schmid, BrickNet: Graph-Backed Generative Brick Assembly, CVPR 2026 (arXiv:2604.22984)"
+extract = "tar"
+notes = """
+Per-part watertight collision meshes (inset 0.25 LDU, Z negated) plus the LDraw
+part-library snapshot the vocabulary was built from. Direct downloads, NOT
+behind the project's dataset request form — that form covers only the training
+graph splits, which we decline on terms. The four small reference tables are
+vendored separately in references/bricknet-data/.
+"""
+
+[[dataset.file]]
+name = "inset.tar.xz"
+url = "https://keeper.mpdl.mpg.de/seafhttp/f/77b868746e6d41baa791/?op=view"
+bytes = 368_855_964
+
+[[dataset.file]]
+name = "ldraw.tar.xz"
+url = "https://keeper.mpdl.mpg.de/seafhttp/f/9b4a3c04e88940d1a718/?op=view"
+bytes = 97_779_272
+
+[[dataset]]
+name = "ldraw-library"
+group = "core"
+license = "CCAL 2.0 (Creative Commons Attribution 2.0)"
+source = "https://library.ldraw.org/updates"
+notes = """
+The complete official LDraw parts library, 17,052 unique shapes. Real .dat
+primitive geometry for every official part — lets catalog_infer/geometry.py
+derive footprint and height from measured geometry instead of estimating.
+"""
+extract = "zip"
+
+[[dataset.file]]
+name = "complete.zip"
+url = "https://library.ldraw.org/library/updates/complete.zip"
+bytes = 144_722_356
+
+[[dataset]]
+name = "rebrickable"
+group = "core"
+license = "Free for any purpose (per https://rebrickable.com/downloads/)"
+source = "https://rebrickable.com/downloads/"
+extract = "gz"
+notes = """
+The complete official-LEGO catalog as bulk CSVs, refreshed daily. Gives
+catalog_infer the same facts as the rate-limited rebrickable-api rung
+(sources.py:335) but hermetically and offline. part_relationships.csv resolves
+the mould/print/pair variants that the current single-regex canonicalization in
+_candidate_numbers (sources.py:326) cannot.
+"""
+
+[[dataset.file]]
+name = "themes.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/themes.csv.gz"
+bytes = 4_508
+
+[[dataset.file]]
+name = "part_relationships.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/part_relationships.csv.gz"
+bytes = 194_672
+
+[[dataset.file]]
+name = "elements.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/elements.csv.gz"
+bytes = 1_124_099
+
+[[dataset.file]]
+name = "colors.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/colors.csv.gz"
+bytes = 4_886
+
+[[dataset.file]]
+name = "parts.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/parts.csv.gz"
+bytes = 1_060_355
+
+[[dataset.file]]
+name = "part_categories.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/part_categories.csv.gz"
+bytes = 856
+
+[[dataset.file]]
+name = "sets.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/sets.csv.gz"
+bytes = 511_278
+
+[[dataset.file]]
+name = "minifigs.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/minifigs.csv.gz"
+bytes = 300_937
+
+[[dataset.file]]
+name = "inventories.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/inventories.csv.gz"
+bytes = 262_194
+
+[[dataset.file]]
+name = "inventory_parts.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/inventory_parts.csv.gz"
+bytes = 14_028_473
+
+[[dataset.file]]
+name = "inventory_sets.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/inventory_sets.csv.gz"
+bytes = 18_811
+
+[[dataset.file]]
+name = "inventory_minifigs.csv.gz"
+url = "https://cdn.rebrickable.com/media/downloads/inventory_minifigs.csv.gz"
+bytes = 97_420
+
+[[dataset]]
+name = "compas-cra"
+group = "core"
+license = "MIT"
+source = "https://github.com/BlockResearchGroup/compas_cra"
+citation = "Kao et al., Coupled Rigid-Block Analysis: Stability-Aware Design of Complex Discrete-Element Assemblies, ETH Zurich Block Research Group"
+notes = """
+The 22 sample discrete-element assemblies shipped with COMPAS CRA. The closest
+published analogue of our LP formulation, from an independent group. Fetched as
+raw JSON so no dependency is needed to read them (compas_cra itself pins
+pyomo==6.4.2, which we will not put in this project's resolution).
+
+It is the one non-brick source kept in the programme, because every LEGO dataset
+here was labelled by the same solver family we implement — agreement with them
+is consistency, not correctness. CRA is an independent formulation.
+
+The stable/unstable shelf variants (shelf-stable vs shelf-s1/s2/s3) are the
+independent verdict pairs; test_cra.py pins the force convention (a unit cube on
+a unit interface puts 0.25 on each of four corners), which is directly
+comparable to our per-contact forces.
+"""
+
+[[dataset.file]]
+name = "samples/A.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/A.json"
+bytes = 3_826
+
+[[dataset.file]]
+name = "samples/H.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/H.json"
+bytes = 3_638
+
+[[dataset.file]]
+name = "samples/bridge.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/bridge.json"
+bytes = 32_793
+
+[[dataset.file]]
+name = "samples/concave-long.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/concave-long.json"
+bytes = 10_290
+
+[[dataset.file]]
+name = "samples/concave-short.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/concave-short.json"
+bytes = 10_290
+
+[[dataset.file]]
+name = "samples/cubes.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/cubes.json"
+bytes = 3_870
+
+[[dataset.file]]
+name = "samples/shelf.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/shelf.json"
+bytes = 14_356
+
+[[dataset.file]]
+name = "samples/shelf-stable.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/shelf-stable.json"
+bytes = 12_012
+
+[[dataset.file]]
+name = "samples/shelf-s1.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/shelf-s1.json"
+bytes = 17_069
+
+[[dataset.file]]
+name = "samples/shelf-s2.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/shelf-s2.json"
+bytes = 17_885
+
+[[dataset.file]]
+name = "samples/shelf-s3.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/shelf-s3.json"
+bytes = 16_806
+
+[[dataset.file]]
+name = "samples/snake.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/snake.json"
+bytes = 59_698
+
+[[dataset.file]]
+name = "samples/type-a.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/type-a.json"
+bytes = 4_703
+
+[[dataset.file]]
+name = "samples/type-b.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/type-b.json"
+bytes = 4_767
+
+[[dataset.file]]
+name = "samples/type-c.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/type-c.json"
+bytes = 4_745
+
+[[dataset.file]]
+name = "samples/type-d.json"
+url = "https://raw.githubusercontent.com/BlockResearchGroup/compas_cra/main/src/compas_cra/data/samples/type-d.json"
+bytes = 4_751
+
+# --- large ---------------------------------------------------------------
+
+[[dataset]]
+name = "craft3d"
+group = "large"
+license = "MIT (facebookresearch/craftassist)"
+source = "https://github.com/facebookresearch/craftassist"
+citation = "Chen et al., Order-Aware Generative Modeling Using the 3D-Craft Dataset, ICCV 2019"
+extract = "tar"
+notes = """
+2,586 crowd-built Minecraft houses recorded as timestamped
+[timestamp, user_id, x, y, z, block_id, place/break] sequences over 253 block
+ids. Two independent uses: large multi-colour voxel inputs for the colour
+constraint path (letter-h-bicolour is our only colour fixture, with 2 colours),
+and HUMAN BUILD ORDER as an external reference for the instruction sequencer.
+MEPNet used this same house set for the ordering signal.
+"""
+
+[[dataset.file]]
+name = "house_data.tar.gz"
+url = "https://craftassist.s3-us-west-2.amazonaws.com/pubr/house_data.tar.gz"
+bytes = 562_618_483
+
+[[dataset.file]]
+name = "instance_segmentation_data.tar.gz"
+url = "https://craftassist.s3-us-west-2.amazonaws.com/pubr/instance_segmentation_data.tar.gz"
+bytes = 1_987_127
+
+[[dataset]]
+name = "mobilebrick"
+group = "manual"
+license = "MIT"
+source = "https://github.com/ActiveVisionLab/MobileBrick"
+citation = "Li et al., MobileBrick: Building LEGO for 3D Reconstruction on Mobile Devices, CVPR 2023 (arXiv:2303.01932)"
+notes = """
+ACQUIRED OUT OF BAND — the zip is 13.1 GB and already downloading to
+datasets/MobileBrick_Mar23.zip.
+
+153 sequences: 135 random brick shapes and 18 manually curated LEGO models, each
+with a mesh/gt_mesh.ply ground-truth shape derived from known brick geometry.
+The rest of the archive is RGBD imagery we do not need.
+
+EXTRACT SELECTIVELY — never unpack the whole archive:
+    unzip -j datasets/MobileBrick_Mar23.zip '*/mesh/*.ply' \\
+        -d datasets/mobilebrick/meshes/
+That is ~300 MB rather than ~13 GB. `scripts/fetch_datasets.py --only
+mobilebrick` performs exactly this extraction against the existing zip.
+"""
+
+[[dataset.file]]
+name = "MobileBrick_Mar23.zip"
+url = "https://www.robots.ox.ac.uk/~victor/data/MobileBrick/MobileBrick_Mar23.zip"
+bytes = 13_128_305_497
