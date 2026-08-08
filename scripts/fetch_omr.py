@@ -49,7 +49,13 @@ _MPD_PATTERN = re.compile(
     r'href="(https://library\.ldraw\.org/library/omr/([^"]+\.mpd))"',
     re.IGNORECASE,
 )
-_LICENSE_PATTERN = re.compile(rb"^0\s+!LICENSE\s+(.+?)\s*$", re.MULTILINE)
+_LICENSE_PATTERN = re.compile(rb"^0[ \t]+!LICENSE[ \t]+([^\r\n]+)", re.MULTILINE)
+# At least one real OMR file (6386-1.mpd) runs its !LICENSE and the following
+# meta-command together on one physical line, with no break between
+# "CAreadme.txt" and "0 !HELP ...". Capturing to end-of-line would then fold a
+# copyright notice into the licence string and split the attribution histogram
+# in two. Trim anything from a run-together `0 !META` onwards.
+_TRAILING_META = re.compile(r"\s*0\s+![A-Z].*$", re.DOTALL)
 _TITLE_PATTERN = re.compile(r"<h1[^>]*>(.*?)</h1>", re.IGNORECASE | re.DOTALL)
 _TAG_PATTERN = re.compile(r"<[^>]+>")
 
@@ -165,16 +171,26 @@ def download(model: OmrModel, *, dest: Path) -> OmrModel | str:
         temp = target.with_name(f".{target.name}.part")
         temp.write_bytes(body)
         temp.replace(target)
-    match = _LICENSE_PATTERN.search(body)
-    licence = match.group(1).decode("utf-8", errors="replace") if match else ""
     return OmrModel(
         set_id=model.set_id,
         set_title=model.set_title,
         name=model.name,
         url=model.url,
-        license=licence,
+        license=license_of(body),
         bytes=len(body),
     )
+
+
+def license_of(body: bytes) -> str:
+    """Read the ``0 !LICENSE`` header line, or ``""`` when the file has none.
+
+    Attribution is derived from the files rather than assumed, so this has to
+    survive malformed headers - see ``_TRAILING_META``.
+    """
+    if (match := _LICENSE_PATTERN.search(body)) is None:
+        return ""
+    raw = match.group(1).decode("utf-8", errors="replace")
+    return _TRAILING_META.sub("", raw).strip()
 
 
 def _pending(index: Index, *, limit: int) -> Iterator[int]:

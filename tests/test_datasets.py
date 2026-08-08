@@ -8,15 +8,21 @@ sense or a transposed footprint produces plausible numbers and wrong answers.
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 from legolization.datasets import stabletext2brick as s2b
 from legolization.stability import analyze
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 _REPO = Path(__file__).parent.parent
 _REGISTRY = _REPO / "scripts" / "datasets.toml"
@@ -195,3 +201,48 @@ def test_dataset_paths_are_ignored_however_they_exist(path):
     assert _git("check-ignore", "--no-index", "-v", path).strip(), (
         f"{path} is not covered by .gitignore; a fetch would leave it stageable"
     )
+
+
+def _load_omr_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "omr", _REPO / "scripts" / "fetch_omr.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["omr"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_omr_licence_is_read_from_the_file_header():
+    omr = _load_omr_module()
+    body = (
+        b"0 Title\r\n"
+        b"0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt\r\n"
+        b"1 4 0 0 0\r\n"
+    )
+    assert (
+        omr.license_of(body)
+        == "Redistributable under CCAL version 2.0 : see CAreadme.txt"
+    )
+
+
+def test_omr_licence_survives_a_run_together_meta_command():
+    # Real case: 6386-1.mpd has no line break between the !LICENSE value and
+    # the following 0 !HELP command. Capturing to end-of-line would fold a
+    # copyright notice into the licence and split the attribution histogram.
+    omr = _load_omr_module()
+    body = (
+        b"0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt"
+        b"0 !HELP Copyright (c) 2002-2017, Robert Paciorek\r\n"
+    )
+    assert (
+        omr.license_of(body)
+        == "Redistributable under CCAL version 2.0 : see CAreadme.txt"
+    )
+
+
+def test_omr_licence_is_empty_when_the_header_is_absent():
+    omr = _load_omr_module()
+    assert omr.license_of(b"0 Title\r\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat\r\n") == ""
