@@ -40,14 +40,19 @@ a confident "ok" as a cold-solve fallthrough.
 OSQP notes: solved directly (no cvxpy — per-candidate canonicalization
 would dwarf the solve, the same reason the exact LP is hand-assembled);
 ``polishing`` is off because OSQP 1.x prints polish diagnostics to
-stdout even with ``verbose=False``.
+stdout even with ``verbose=False``; and only ``OSQP_SOLVED`` counts as
+a solve. ``OSQP_SOLVED_INACCURATE`` (iteration or time limit reached
+with residuals meeting only the loosened tolerances) is treated as
+non-convergence: its equilibrium leakage can exceed the per-brick
+tolerance below, flagging bricks unstable and driving a *confident*
+rejection that skips the cold solve entirely.
 """
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, Self, cast
 
 import numpy as np
 import osqp
@@ -55,6 +60,7 @@ from scipy import sparse
 
 from legolization import telemetry
 from legolization.stability.constants import KNOB_PITCH_M, T_CAPACITY_N
+from legolization.stability.model import FORCE_ROWS, FZ_ROW
 from legolization.stability.reduced import ReducedModel, build_reduced_model
 
 if TYPE_CHECKING:
@@ -115,6 +121,11 @@ class ScreenReport:
     already collapsing (ALNS repair's normal regime) — ``q_raw`` keeps
     the ordering information past the clamp."""
 
+    detail: str | None = None
+    """Exception repr behind ``status="error"``. The screen swallows
+    build and solve failures to stay advisory, and telemetry carries
+    counters but no text, so this is the only surviving cause."""
+
 
 @dataclass(slots=True)
 class _ScreenArrays:
@@ -137,12 +148,12 @@ class _ScreenArrays:
     attribution ``bottom_drag_cols`` gives the exact scorer)."""
 
     @classmethod
-    def create(cls, reduced: ReducedModel) -> _ScreenArrays:
+    def create(cls, reduced: ReducedModel) -> Self:
         rpb = reduced.rows_per_brick
         brick_count = len(reduced.brick_ids)
         weights = np.ones(rpb * brick_count)
         for i in range(brick_count):
-            weights[rpb * i + 3 : rpb * (i + 1)] = 1.0 / KNOB_PITCH_M
+            weights[rpb * i + FORCE_ROWS : rpb * (i + 1)] = 1.0 / KNOB_PITCH_M
         scale = sparse.diags(weights, format="csc")
         a_scaled = cast("sparse.csc_matrix", (scale @ reduced.a_matrix).tocsc())
         b_scaled = weights * reduced.b_vector
@@ -266,7 +277,7 @@ def _solve_qp(
         **settings,
     )
     result = problem.solve(raise_error=False)
-    if "solved" not in str(result.info.status) or result.x is None:
+    if result.info.status_val != osqp.SolverStatus.OSQP_SOLVED or result.x is None:
         return None
     solution = np.asarray(result.x)
     x = solution[:n]
@@ -291,7 +302,7 @@ def _score_report(
     high = (1.0 + config.screen_margin) * T_CAPACITY_N
     for i, brick_id in enumerate(reduced.brick_ids):
         rows = solution.residual[rpb * i : rpb * (i + 1)]
-        weight = abs(float(reduced.b_vector[rpb * i + 2]))
+        weight = abs(float(reduced.b_vector[rpb * i + FZ_ROW]))
         tolerance = max(
             _EQ_WEIGHT_SHARE * weight,
             _EQ_NOISE_FLOOR * config.screen_eps,
@@ -359,9 +370,9 @@ def _screen_body(
         return ScreenReport(status="deadline")
     try:
         reduced = build_reduced_model(layout, config, graph)
-    except Exception:  # noqa: BLE001 - screen must never propagate build bugs
+    except Exception as exc:  # noqa: BLE001 - never propagate build bugs
         telemetry.value("stability.screen.error", 1.0)
-        return ScreenReport(status="error")
+        return ScreenReport(status="error", detail=repr(exc))
     if reduced is None:
         telemetry.value("stability.screen.decline", 1.0)
         return ScreenReport(status="declined")
@@ -389,9 +400,9 @@ def solve_screen(
             telemetry.value("stability.screen.nonconverged", 1.0)
             return ScreenReport(status="nonconverged")
         return _score_report(arrays, config, solution)
-    except Exception:  # noqa: BLE001 - screen must never propagate solver bugs
+    except Exception as exc:  # noqa: BLE001 - never propagate solver bugs
         telemetry.value("stability.screen.error", 1.0)
-        return ScreenReport(status="error")
+        return ScreenReport(status="error", detail=repr(exc))
 
 
 @dataclass(slots=True)
@@ -407,7 +418,7 @@ class ReducedScreen:
     baseline: ScreenReport
 
     @classmethod
-    def create(cls, layout: Layout, config: SolverConfig) -> ReducedScreen | None:
+    def create(cls, layout: Layout, config: SolverConfig) -> Self | None:
         """Build and evaluate the baseline; ``None`` when declined."""
         report = screen_layout(layout, config)
         if report.status != "ok":

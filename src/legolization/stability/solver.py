@@ -137,15 +137,22 @@ class SolverConfig:
     accuracy studies and never the production default."""
 
     screen_margin: float = 0.1
-    """Relative q-band around the screen baseline inside which the
-    screen abstains (``confident=False``) and callers fall through to
-    the cold solve — the screen analogue of ``boundary_margin``."""
+    """The screen's abstain band and rejection threshold — the screen
+    analogue of ``boundary_margin``, used in two places.
+
+    In ``screen._score_report`` it is the relative band around
+    ``T_CAPACITY_N``: a brick whose worst drag lands inside it makes the
+    whole report non-confident (``confident=False``) and callers fall
+    through to the cold solve. In ``ReducedScreen.should_reject`` it is
+    the deterioration threshold a candidate must clear to be rejected,
+    both relative to the baseline stress and as an absolute share of
+    capacity beyond it."""
 
     screen_eps: float = 1e-5
-    """OSQP ``eps_abs``/``eps_rel`` for the screen's three QP stages."""
+    """OSQP ``eps_abs``/``eps_rel`` for the screen QP."""
 
     screen_max_iter: int = 4_000
-    """OSQP iteration cap per screen stage; exceeding it falls back to
+    """OSQP iteration cap for the screen QP; exceeding it falls back to
     the cold solve (``stability.screen.nonconverged``)."""
 
     def __post_init__(self) -> None:

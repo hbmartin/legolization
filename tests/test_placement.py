@@ -558,6 +558,59 @@ def test_luo_stabilize_stops_at_expired_deadline(
     )
 
 
+def test_luo_stabilize_stops_when_the_screen_eats_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The screen is deadline-bounded and the two exact solves are not, so
+    # a screen that runs out the clock must not be followed by either.
+    import legolization.placement.luo as luo_module
+    from legolization import telemetry
+    from legolization.stability import SolverConfig
+    from legolization.stability.solver import StabilityResult
+
+    clock = [0.0]
+    monkeypatch.setattr(luo_module.time, "monotonic", lambda: clock[0])
+    solves: list[str] = []
+
+    real_analyze = luo_module.analyze
+
+    def counting_analyze(
+        layout: Layout,
+        config: SolverConfig | None = None,
+    ) -> StabilityResult:
+        solves.append("analyze")
+        return real_analyze(layout, config)
+
+    real_capacity = luo_module.LuoStrategy._capacity  # noqa: SLF001
+
+    def counting_capacity(self: LuoStrategy, layout: Layout) -> float:
+        solves.append("capacity")
+        return real_capacity(self, layout)
+
+    def burn_budget(*_args: object, **_kwargs: object) -> tuple[None, bool]:
+        clock[0] = 100.0  # the screen consumed every remaining second
+        return None, False
+
+    monkeypatch.setattr(luo_module, "analyze", counting_analyze)
+    monkeypatch.setattr(luo_module.LuoStrategy, "_capacity", counting_capacity)
+    monkeypatch.setattr(luo_module.LuoStrategy, "_screened_out", burn_budget)
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x4", 0, 0, 9, 0, 4)  # floating: analyze is unstable
+    grid = VoxelGrid(codes=np.full((2, 4, 12), 4, dtype=np.int16))
+    with telemetry.record() as session:
+        LuoStrategy(acceptance="maximin")._stabilize(  # noqa: SLF001
+            layout,
+            grid,
+            np.random.default_rng(0),
+            deadline=50.0,
+        )
+
+    # Only the pre-loop baseline pair ran; the candidate's did not.
+    assert solves == ["analyze", "capacity"]
+    assert "luo.stabilize.deadline_stop" in session.values_dict()
+
+
 def test_luo_place_does_not_restart_outer_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

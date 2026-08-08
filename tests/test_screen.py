@@ -1,7 +1,10 @@
 """Reduced-QP screen: physics fixtures, direction bands, fallbacks."""
 
 import time
+from types import SimpleNamespace
 
+import numpy as np
+import osqp
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -157,6 +160,39 @@ def test_iteration_starvation_reports_nonconverged():
     assert not report.confident
 
 
+def test_inaccurate_status_reports_nonconverged(layout, monkeypatch):
+    """OSQP's "solved inaccurate" is a fallthrough, not a solve.
+
+    It is reported when the iteration or time limit is hit with
+    residuals meeting only the loosened tolerances; scoring one would
+    let equilibrium leakage flag bricks unstable and drive a
+    *confident* rejection that skips the cold solve.
+    """
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)
+
+    class _Inaccurate:
+        def setup(self, **kwargs: object) -> None:
+            """Accept whatever the screen assembles."""
+
+        def solve(self, **_kwargs: object) -> object:
+            """Return a plausible but under-converged solution."""
+            return SimpleNamespace(
+                info=SimpleNamespace(
+                    status="solved inaccurate",
+                    status_val=osqp.SolverStatus.OSQP_SOLVED_INACCURATE,
+                ),
+                x=np.zeros(64),
+            )
+
+    monkeypatch.setattr(screen_module.osqp, "OSQP", _Inaccurate)
+    with telemetry.record() as session:
+        report = screen_layout(layout, SolverConfig())
+    assert report.status == "nonconverged"
+    assert not report.confident
+    assert "stability.screen.nonconverged" in session.values_dict()
+
+
 def test_build_error_reports_error(layout, monkeypatch):
     layout.add("brick_2x4", 0, 0, 0, 0, 4)
 
@@ -169,6 +205,8 @@ def test_build_error_reports_error(layout, monkeypatch):
         report = screen_layout(layout, SolverConfig())
     assert report.status == "error"
     assert "stability.screen.error" in session.values_dict()
+    assert report.detail is not None
+    assert "synthetic failure" in report.detail
 
 
 def test_reduced_screen_baseline_and_rebase(layout):

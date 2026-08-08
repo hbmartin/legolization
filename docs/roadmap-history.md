@@ -1320,9 +1320,13 @@ tests confirm a side-stud connection transmits the expected friction load.
   mechanism:* BrickSim's reduced-variable parameterization
   (arXiv:2603.16853; `references/bricksim-*/paper.md`) is ported as an
   opt-in candidate screen — `stability/reduced.py` (affine per-interface
-  fields, a provable restriction of the exact LP so errors skew to
-  false rejects) + `stability/screen.py` (single OSQP QP mirroring the
-  certifier objective), wired into `FrozenBoundaryAnalyzer.certify` and
+  fields, a restriction of the exact LP's variable space, so errors
+  skew conservative; the screen's soft equilibrium term makes that a
+  strong tendency rather than a theorem, and measured undershoots do
+  occur — safety comes from cold-certifying every accepted candidate,
+  not from the error direction) + `stability/screen.py` (single OSQP QP
+  mirroring the certifier objective), wired into
+  `FrozenBoundaryAnalyzer.certify` and
   Luo `_stabilize` behind `SolverConfig.screen = "bricksim"` (default
   "off", every historical byte preserved; accepted candidates still
   cold-solve). Measurement gate: `scripts/benchmark_screen.py` with

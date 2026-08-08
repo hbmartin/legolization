@@ -11,7 +11,11 @@ docs/performance-testing.md:
 2. **Candidate ranking** — K brick-removal perturbations per shell:
    pairwise-order agreement between screen q and cold q on pairs
    separated by more than the screen margin, plus the
-   confident-false-reject rate at the actual certify gate.
+   confident-false-reject rate at the actual certify gate — scored
+   separately under each production consumer's acceptance rule
+   (Luo maximin, Luo rbe, ALNS repair), since a rejection is only false
+   against a rule that would have accepted the candidate. The reported
+   gate number is the worst consumer.
 3. **Corpus spread** — every synthetic corpus shape, greedy at seed 0:
    verdict agreement across non-shell topologies.
 
@@ -21,7 +25,7 @@ threshold verdicts.
 Usage::
 
     uv run python scripts/benchmark_screen.py [--radii 8 10 12 14]
-        [--candidates 30] [--seed 0] [--skip-corpus]
+        [--candidates 30] [--seed 0] [--skip-corpus] [--skip-maximin]
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
 from scipy import stats
@@ -43,7 +47,13 @@ from legolization.eval_artifacts import atomic_json, source_identity
 from legolization.grid import VoxelGrid
 from legolization.pipeline import PipelineConfig
 from legolization.placement.registry import make_strategy
-from legolization.stability import SolverConfig, analyze
+from legolization.stability import (
+    SolverConfig,
+    analyze,
+    build_model_from_config,
+    solve_maximin,
+)
+from legolization.stability.links import localize_instability
 from legolization.stability.screen import ReducedScreen, screen_layout
 
 if TYPE_CHECKING:
@@ -200,6 +210,52 @@ def _candidates(layout: Layout, count: int, rng: np.random.Generator) -> list[La
     return out
 
 
+_ACCEPTANCE_RULES = ("luo_maximin", "luo_rbe", "repair_alns")
+
+
+@dataclass(slots=True)
+class _Acceptance:
+    """One layout's cold measurements under every consumer's metric.
+
+    A false reject is only false relative to what the consumer would
+    have done with the candidate, and the three production consumers
+    disagree: ``LuoStrategy._better`` compares maximin capacity by
+    default (``acceptance="maximin"``, ``placement/luo.py``) or the
+    ``(unstable count, min capacity)`` tuple under ``"rbe"``, while ALNS
+    repair accepts on a strictly lower localizer ``q``
+    (``placement/repair.py``). Each is measured separately.
+    """
+
+    result: StabilityResult
+    link_q: float
+    capacity: float = float("nan")
+    """Maximin capacity, or NaN when ``--skip-maximin`` drops that rule."""
+
+    @classmethod
+    def measure(cls, layout: Layout, config: SolverConfig, *, maximin: bool) -> Self:
+        """Cold-measure a layout under every consumer's metric."""
+        capacity = float("nan")
+        if maximin:
+            solved = solve_maximin(build_model_from_config(layout, config))
+            capacity = solved.capacity if solved.feasible else float("-inf")
+        return cls(
+            result=analyze(layout, config),
+            link_q=localize_instability(layout, config=config).q,
+            capacity=capacity,
+        )
+
+    def accepted_over(self, base: _Acceptance) -> dict[str, bool]:
+        """Which consumers would accept this candidate over ``base``."""
+        rules = {
+            "luo_rbe": (len(self.result.unstable_ids), -self.result.min_capacity)
+            < (len(base.result.unstable_ids), -base.result.min_capacity),
+            "repair_alns": self.link_q < base.link_q,
+        }
+        if not np.isnan(self.capacity):
+            rules["luo_maximin"] = self.capacity > base.capacity
+        return rules
+
+
 @dataclass(slots=True)
 class _RankingStats:
     """Candidate-harness accumulators and shared run context."""
@@ -208,10 +264,15 @@ class _RankingStats:
     seed: int
     count: int
     tally: _Tally
+    maximin: bool = True
     pairs: int = 0
     agree: int = 0
     gated: int = 0
-    false_rejects: int = 0
+    false_rejects: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys(_ACCEPTANCE_RULES, 0)
+    )
+    """Gated candidates each consumer's acceptance rule would have taken."""
+
     rows: list[dict[str, object]] = field(default_factory=list)
 
 
@@ -219,14 +280,15 @@ def _rank_shell(layout: Layout, stats_acc: _RankingStats) -> None:
     config = stats_acc.config
     tally = stats_acc.tally
     rng = np.random.default_rng(stats_acc.seed + 1)
-    base_cold = analyze(layout, config)
+    base_acceptance = _Acceptance.measure(layout, config, maximin=stats_acc.maximin)
     screen = ReducedScreen.create(layout, config)
     if screen is None:
         return
     tally.status(screen.baseline)
     pairs_q: list[tuple[float, float]] = []
     for candidate in _candidates(layout, stats_acc.count, rng):
-        cold = analyze(candidate, config)
+        acceptance = _Acceptance.measure(candidate, config, maximin=stats_acc.maximin)
+        cold = acceptance.result
         report, _, _ = _screen_with_split(candidate, config)
         tally.status(report)
         tally.verdict(report, cold)
@@ -234,12 +296,10 @@ def _rank_shell(layout: Layout, stats_acc: _RankingStats) -> None:
             continue
         pairs_q.append((cold.max_score, report.q))
         # The PRODUCTION gate, not a re-implementation.
-        gate_reject = screen.should_reject(report, config.screen_margin)
-        cold_improves = cold.max_score < base_cold.max_score
-        if gate_reject:
+        if screen.should_reject(report, config.screen_margin):
             stats_acc.gated += 1
-            if cold_improves and cold.stable:
-                stats_acc.false_rejects += 1
+            for rule, accepted in acceptance.accepted_over(base_acceptance).items():
+                stats_acc.false_rejects[rule] += int(accepted)
     for i in range(len(pairs_q)):
         for j in range(i + 1, len(pairs_q)):
             gap = abs(pairs_q[i][0] - pairs_q[j][0])
@@ -302,7 +362,14 @@ def _verdicts(
         else float("nan")
     )
     ranking_agreement = ranking.agree / ranking.pairs if ranking.pairs else None
-    false_reject_rate = ranking.false_rejects / ranking.gated if ranking.gated else 0.0
+    by_consumer = {
+        rule: (count / ranking.gated if ranking.gated else 0.0)
+        for rule, count in ranking.false_rejects.items()
+        if ranking.maximin or rule != "luo_maximin"
+    }
+    # The gate is the worst consumer, not an average: a rejection that
+    # only Luo-maximin would have taken is still a lost candidate.
+    false_reject_rate = max(by_consumer.values(), default=0.0)
     verdict_agreement = (
         tally.verdict_agree / tally.verdict_pairs if tally.verdict_pairs else None
     )
@@ -323,6 +390,7 @@ def _verdicts(
             and ranking_agreement < _THRESHOLDS["ranking_agreement_kill"]
         ),
         "confident_false_reject_rate": false_reject_rate,
+        "confident_false_reject_by_consumer": by_consumer,
         "false_reject_pass": (
             false_reject_rate <= _THRESHOLDS["confident_false_reject_max"]
         ),
@@ -355,6 +423,16 @@ def main() -> int:
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--skip-corpus", action="store_true")
+    parser.add_argument(
+        "--skip-maximin",
+        action="store_true",
+        help=(
+            "drop the Luo-maximin acceptance rule from the false-reject "
+            "measurement (it costs one extra maximin LP per candidate; "
+            "maximin is Luo's default acceptance, so the gate number is "
+            "incomplete without it)"
+        ),
+    )
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -373,7 +451,11 @@ def main() -> int:
         )
 
     ranking = _RankingStats(
-        config=config, seed=args.seed, count=args.candidates, tally=tally
+        config=config,
+        seed=args.seed,
+        count=args.candidates,
+        tally=tally,
+        maximin=not args.skip_maximin,
     )
     candidate_radii = args.candidate_radii or sorted(args.radii)[:2]
     for radius in candidate_radii:
@@ -407,7 +489,12 @@ def main() -> int:
             "pairs": ranking.pairs,
             "agree": ranking.agree,
             "gated": ranking.gated,
-            "false_rejects": ranking.false_rejects,
+            "false_rejects_by_consumer": ranking.false_rejects,
+            "acceptance_rules": [
+                rule
+                for rule in _ACCEPTANCE_RULES
+                if ranking.maximin or rule != "luo_maximin"
+            ],
             "per_shell": ranking.rows,
         },
         "corpus": corpus,

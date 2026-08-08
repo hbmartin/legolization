@@ -177,7 +177,8 @@ cold.
 Every pre-registered threshold passed: screen ≤ 1/10 of cold at the
 largest shell (0.027), setup ≤ 30% of screen total (11%), candidate
 pairwise-ranking agreement ≥ 95% (measured 100% over 305 pairs with
-cold-q gaps above the margin), confident-false-reject ≤ 2% (0%),
+cold-q gaps above the margin), confident-false-reject ≤ 2% (0%, but
+see the caveat below on which acceptance rule that measured),
 stable/unstable verdict agreement ≥ 98% (100% across all shells plus
 the 13 synthetic corpus models, both unstable rows correctly flagged),
 OSQP nonconverged < 1% (0%).
@@ -207,6 +208,16 @@ relative one (`should_reject`): a purely relative gate measured a 30%
 confident-false-reject rate in the relaxed regime (candidate stress a
 few percent of capacity, where restriction noise dwarfs real
 differences); with the floor, 0%.
+
+*Both false-reject figures above (30% and 0%) were measured with a
+proxy for acceptance — "the cold solve says this candidate is stable
+and scores better than the baseline" — not with a consumer's actual
+rule. The three consumers disagree: Luo compares maximin capacity by
+default, Luo under `acceptance="rbe"` compares
+`(unstable count, min capacity)`, and ALNS repair compares the
+localizer `q`. `benchmark_screen.py` now scores all three separately
+and reports the worst as the gate number, so the ≤ 2% threshold needs
+a re-baseline run before a per-consumer figure can be quoted here.*
 
 Enablement evidence (2026-08-07, full-pipeline A/B at seed 0, screen
 off vs on): cantilever, staircase-overhang, mushroom, wide-arch, and

@@ -118,12 +118,15 @@ def test_should_reject_semantics():
         q_raw=2.0,
     )
     assert analyzer.reduced.should_reject(worse_count, margin)
+    # Derived from should_reject's own rule so a change to the fixture
+    # or to the default screen_margin cannot silently stop exercising it.
+    reject_floor = screen_report.q_raw * (1.0 + margin) + margin
     much_higher_stress = ScreenReport(
         status="ok",
         stable=True,
-        q=min(1.0, screen_report.q_raw * 2.0),
+        q=min(1.0, reject_floor * 1.1),
         confident=True,
-        q_raw=screen_report.q_raw * 2.0 + 0.1,
+        q_raw=reject_floor * 1.1,
     )
     assert analyzer.reduced.should_reject(much_higher_stress, margin)
     unconfident = ScreenReport(

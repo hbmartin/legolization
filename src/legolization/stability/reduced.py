@@ -171,6 +171,13 @@ def _connection_fields(
     points = [
         (nc, dc, x, y) for record in records for nc, dc, x, y in record.point_cols
     ]
+    if not points:
+        # Unreachable: every record comes from a knob contact and
+        # _PatternSource.for_knob always yields the three- or four-point
+        # pattern. Explicit rather than a ZeroDivisionError that the
+        # screen would swallow into status="error".
+        msg = f"connection {ordinal} has no contact points"
+        raise RuntimeError(msg)
     cx = sum(x for _, _, x, _ in points) / len(points)
     cy = sum(y for _, _, _, y in points) / len(points)
     normal_block = start_col
@@ -195,6 +202,39 @@ def _connection_fields(
                     weight=float(basis[knob_index, j]),
                 )
     return reduced_col
+
+
+def _check_drag_attribution(
+    exact: StabilityModel,
+    pair_order: list[tuple[int, int]],
+    drag_connection: dict[int, int],
+) -> None:
+    """Pin the walk's column attribution to the exact model's own record.
+
+    :func:`_collect_connections` re-simulates ``_build_model_body``'s
+    variable counter, so the total-count check catches allocation drift
+    but not a reorder that keeps the count: same-shaped interfaces could
+    swap and every field would attach to another interface's columns.
+    Each :class:`~legolization.stability.model.ContactPoint` carries the
+    brick pair its columns belong to, which pins the attribution per
+    column. Reduced mode declines lateral mates and side contacts create
+    no contact point, so every point here is a vertical knob's.
+    """
+    for point in exact.contact_points:
+        ordinal = drag_connection.get(point.drag_col)
+        if ordinal is None:
+            msg = (
+                f"exact drag column {point.drag_col} unclaimed by the "
+                "reduced walk — builder drift"
+            )
+            raise RuntimeError(msg)
+        if (walked := pair_order[ordinal]) != (point.below_id, point.above_id):
+            msg = (
+                f"reduced walk put exact drag column {point.drag_col} on "
+                f"pair {walked}, exact model says "
+                f"{(point.below_id, point.above_id)} — builder drift"
+            )
+            raise RuntimeError(msg)
 
 
 def build_reduced_model(
@@ -260,6 +300,7 @@ def _build_reduced_body(
     for side_col in range(side_start, exact.var_count):
         triplets.add(row=side_col, col=reduced_col, weight=1.0)
         reduced_col += 1
+    _check_drag_attribution(exact, pair_order, drag_connection)
 
     expansion = cast(
         "csr_matrix",

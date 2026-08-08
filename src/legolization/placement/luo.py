@@ -55,6 +55,12 @@ if TYPE_CHECKING:
 _RING_GROWTH = 10  # failures per extra ring (Luo's N)
 
 
+def _rebase(screen: ReducedScreen | None, report: ScreenReport | None) -> None:
+    """Advance the screen baseline to an accepted candidate's report."""
+    if screen is not None and report is not None:
+        screen.rebase(report)
+
+
 @dataclass(slots=True)
 class LuoStrategy:
     """Maximal random merge + component/stability split-remerge refinement."""
@@ -120,14 +126,12 @@ class LuoStrategy:
         deadline: float | None = None,
     ) -> None:
         """Phase 2: split-remerge around the weakest bricks until stable."""
-        if deadline is not None and time.monotonic() >= deadline:
-            telemetry.value("luo.stabilize.deadline_stop", 0.0)
+        if self._budget_spent(deadline, 0):
             return
         result = analyze(layout, self.solver_config)
         if result.stable:
             return
-        if deadline is not None and time.monotonic() >= deadline:
-            telemetry.value("luo.stabilize.deadline_stop", 0.0)
+        if self._budget_spent(deadline, 0):
             return
         capacity = self._capacity(layout)
         screen = (
@@ -137,37 +141,82 @@ class LuoStrategy:
         )
         failures = 0
         while not result.stable and failures < self.fail_max:
-            if deadline is not None and time.monotonic() >= deadline:
-                telemetry.value("luo.stabilize.deadline_stop", float(failures))
-                return
+            if self._budget_spent(deadline, failures):
+                break
             seeds = self._seeds(result, rng)
             if not seeds:
-                return
-            region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
-            candidate = layout.copy()
-            atom_ids = split_to_atoms(candidate, region, grid)
-            compact_columns(candidate, atom_ids)
-            maximal_random_merge(
-                candidate,
-                rng,
-                colour_mode=self.colour_mode,
-                colour_weight=self.colour_weight,
-            )
+                break
+            candidate = self._respin(layout, grid, rng, seeds, failures)
             report, rejected = self._screened_out(screen, candidate, deadline)
             if rejected:
                 failures += 1
                 continue
-            candidate_result = analyze(candidate, self.solver_config)
-            candidate_capacity = self._capacity(candidate)
+            solved = self._solve_candidate(candidate, deadline, failures)
+            if solved is None:
+                break
+            candidate_result, candidate_capacity = solved
             if self._better(candidate_result, result, candidate_capacity, capacity):
                 layout.replace_with(candidate)
                 result = candidate_result
                 capacity = candidate_capacity
-                if screen is not None and report is not None:
-                    screen.rebase(report)
+                _rebase(screen, report)
                 failures = 0
             else:
                 failures += 1
+
+    def _respin(
+        self,
+        layout: Layout,
+        grid: VoxelGrid,
+        rng: np.random.Generator,
+        seeds: set[int],
+        failures: int,
+    ) -> Layout:
+        """Split the k-ring around ``seeds`` to atoms and re-merge it."""
+        region = k_ring(layout, seeds, failures // _RING_GROWTH + 1)
+        candidate = layout.copy()
+        atom_ids = split_to_atoms(candidate, region, grid)
+        compact_columns(candidate, atom_ids)
+        maximal_random_merge(
+            candidate,
+            rng,
+            colour_mode=self.colour_mode,
+            colour_weight=self.colour_weight,
+        )
+        return candidate
+
+    def _solve_candidate(
+        self,
+        candidate: Layout,
+        deadline: float | None,
+        failures: int,
+    ) -> tuple[StabilityResult, float] | None:
+        """Exact-solve a screened-in candidate; ``None`` past the deadline.
+
+        Neither solve takes a deadline of its own, and the screen above
+        may have consumed the whole remaining budget, so each is gated
+        on its own boundary check: starting one past expiry overshoots
+        by a full solve (two, under maximin acceptance).
+        """
+        if self._budget_spent(deadline, failures):
+            return None
+        result = analyze(candidate, self.solver_config)
+        if self.acceptance == "maximin" and self._budget_spent(deadline, failures):
+            return None
+        return result, self._capacity(candidate)
+
+    def _budget_spent(self, deadline: float | None, failures: int) -> bool:
+        """Whether the round budget is gone, recording the stop counter.
+
+        Called at every solve boundary: the exact solves below take no
+        deadline of their own, so the policy is round-boundary — a solve
+        that started before expiry runs to completion, but none starts
+        after it.
+        """
+        if deadline is None or time.monotonic() < deadline:
+            return False
+        telemetry.value("luo.stabilize.deadline_stop", float(failures))
+        return True
 
     def _screened_out(
         self,
