@@ -1,7 +1,10 @@
 """Reduced-QP screen: physics fixtures, direction bands, fallbacks."""
 
 import time
+from types import SimpleNamespace
 
+import numpy as np
+import osqp
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -133,14 +136,43 @@ def test_screen_direction_bands(seed_bricks):
         assert report.q >= cold.max_score - config.screen_margin
 
 
-def test_snot_layout_declines(layout):
+def test_snot_layout_screens_and_agrees_with_cold(layout):
     layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
     layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
+    config = SolverConfig()
+    cold = analyze(layout, config)
     with telemetry.record() as session:
-        report = screen_layout(layout, SolverConfig())
-    assert report.status == "declined"
-    assert not report.confident
-    assert "stability.screen.decline" in session.values_dict()
+        report = screen_layout(layout, config)
+    assert report.status == "ok"
+    assert report.stable == cold.stable
+    assert report.q >= cold.max_score - config.screen_margin
+    assert "stability.screen.decline" not in session.values_dict()
+
+
+def test_snot_rotation_equivalence():
+    # The reduced lateral field lives in the mating plane, so the same
+    # clad tower rotated through every yaw must screen to the same q
+    # (up to OSQP tolerance; the cold q is exactly invariant).
+    config = SolverConfig(torque_z=True, rotate_contact_pattern=True)
+    values = []
+    for yaw in (0, 90, 180, 270):
+        layout = Layout(catalog=default_catalog())
+        for level in range(3):
+            layout.add("brick_2x2", 3, 3, 3 * level, 0, 4)
+        layout.add("brick_1x1_side_stud", 4, 4, 9, yaw, 4)
+        connector = next(
+            c
+            for c in layout.catalog["brick_1x1_side_stud"].connectors_at(
+                4, 4, 9, yaw, top=True
+            )
+            if c.direction[2] == 0
+        )
+        dx, dy, _ = connector.direction
+        layout.add("tile_1x1_snot", 4 + dx, 4 + dy, 9, yaw, 14)
+        report = screen_layout(layout, config)
+        assert report.status == "ok"
+        values.append(report.q)
+    assert max(values) - min(values) < 1e-3
 
 
 def test_expired_deadline_skips(layout):
@@ -157,6 +189,39 @@ def test_iteration_starvation_reports_nonconverged():
     assert not report.confident
 
 
+def test_inaccurate_status_reports_nonconverged(layout, monkeypatch):
+    """OSQP's "solved inaccurate" is a fallthrough, not a solve.
+
+    It is reported when the iteration or time limit is hit with
+    residuals meeting only the loosened tolerances; scoring one would
+    let equilibrium leakage flag bricks unstable and drive a
+    *confident* rejection that skips the cold solve.
+    """
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)
+
+    class _Inaccurate:
+        def setup(self, **kwargs: object) -> None:
+            """Accept whatever the screen assembles."""
+
+        def solve(self, **_kwargs: object) -> object:
+            """Return a plausible but under-converged solution."""
+            return SimpleNamespace(
+                info=SimpleNamespace(
+                    status="solved inaccurate",
+                    status_val=osqp.SolverStatus.OSQP_SOLVED_INACCURATE,
+                ),
+                x=np.zeros(64),
+            )
+
+    monkeypatch.setattr(screen_module.osqp, "OSQP", _Inaccurate)
+    with telemetry.record() as session:
+        report = screen_layout(layout, SolverConfig())
+    assert report.status == "nonconverged"
+    assert not report.confident
+    assert "stability.screen.nonconverged" in session.values_dict()
+
+
 def test_build_error_reports_error(layout, monkeypatch):
     layout.add("brick_2x4", 0, 0, 0, 0, 4)
 
@@ -169,6 +234,8 @@ def test_build_error_reports_error(layout, monkeypatch):
         report = screen_layout(layout, SolverConfig())
     assert report.status == "error"
     assert "stability.screen.error" in session.values_dict()
+    assert report.detail is not None
+    assert "synthetic failure" in report.detail
 
 
 def test_reduced_screen_baseline_and_rebase(layout):
@@ -188,10 +255,12 @@ def test_reduced_screen_baseline_and_rebase(layout):
     assert screen.baseline_q == report.q
 
 
-def test_reduced_screen_declines_snot(layout):
+def test_reduced_screen_creates_on_snot(layout):
     layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
     layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
-    assert ReducedScreen.create(layout, SolverConfig()) is None
+    screen = ReducedScreen.create(layout, SolverConfig())
+    assert screen is not None
+    assert screen.baseline.status == "ok"
 
 
 def test_screen_emits_span(layout):

@@ -1,7 +1,7 @@
 """Structure-preserving bridge synthesis for the connectivity pass.
 
 `improve_connectivity` historically re-tiled the repair ring with a
-random maximal merge — measured in docs/kollsker-drift-report.md as the
+random maximal merge — measured in docs/reports/kollsker-drift-report.md as the
 count-inflation hotspot (+155 bricks on mushroom's 112-brick minimum
 tiling even under best-of-k). This module replaces the random rewrite
 for layered strategies with a principled one: the ring's cells are

@@ -148,7 +148,7 @@ weights (`ObjectiveWeights`) worth reporting.
 |---|---|
 | scattered one-brick steps, oversized steps | `instructions/chunking.py` |
 | dangling parts in steps (floating_after > 0) without warnings | `instructions/sequencer.py` / `blocking.py` |
-| many unstable prefixes on a buildable model | usually a genuinely unorderable shape (floating-until-later-band) — see `docs/unstable-prefix-report.md`; search tuning does not help |
+| many unstable prefixes on a buildable model | usually a genuinely unorderable shape (floating-until-later-band) — see `docs/reports/unstable-prefix-report.md`; search tuning does not help |
 | floating shell fragments in final model | `hollow.py` restore / merge interplay |
 | every strategy unbuildable, max_score exactly 1.0 | toppling (CoM outside base) — shape needs a base, or RBE torque bug |
 | every strategy unbuildable on spanning shapes | connectivity/repair (`placement/repair.py`) |
@@ -185,7 +185,10 @@ weights (`ObjectiveWeights`) worth reporting.
 - Progress lines print only when stderr is a TTY; background runs are
   silent until done. Check the scorecard file, not the console.
 
-## 9. Current state (2026-07-20)
+## 9. Baseline scope and known-hard rows
+
+Measured 2026-07-20; re-check against the committed baseline before
+treating any number here as current.
 
 - Baseline scope: synthetic corpus (13 shapes incl. `topple-arm` and
   `letter-h-bicolour` physics pins), committed at
@@ -199,18 +202,18 @@ weights (`ObjectiveWeights`) worth reporting.
 - The heart example ships with two warned unstable steps (its lobes start
   as floating islands that join later) — the canonical example of a
   *tolerated* dangling step: machine-flagged, warned, buildable. The full
-  diagnosis of this class lives in `docs/unstable-prefix-report.md`.
+  diagnosis of this class lives in `docs/reports/unstable-prefix-report.md`.
 - Performance ground truth (see `scripts/profile_pipeline.py` and the PR
   #16 campaign table): the HiGHS LP solve is ~99% of large-model runtime
   (299 solves, ~4.9 s each at n≈1000), sequencing owns the wall clock,
   and model construction is <1% — optimize solve count/warm-starts, not
   caching.
 
-## 10. Standing cadence (v5)
+## 10. Standing cadence
 
 The loop in §5 is not a one-off; run it on this cadence and log each
-outcome as a dated line in ROADMAP.md's "self-eval log" (append-only)
-so drift stays visible:
+outcome as a dated line in the "Self-eval log" section of
+`docs/history/roadmap-history.md` (append-only) so drift stays visible:
 
 - **After every placement/physics/sequencing change**: §5 steps 1-6 on
   the synthetic corpus; §5 step 7's baseline/golden ritual only for

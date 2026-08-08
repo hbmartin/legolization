@@ -1,10 +1,15 @@
-# v5 pending measurements — circle back
+# The pending mesh-kind baseline cut
 
-Status as of the v7 program (2026-07-20). Runs 2 and 3 closed;
-run 1 remains an explicit offline/release measurement, not part of
-the default development loop.
+The one open measurement left from the v5 program's "circle back" list.
+It is an explicit offline/release run, deliberately not part of the
+default development loop. Opened v5; latest status 2026-08-07.
 
-## 1. Mesh-kind baseline cut — STILL PENDING
+Cross-linked from `ROADMAP.md` "Active work". The other two v5 items
+(the U1 subassembly spot pair, and the spot@24 program-end profile)
+both closed in v6 — see the v6 WS-M entry in
+`docs/history/roadmap-history.md`.
+
+## The measurement — STILL PENDING
 
 `eval/baselines/scorecard-mesh.json` does not exist yet. The v6
 attempt under contention showed that the 300 s cap was insufficient.
@@ -35,14 +40,14 @@ per top-level stage:
 
 Bond completed one 596.9-second repair pass before a second repair timed
 out. The detailed non-additive stability-span totals are recorded in
-`docs/performance-testing.md`. This closes the stage-identification task:
+`docs/guides/performance-testing.md`. This closes the stage-identification task:
 the remaining mesh baseline is still pending until the placement and
 stability-repair release failures are resolved or explicitly accepted.
 
 v8 gives the release run a working lever: `--time-budget SECONDS` now
 bounds the repair, hollow-restore, and Luo stabilize loops at round
 boundaries (one absolute pipeline deadline; see
-`docs/performance-testing.md`), so an Armadillo run can complete with a
+`docs/guides/performance-testing.md`), so an Armadillo run can complete with a
 partially repaired verdict instead of a watchdog kill. Whether such a
 budget-truncated row is acceptable as the mesh baseline reference — or
 whether Armadillo waits for incremental re-analysis to land — is the
@@ -52,7 +57,7 @@ explicit release decision to make at the next attempt.
 budget-truncated Armadillo row is acceptable** if the row still cannot
 finish untruncated, and the attempt is sequenced after the reduced-QP
 screen (the incremental-re-analysis mechanism, see
-`docs/performance-testing.md`, "The reduced-QP screen") merges. The
+`docs/guides/performance-testing.md`, "The reduced-QP screen") merges. The
 cut was deliberately NOT taken from the uncommitted screen worktree:
 the baseline must reference a committed state. Next attempt, on an
 otherwise idle machine after the screen lands:
@@ -72,14 +77,15 @@ Run it after any change that moves placement or physics, on the state
 you want as the reference. Do not share the machine with other sweeps,
 and do not put this command in the fast inner loop.
 
-## 2. U1 subassemblies-at-scale: the spot pair — CLOSED (v6)
+## Closed alongside it (v6)
 
-spot@24: 80/155 unstable (v4 record) → **72/176** with
-`--subassemblies`. Completes the U1 evidence table at six of six
-models, five improved; recorded in ROADMAP's v6 WS-M entry.
+- **U1 subassemblies-at-scale, the spot pair.** spot@24: 80/155 unstable
+  (v4 record) → **72/176** with `--subassemblies`, completing the U1
+  evidence table at six of six models, five improved.
+- **spot@24 program-end profile.** 996 bricks / 176 steps (155 → 176 is
+  the U1 subassembly trade, not a regression). Wall was measured under
+  four concurrent jobs and is excluded from regression claims per
+  `docs/guides/performance-testing.md`.
 
-## 3. spot@24 program-end profile — CLOSED (v6)
-
-Result block 996 bricks / 176 steps (155 → 176 is the U1 subassembly
-trade, not a regression). Wall was measured under four concurrent jobs
-and is excluded from regression claims per docs/performance-testing.md.
+Both are recorded in the v6 WS-M entry of
+`docs/history/roadmap-history.md`.

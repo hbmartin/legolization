@@ -1,8 +1,14 @@
 # Historical roadmap and progress log
 
-Future work for legolization, picking up where the initial implementation
-stopped. For the algorithms and formulas each item builds on, see the papers in
-`references/` and the design notes in `CLAUDE.md`.
+Append-only dated log of the v3–v8 engineering programs, followed by the
+design notes those programs worked from. Everything here is **historical
+evidence, not current state**: measurements describe the code at the date
+they carry, and design notes describe what was planned at the time.
+
+[`ROADMAP.md`](../../ROADMAP.md) owns verified current state, active work,
+and the open engineering backlog. When this file and `ROADMAP.md` disagree,
+`ROADMAP.md` is correct. For the algorithms and formulas each item builds
+on, see the papers in `references/`.
 
 ## v8 progress notes
 
@@ -13,7 +19,7 @@ from the phase plan).
 ### 2026-07-22 — WS-P: where the Armadillo wall actually is
 
 Three measurements closed the perf-backlog hypotheses
-(`docs/performance-testing.md`, "where a cold analyze actually goes"):
+(`docs/guides/performance-testing.md`, "where a cold analyze actually goes"):
 `build_model` is 0.12 s of a 12.5 s cold analyze at 902 bricks
 (vectorizing it is a dead end), the LP solve scales ~n^2.8 and is
 bit-identical between the scipy wrapper and direct highspy (no wrapper
@@ -31,7 +37,7 @@ historical byte; the real per-solve fix is re-scoped under
 
 ### 2026-07-22 — WS-U: the unstable-step class is resolved
 
-Re-measured every row of `docs/unstable-prefix-report.md` §7 at
+Re-measured every row of `docs/reports/unstable-prefix-report.md` §7 at
 current defaults: zero unstable steps across mushroom (was 17),
 wide-arch, cantilever, heart, letter-t, and two-towers-bridge.
 Support-aware placement (the report's recommendation 2) is closed
@@ -61,7 +67,7 @@ stable, single-component synthetic row after four built mechanisms
 (per-slab MILP, WS-F flow escalation, `--bridge-rephase`, the hybrid
 phase-1 completion) all failed to promote past the production
 acceptance key. Closure note with the evidence base and reopen
-triggers: `docs/kollsker-drift-report.md`, "v8 closure".
+triggers: `docs/reports/kollsker-drift-report.md`, "v8 closure".
 
 ## v7 progress notes
 
@@ -181,7 +187,7 @@ therefore implemented and measurable, but not promoted.
 
 ### 2026-07-20 — WS-Q: PR-21 post-merge review remediation
 
-The four findings in `docs/pr-21-review.md` are implemented. The
+The four findings in the PR #21 review are implemented. The
 press-tower regression now generates its fixture from committed source
 under `tmp_path`, so ignored `.npy` files cannot hide a clean-checkout
 failure. `verify_plan` re-derives marked sub-build presses in the
@@ -230,7 +236,7 @@ class as suzanne (33→21), completing the U1 evidence table at six of
 six models, five improved. **spot@24 v5-end profile**: result block
 996 bricks / 176 steps (155 → 176 is the U1 subassembly trade, not a
 regression); wall was measured under four concurrent jobs and is
-excluded from regression claims per docs/performance-testing.md.
+excluded from regression claims per docs/guides/performance-testing.md.
 **Mesh-kind baseline**: swept in its own worktree post-flip (see the
 WS-E entry). Corpus grew two models with trait tests: `torsion-bridge`
 (one-stud dog-leg deck between corner towers; kollsker seed 0
@@ -313,7 +319,7 @@ insertion machinery are corpus-neutral on default paths, as designed.
 `check_instructions` signatures unchanged (heart 8/1, mushroom 52/0,
 cantilever 16/0, wide-arch 16/0; press-tower 18/0 and torsion-bridge
 16/0 join the table clean). The PR #20 codex triage
-(docs/pr-20-review.md) was implemented in full — 11 fixes, led by the
+was implemented in full — 11 fixes, led by the
 severity-3 discovery that the `torque_z` warm path had been silently
 dead since v5 (hard-coded five-tolerance zip; every probe fell back
 cold while the dual-engine regression compared the fallback against
@@ -324,7 +330,7 @@ Version 0.5.0.
 concurrent jobs and five of six meshes timed out at the 300 s per-job
 cap across all strategies (only suzanne completed: greedy, 365
 bricks, PASS); the write-guard correctly refused. The command needs an
-otherwise idle machine — docs/v5-pending-measurements.md item 1 stays
+otherwise idle machine — docs/reports/mesh-baseline-pending.md item 1 stays
 open with that evidence.
 
 ## v5 progress notes
@@ -350,7 +356,7 @@ before-physics record).
 
 Four switches, all mirrored in both engines (batch `model.py` + warm
 `prefix.py`; dual-engine plan equality pinned with `torque_z` on), plus
-`docs/physics-fidelity-notes.md`:
+`docs/reports/physics-fidelity-notes.md`:
 
 - **`torque_z`** — sixth (yaw) residual row; side contacts move from
   two vertical-extreme press generators to four (transverse, vertical)
@@ -418,7 +424,7 @@ recorded in the drift report's v5 addendum). Wall cost ≈ nil
 post-physics-flip): mushroom 17 → **0** unstable steps (max prefix
 score 1.00 → 0.10), wide-arch 2 → **0**, cantilever 1 → **0**, heart
 2 → 1, suzanne@16 33 → 21; the spot cell is pending
-(docs/v5-pending-measurements.md). CLI grows
+(docs/reports/mesh-baseline-pending.md). CLI grows
 --subassemblies/--no-subassemblies with a None sentinel (explicit-only
 conflict with --steps layer); example goldens regenerated (counts
 unchanged 124/32/12); booklets collapse consecutive unstable-prefix
@@ -477,12 +483,12 @@ suzanne@16 41.8 s / 365 / 77 — up from v4's 31.7 s/60 steps because
 default subassembly extraction sequences more, smaller steps (the U1
 trade: 21 fewer unstable steps for ~10 s on this model). spot@24's
 program-end profile and the mesh baseline cut remain in
-docs/v5-pending-measurements.md (long runs deferred by user call).
+docs/reports/mesh-baseline-pending.md (long runs deferred by user call).
 Version 0.4.0.
 
 ## Self-eval log
 
-Dated outcomes of the standing cadence (`docs/self-evaluation-playbook.md`
+Dated outcomes of the standing cadence (`docs/guides/self-evaluation-playbook.md`
 §10); append-only.
 
 - 2026-07-19 — v5 program-end sweep: synthetic corpus 11/11 PASS, zero
@@ -503,13 +509,13 @@ Dated outcomes of the standing cadence (`docs/self-evaluation-playbook.md`
 ## v4 progress notes
 
 Living log of the v4 program (PR #17 review remediation, residual
-rescue-LP performance + `docs/performance-testing.md`, kollsker
+rescue-LP performance + `docs/guides/performance-testing.md`, kollsker
 downstream-drift investigation/report/fixes, SNOT v2). Every landed
 workstream appends a dated entry with measured proof; append-only.
 
 ### 2026-07-19 — PR #17 review remediation (12 commits)
 
-All findings from `docs/pr-17-review.md` addressed: the CI lizard
+All findings from the PR #17 review addressed: the CI lizard
 CCN-18 gate is green again (`verify_plan` 33 → dispatcher +
 `_PlanVerifier`; `_validate_args` 27 → three validators; `_mount` 22 →
 plan/mutate split); the three P1s (positional dataclass compatibility
@@ -529,9 +535,9 @@ ignored; attach steps are checker metadata, not warnings) and both P3s
 `phase.finish_surfaces` + nested children). 486 tests at that point,
 all gates green.
 
-### 2026-07-19 — Rescue-LP performance + docs/performance-testing.md
+### 2026-07-19 — Rescue-LP performance + docs/guides/performance-testing.md
 
-Shipped `docs/performance-testing.md` (tools, schemas, the same-session
+Shipped `docs/guides/performance-testing.md` (tools, schemas, the same-session
 before/after protocol, regression definitions, drift policy, measured
 dead ends), sha-stamped schema-2 CLI profiles sharing
 `telemetry.git_sha()` with the profiling script, two regression pins
@@ -560,13 +566,13 @@ deactivation** on one persistent model — was built dark, measured, and
 (23 s vs 5.6 s at n≈1000; spot 588 s vs 490 s) because the persistent
 model must keep presolve off for basis reuse while one-shot solves
 presolve the RBE down dramatically. Mechanism reverted; dead end
-recorded in `docs/performance-testing.md` §6 with the same candor as
+recorded in `docs/guides/performance-testing.md` §6 with the same candor as
 the LP-deletion note. The SNOT decline gate on the warm solvers stays
 (documented revisit trigger: when SNOT contact semantics stabilize).
 
 ### 2026-07-19 — Kollsker downstream drift: instrumented, explained, fixed
 
-Landed `docs/kollsker-drift-report.md` with the full measured story.
+Landed `docs/reports/kollsker-drift-report.md` with the full measured story.
 C1 (behaviour-neutral): telemetry gains a lossless value-gauge channel
 (`record_value`/`values_dict`; spans keep power-of-two buckets), the
 pipeline and layered engine emit per-phase brick/component/stability
@@ -661,7 +667,7 @@ over-conservatism), true 8-LDU tile depth (the grid cannot express
 
 ### 2026-07-19 — PR #18 review remediation (11 commits)
 
-Every finding in `docs/pr-18-review.md` addressed on this branch
+Every finding in the PR #18 review addressed on this branch
 (v4 scope; the two v5-scope responses — BridgeSynthesizer enumeration
 order, vectorized `unsupported_ratio` — land on roadmap-v5). P1: the
 outward ray walk in `instructions/blocking.py` now bisects per-line
@@ -726,7 +732,7 @@ entry here with its measured proof numbers; entries are append-only.
 *(Program plan approved 2026-07-18; evidence base: the profiling
 campaign on PR #16 — 99% of large-model runtime is cold HiGHS LP solves
 in sequencing, ~2 per step, superlinear per-solve cost — and
-`docs/unstable-prefix-report.md` — the floating-until-later-band step
+`docs/reports/unstable-prefix-report.md` — the floating-until-later-band step
 class is unorderable without subassemblies.)*
 
 ### 2026-07-19 — Item 1: sequencer LP performance
@@ -1020,45 +1026,16 @@ to report empirically. `test_compare`'s hardcoded strategy counts now
 derive from `strategy_names()`. The committed synthetic baseline was
 regenerated in this commit to include the seventh strategy.
 
-## Where things stand
+## Superseded design notes
 
-Milestones **M1–M5** are implemented and tested (ruff, pytest, ty, and
-pyrefly all green): voxel input (`.vox`/`.npy`) → LDraw-quantized colour
-(optionally dithered) → hollow (anisotropic ~1-brick shell, colour-free
-interiors) → placement (six registered strategies: greedy, luo, bond, fast,
-smga, beauty) → full RBE stability analysis (cross-validated against all nine
-StableLego release fixtures) → ALNS destroy-and-repair → stability-aware fill
-restore → global re-merge → smart step sequencing (prefix-stable, mirror-
-aware, ROTSTEP hints) → `.ldr`/`.mpd` export with a JSON/text bill of
-materials.
-
-The 2026-07 audit remediation closed every finding F1–F16: torque-capable
-side presses (two per pair at the shared face's vertical extremes), real
-plate/tile masses, brick-graph component semantics, a per-interface seam
-metric, Kollsker h(r) + distance-decayed bond scoring, the IGNORE interior
-colour label, phase-aware brick re-forming (`compact_columns` +
-`final_remerge` — the hollow sphere dropped from ~374 to well under 200
-parts), Luo's maximin C_M acceptance with importance-sampled seeds and
-failMAX = 100, soft colour constraints, `.vox`/`.npy` robustness, and
-`--aspect-correct` resampling.
-
-Deliberately **not** done yet, and covered below:
-
-- **SNOT** — sideways building (the data model is ready; nothing is built)
-- Slope/tile surface finishing is minimal and **opt-in** (`--slopes`,
-  `--tiles`) because the slope pass adds material outside the voxel shape
-- Assorted physics-fidelity, placement-quality, performance, and tooling items
-
-**Documented deviations from the papers** (deliberate, benchmark-arbitrated):
-Min's A* is a capped-OPEN beam search with canonical-cell expansion; Min's
-multi-height g_v term is reinterpreted at plate resolution (no 2-brick-tall
-parts in the catalog); Kollsker's 1D remainder/stagger terms are measured
-along a per-layer scan axis; the ALNS repair MILP runs on scipy/HiGHS with a
-merge-engine filler for large regions instead of CPLEX.
+The sections below are the design notes the programs above worked from.
+They describe work as it was *planned*; the dated entries record what
+actually shipped, sometimes differing from the sketch. Kept for rationale
+and for the plug-in points they name. Open work lives in `ROADMAP.md`.
 
 ---
 
-## M6 — Mesh front-end (`mesh.py`) — DONE (2026-07-18)
+### M6 — Mesh front-end (`mesh.py`) — DONE (2026-07-18)
 
 Shipped as designed below, with two deviations: the pitch derives from the
 **largest horizontal extent** (`max(extents[:2]) / target_studs`), not the
@@ -1106,7 +1083,7 @@ uniform colour with a warning.
 
 ---
 
-## Surface finishing v2 — slopes and tiles that earn default-on
+### Surface finishing v2 — slopes and tiles that earn default-on
 
 Today `--slopes` only replaces free-standing `1x1` **brick columns** at
 descending steps with `slope_45_2x1`, and it **adds volume** where the voxel
@@ -1150,7 +1127,7 @@ zero colour/volume error; tile coverage on a flat-roofed test model exceeds
 
 ---
 
-## Build instructions v2 — rendered booklets
+### Build instructions v2 — rendered booklets
 
 **Done** (all five items). Items 1–3 (the `instructions/` package): smart
 step chunking with mirror-pair co-stepping and ROTSTEP view hints, greedy
@@ -1179,7 +1156,7 @@ Acceptance holds: `legolization model.vox --instructions model.pdf` (or
 counts, with rendering disabled via `LEGOLIZATION_RENDERER=none` in CI and
 a `slow`-marked real-render test locally.
 
-### Sequencing upgrades (landed with v2)
+#### Sequencing upgrades (landed with v2)
 
 Paper-driven upgrades to the sequencer (`instructions/search.py`,
 `metrics.py`): a spatial-continuity tiebreak orders ready candidates by
@@ -1197,7 +1174,7 @@ plug-in point).
 
 ---
 
-## SNOT — sideways building
+### SNOT — sideways building
 
 The Part abstraction was designed for this: every connector already carries a
 **direction vector**, and the graph/physics read the direction rather than
@@ -1239,153 +1216,3 @@ item on the roadmap; suggested staging:
 sideways tile round-trips through graph, physics, and LDraw output; analytic
 tests confirm a side-stud connection transmits the expected friction load.
 
----
-
-## Physics fidelity backlog
-
-- **Q×X knob rule.** The StableLego *paper* gives edge knobs 3 contact points
-  and interior knobs 4 on Q≥3-wide bricks; their released code (and ours)
-  uses 3 points for everything ≥2 wide. Implement the paper rule behind a
-  config flag and A/B the verdicts.
-- **Third torque axis.** Following StableLego we model τx/τy only. Adding the
-  yaw torque row (τz) makes horizontal knob-press forces meaningful for
-  twist loads; cheap to add in `stability/model.py` (levers already exist).
-- **Contact triangle orientation.** The 3-point pattern is axis-aligned
-  regardless of brick yaw (as in StableLego's code); rotate it with the
-  brick's yaw for correctness on rotated wide bricks.
-- **Ground model options.** Layer-0 contacts currently behave like studs on a
-  baseplate (the ground can pull down, StableLego-style). Add
-  `SolverConfig.ground_pull: bool` for loose-on-a-table analysis, and an
-  option to emit an actual baseplate part (3811) under the model.
-- **External loads.** Dead load only today. Add an API for point loads
-  (StableLego's `external_weight` test cases model a 200 g block as a heavy
-  brick — we can do the same or add per-brick `extra_mass_g`).
-- ~~**Cross-validation.**~~ **Done:** all nine StableLego release fixtures are
-  vendored under `tests/data/stablelego/` and every verdict reproduces
-  (`tests/test_stablelego_cross.py`), alongside closed-form golden pins for
-  the single-stud cantilever and the maximin capacity. **v8 extension:**
-  the release-format loaders moved to `legolization.stablelego` and
-  `scripts/stablelego_sweep.py` scales the comparison to the released
-  50k-object dataset (deterministic sampling, per-object verdict
-  agreement report); running it needs the dataset downloaded from the
-  release's Google Drive link.
-- **Targeted MILP.** `--milp` currently solves the whole model. Reserve the
-  complementarity MILP for the k-ring around the weakest contacts and stitch
-  it to the LP solution elsewhere — exactness where it matters, LP speed
-  everywhere else.
-
-## Placement quality backlog
-
-- ~~**Additive greedy scoring.**~~ **Done differently:** greedy now ranks by
-  (h(r) parts estimate, distance-decayed bond, coverage) — the Kollsker
-  d-term is live over a 3-stud window and a 7-wide wall staggers with no
-  repair pass. Weight tuning on a larger corpus remains open.
-- ~~**Cheaper repairs.**~~ **Done:** `compact_columns` re-forms bricks on a
-  region-voted phase inside every repair, `final_remerge` re-phases plate
-  rafts globally, and `tests/test_examples_regression.py` pins brick counts.
-- **Cost term options.** Brick count is the proxy today; add mass and real
-  price (BrickLink price guide) as alternatives, and an
-  **inventory-limited catalog** (per-part availability counts) for building
-  from an actual collection.
-- ~~**More strategies.**~~ **Done and exceeded:** four new registered
-  strategies (bond, fast, smga, beauty) over a shared per-layer engine, plus
-  the strategy-agnostic ALNS destroy-and-repair. Kollsker's *exact global*
-  MILP for small models remains open (only the repair-region MILP exists).
-- ~~**Aesthetics.**~~ **Done:** Min-style symmetry/balance and SM-GA/Bao
-  perpendicularity are objective terms (`placement/aesthetics.py`), the
-  beauty strategy optimizes them directly, and `--dither` provides
-  Floyd-Steinberg gradients. Validating the beauty scalar against human
-  judgement (the permutation-drift methodology) remains open.
-- **Seed variance.** Layout quality varies noticeably across seeds on shell
-  shapes (the r=4 hollow sphere spans ~135–205 parts over seeds); parallel
-  restarts (below) would harvest the good tail.
-
-## Performance backlog
-
-- ~~**Vectorize `build_model`.**~~ **Closed as a measured dead end (v8):**
-  model build is 0.12 s of a 12.5 s cold analyze at 902 bricks — the LP
-  solve is ~99% of the cost and scales ~n^2.8
-  (`docs/performance-testing.md`, "where a cold analyze actually goes").
-- **Incremental re-analysis** — now THE stability-perf workstream.
-  Refinement changes a k-ring but re-solves the whole structure at
-  ~n^2.8; v8 measured that no solver-level swap helps (direct highspy
-  identical, IPM ≤1.4x with 1e-9 drift). Design directions, in order:
-  warm append-only scoring through `PrefixSolver` for placement-time
-  verdicts; frozen-boundary ring analysis for ALNS/Luo accept/reject
-  with a full exact solve on acceptance. Both must clear the golden,
-  scorecard, and dual-engine gates. Until then the v8 budget guardrail
-  (`time_budget_s` → one pipeline deadline honoured by repair,
-  hollow-restore, and Luo stabilize) bounds the tails.
-  *2026-08-07 — the accept/reject direction now has a concrete
-  mechanism:* BrickSim's reduced-variable parameterization
-  (arXiv:2603.16853; `references/bricksim-*/paper.md`) is ported as an
-  opt-in candidate screen — `stability/reduced.py` (affine per-interface
-  fields, a provable restriction of the exact LP so errors skew to
-  false rejects) + `stability/screen.py` (single OSQP QP mirroring the
-  certifier objective), wired into `FrozenBoundaryAnalyzer.certify` and
-  Luo `_stabilize` behind `SolverConfig.screen = "bricksim"` (default
-  "off", every historical byte preserved; accepted candidates still
-  cold-solve). Measurement gate: `scripts/benchmark_screen.py` with
-  pre-registered thresholds in `docs/performance-testing.md`.
-- **Candidate caching in greedy `_fill`.** `_placements` recomputes rotations
-  and validity per seed; memoize per (part, yaw) footprints and test cells
-  against numpy masks instead of Python sets.
-- **Parallel restarts.** Both strategies are seed-sensitive; run a few seeds
-  in a process pool and keep the best objective (all state is already
-  copyable via `Layout.copy`). *Partially delivered:* `--strategy all`
-  (`compare.run_all`) fans out over a spawn process pool and keeps the best
-  candidate — across strategies at one seed; the multi-seed sweep is now a
-  small extension of the same runner.
-- **Warm sequencing for SNOT layouts.** The warm prefix/removal solvers
-  decline any layout containing lateral parts
-  (`stability/prefix.py::_has_lateral_parts`), so `--snot` models
-  sequence entirely on the cold engine — and the sequencer's rescue
-  path (disassembly-order fallback) pays cold LP costs per step
-  (PR #18 review, pre-existing observation). The fix is teaching
-  `PrefixSolver` lateral contact discovery (docs/performance-testing.md
-  §7's known gap), which is its own workstream: it needs dual-engine
-  equivalence nets mirroring `tests/test_prefix_solver.py` before any
-  SNOT model can trust warm verdicts, not a review checkbox.
-
-## I/O and tooling backlog
-
-- **LDView snapshot regression.** The plan called for automated headless PNG
-  snapshots per milestone. LDView.app exists on this machine but has never
-  been configured, and its CLI silently writes nothing in that state — the
-  harness must configure `-LDrawDir` explicitly and assert the file appears.
-  Once working, add golden-image (or at least golden-geometry) checks for the
-  three `data/examples/` models.
-- ~~**Stability heatmap export.**~~ **Done (v8):** `--heatmap out.ldr`
-  recolours bricks by score on both the generation and import paths
-  (black → dark red → red → light red → white, quantized to stock
-  palette codes because headless LeoCAD renders LDraw direct colours as
-  unresolved grey — measured, not assumed). Verified visually on
-  stair_19's near-collapse gradient.
-- **`.vox` robustness.** Embed the documented default MagicaVoxel palette so
-  paletteless files load; support multi-model scenes (currently first model
-  only). Malformed chunks and out-of-bounds voxels already fail cleanly.
-- **Richer CLI output.** `--report report.json` dumping `PipelineResult`
-  (counts, mass, scores) for scripting — `--bom` already covers the parts
-  list; `scripts/benchmark.py` covers cross-strategy comparison. *Done for
-  sweeps:* `--strategy all --report report.json` writes per-strategy metrics
-  plus the winner; extending it to single-strategy runs remains.
-- **TUI.** A small terminal UI showing layer-by-layer placement, the
-  stability heatmap, and refinement progress would make tuning weights far
-  less blind (re-add `textual` when this starts — it was dropped as an
-  unused dependency). The decisions log rules out a full GUI for v1.
-
----
-
-## Suggested order
-
-1. M6 mesh front-end (unlocks real inputs; small, self-contained — the
-   `--aspect-correct` resampling and `--target-studs` design are ready).
-2. Shape-preserving slopes + tile splitting (small; makes finishing
-   default-on).
-3. ~~Instruction rendering~~ — **done** (`--instructions out.html|out.pdf`:
-   LeoCAD/LDView step images + HTML/reportlab booklet, plus the
-   disassembly-rescue/beam sequencing upgrades).
-4. Performance items as models grow (incremental re-analysis first — the
-   per-step prefix LPs and ALNS rounds would benefit most).
-5. SNOT stages 1–3 (large; start after the orientation model design is
-   reviewed).

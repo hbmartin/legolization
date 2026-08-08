@@ -7,7 +7,7 @@ Piao, Siyu Li, and Changliu Liu — Robotics Institute, Carnegie Mellon
 University. Code: https://github.com/intelligent-control-lab/BrickSim
 
 Text-only conversion (figures omitted; the repo's pdf-to-markdown tool
-needs undeclared dependencies — see docs/pr-19-review.md).
+needs undeclared dependencies — see the PR #19 review in git history).
 
 ## Abstract
 
@@ -158,6 +158,7 @@ the contact and connection boundaries give G x >= 0, H x <= 1.
 
 Robust lexicographic relaxation in three convex sparse QPs:
 
+```text
 1. Project b onto the feasible subspace:
    b* = argmin_y ||y - b||^2 s.t. exists x: A x = y, G x >= 0.
 2. Minimum friction-feasibility relaxation:
@@ -167,6 +168,7 @@ Robust lexicographic relaxation in three convex sparse QPs:
 3. Minimize the elastic-energy surrogate U = 1/2 x^T Q x
    (per-point w_a F_a^2 + w_r F_r^2 + w_t F_t^2, weights 1.0) under
    the relaxed constraints.
+```
 
 All cost/constraint matrices remain constant while the topology is
 unchanged; only right-hand sides update per step. This suits OSQP,

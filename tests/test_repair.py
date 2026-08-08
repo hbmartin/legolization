@@ -65,7 +65,7 @@ def test_repair_falls_back_to_rbe_when_qp_is_infeasible(monkeypatch):
     )
     monkeypatch.setattr(
         "legolization.placement.repair._rbe_report",
-        lambda _layout, _config: fallback,
+        lambda _layout, _config, cold_result=None: fallback,
     )
 
     assert _localize(layout, None, RepairConfig()) is fallback
@@ -161,6 +161,31 @@ def test_repair_rbe_localizer_also_converges(bad_bridge):
         config=RepairConfig(localizer="rbe"),
     )
     assert report.stable
+
+
+def test_rbe_report_reuses_cold_result(bad_bridge, monkeypatch):
+    # A caller-supplied cold verdict must eliminate the duplicate solve
+    # (certify already cold-solved the exact same layout) and produce an
+    # identical localization.
+    from legolization.placement import repair as repair_module
+    from legolization.placement.repair import _rbe_report
+
+    layout, _ = bad_bridge
+    cold = analyze(layout)
+    calls = 0
+    real_analyze = repair_module.analyze
+
+    def counting(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return real_analyze(*args, **kwargs)
+
+    monkeypatch.setattr(repair_module, "analyze", counting)
+    reused = _rbe_report(layout, None, cold_result=cold)
+    assert calls == 0
+    fresh = _rbe_report(layout, None)
+    assert calls == 1
+    assert reused == fresh
 
 
 def test_repair_noop_on_stable_layout():

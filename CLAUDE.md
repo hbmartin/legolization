@@ -6,7 +6,7 @@ You may refer to the papers in @references/ for implementation guidance
 
 For judging output quality (renders, strategy comparison, instruction
 sensibility, corpus regression sweeps), follow
-docs/self-evaluation-playbook.md and the root skills/ suite (render-ldraw,
+docs/guides/self-evaluation-playbook.md and the root skills/ suite (render-ldraw,
 inspect-instructions, eval-corpus). Strategy comparison lives in the bundle
 comparison report (comparison/report.json via `legolization bundle`) and the
 optimize-lego-build skill.

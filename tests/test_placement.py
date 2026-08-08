@@ -413,12 +413,20 @@ def test_final_remerge_reclaims_plate_rafts():
     layout.add("plate_2x2", 2, 0, 2, 0, 4)
     assert len(layout) == 8
 
-    changed = final_remerge(layout, grid, np.random.default_rng(0))
+    result = final_remerge(layout, grid, np.random.default_rng(0))
 
-    assert changed
+    assert result.replaced
     assert len(layout) == 1
     assert next(iter(layout)).part_key == "brick_2x4"
     _assert_exact_cover(layout, grid)
+    # The threaded report belongs to the accepted layout: its stability
+    # verdict must equal a fresh cold solve of the replaced layout.
+    from legolization.stability import analyze
+
+    assert result.report is not None
+    fresh = analyze(layout)
+    assert result.report.stability.stable == fresh.stable
+    assert result.report.stability.scores == fresh.scores
 
 
 def test_resolve_ignore_colours_uses_nearest_neighbour():
@@ -556,6 +564,59 @@ def test_luo_stabilize_stops_at_expired_deadline(
         np.random.default_rng(0),
         deadline=0.0,
     )
+
+
+def test_luo_stabilize_stops_when_the_screen_eats_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The screen is deadline-bounded and the two exact solves are not, so
+    # a screen that runs out the clock must not be followed by either.
+    import legolization.placement.luo as luo_module
+    from legolization import telemetry
+    from legolization.stability import SolverConfig
+    from legolization.stability.solver import StabilityResult
+
+    clock = [0.0]
+    monkeypatch.setattr(luo_module.time, "monotonic", lambda: clock[0])
+    solves: list[str] = []
+
+    real_analyze = luo_module.analyze
+
+    def counting_analyze(
+        layout: Layout,
+        config: SolverConfig | None = None,
+    ) -> StabilityResult:
+        solves.append("analyze")
+        return real_analyze(layout, config)
+
+    real_capacity = luo_module.LuoStrategy._capacity  # noqa: SLF001
+
+    def counting_capacity(self: LuoStrategy, layout: Layout) -> float:
+        solves.append("capacity")
+        return real_capacity(self, layout)
+
+    def burn_budget(*_args: object, **_kwargs: object) -> tuple[None, bool]:
+        clock[0] = 100.0  # the screen consumed every remaining second
+        return None, False
+
+    monkeypatch.setattr(luo_module, "analyze", counting_analyze)
+    monkeypatch.setattr(luo_module.LuoStrategy, "_capacity", counting_capacity)
+    monkeypatch.setattr(luo_module.LuoStrategy, "_screened_out", burn_budget)
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_2x4", 0, 0, 9, 0, 4)  # floating: analyze is unstable
+    grid = VoxelGrid(codes=np.full((2, 4, 12), 4, dtype=np.int16))
+    with telemetry.record() as session:
+        LuoStrategy(acceptance="maximin")._stabilize(  # noqa: SLF001
+            layout,
+            grid,
+            np.random.default_rng(0),
+            deadline=50.0,
+        )
+
+    # Only the pre-loop baseline pair ran; the candidate's did not.
+    assert solves == ["analyze", "capacity"]
+    assert "luo.stabilize.deadline_stop" in session.values_dict()
 
 
 def test_luo_place_does_not_restart_outer_deadline(
@@ -811,3 +872,58 @@ def test_improve_connectivity_honours_expired_deadline():
         )
     assert final == 2  # nothing bridged
     assert "connectivity.attempt" not in session.spans
+
+
+def _raft_fixture() -> tuple[Layout, VoxelGrid]:
+    codes = np.full((4, 2, 3), 4, dtype=np.int16)
+    grid = VoxelGrid(codes=codes)
+    layout = Layout(catalog=default_catalog())
+    for y in (0, 1):
+        layout.add("plate_1x4", 0, y, 0, 0, 4)
+    for x in (0, 2):
+        for y in (0, 1):
+            layout.add("plate_1x2", x, y, 1, 0, 4)
+    layout.add("plate_2x2", 0, 0, 2, 0, 4)
+    layout.add("plate_2x2", 2, 0, 2, 0, 4)
+    return layout, grid
+
+
+def test_screened_remerge_accepts_without_threading_a_verdict():
+    from legolization.stability.solver import SolverConfig
+
+    layout, grid = _raft_fixture()
+    result = final_remerge(
+        layout,
+        grid,
+        np.random.default_rng(0),
+        solver_config=SolverConfig(screen="bricksim"),
+    )
+    # Verdict interlock: the screened arm replaces but never threads a
+    # report — the caller must cold-certify the accepted layout.
+    assert result.replaced
+    assert result.report is None
+    assert len(layout) == 1
+    assert next(iter(layout)).part_key == "brick_2x4"
+
+
+def test_screened_remerge_falls_back_to_exact_on_unconfident_screen(monkeypatch):
+    from legolization.stability import screen as screen_module
+    from legolization.stability.screen import ScreenReport
+    from legolization.stability.solver import SolverConfig
+
+    layout, grid = _raft_fixture()
+    monkeypatch.setattr(
+        screen_module,
+        "screen_layout",
+        lambda *_args, **_kwargs: ScreenReport(status="nonconverged"),
+    )
+    result = final_remerge(
+        layout,
+        grid,
+        np.random.default_rng(0),
+        solver_config=SolverConfig(screen="bricksim"),
+    )
+    # Wholesale exact fallback: the accepted report is threaded again.
+    assert result.replaced
+    assert result.report is not None
+    assert len(layout) == 1

@@ -176,7 +176,7 @@ Conclusions the ablations force:
 - Reproduce: `uv run python scripts/count_trajectory.py mushroom
   --strategy kollsker --seed 0` (and `bond`; `thin-shell` likewise;
   ablation flags in §3).
-- `docs/self-evaluation-playbook.md`, `docs/performance-testing.md`,
+- `docs/guides/self-evaluation-playbook.md`, `docs/guides/performance-testing.md`,
   `ROADMAP.md` v4 progress notes.
 
 ## 7. Outcome (post-fix, seed 0)

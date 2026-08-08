@@ -77,7 +77,7 @@ corpus collection. A timed-out artifact is a valid diagnostic result:
 its `active_stage` distinguishes voxelization, tiling, compaction,
 connectivity, stability analysis, and stability repair. The stage
 classification run remains the explicit offline release measurement in
-`docs/v5-pending-measurements.md`.
+`docs/reports/mesh-baseline-pending.md`.
 
 The sequential idle-machine run on 2026-07-20 used seed 0, layer-only
 instructions, and the 600-second per-stage watchdog. All seven children
@@ -177,7 +177,8 @@ cold.
 Every pre-registered threshold passed: screen ≤ 1/10 of cold at the
 largest shell (0.027), setup ≤ 30% of screen total (11%), candidate
 pairwise-ranking agreement ≥ 95% (measured 100% over 305 pairs with
-cold-q gaps above the margin), confident-false-reject ≤ 2% (0%),
+cold-q gaps above the margin), confident-false-reject ≤ 2% (0%, but
+see the caveat below on which acceptance rule that measured),
 stable/unstable verdict agreement ≥ 98% (100% across all shells plus
 the 13 synthetic corpus models, both unstable rows correctly flagged),
 OSQP nonconverged < 1% (0%).
@@ -208,6 +209,24 @@ confident-false-reject rate in the relaxed regime (candidate stress a
 few percent of capacity, where restriction noise dwarfs real
 differences); with the floor, 0%.
 
+*Both false-reject figures above (30% and 0%) were measured with a
+proxy for acceptance — "the cold solve says this candidate is stable
+and scores better than the baseline" — not with a consumer's actual
+rule. The three consumers disagree: Luo compares maximin capacity by
+default, Luo under `acceptance="rbe"` compares
+`(unstable count, min capacity)`, and ALNS repair compares the
+localizer `q`. `benchmark_screen.py` now scores all three separately
+per candidate domain and reports the worst as the gate number.
+Re-baselined 2026-08-08 under the production rules: **0% for every
+consumer in both domains** (artifact
+`20260808T165542Z-screen-bench.json`; vertical ranking 100% over the
+same run). One measurement lesson en route: the ALNS rule must carry
+repair's own loop guard (`base.link_q > _Q_TOLERANCE`) — without it
+the harness compares localizer q at noise level on *stable* baselines,
+a regime `repair_stability` never enters, and misreports those noise
+orderings as false rejects (measured 5.6-7.1% before the guard, 0%
+with it).*
+
 Enablement evidence (2026-08-07, full-pipeline A/B at seed 0, screen
 off vs on): cantilever, staircase-overhang, mushroom, wide-arch, and
 topple-arm all produce **identical outputs** in both arms. Four of the
@@ -231,6 +250,87 @@ as an explicit opt-in (`[stability.solver] screen = "bricksim"`) for
 `time_budget_s`-constrained runs on repair-heavy models. A default
 flip would be an intentional output move (baseline + goldens
 regenerated in the same commit) and is not currently planned.
+
+### Screen follow-ups (2026-08-08): SNOT, adoption, hull vertices, fields
+
+Four follow-ups landed together; measurements below.
+
+**SNOT lateral support.** `build_reduced_model` no longer declines
+lateral mates: the field plane rotates onto the mating plane
+((transverse, vertical) coordinates in stud units, shear generators as
+the press family, connections grouped by (pair, normal)). Structural
+verdict agreement is 100% on the clad fixtures (letter-h +116 tiles:
+screen q 0.017 vs cold 0.006; mushroom +173: 0.055 vs 0.043) and the
+yaw 0/90/180/270 rotation equivalence is pinned. Two measured
+consequences shipped with it:
+
+- `screen_max_iter` default 4_000 → 20_000 — lateral-heavy layouts
+  need ~5x the vertical-only iteration budget (the clad letter-h
+  nonconverged at 4_000 and solves at ~20_000 in 0.7 s; converged
+  solves stop early, so the cap only prices slow convergence).
+- **The feather-light tie zone.** On damaged clad candidates the exact
+  LP's own objective (`sum(t) + ALPHA·sum(dmax)`) can prefer leaving a
+  sub-tolerance equilibrium residual on a feather-light SNOT part over
+  paying drag for it — cold then flags bricks (q = 1.0) that the
+  screen, which drives residuals to ~1e-7, reports balanced. Measured
+  per domain (artifact `20260808T164332Z-screen-bench.json`): vertical
+  candidate ranking stays at **100%**, clad-candidate ranking against
+  cold q degrades to **75.8%** — the tie-zone q = 1.0 verdicts are not
+  a rankable ordering ground truth. Response: **rank-rejection is
+  scoped to vertical-only layouts** (`ScreenReport.lateral`;
+  `should_reject` keeps only the unstable-count clause on clad
+  layouts). Under that scoped gate the clad domain measures **0% false
+  rejects** (4 gated, every one justified under both production
+  rules). Binary confident-unstable rejection — what the tier pre-empt
+  and the redesign gate use — stays available everywhere; the flip
+  direction only ever costs a wasted cold certify.
+
+**Adoption sites.** New opt-in consumers, all reject-only, verdicts
+still cold: the redesign repair search pre-gates candidates before its
+three exact solves (`failed_gate="screen"` + `screen_q` recorded in
+the analyze artifact — additive, emitted only when the screen is on),
+`final_remerge` compares like-for-like screened totals (the accepted
+layout is still cold-certified: the screened arm deliberately returns
+`RemergeResult(report=None)`), and `_snot_tiers` reverts a
+confidently-unstable tier without its cold solve. Two
+screen-independent reuse fixes landed alongside: ALNS localization
+reuses certify's cold result (one fewer whole-structure solve per
+accepted round), and `_remerge` reuses `final_remerge`'s accepted
+report instead of re-solving. Measured NOT worth screening:
+hollow-restore (no accept test), `_add_support`, redesign's envelope
+baselines (need `interface_forces`), global-exact cuts (MILP
+dominates), `_canonicalize_templates`/`_guarded_finish`.
+
+**Hull-vertex constraint reduction — SHIPPED (gate passed).** The
+affine fields attain their extrema at each connection's convex-hull
+vertices, so pointwise nonnegativity and drag rows are constrained
+only there (`ReducedModel.constraint_mask`, collinear-safe monotone
+chain — scipy's ConvexHull raises QhullError on the common collinear
+1xN interface). Noise-controlled in-process comparison (masked vs
+full rows, alternating order, 3 reps per shell): **16.6% total
+shell-series screen-time improvement** with 17.7% of rows dropped
+(r=14: 1.16 → 0.83 s; the collapsing r=12: 3.54 → 3.01 s), against
+the pre-registered ≥ 10% ship gate. Scores are exact by construction
+(per-brick max drag is attained at a hull vertex); the masked-vs-full
+equivalence test pins it.
+
+**`screen_fields="bricksim"` (research flag) — studied, bar NOT met.**
+The paper's own basis solves behind the flag: nine coefficients per
+connection plus a co-located compression field (the paper's contact
+family C — without it, tension-only axial fields cannot support a
+stacked brick and everything flags unstable), linearized friction
+pyramid under the paper's constants (module-local mu = 0.2,
+mu·F0 = 0.7 N — NOT `T_CAPACITY_N`), utilization scoring on its own
+scale. Study run (`--fields bricksim`, shells r=8/10 + corpus + clad;
+artifact `20260808T161914Z-screen-bench.json`): stable/unstable
+**verdict agreement 100%** — the physics is sound — but against the
+pre-registered bar ("beat restricted on agreement at comparable
+speed") it fails every other axis: candidate ranking 83.7% (vs 100%
+restricted on vertical), worst-consumer false rejects 20% (vs 0%),
+per-brick score correlation near zero (utilization and drag stress
+order bricks differently), slightly slower solves. The restricted
+basis remains the production screen; the flag stays research-only and
+earns no further work.
 
 ### `legolization ... --profile out.json` (CLI convenience)
 
@@ -383,9 +483,9 @@ arcs at the larger envelope without an end-to-end win.
 
 ## 9. Pointers
 
-- `docs/self-evaluation-playbook.md` — the wider quality loop;
+- `docs/guides/self-evaluation-playbook.md` — the wider quality loop;
   "seconds are noise" guidance.
-- `docs/unstable-prefix-report.md` — the profiling campaign that
+- `docs/reports/unstable-prefix-report.md` — the profiling campaign that
   identified LP solves as 99% of large-model runtime.
 - `ROADMAP.md` v3/v4 progress notes — every measured claim with its
   commands.

@@ -42,8 +42,13 @@ if TYPE_CHECKING:
     from legolization.layout import Layout
 
 ROWS_PER_BRICK = 5
-_FX, _FY, _FZ, _TX, _TY = range(ROWS_PER_BRICK)
-_TZ = 5
+FX_ROW, FY_ROW, FZ_ROW, TX_ROW, TY_ROW = range(ROWS_PER_BRICK)
+TZ_ROW = 5
+
+FORCE_ROWS = TX_ROW
+"""Force rows per brick — the torque rows occupy the remainder of the
+block, so ``rows_per_brick * i + FORCE_ROWS`` is a brick's first torque
+row whatever ``torque_z`` is set to."""
 
 
 def rows_per_brick(*, torque_z: bool) -> int:
@@ -125,14 +130,14 @@ def force_entries(
     rz = (position[2] - cz) * PLATE_HEIGHT_M
     fx, fy, fz = direction
     entries = [
-        (_FX, fx),
-        (_FY, fy),
-        (_FZ, fz),
-        (_TX, ry * fz - rz * fy),
-        (_TY, rz * fx - rx * fz),
+        (FX_ROW, fx),
+        (FY_ROW, fy),
+        (FZ_ROW, fz),
+        (TX_ROW, ry * fz - rz * fy),
+        (TY_ROW, rz * fx - rx * fz),
     ]
     if torque_z:
-        entries.append((_TZ, rx * fy - ry * fx))
+        entries.append((TZ_ROW, rx * fy - ry * fx))
     return tuple((row_offset, coeff) for row_offset, coeff in entries if coeff)
 
 
@@ -474,7 +479,7 @@ def _build_model_body(  # noqa: PLR0913 - mirrors build_model's switches
     for brick_id in asm.brick_ids:
         mass_kg = layout.part_of(layout.bricks[brick_id]).mass_g / 1000.0
         mass_kg += extra.get(brick_id, 0.0)
-        b_vector[rpb * asm.index[brick_id] + _FZ] = -mass_kg * GRAVITY
+        b_vector[rpb * asm.index[brick_id] + FZ_ROW] = -mass_kg * GRAVITY
 
     a_matrix = cast(
         "csr_matrix",

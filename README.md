@@ -516,7 +516,7 @@ small-instance oracle remains for equivalence tests.
 
 Existing evaluation and comparison utilities are preserved for regression and
 research work (`legolization corpus ...`; see
-`docs/self-evaluation-playbook.md`). Expanding their corpora, metrics, or
+`docs/guides/self-evaluation-playbook.md`). Expanding their corpora, metrics, or
 baselines is intentionally deferred; they are not acceptance gates for the
 foundation program.
 

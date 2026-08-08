@@ -96,11 +96,12 @@ def test_certify_matches_screen_off_when_not_rejecting():
     assert on.cold_result.objective == off.cold_result.objective
 
 
-def test_snot_baseline_degrades_to_heuristic_only(layout):
+def test_snot_baseline_builds_reduced_screen(layout):
     layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
     layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
     analyzer = FrozenBoundaryAnalyzer.create(layout, config=_ON)
-    assert analyzer.reduced is None  # declined -> screen-off behaviour
+    assert analyzer.reduced is not None
+    assert analyzer.reduced.baseline.status == "ok"
 
 
 def test_should_reject_semantics():
@@ -118,12 +119,15 @@ def test_should_reject_semantics():
         q_raw=2.0,
     )
     assert analyzer.reduced.should_reject(worse_count, margin)
+    # Derived from should_reject's own rule so a change to the fixture
+    # or to the default screen_margin cannot silently stop exercising it.
+    reject_floor = screen_report.q_raw * (1.0 + margin) + margin
     much_higher_stress = ScreenReport(
         status="ok",
         stable=True,
-        q=min(1.0, screen_report.q_raw * 2.0),
+        q=min(1.0, reject_floor * 1.1),
         confident=True,
-        q_raw=screen_report.q_raw * 2.0 + 0.1,
+        q_raw=reject_floor * 1.1,
     )
     assert analyzer.reduced.should_reject(much_higher_stress, margin)
     unconfident = ScreenReport(
@@ -170,3 +174,143 @@ def test_invalid_screen_values_rejected():
         SolverConfig(screen_fields="paper")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="finite and positive"):
         SolverConfig(screen_margin=0.0)
+
+
+def _redesign_pair() -> tuple[Layout, Layout]:
+    original = Layout(catalog=default_catalog())
+    original.add("brick_2x4", 0, 0, 0, 0, 4)
+    candidate = original.copy()
+    candidate.add("brick_2x2", 0, 0, 3, 0, 4)
+    return original, candidate
+
+
+def test_redesign_screen_gate_records_rejection(monkeypatch):
+    from legolization import redesign as redesign_module
+    from legolization.redesign import RejectedCandidate, _validate_candidate
+
+    original, candidate = _redesign_pair()
+    monkeypatch.setattr(
+        redesign_module,
+        "screen_layout",
+        lambda *_args, **_kwargs: ScreenReport(
+            status="ok", stable=False, q=1.0, confident=True
+        ),
+    )
+    with telemetry.record() as session:
+        result = _validate_candidate(
+            original,
+            candidate,
+            tier="interior-support",
+            parity_solver=SolverConfig(torque_z=False),
+            strict_solver=_ON,
+        )
+    assert isinstance(result, RejectedCandidate)
+    assert result.failed_gate == "screen"
+    assert result.metrics["screen_q"] == 1.0
+    assert "redesign.screen.reject" in session.values_dict()
+    payload = result.to_payload()
+    assert payload["failed_gate"] == "screen"
+
+
+def test_redesign_screen_gate_falls_through_when_not_confident(monkeypatch):
+    from legolization import redesign as redesign_module
+    from legolization.redesign import RepairCandidate, _validate_candidate
+
+    original, candidate = _redesign_pair()
+    monkeypatch.setattr(
+        redesign_module,
+        "screen_layout",
+        lambda *_args, **_kwargs: ScreenReport(
+            status="ok", stable=False, q=1.0, confident=False
+        ),
+    )
+    result = _validate_candidate(
+        original,
+        candidate,
+        tier="interior-support",
+        parity_solver=SolverConfig(torque_z=False),
+        strict_solver=_ON,
+    )
+    # Non-confident screens never reject: the exact gates decide, and
+    # this stacked candidate passes all of them.
+    assert isinstance(result, RepairCandidate)
+
+
+def test_redesign_screen_off_never_screens(monkeypatch):
+    from legolization import redesign as redesign_module
+    from legolization.redesign import RepairCandidate, _validate_candidate
+
+    original, candidate = _redesign_pair()
+
+    def boom(*_args: object, **_kwargs: object) -> object:
+        msg = "screen must not run when screen='off'"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(redesign_module, "screen_layout", boom)
+    result = _validate_candidate(
+        original,
+        candidate,
+        tier="interior-support",
+        parity_solver=SolverConfig(torque_z=False),
+        strict_solver=_OFF,
+    )
+    assert isinstance(result, RepairCandidate)
+
+
+def test_snot_tier_preempt_semantics(layout, monkeypatch):
+    from legolization import pipeline as pipeline_module
+    from legolization.pipeline import PipelineConfig, _tier_confidently_unstable
+
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    off = PipelineConfig(seed=0)
+    assert not _tier_confidently_unstable(layout, off)
+
+    on = PipelineConfig(seed=0, solver=SolverConfig(screen="bricksim"))
+    monkeypatch.setattr(
+        pipeline_module,
+        "screen_layout",
+        lambda *_args, **_kwargs: ScreenReport(
+            status="ok", stable=False, q=1.0, confident=True
+        ),
+    )
+    with telemetry.record() as session:
+        assert _tier_confidently_unstable(layout, on)
+    assert "pipeline.snot.screen_revert" in session.values_dict()
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "screen_layout",
+        lambda *_args, **_kwargs: ScreenReport(
+            status="ok", stable=False, q=1.0, confident=False
+        ),
+    )
+    assert not _tier_confidently_unstable(layout, on)
+
+
+def test_should_reject_scopes_rank_clause_to_vertical():
+    # On lateral-carrying layouts the stress-margin clause is out of
+    # its measured domain: only the unstable-count clause may reject.
+    baseline = _cantilever_layout()
+    analyzer = FrozenBoundaryAnalyzer.create(baseline, config=_ON)
+    assert analyzer.reduced is not None
+    margin = _ON.screen_margin
+    base = analyzer.reduced.baseline
+    lateral_stress = ScreenReport(
+        status="ok",
+        stable=True,
+        q=min(1.0, base.q_raw * 3.0),
+        confident=True,
+        q_raw=base.q_raw * 3.0 + 1.0,
+        lateral=True,
+    )
+    assert not analyzer.reduced.should_reject(lateral_stress, margin)
+    lateral_count = ScreenReport(
+        status="ok",
+        stable=False,
+        q=1.0,
+        confident=True,
+        unstable_ids=frozenset({1, 2}),
+        q_raw=1.0,
+        lateral=True,
+    )
+    assert analyzer.reduced.should_reject(lateral_count, margin)
