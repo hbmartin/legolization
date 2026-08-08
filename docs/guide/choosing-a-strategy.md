@@ -39,11 +39,11 @@ sum. Lower is better, and every term is normalized to roughly `[0, 1]`:
 
 $$
 J = w_{\text{cost}}\frac{|\text{parts}|}{|\text{filled voxels}|}
-  + w_{\text{stab}}\,\text{max\_score}
-  + w_{\text{aes}}\,\text{seam\_alignment}
-  + w_{\text{col}}\,\text{colour\_mismatch}
-  + w_{\text{perp}}\,\text{perp\_error}
-  + w_{\text{sym}}\,\text{sym\_error}
+  + w_{\text{stab}}\,\mathrm{max\_score}
+  + w_{\text{aes}}\,\mathrm{seam\_alignment}
+  + w_{\text{col}}\,\mathrm{colour\_mismatch}
+  + w_{\text{perp}}\,\mathrm{perp\_error}
+  + w_{\text{sym}}\,\mathrm{sym\_error}
 $$
 
 Default weights put stability first by a wide margin:

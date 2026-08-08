@@ -106,15 +106,15 @@ legolization bundle model.obj --cancel-pending
 ## Output
 
 ```console
-$ legolization bundle data/examples/heart.vox
-bundle: heart-legolization (complete)
-  ingest: complete
-  candidates: complete
-  selection: complete
-  model: complete
-  bom: complete
-  instructions: complete
+$ legolization bundle heart.vox --quality fast
+bundle: /path/to/heart-legolization (partial)
+  ingest: complete   candidates: complete   selection: complete   model: complete   bom: complete   instructions: partial
 ```
+
+One line for the bundle with its overall status, then one line listing every stage.
+`partial` here is exit 3 — in this run the instruction audit returned `findings`, which
+is a warning rather than a failure. See
+[Reading the results](../../basics/reading-results.md).
 
 The bundle contains:
 

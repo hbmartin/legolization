@@ -1,44 +1,49 @@
-# Documentation index
+# Documentation
 
-[`ROADMAP.md`](../ROADMAP.md) is the source of truth for current state, active
-work, and the open engineering backlog. Everything in this directory is either
-a **guide** you should follow, a **frozen report** recording a past
-investigation, or **history**. Nothing here defines current defaults.
+This directory is the source for the
+[documentation site](https://hbmartin.github.io/legolization/).
 
-## Guides — live, maintained, follow these
+**Start at [`index.md`](index.md)**, or read the rendered site — it is the same
+content with navigation and search.
 
-| Doc | What it is |
+| Directory | Contents |
 | --- | --- |
-| [`guides/self-evaluation-playbook.md`](guides/self-evaluation-playbook.md) | How to judge output quality — renders, strategy comparison, instruction sanity, corpus sweeps — and run the self-improvement loop. The entry point cited by `CLAUDE.md` / `AGENTS.md`. |
-| [`guides/performance-testing.md`](guides/performance-testing.md) | How to measure speed, prove a perf change, and what counts as a regression. Holds the pre-registered measurement thresholds. |
+| [`basics/`](basics/) | Track 1 — using Legolization through a coding agent |
+| [`guide/`](guide/) | Track 2 — the CLI, configuration, bundles, and artifacts |
+| [`theory/`](theory/) | Track 3 — algorithms, physics, sequencing, and the papers |
+| [`project/`](project/) | Index of the contributor archive below |
+| [`guides/`](guides/) | Live contributor guides: self-evaluation, performance testing |
+| [`reports/`](reports/) | Frozen investigation reports, each dated |
+| [`history/`](history/) | Append-only roadmap and progress log |
 
-## Reports — evidence from a specific investigation, at a specific date
+Nothing under `guides/`, `reports/`, or `history/` defines current defaults.
+[`ROADMAP.md`](https://github.com/hbmartin/legolization/blob/main/ROADMAP.md) is
+the source of truth for current state, active work, and the open engineering
+backlog.
 
-Each states the code state it was written against. Later addenda are appended
-rather than rewritten, so read the dates. Recommendations in a report rank a
-fix space; they are not commitments — open work lives in `ROADMAP.md`.
-
-| Doc | What it is |
-| --- | --- |
-| [`reports/kollsker-drift-report.md`](reports/kollsker-drift-report.md) | Why the per-layer-optimal strategy finished worse end-to-end, and the best-of-k fix. Closed v8. |
-| [`reports/unstable-prefix-report.md`](reports/unstable-prefix-report.md) | Why "prefix unstable" steps survive the sequencer's rescue paths. Class resolved v8. |
-| [`reports/physics-fidelity-notes.md`](reports/physics-fidelity-notes.md) | What each RBE solver switch models, what was measured, and where capacity constants could come from. |
-| [`reports/mesh-baseline-pending.md`](reports/mesh-baseline-pending.md) | **Has one open item** — the mesh-kind baseline cut, with its measured history and the exact commands. Cross-linked from `ROADMAP.md` "Active work". |
-| [`reports/dataset-survey.md`](reports/dataset-survey.md) | Web survey of external datasets that could widen the test/verification surface — access paths, licences, and what verification gap each closes. Ranks a space; commits to nothing. |
-
-## History — append-only
-
-| Doc | What it is |
-| --- | --- |
-| [`history/roadmap-history.md`](history/roadmap-history.md) | Dated log of the v3–v8 programs, plus the superseded design notes those programs worked from. Historical evidence only; `ROADMAP.md` wins any disagreement. |
-
-## Before moving or renaming a doc
-
-Several files are cited from source comments and scripts, where a stale path
-is invisible until someone follows it. Grep first:
+## Building the site
 
 ```sh
-grep -rn "docs/" --exclude-dir=.venv --exclude-dir=.git .
+uv run --group docs zensical serve   # live preview
+uv run --group docs zensical build   # static output in ../site
+```
+
+Configuration is [`../zensical.toml`](../zensical.toml).
+`.github/workflows/docs.yml` builds every pull request and publishes `main` to
+GitHub Pages.
+
+## Before moving or renaming a page
+
+`tests/test_docs.py` fails if a navigation entry stops resolving, if a page
+becomes unreachable from the navigation, or if a relative link between pages
+breaks. Run `uv run pytest tests/test_docs.py` after any reorganization.
+
+Several files under `guides/` and `reports/` are additionally cited **by path**
+from source comments and scripts, where a stale path is invisible until someone
+follows it. Grep first:
+
+```sh
+grep -rn "docs/" --exclude-dir=.venv --exclude-dir=.git --exclude-dir=site .
 ```
 
 Current inbound references live in `CLAUDE.md`, `AGENTS.md`, `README.md`,

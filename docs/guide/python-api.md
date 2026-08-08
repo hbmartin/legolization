@@ -77,7 +77,11 @@ run(grid: VoxelGrid, config: PipelineConfig | None = None, *,
 `buildable` is a property:
 
 ```python
-buildable = result.stability.stable and result.component_count == 1 and result.floating_count == 0
+buildable = (
+    result.stability.stable
+    and result.component_count == 1
+    and result.floating_count == 0
+)
 ```
 
 ---

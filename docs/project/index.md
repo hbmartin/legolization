@@ -29,6 +29,7 @@ are not commitments — open work lives in `ROADMAP.md`.
 | [Unstable prefixes](../reports/unstable-prefix-report.md) | Why "prefix unstable" steps survive the sequencer's rescue paths. Class resolved v8. The empirical basis for [Subassemblies](../theory/subassemblies.md). |
 | [Physics fidelity notes](../reports/physics-fidelity-notes.md) | What each RBE solver switch models, what was measured, and where capacity constants could come from. Companion to [The RBE model](../theory/stability/rbe.md). |
 | [Mesh baseline](../reports/mesh-baseline-pending.md) | **Has one open item** — the mesh-kind baseline cut, with its measured history and the exact commands. Cross-linked from `ROADMAP.md` "Active work". |
+| [External dataset survey](../reports/dataset-survey.md) | A survey of public datasets that could widen the test and verification surface, each with the gap it closes, its licence, and its caveat. Ranks a space; commits to nothing. |
 
 ## History — append-only
 
