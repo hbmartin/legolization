@@ -151,9 +151,13 @@ class SolverConfig:
     screen_eps: float = 1e-5
     """OSQP ``eps_abs``/``eps_rel`` for the screen QP."""
 
-    screen_max_iter: int = 4_000
+    screen_max_iter: int = 20_000
     """OSQP iteration cap for the screen QP; exceeding it falls back to
-    the cold solve (``stability.screen.nonconverged``)."""
+    the cold solve (``stability.screen.nonconverged``). Converged solves
+    stop early, so the cap only prices slow convergence — measured:
+    vertical-only layouts finish well under 4_000 iterations, while
+    lateral-heavy (SNOT-clad) ones need ~5x that (a 134-brick clad
+    letter-h converges at ~20_000 in 0.7 s)."""
 
     def __post_init__(self) -> None:
         positive = (

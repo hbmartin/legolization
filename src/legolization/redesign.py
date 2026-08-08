@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 from scipy import ndimage
 
+from legolization import telemetry
 from legolization.analysis import PlacementSignature, placement_signature, signatures
 from legolization.catalog import Category
 from legolization.graph import ConnectionGraph
@@ -21,6 +22,7 @@ from legolization.pipeline import PipelineConfig
 from legolization.placement.layered.engine import place_rect
 from legolization.placement.registry import make_strategy
 from legolization.placement.repair import RepairConfig, repair_stability
+from legolization.stability.screen import screen_layout
 from legolization.stability.solver import (
     SolverConfig,
     analyze,
@@ -668,6 +670,23 @@ def _validate_candidate(  # noqa: C901, PLR0911 - fail-fast validation gates
             component_count=graph.component_count(),
             floating_count=len(graph.floating_ids()),
         )
+    if strict_solver.screen == "bricksim":
+        # Reduced-QP pre-gate: a confidently unstable candidate skips
+        # all three exact solves (parity, strict, maximin). Reject-only
+        # — survivors still run every exact gate, and any non-confident
+        # or non-"ok" screen outcome falls through untouched.
+        screen_report = screen_layout(candidate, strict_solver, graph)
+        if (
+            screen_report.status == "ok"
+            and screen_report.confident
+            and not screen_report.stable
+        ):
+            telemetry.value("redesign.screen.reject", 1.0)
+            return rejected(
+                "screen",
+                "reduced QP confidently unstable",
+                screen_q=screen_report.q,
+            )
     parity = analyze(layout=candidate, config=parity_solver, graph=graph)
     if not parity.stable:
         return rejected(

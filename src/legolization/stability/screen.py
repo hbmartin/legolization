@@ -66,6 +66,7 @@ from legolization.stability.reduced import ReducedModel, build_reduced_model
 if TYPE_CHECKING:
     from legolization.graph import ConnectionGraph
     from legolization.layout import Layout
+    from legolization.stability.bricksim_fields import BricksimModel
     from legolization.stability.solver import SolverConfig
 
 ScreenStatus = Literal["ok", "declined", "nonconverged", "deadline", "error"]
@@ -126,6 +127,14 @@ class ScreenReport:
     build and solve failures to stay advisory, and telemetry carries
     counters but no text, so this is the only surviving cause."""
 
+    lateral: bool = False
+    """Whether the layout carries lateral (SNOT) mates. Rank-rejection
+    is scoped to vertical-only layouts (measured 100% ranking / 0%
+    false rejects); on clad layouts the certifier's feather-light
+    tie-zone verdicts make cold q an unrankable ground truth (measured
+    90.5% / 5.6% worst-consumer), so ``should_reject`` falls back to
+    the unstable-count clause alone there."""
+
 
 @dataclass(slots=True)
 class _ScreenArrays:
@@ -147,6 +156,15 @@ class _ScreenArrays:
     """Brick ordinal owning each drag row (its ``above_id`` — the same
     attribution ``bottom_drag_cols`` gives the exact scorer)."""
 
+    e_constraint: sparse.csc_matrix
+    """``e_matrix`` restricted to ``ReducedModel.constraint_mask`` rows
+    — the affine fields' extrema live at each connection's hull
+    vertices, so the dropped nonnegativity rows are redundant. The full
+    ``e_matrix``/``d_matrix`` stay for scoring."""
+
+    d_constraint: sparse.csc_matrix
+    drag_above_constraint: np.ndarray
+
     @classmethod
     def create(cls, reduced: ReducedModel) -> Self:
         rpb = reduced.rows_per_brick
@@ -165,6 +183,8 @@ class _ScreenArrays:
             [brick_index[point.above_id] for point in reduced.exact.contact_points],
             dtype=np.int64,
         )
+        mask = reduced.constraint_mask
+        drag_mask = mask[drag_cols]
         return cls(
             reduced=reduced,
             a_scaled=a_scaled,
@@ -172,6 +192,9 @@ class _ScreenArrays:
             e_matrix=e_matrix,
             d_matrix=d_matrix,
             drag_above=drag_above,
+            e_constraint=sparse.csc_matrix(reduced.expansion[np.flatnonzero(mask), :]),
+            d_constraint=sparse.csc_matrix(d_matrix[np.flatnonzero(drag_mask), :]),
+            drag_above_constraint=drag_above[drag_mask],
         )
 
 
@@ -194,11 +217,11 @@ def _solve_qp(
     reduced = arrays.reduced
     n = reduced.var_count
     m = arrays.a_scaled.shape[0]
-    rows_e = arrays.e_matrix.shape[0]
-    rows_d = arrays.d_matrix.shape[0]
+    rows_e = arrays.e_constraint.shape[0]
+    rows_d = arrays.d_constraint.shape[0]
     brick_count = len(reduced.brick_ids)
     dmax_map = sparse.csc_matrix(
-        (np.ones(rows_d), (np.arange(rows_d), arrays.drag_above)),
+        (np.ones(rows_d), (np.arange(rows_d), arrays.drag_above_constraint)),
         shape=(rows_d, brick_count),
     )
     p_matrix = sparse.block_diag(
@@ -220,13 +243,13 @@ def _solve_qp(
             ),
             sparse.hstack(
                 [
-                    arrays.e_matrix,
+                    arrays.e_constraint,
                     sparse.csc_matrix((rows_e, m + brick_count)),
                 ]
             ),
             sparse.hstack(
                 [
-                    arrays.d_matrix,
+                    arrays.d_constraint,
                     sparse.csc_matrix((rows_d, m)),
                     -dmax_map,
                 ]
@@ -332,6 +355,7 @@ def _score_report(
         unstable_ids=unstable,
         confident=not near_boundary,
         q_raw=float(solution.dmax.max()) / T_CAPACITY_N if solution.dmax.size else 0.0,
+        lateral=reduced.has_lateral,
     )
 
 
@@ -368,6 +392,8 @@ def _screen_body(
     if _expired(deadline):
         telemetry.value("stability.screen.deadline_skip", 1.0)
         return ScreenReport(status="deadline")
+    if config.screen_fields == "bricksim":
+        return _bricksim_body(layout, config, graph, deadline=deadline)
     try:
         reduced = build_reduced_model(layout, config, graph)
     except Exception as exc:  # noqa: BLE001 - never propagate build bugs
@@ -377,6 +403,203 @@ def _screen_body(
         telemetry.value("stability.screen.decline", 1.0)
         return ScreenReport(status="declined")
     return solve_screen(reduced, config, deadline=deadline)
+
+
+def _bricksim_body(
+    layout: Layout,
+    config: SolverConfig,
+    graph: ConnectionGraph | None,
+    *,
+    deadline: float | None,
+) -> ScreenReport:
+    """Research basis (`screen_fields="bricksim"`): the paper's fields."""
+    from legolization.stability.bricksim_fields import (  # noqa: PLC0415 - lazy
+        build_bricksim_model,
+    )
+
+    try:
+        model = build_bricksim_model(layout, config, graph)
+    except Exception as exc:  # noqa: BLE001 - never propagate build bugs
+        telemetry.value("stability.screen.error", 1.0)
+        return ScreenReport(status="error", detail=repr(exc))
+    if model is None:
+        telemetry.value("stability.screen.decline", 1.0)
+        return ScreenReport(status="declined")
+    try:
+        with telemetry.span("stability.screen.qp", n=model.var_count):
+            solved = _solve_bricksim_qp(model, config, deadline=deadline)
+        if solved is None:
+            if _expired(deadline):
+                telemetry.value("stability.screen.deadline_skip", 1.0)
+                return ScreenReport(status="deadline")
+            telemetry.value("stability.screen.nonconverged", 1.0)
+            return ScreenReport(status="nonconverged")
+        return _score_bricksim(model, config, *solved)
+    except Exception as exc:  # noqa: BLE001 - never propagate solver bugs
+        telemetry.value("stability.screen.error", 1.0)
+        return ScreenReport(status="error", detail=repr(exc))
+
+
+def _solve_bricksim_qp(
+    model: BricksimModel,
+    config: SolverConfig,
+    *,
+    deadline: float | None,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Solve the friction-pyramid QP; ``None`` on non-convergence.
+
+    Same residual-variable and torque-row-scaling assembly as the
+    production QP; the pyramid rows carry a per-connection relaxation
+    ``v`` (the paper's stage-2 role) so overloaded structures stay
+    feasible and grade instead of failing.
+    """
+    from legolization.stability.bricksim_fields import MU, MU_F0  # noqa: PLC0415
+
+    n = model.var_count
+    brick_count = len(model.brick_ids)
+    rpb = model.rows_per_brick
+    weights = np.ones(rpb * brick_count)
+    for i in range(brick_count):
+        weights[rpb * i + FORCE_ROWS : rpb * (i + 1)] = 1.0 / KNOB_PITCH_M
+    a_scaled = sparse.csc_matrix(sparse.diags(weights) @ model.a_matrix)
+    b_scaled = weights * model.b_vector
+    m = a_scaled.shape[0]
+    points = model.axial.shape[0]
+    k = len(model.connection_pairs)
+    relax_map = sparse.csc_matrix(
+        (np.ones(points), (np.arange(points), model.point_connection)),
+        shape=(points, k),
+    )
+    side_count = n - model.side_start
+    pyramid_pos = model.tangential + model.axial - MU * model.radial
+    pyramid_neg = -model.tangential + model.axial - MU * model.radial
+    zero_pts_m = sparse.csc_matrix((points, m))
+    blocks = [
+        sparse.hstack([a_scaled, -sparse.identity(m), sparse.csc_matrix((m, k))]),
+        sparse.hstack([model.axial, zero_pts_m, sparse.csc_matrix((points, k))]),
+        sparse.hstack([model.compression, zero_pts_m, sparse.csc_matrix((points, k))]),
+        sparse.hstack([pyramid_pos, zero_pts_m, -MU_F0 * relax_map]),
+        sparse.hstack([pyramid_neg, zero_pts_m, -MU_F0 * relax_map]),
+        sparse.hstack([sparse.csc_matrix((k, n + m)), sparse.identity(k)]),
+    ]
+    lower = [
+        -b_scaled,
+        np.zeros(points),
+        np.zeros(points),
+        np.full(points, -np.inf),
+        np.full(points, -np.inf),
+        np.zeros(k),
+    ]
+    upper = [
+        -b_scaled,
+        np.full(points, np.inf),
+        np.full(points, np.inf),
+        np.full(points, MU_F0),
+        np.full(points, MU_F0),
+        np.full(k, np.inf),
+    ]
+    if side_count:
+        side_rows = sparse.hstack(
+            [
+                sparse.csc_matrix((side_count, model.side_start)),
+                sparse.identity(side_count),
+                sparse.csc_matrix((side_count, m + k)),
+            ]
+        )
+        blocks.append(side_rows)
+        lower.append(np.zeros(side_count))
+        upper.append(np.full(side_count, np.inf))
+    p_matrix = sparse.block_diag(
+        (
+            2.0 * _RIDGE * sparse.identity(n, format="csc"),
+            2.0 * _W_RESIDUAL * sparse.identity(m, format="csc"),
+            2.0 * _ALPHA_Q * sparse.identity(k, format="csc"),
+        ),
+        format="csc",
+    )
+    settings: dict[str, bool | int | float] = {
+        "verbose": False,
+        "polishing": False,
+        "eps_abs": config.screen_eps,
+        "eps_rel": config.screen_eps,
+        "max_iter": config.screen_max_iter,
+    }
+    if deadline is not None:
+        if (remaining := deadline - time.monotonic()) <= 0:
+            return None
+        settings["time_limit"] = remaining
+    problem = osqp.OSQP()
+    problem.setup(
+        P=sparse.triu(p_matrix, format="csc"),
+        q=np.zeros(n + m + k),
+        A=sparse.csc_matrix(sparse.vstack(blocks)),
+        l=np.concatenate(lower),
+        u=np.concatenate(upper),
+        **settings,
+    )
+    result = problem.solve(raise_error=False)
+    if result.info.status_val != osqp.SolverStatus.OSQP_SOLVED or result.x is None:
+        return None
+    solution = np.asarray(result.x)
+    return solution[:n], solution[n : n + m]
+
+
+def _score_bricksim(
+    model: BricksimModel,
+    config: SolverConfig,
+    x: np.ndarray,
+    residual: np.ndarray,
+) -> ScreenReport:
+    """Utilization scoring: ``u = (|F_t| + F_a) / (mu F_r + mu F_0)``.
+
+    A DIFFERENT scale from the exact solver's ``max_score`` — 1.0 marks
+    a friction-pyramid boundary under the paper's constants, not a
+    ``T_CAPACITY_N`` drag. Research comparisons only.
+    """
+    from legolization.stability.bricksim_fields import MU, MU_F0  # noqa: PLC0415
+
+    axial_v = np.asarray(model.axial @ x)
+    radial_v = np.asarray(model.radial @ x)
+    tangential_v = np.asarray(model.tangential @ x)
+    denom = np.maximum(MU * radial_v + MU_F0, 1e-9)
+    utilization = (np.abs(tangential_v) + axial_v) / denom
+    rpb = model.rows_per_brick
+    scores: dict[int, float] = {}
+    raw: dict[int, float] = {}
+    near_boundary = False
+    low, high = 1.0 - config.screen_margin, 1.0 + config.screen_margin
+    for i, brick_id in enumerate(model.brick_ids):
+        rows = residual[rpb * i : rpb * (i + 1)]
+        weight = abs(float(model.b_vector[rpb * i + FZ_ROW]))
+        tolerance = max(
+            _EQ_WEIGHT_SHARE * weight,
+            _EQ_NOISE_FLOOR * config.screen_eps,
+        )
+        in_equilibrium = bool(np.all(np.abs(rows) <= tolerance))
+        mask = model.point_above == brick_id
+        u_brick = float(utilization[mask].max()) if mask.any() else 0.0
+        raw[brick_id] = u_brick
+        if low <= u_brick <= high:
+            near_boundary = True
+        if not in_equilibrium or u_brick >= 1.0:
+            scores[brick_id] = 1.0
+        else:
+            scores[brick_id] = u_brick
+    overloaded = frozenset(
+        model.connection_pairs[ordinal]
+        for ordinal in np.unique(model.point_connection[utilization > 1.0 + _V_TOL])
+    )
+    unstable = frozenset(b for b, s in scores.items() if s >= 1.0)
+    return ScreenReport(
+        status="ok",
+        stable=not unstable,
+        q=max(scores.values(), default=0.0),
+        scores=scores,
+        overloaded=overloaded,
+        unstable_ids=unstable,
+        confident=not near_boundary,
+        q_raw=max(raw.values(), default=0.0),
+    )
 
 
 def solve_screen(
@@ -464,6 +687,10 @@ class ReducedScreen:
         base = self.baseline
         if len(report.unstable_ids) > len(base.unstable_ids):
             return True
+        if report.lateral or base.lateral:
+            # Clad layouts: the stress-margin clause is out of its
+            # measured domain (see ``ScreenReport.lateral``).
+            return False
         return (
             len(report.unstable_ids) == len(base.unstable_ids)
             and report.q_raw > base.q_raw * (1.0 + margin) + margin

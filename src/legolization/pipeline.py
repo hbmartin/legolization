@@ -45,6 +45,7 @@ from legolization.placement.templates import (
 )
 from legolization.repetition import repeated_components
 from legolization.runtime import Deadline, ProgressCallback, ProgressEvent
+from legolization.stability.screen import screen_layout
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 from legolization.support import emit_support_plate
 from legolization.template_cache import TemplateCache
@@ -307,17 +308,22 @@ def _restore_once(state: _PipelineState) -> VoxelGrid:
 
 def _remerge(state: _PipelineState) -> None:
     with telemetry.span("phase.remerge"):
-        if final_remerge(
+        remerge = final_remerge(
             state.placement.layout,
             state.working,
             state.rng,
             weights=state.config.weights,
             solver_config=state.config.solver,
-        ):
-            state.placement = replace(
-                state.placement,
-                stability=analyze(state.placement.layout, state.config.solver),
+        )
+        if remerge.replaced:
+            # Reuse the accepted candidate's deterministic cold verdict;
+            # a screened arm returns report=None and pays the solve here.
+            stability = (
+                remerge.report.stability
+                if remerge.report is not None
+                else analyze(state.placement.layout, state.config.solver)
             )
+            state.placement = replace(state.placement, stability=stability)
         resolve_ignore_colours(state.placement.layout)
         _phase_gauge(
             "pipeline.remerged",
@@ -554,8 +560,9 @@ def _snot_tiers(
     guard = (layout.copy(), stability) if stability.stable else None
     snot_added = apply_snot(layout, working, spanning_donors=False)
     if snot_added:
-        stability = analyze(layout, config.solver)
-        if guard is not None and not stability.stable:
+        broke = guard is not None and _tier_confidently_unstable(layout, config)
+        stability = stability if broke else analyze(layout, config.solver)
+        if guard is not None and (broke or not stability.stable):
             layout.replace_with(guard[0])
             stability = guard[1]
             snot_added = 0
@@ -570,8 +577,9 @@ def _snot_tiers(
     checkpoint = (layout.copy(), stability) if stability.stable else None
     bold_added = apply_snot(layout, working, spanning_donors=True)
     if bold_added:
-        stability = analyze(layout, config.solver)
-        if checkpoint is not None and not stability.stable:
+        broke = checkpoint is not None and _tier_confidently_unstable(layout, config)
+        stability = stability if broke else analyze(layout, config.solver)
+        if checkpoint is not None and (broke or not stability.stable):
             layout.replace_with(checkpoint[0])
             stability = checkpoint[1]
             if config.progress is not None:
@@ -586,6 +594,23 @@ def _snot_tiers(
         else:
             snot_added += bold_added
     return snot_added, stability
+
+
+def _tier_confidently_unstable(layout: Layout, config: PipelineConfig) -> bool:
+    """Reduced-QP pre-empt for a checkpointed cladding tier.
+
+    True skips the tier's cold solve and reverts directly — safe because
+    reverting restores an already-certified checkpoint, so the screen
+    never authors a verdict. Anything but a confident unstable "ok"
+    (declined, non-confident, screen off) lets the cold solve decide.
+    """
+    if config.solver.screen != "bricksim":
+        return False
+    report = screen_layout(layout, config.solver)
+    if report.status == "ok" and report.confident and not report.stable:
+        telemetry.value("pipeline.snot.screen_revert", 1.0)
+        return True
+    return False
 
 
 def _phase_gauge(

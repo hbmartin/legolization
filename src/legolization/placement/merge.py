@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import time
 from collections import deque
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
 from legolization import telemetry
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from legolization.catalog import Catalog, Cell
     from legolization.grid import VoxelGrid
     from legolization.layout import PlacedBrick
-    from legolization.placement.base import ObjectiveWeights
+    from legolization.placement.base import ObjectiveReport, ObjectiveWeights
     from legolization.placement.layered.bridge import BridgeFn
     from legolization.stability.solver import SolverConfig
 
@@ -594,6 +594,20 @@ def compact_columns(layout: Layout, brick_ids: set[int]) -> int:
     return merged
 
 
+@dataclass(frozen=True, slots=True)
+class RemergeResult:
+    """Outcome of :func:`final_remerge`.
+
+    ``report`` is the accepted candidate's cold :func:`evaluate` — a
+    dataclass rather than a bare optional because a future screened arm
+    deliberately returns ``report=None`` while still replacing, and
+    callers must then re-certify the layout themselves.
+    """
+
+    replaced: bool
+    report: ObjectiveReport | None = None
+
+
 def final_remerge(
     layout: Layout,
     grid: VoxelGrid,
@@ -601,7 +615,7 @@ def final_remerge(
     *,
     weights: ObjectiveWeights | None = None,
     solver_config: SolverConfig | None = None,
-) -> bool:
+) -> RemergeResult:
     """Global post-placement re-merge; keep only a strictly smaller layout.
 
     Two candidates are tried: a conservative merge pass, and a plate
@@ -611,7 +625,15 @@ def final_remerge(
     *plates*; only aligned columns can become bricks again). The objective
     check guards against merges that hurt physics or aesthetics more than
     the saved parts are worth, and the component check guards topology.
-    Returns True when the layout was replaced.
+    The accepted candidate's report rides along so callers can reuse its
+    (deterministic) stability verdict instead of re-solving.
+
+    With ``solver_config.screen`` enabled, the candidate/baseline
+    stability terms come from the reduced-QP screen instead of exact
+    solves (like-for-like screened totals) and the accepted layout's
+    verdict is deliberately NOT threaded (``report=None``) — the caller
+    must cold-certify it. Any non-confident screen falls back to the
+    exact path wholesale so totals are never mixed across sources.
     """
     from legolization.placement.base import evaluate  # noqa: PLC0415 - cycle guard
 
@@ -633,20 +655,76 @@ def final_remerge(
         compact_vertical(rephased)
         candidates.append(rephased)
 
-    baseline = evaluate(layout, grid, weights, solver_config)
     base_components = ConnectionGraph.from_layout(layout).component_count()
-    accepted: list[Layout] = []
-    for candidate in candidates:
-        if len(candidate) >= len(layout):
-            continue
+    small = [candidate for candidate in candidates if len(candidate) < len(layout)]
+
+    if solver_config is not None and solver_config.screen == "bricksim":
+        screened = _screened_remerge(
+            layout,
+            small,
+            grid,
+            weights=weights,
+            solver_config=solver_config,
+            base_components=base_components,
+        )
+        if screened is not None:
+            return screened
+        # A non-confident screen somewhere: exact path wholesale.
+
+    baseline = evaluate(layout, grid, weights, solver_config)
+    accepted: list[tuple[Layout, ObjectiveReport]] = []
+    for candidate in small:
         report = evaluate(candidate, grid, weights, solver_config)
         components = ConnectionGraph.from_layout(candidate).component_count()
         if report.total <= baseline.total and components <= base_components:
+            accepted.append((candidate, report))
+    if not accepted:
+        return RemergeResult(replaced=False)
+    winner, winner_report = min(accepted, key=lambda pair: len(pair[0]))
+    layout.replace_with(winner)
+    return RemergeResult(replaced=True, report=winner_report)
+
+
+def _screened_remerge(  # noqa: PLR0913 - mirrors final_remerge's surface
+    layout: Layout,
+    candidates: list[Layout],
+    grid: VoxelGrid,
+    *,
+    weights: ObjectiveWeights | None,
+    solver_config: SolverConfig,
+    base_components: int,
+) -> RemergeResult | None:
+    """Screened accept/reject arm; ``None`` = fall back to exact evaluate.
+
+    Verdict interlock: this arm never constructs ``RemergeResult.report``
+    — screen numbers must not reach a verdict-bearing artifact — so an
+    accepting caller pays one cold solve for the winner.
+    """
+    from legolization.placement.base import (  # noqa: PLC0415 - cycle guard
+        ObjectiveWeights,
+        _objective_terms,
+        _weighted_total,
+    )
+    from legolization.stability.screen import screen_layout  # noqa: PLC0415
+
+    weights = weights or ObjectiveWeights()
+    base_report = screen_layout(layout, solver_config)
+    if base_report.status != "ok" or not base_report.confident:
+        return None
+    base_total = _weighted_total(_objective_terms(layout, grid), base_report.q, weights)
+    accepted: list[Layout] = []
+    for candidate in candidates:
+        report = screen_layout(candidate, solver_config)
+        if report.status != "ok" or not report.confident:
+            return None
+        total = _weighted_total(_objective_terms(candidate, grid), report.q, weights)
+        components = ConnectionGraph.from_layout(candidate).component_count()
+        if total <= base_total and components <= base_components:
             accepted.append(candidate)
     if not accepted:
-        return False
+        return RemergeResult(replaced=False)
     layout.replace_with(min(accepted, key=len))
-    return True
+    return RemergeResult(replaced=True, report=None)
 
 
 def _plate_runs(layout: Layout, brick_ids: set[int]) -> list[list[PlacedBrick]]:

@@ -130,6 +130,41 @@ def test_linear_field_expands_to_centered_offsets(layout):
     assert values.max() > 0.0 > values.min()
 
 
+def test_vertical_expansion_pins_pattern_geometry(layout):
+    # Freeze the vertical branch's field semantics against refactors: on
+    # a 2x2-on-2x2 stack every knob takes THREE_POINT_OFFSETS, so each
+    # normal row of E must be exactly [1, x - cx, y - cy] at the world
+    # pattern point, hand-reconstructed here from the same constants.
+    from legolization.stability.constants import THREE_POINT_OFFSETS
+
+    layout.add("brick_2x2", 0, 0, 0, 0, 4)
+    layout.add("brick_2x2", 0, 0, 3, 0, 4)
+    reduced = build_reduced_model(layout, SolverConfig())
+    assert reduced is not None
+    graph = ConnectionGraph.from_layout(layout)
+    pair_points: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    for knob in graph.knob_contacts:
+        for ox, oy in THREE_POINT_OFFSETS:
+            pair_points.setdefault((knob.below_id, knob.above_id), []).append(
+                (knob.x + ox, knob.y + oy)
+            )
+    dense = reduced.expansion.toarray()
+    block = 2 * 3 + 4 * 3  # per-connection columns on a 4-knob interface
+    for ordinal, pair in enumerate(reduced.connection_pairs):
+        points = pair_points[pair]
+        cx = sum(x for x, _ in points) / len(points)
+        cy = sum(y for _, y in points) / len(points)
+        normal_cols = [
+            p.normal_col
+            for p in reduced.exact.contact_points
+            if (p.below_id, p.above_id) == pair
+        ]
+        for row, (x, y) in zip(normal_cols, points, strict=True):
+            expected = np.zeros(reduced.var_count)
+            expected[ordinal * block : ordinal * block + 3] = (1.0, x - cx, y - cy)
+            np.testing.assert_allclose(dense[row], expected, atol=1e-12)
+
+
 def test_reduced_residual_matches_exact_expansion(layout):
     _wall(layout)
     config = SolverConfig()
@@ -167,10 +202,67 @@ def test_ground_pull_off_still_builds(layout):
     assert (with_pull.expansion != without.expansion).nnz == 0
 
 
-def test_lateral_layout_declines(layout):
+def test_lateral_layout_builds(layout):
+    # One ground (vertical, FOUR_POINT) connection + one lateral
+    # connection: 10 reduced vars each (6 field coefficients + 4
+    # width-1 press/shear fields) against 24 exact columns.
     layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
-    layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
-    assert build_reduced_model(layout, SolverConfig()) is None
+    tile = layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
+    reduced = build_reduced_model(layout, SolverConfig())
+    assert reduced is not None
+    assert reduced.exact.var_count == 2 * (4 * 2 + 4)
+    assert reduced.var_count == 2 * (2 * 3 + 4 * 1)
+    lateral_ordinals = {
+        int(ordinal)
+        for point, ordinal in zip(
+            reduced.exact.contact_points, reduced.drag_connection, strict=True
+        )
+        if point.above_id == tile.brick_id
+    }
+    assert len(lateral_ordinals) == 1
+
+
+def test_lateral_field_lives_in_the_mating_plane(layout):
+    # The coincidence-hazard killer: a lateral knob allocates exactly as
+    # many columns as a four-point vertical knob, so only the field
+    # coordinates can prove the branch. Two side studs one stud apart
+    # (normal (0,-1,0)) must form ONE connection whose normal-field u
+    # spans the transverse axis (offsets one stud apart) and whose v
+    # carries the diamond's vertical offsets.
+    from legolization.stability.constants import FOUR_POINT_OFFSETS
+
+    layout.add("brick_1x2_side_studs", 0, 1, 0, 0, 4)
+    tile = layout.add("tile_1x2_snot", 0, 0, 0, 0, 4)
+    reduced = build_reduced_model(layout, SolverConfig())
+    assert reduced is not None
+    lateral_points = [
+        (point, int(ordinal))
+        for point, ordinal in zip(
+            reduced.exact.contact_points, reduced.drag_connection, strict=True
+        )
+        if point.above_id == tile.brick_id
+    ]
+    ordinals = {ordinal for _, ordinal in lateral_points}
+    assert len(ordinals) == 1  # both side studs share one connection
+    # Expected field offsets: knob transverse centers 0.0 and 1.0
+    # (centroid 0.5) plus the FOUR_POINT diamond in (transverse,
+    # vertical) coordinates.
+    expected = sorted(
+        (t_center - 0.5 + ox, oy)
+        for t_center in (0.0, 1.0)
+        for ox, oy in FOUR_POINT_OFFSETS
+    )
+    dense = reduced.expansion.toarray()
+    first_row = lateral_points[0][0].normal_col
+    block = next(j for j in range(reduced.var_count) if dense[first_row, j])
+    observed = sorted(
+        (
+            float(dense[point.normal_col, block + 1]),
+            float(dense[point.normal_col, block + 2]),
+        )
+        for point, _ in lateral_points
+    )
+    np.testing.assert_allclose(observed, expected, atol=1e-12)
 
 
 def test_contact_free_layout_declines(layout):
@@ -180,10 +272,46 @@ def test_contact_free_layout_declines(layout):
     assert build_reduced_model(layout, SolverConfig()) is None
 
 
-def test_bricksim_fields_not_yet_ported_declines(layout):
+def test_bricksim_fields_use_their_own_builder(layout):
+    # The restricted builder still declines the research basis; the
+    # screen routes it to build_bricksim_model instead: 12 coefficients
+    # per connection (alpha/beta/gamma + the co-located compression
+    # field) and per-point scalar maps.
+    from legolization.stability.bricksim_fields import build_bricksim_model
+
     layout.add("brick_1x1", 0, 0, 0, 0, 4)
     config = SolverConfig(screen_fields="bricksim")
     assert build_reduced_model(layout, config) is None
+    model = build_bricksim_model(layout, config)
+    assert model is not None
+    assert model.var_count == 12  # one ground connection
+    assert model.axial.shape == (4, 12)  # FOUR_POINT pattern
+    assert model.compression.shape == (4, 12)
+    # Tension and compression fields push along opposite axes: their
+    # net-force columns must be exact negatives on the fz row.
+    fz = model.a_matrix.toarray()[2]
+    np.testing.assert_allclose(fz[0], -fz[9], atol=1e-12)
+
+
+def test_bricksim_screen_matches_cold_verdicts(layout):
+    from legolization.stability import analyze
+    from legolization.stability.screen import screen_layout
+
+    config = SolverConfig(screen_fields="bricksim")
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)
+    cold = analyze(layout)
+    report = screen_layout(layout, config)
+    assert report.status == "ok"
+    assert report.stable == cold.stable
+
+    floating = Layout(catalog=default_catalog())
+    floating.add("brick_2x4", 0, 0, 0, 0, 4)
+    floater = floating.add("brick_2x4", 20, 20, 9, 0, 4)
+    report = screen_layout(floating, config)
+    assert report.status == "ok"
+    assert not report.stable
+    assert floater.brick_id in report.unstable_ids
 
 
 def test_side_contacts_keep_identity_columns(layout):
@@ -199,3 +327,63 @@ def test_side_contacts_keep_identity_columns(layout):
     # Each side generator keeps its own reduced column (identity block).
     assert np.count_nonzero(tail) == side_vars
     np.testing.assert_allclose(tail[tail != 0.0], 1.0)
+
+
+def test_hull_vertices_shapes():
+    from legolization.stability.reduced import _hull_vertices
+
+    # Collinear 1xN row: only the two extremes.
+    row = [(float(i), 0.0) for i in range(5)]
+    assert _hull_vertices(row) == {0, 4}
+    # Two or fewer unique points: everything.
+    assert _hull_vertices([(0.0, 0.0), (1.0, 1.0)]) == {0, 1}
+    assert _hull_vertices([(0.0, 0.0), (0.0, 0.0)]) == {0, 1}
+    # Square with an interior point: the interior index drops.
+    square = [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0), (1.0, 1.0)]
+    assert _hull_vertices(square) == {0, 1, 2, 3}
+    # Duplicates of a hull coordinate all stay; interior points drop.
+    doubled = [(0.0, 0.0), (2.0, 0.0), (1.0, 1.0), (0.0, 0.0), (0.9, 0.3)]
+    assert _hull_vertices(doubled) == {0, 1, 2, 3}
+
+
+def test_constraint_mask_shrinks_wide_interfaces(layout):
+    # plate_2x16 on plate_2x16: 32 knobs x 3 points collapse to a
+    # hull-vertex band; the mask must cut the pointwise rows hard while
+    # keeping every side row (none here) and staying exact.
+    layout.add("plate_2x16", 0, 0, 0, 0, 4)
+    layout.add("plate_2x16", 0, 0, 1, 0, 4)
+    reduced = build_reduced_model(layout, SolverConfig())
+    assert reduced is not None
+    kept = int(reduced.constraint_mask.sum())
+    assert kept < reduced.exact.var_count / 3
+    # Drag rows on the hull keep their dmax coverage: at least one drag
+    # per connection stays masked in.
+    drag_mask = reduced.constraint_mask[reduced.exact.drag_cols]
+    for ordinal in range(len(reduced.connection_pairs)):
+        assert drag_mask[reduced.drag_connection == ordinal].any()
+
+
+def test_masked_screen_matches_full_rows(layout):
+    from dataclasses import replace as dc_replace
+
+    import numpy as np
+
+    from legolization.stability.screen import solve_screen
+
+    _wall(layout)
+    layout.add("brick_2x2", 0, 1, 0, 90, 4)
+    config = SolverConfig()
+    reduced = build_reduced_model(layout, config)
+    assert reduced is not None
+    full = dc_replace(
+        reduced, constraint_mask=np.ones(reduced.exact.var_count, dtype=bool)
+    )
+    masked_report = solve_screen(reduced, config)
+    full_report = solve_screen(full, config)
+    assert masked_report.status == full_report.status == "ok"
+    assert masked_report.stable == full_report.stable
+    assert masked_report.q == pytest.approx(full_report.q, abs=5e-3)
+    assert masked_report.scores is not None
+    assert full_report.scores is not None
+    for bid, score in full_report.scores.items():
+        assert masked_report.scores[bid] == pytest.approx(score, abs=5e-3)

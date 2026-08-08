@@ -1,7 +1,7 @@
 """Measure the reduced-QP screen against the exact LP (the Phase-3 gate).
 
 Three sections, mirroring the pre-registered acceptance thresholds in
-docs/performance-testing.md:
+docs/guides/performance-testing.md:
 
 1. **Shell series** — thin-shell greedy layouts at increasing radius
    (the same hollow-shell family as the pinned 348/505/712/902-brick
@@ -44,9 +44,11 @@ from legolization import telemetry
 from legolization.catalog import default_catalog
 from legolization.corpus.generators import GENERATORS, thin_shell
 from legolization.eval_artifacts import atomic_json, source_identity
+from legolization.graph import ConnectionGraph
 from legolization.grid import VoxelGrid
 from legolization.pipeline import PipelineConfig
 from legolization.placement.registry import make_strategy
+from legolization.placement.snot import apply_snot
 from legolization.stability import (
     SolverConfig,
     analyze,
@@ -78,22 +80,45 @@ _THRESHOLDS = {
 
 @dataclass(slots=True)
 class _Tally:
-    """Running screen-status and verdict-agreement counters."""
+    """Running screen-status and verdict-agreement counters.
+
+    Verdict agreement is gated on *structural* rows (whole shell,
+    corpus, and clad layouts) and only recorded informationally for the
+    damaged removal candidates: on those, the exact LP's own objective
+    (``sum(t) + ALPHA * sum(dmax)``) can prefer leaving a
+    sub-tolerance equilibrium residual on feather-light SNOT parts over
+    paying drag for it, flagging bricks the screen (which drives
+    residuals to ~1e-7) reports balanced. That flip direction only ever
+    costs a wasted cold certify — candidate quality is gated by the
+    production-semantics ranking and false-reject metrics instead.
+    """
 
     solves: int = 0
     nonconverged: int = 0
     verdict_pairs: int = 0
     verdict_agree: int = 0
+    candidate_pairs: int = 0
+    candidate_agree: int = 0
 
     def status(self, report: ScreenReport) -> None:
         self.solves += 1
         if report.status == "nonconverged":
             self.nonconverged += 1
 
-    def verdict(self, report: ScreenReport, cold: StabilityResult) -> None:
-        self.verdict_pairs += 1
-        if report.status == "ok" and report.stable == cold.stable:
-            self.verdict_agree += 1
+    def verdict(
+        self,
+        report: ScreenReport,
+        cold: StabilityResult,
+        *,
+        structural: bool = True,
+    ) -> None:
+        agree = report.status == "ok" and report.stable == cold.stable
+        if structural:
+            self.verdict_pairs += 1
+            self.verdict_agree += int(agree)
+        else:
+            self.candidate_pairs += 1
+            self.candidate_agree += int(agree)
 
 
 def _place_shell(radius: int, seed: int) -> Layout:
@@ -200,13 +225,32 @@ def _shell_row(
     )
 
 
+def _lateral_dependents(layout: Layout) -> dict[int, set[int]]:
+    """Cladding mounted on each carrier via lateral (SNOT) knobs."""
+    dependents: dict[int, set[int]] = {}
+    for knob in ConnectionGraph.from_layout(layout).knob_contacts:
+        if knob.normal != (0, 0, 1):
+            dependents.setdefault(knob.below_id, set()).add(knob.above_id)
+    return dependents
+
+
 def _candidates(layout: Layout, count: int, rng: np.random.Generator) -> list[Layout]:
+    """Brick-removal perturbations, closing over stranded cladding.
+
+    Removing a SNOT carrier without its mounted tiles floats the tiles
+    — a candidate no production loop would generate — so each removal
+    set is closed over the carriers' lateral dependents.
+    """
     ids = sorted(layout.bricks)
+    dependents = _lateral_dependents(layout)
     out: list[Layout] = []
     for _ in range(count):
-        removal = rng.choice(ids, size=int(rng.integers(1, 4)), replace=False)
-        keep = frozenset(ids) - {int(b) for b in removal}
-        out.append(layout.subset(keep))
+        removal = {
+            int(b) for b in rng.choice(ids, size=int(rng.integers(1, 4)), replace=False)
+        }
+        for carrier in list(removal):
+            removal |= dependents.get(carrier, set())
+        out.append(layout.subset(frozenset(ids) - removal))
     return out
 
 
@@ -245,11 +289,20 @@ class _Acceptance:
         )
 
     def accepted_over(self, base: _Acceptance) -> dict[str, bool]:
-        """Which consumers would accept this candidate over ``base``."""
+        """Which consumers would accept this candidate over ``base``.
+
+        The ALNS rule carries repair's own loop guard: production only
+        compares localizer q while ``base.link_q > _Q_TOLERANCE``
+        (``repair_stability`` never iterates on a stable baseline), so
+        a noise-level ordering of two ~zero q values is not an
+        acceptance.
+        """
+        from legolization.placement.repair import _Q_TOLERANCE  # noqa: PLC0415
+
         rules = {
             "luo_rbe": (len(self.result.unstable_ids), -self.result.min_capacity)
             < (len(base.result.unstable_ids), -base.result.min_capacity),
-            "repair_alns": self.link_q < base.link_q,
+            "repair_alns": base.link_q > _Q_TOLERANCE and self.link_q < base.link_q,
         }
         if not np.isnan(self.capacity):
             rules["luo_maximin"] = self.capacity > base.capacity
@@ -257,28 +310,53 @@ class _Acceptance:
 
 
 @dataclass(slots=True)
-class _RankingStats:
-    """Candidate-harness accumulators and shared run context."""
+class _DomainStats:
+    """Ranking/false-reject counters for one candidate domain."""
 
-    config: SolverConfig
-    seed: int
-    count: int
-    tally: _Tally
-    maximin: bool = True
     pairs: int = 0
     agree: int = 0
     gated: int = 0
     false_rejects: dict[str, int] = field(
         default_factory=lambda: dict.fromkeys(_ACCEPTANCE_RULES, 0)
     )
-    """Gated candidates each consumer's acceptance rule would have taken."""
 
+
+@dataclass(slots=True)
+class _RankingStats:
+    """Candidate-harness accumulators and shared run context.
+
+    Vertical and lateral (SNOT-clad) candidates are scored separately:
+    rank-rejection is production-scoped to vertical layouts, and on
+    clad candidates the certifier's feather-light tie-zone verdicts
+    make cold q an unrankable ordering ground truth — the gate numbers
+    come from the vertical domain, the snot domain reports the scoped
+    (count-clause-only) gate.
+    """
+
+    config: SolverConfig
+    seed: int
+    count: int
+    tally: _Tally
+    maximin: bool = True
+    domains: dict[str, _DomainStats] = field(
+        default_factory=lambda: {
+            "vertical": _DomainStats(),
+            "snot": _DomainStats(),
+        }
+    )
     rows: list[dict[str, object]] = field(default_factory=list)
 
+    @property
+    def pairs(self) -> int:
+        return sum(d.pairs for d in self.domains.values())
 
-def _rank_shell(layout: Layout, stats_acc: _RankingStats) -> None:
+
+def _rank_shell(
+    layout: Layout, stats_acc: _RankingStats, domain: str = "vertical"
+) -> None:
     config = stats_acc.config
     tally = stats_acc.tally
+    stats = stats_acc.domains[domain]
     rng = np.random.default_rng(stats_acc.seed + 1)
     base_acceptance = _Acceptance.measure(layout, config, maximin=stats_acc.maximin)
     screen = ReducedScreen.create(layout, config)
@@ -291,27 +369,28 @@ def _rank_shell(layout: Layout, stats_acc: _RankingStats) -> None:
         cold = acceptance.result
         report, _, _ = _screen_with_split(candidate, config)
         tally.status(report)
-        tally.verdict(report, cold)
+        tally.verdict(report, cold, structural=False)
         if report.status != "ok":
             continue
         pairs_q.append((cold.max_score, report.q))
         # The PRODUCTION gate, not a re-implementation.
         if screen.should_reject(report, config.screen_margin):
-            stats_acc.gated += 1
+            stats.gated += 1
             for rule, accepted in acceptance.accepted_over(base_acceptance).items():
-                stats_acc.false_rejects[rule] += int(accepted)
+                stats.false_rejects[rule] += int(accepted)
     for i in range(len(pairs_q)):
         for j in range(i + 1, len(pairs_q)):
             gap = abs(pairs_q[i][0] - pairs_q[j][0])
             if gap <= config.screen_margin:
                 continue
-            stats_acc.pairs += 1
+            stats.pairs += 1
             cold_order = pairs_q[i][0] < pairs_q[j][0]
             screen_order = pairs_q[i][1] < pairs_q[j][1]
             if cold_order == screen_order:
-                stats_acc.agree += 1
+                stats.agree += 1
     stats_acc.rows.append(
         {
+            "domain": domain,
             "bricks": len(layout),
             "candidates": len(pairs_q),
         }
@@ -349,6 +428,45 @@ def _corpus_rows(
     return rows
 
 
+_SNOT_MODELS = ("letter_h", "mushroom")
+"""Clad models for the SNOT section; the FIRST also runs the candidate
+harness, so keep it small — every candidate pays the consumer
+acceptance measurements (links QP + optional maximin)."""
+
+
+def _snot_rows(
+    seed: int, config: SolverConfig, tally: _Tally
+) -> list[dict[str, object]]:
+    """Screen-vs-cold rows on SNOT-clad greedy layouts."""
+    rows: list[dict[str, object]] = []
+    catalog = default_catalog()
+    for name in _SNOT_MODELS:
+        grid = VoxelGrid.from_array(GENERATORS[name](), plates_per_voxel=3)
+        strategy = make_strategy(
+            "greedy", catalog=catalog, config=PipelineConfig(seed=seed)
+        )
+        layout = strategy.place(grid, rng=np.random.default_rng(seed))
+        before = len(layout)
+        apply_snot(layout, grid)
+        cold = analyze(layout, config)
+        report, _, _ = _screen_with_split(layout, config)
+        tally.status(report)
+        tally.verdict(report, cold)
+        rows.append(
+            {
+                "model": name,
+                "bricks": len(layout),
+                "snot_parts": len(layout) - before,
+                "status": report.status,
+                "cold_stable": cold.stable,
+                "screen_stable": report.stable,
+                "cold_q": cold.max_score,
+                "screen_q": report.q,
+            }
+        )
+    return rows
+
+
 def _verdicts(
     shells: list[_ShellRow],
     ranking: _RankingStats,
@@ -361,15 +479,26 @@ def _verdicts(
         if largest and largest.screen_seconds
         else float("nan")
     )
-    ranking_agreement = ranking.agree / ranking.pairs if ranking.pairs else None
-    by_consumer = {
-        rule: (count / ranking.gated if ranking.gated else 0.0)
-        for rule, count in ranking.false_rejects.items()
-        if ranking.maximin or rule != "luo_maximin"
-    }
-    # The gate is the worst consumer, not an average: a rejection that
-    # only Luo-maximin would have taken is still a lost candidate.
-    false_reject_rate = max(by_consumer.values(), default=0.0)
+    vertical = ranking.domains["vertical"]
+    snot = ranking.domains["snot"]
+    ranking_agreement = vertical.agree / vertical.pairs if vertical.pairs else None
+
+    def consumer_rates(stats: _DomainStats) -> dict[str, float]:
+        return {
+            rule: (count / stats.gated if stats.gated else 0.0)
+            for rule, count in stats.false_rejects.items()
+            if ranking.maximin or rule != "luo_maximin"
+        }
+
+    by_consumer = consumer_rates(vertical)
+    snot_by_consumer = consumer_rates(snot)
+    # The gate is the worst consumer over BOTH domains (the snot domain
+    # runs the production-scoped count-clause-only gate), not an
+    # average: a rejection only one rule would have taken is still a
+    # lost candidate.
+    false_reject_rate = max(
+        [*by_consumer.values(), *snot_by_consumer.values()], default=0.0
+    )
     verdict_agreement = (
         tally.verdict_agree / tally.verdict_pairs if tally.verdict_pairs else None
     )
@@ -381,6 +510,7 @@ def _verdicts(
         "setup_share": setup_share,
         "setup_share_pass": setup_share <= _THRESHOLDS["setup_share_max"],
         "ranking_agreement": ranking_agreement,
+        "snot_ranking_agreement": (snot.agree / snot.pairs if snot.pairs else None),
         "ranking_pass": (
             ranking_agreement is not None
             and ranking_agreement >= _THRESHOLDS["ranking_agreement_min"]
@@ -391,6 +521,8 @@ def _verdicts(
         ),
         "confident_false_reject_rate": false_reject_rate,
         "confident_false_reject_by_consumer": by_consumer,
+        "snot_false_reject_by_consumer": snot_by_consumer,
+        "snot_gated": snot.gated,
         "false_reject_pass": (
             false_reject_rate <= _THRESHOLDS["confident_false_reject_max"]
         ),
@@ -398,6 +530,11 @@ def _verdicts(
         "verdict_pass": (
             verdict_agreement is not None
             and verdict_agreement >= _THRESHOLDS["verdict_agreement_min"]
+        ),
+        "candidate_verdict_agreement": (
+            tally.candidate_agree / tally.candidate_pairs
+            if tally.candidate_pairs
+            else None
         ),
         "nonconverged_share": nonconverged_share,
         "nonconverged_pass": (
@@ -423,6 +560,17 @@ def main() -> int:
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--skip-corpus", action="store_true")
+    parser.add_argument("--skip-snot", action="store_true")
+    parser.add_argument(
+        "--fields",
+        choices=["restricted", "bricksim"],
+        default="restricted",
+        help=(
+            "screen basis to measure; 'bricksim' is the paper's "
+            "friction-pyramid research basis (its q is a utilization, "
+            "not a max_score — compare artifacts, not thresholds)"
+        ),
+    )
     parser.add_argument(
         "--skip-maximin",
         action="store_true",
@@ -436,7 +584,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
-    config = SolverConfig()
+    config = SolverConfig(screen_fields=args.fields)
     tally = _Tally()
     shells: list[_ShellRow] = []
     for radius in args.radii:
@@ -472,6 +620,27 @@ def main() -> int:
             f"q={row['screen_q']:.3f}{marker}"
         )
 
+    snot = [] if args.skip_snot else _snot_rows(args.seed, config, tally)
+    for row in snot:
+        marker = "" if row["cold_stable"] == row["screen_stable"] else "  <-- DIFF"
+        print(
+            f"snot {row['model']}: {row['bricks']} bricks "
+            f"(+{row['snot_parts']} clad), cold {row['cold_stable']} "
+            f"q={row['cold_q']:.3f} | screen {row['screen_stable']} "
+            f"q={row['screen_q']:.3f}{marker}"
+        )
+    if snot:
+        # Ranking coverage over lateral geometry: carrier-aware
+        # candidates on the first clad layout.
+        grid = VoxelGrid.from_array(GENERATORS[_SNOT_MODELS[0]](), plates_per_voxel=3)
+        strategy = make_strategy(
+            "greedy", catalog=default_catalog(), config=PipelineConfig(seed=args.seed)
+        )
+        clad = strategy.place(grid, rng=np.random.default_rng(args.seed))
+        apply_snot(clad, grid)
+        _rank_shell(clad, ranking, domain="snot")
+        print(f"candidates snot: done ({ranking.pairs} scored pairs total)")
+
     verdicts = _verdicts(shells, ranking, tally)
     payload = {
         "schema": 1,
@@ -479,6 +648,7 @@ def main() -> int:
         "source": source_identity(_REPO).to_dict(),
         "seed": args.seed,
         "solver_config": {
+            "screen_fields": config.screen_fields,
             "screen_margin": config.screen_margin,
             "screen_eps": config.screen_eps,
             "screen_max_iter": config.screen_max_iter,
@@ -486,10 +656,15 @@ def main() -> int:
         "thresholds": _THRESHOLDS,
         "shells": [row.payload() for row in shells],
         "ranking": {
-            "pairs": ranking.pairs,
-            "agree": ranking.agree,
-            "gated": ranking.gated,
-            "false_rejects_by_consumer": ranking.false_rejects,
+            "domains": {
+                name: {
+                    "pairs": stats.pairs,
+                    "agree": stats.agree,
+                    "gated": stats.gated,
+                    "false_rejects_by_consumer": stats.false_rejects,
+                }
+                for name, stats in ranking.domains.items()
+            },
             "acceptance_rules": [
                 rule
                 for rule in _ACCEPTANCE_RULES
@@ -498,6 +673,7 @@ def main() -> int:
             "per_shell": ranking.rows,
         },
         "corpus": corpus,
+        "snot": snot,
         "verdicts": verdicts,
     }
     out = args.out or (

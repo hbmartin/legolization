@@ -119,7 +119,7 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
             bricks_rebuilt=0,
             result=stability,
         )
-    report = _localize(layout, solver_config, config)
+    report = _localize(layout, solver_config, config, cold_result=initial_stability)
     if solver_config is None:
         from legolization.stability.solver import SolverConfig  # noqa: PLC0415
 
@@ -155,7 +155,12 @@ def repair_stability(  # noqa: PLR0913 - the repair owns the whole pipeline stat
             escalation += 1
             q_history.append(report.q)
             continue
-        candidate_report = _localize(candidate, solver_config, config)
+        candidate_report = _localize(
+            candidate,
+            solver_config,
+            config,
+            cold_result=certification.cold_result,
+        )
         if candidate_report.q < report.q:
             layout.replace_with(candidate)
             report = candidate_report
@@ -178,19 +183,31 @@ def _localize(
     layout: Layout,
     solver_config: SolverConfig | None,
     config: RepairConfig,
+    *,
+    cold_result: StabilityResult | None = None,
 ) -> LinkReport:
     if config.localizer == "qp":
         report = localize_instability(layout, config=solver_config)
         if report.status == "optimal" and (report.stable or report.links):
             return report
-    return _rbe_report(layout, solver_config)
+    return _rbe_report(layout, solver_config, cold_result=cold_result)
 
 
-def _rbe_report(layout: Layout, solver_config: SolverConfig | None) -> LinkReport:
-    """Fallback localization from the RBE's per-brick stress scores."""
+def _rbe_report(
+    layout: Layout,
+    solver_config: SolverConfig | None,
+    *,
+    cold_result: StabilityResult | None = None,
+) -> LinkReport:
+    """Fallback localization from the RBE's per-brick stress scores.
+
+    ``cold_result`` reuses a cold verdict the caller already holds for
+    this exact layout and config (certify's, or the pipeline's initial
+    one) instead of paying a duplicate whole-structure solve.
+    """
     from legolization.stability.links import LinkForce  # noqa: PLC0415 - cycle guard
 
-    result = analyze(layout, solver_config)
+    result = cold_result if cold_result is not None else analyze(layout, solver_config)
     if result.stable:
         return LinkReport(q=0.0, links=(), status="optimal")
     links = [

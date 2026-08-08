@@ -72,6 +72,32 @@ class ObjectiveReport:
     stability: StabilityResult
 
 
+def _objective_terms(layout: Layout, grid: VoxelGrid) -> dict[str, float]:
+    """Every objective term except stability (shared with screened scoring)."""
+    voxels = max(grid.filled_count, 1)
+    return {
+        "cost": len(layout) / voxels,
+        "aesthetics": _seam_alignment(layout),
+        "colour_error": _colour_mismatch(layout, grid.codes),
+        "perpendicularity": perpendicularity_error(layout),
+        "symmetry": symmetry_error(layout),
+    }
+
+
+def _weighted_total(
+    terms: dict[str, float], instability: float, weights: ObjectiveWeights
+) -> float:
+    """Compose the weighted objective from terms plus a stability score."""
+    return (
+        weights.cost * terms["cost"]
+        + weights.stability * instability
+        + weights.aesthetics * terms["aesthetics"]
+        + weights.colour * terms["colour_error"]
+        + weights.perpendicularity * terms["perpendicularity"]
+        + weights.symmetry * terms["symmetry"]
+    )
+
+
 def evaluate(
     layout: Layout,
     grid: VoxelGrid,
@@ -81,29 +107,16 @@ def evaluate(
     """Score a layout against the weighted objective."""
     weights = weights or ObjectiveWeights()
     stability = analyze(layout, solver_config)
-    voxels = max(grid.filled_count, 1)
-    cost = len(layout) / voxels
+    terms = _objective_terms(layout, grid)
     instability = stability.max_score
-    aesthetics = _seam_alignment(layout)
-    colour_error = _colour_mismatch(layout, grid.codes)
-    perpendicularity = perpendicularity_error(layout)
-    symmetry = symmetry_error(layout)
-    total = (
-        weights.cost * cost
-        + weights.stability * instability
-        + weights.aesthetics * aesthetics
-        + weights.colour * colour_error
-        + weights.perpendicularity * perpendicularity
-        + weights.symmetry * symmetry
-    )
     return ObjectiveReport(
-        cost=cost,
+        cost=terms["cost"],
         instability=instability,
-        aesthetics=aesthetics,
-        colour_error=colour_error,
-        perpendicularity=perpendicularity,
-        symmetry=symmetry,
-        total=total,
+        aesthetics=terms["aesthetics"],
+        colour_error=terms["colour_error"],
+        perpendicularity=terms["perpendicularity"],
+        symmetry=terms["symmetry"],
+        total=_weighted_total(terms, instability, weights),
         stability=stability,
     )
 
