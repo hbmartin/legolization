@@ -7,7 +7,7 @@ precise): the layered engine's tiled/compacted/connected phases carry
 bricks + components (no stability — an LP per engine phase is not paid
 for a diagnostic); the pipeline's placed/repaired/restored/remerged
 phases carry bricks + components + stability. This is the measurement
-tool behind ``docs/kollsker-drift-report.md`` — a per-layer-optimal
+tool behind ``docs/reports/kollsker-drift-report.md`` — a per-layer-optimal
 tiling that ends worse than a heuristic did so in one of these phases.
 
 Usage::

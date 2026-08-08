@@ -142,7 +142,7 @@ would buy nothing and cost 2–4× sequencing time.
   <model-or-bundle> --report r.json [--render-dir steps/]`.
 - The experiment script pattern lives in this report's history (a
   15-line `plan_instructions` loop over `InstructionsConfig` variants).
-- Related: `docs/self-evaluation-playbook.md` §6 failure signatures;
+- Related: `docs/guides/self-evaluation-playbook.md` §6 failure signatures;
   `ROADMAP.md` deferred "MPD subassembly submodels".
 
 ## 7. v8 re-measurement: the class is resolved

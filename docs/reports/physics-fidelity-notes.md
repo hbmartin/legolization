@@ -160,6 +160,6 @@ table.
 - `tests/test_stability.py` — the analytic pins guarding each switch
   (rotation variance, table-mode tipping, extra-mass overload,
   torque-z row census).
-- `docs/performance-testing.md` §5 — engine/drift policy the switches
+- `docs/guides/performance-testing.md` §5 — engine/drift policy the switches
   must respect.
 - BrickFEM: github.com/mpletz/BrickFEM (MIT).

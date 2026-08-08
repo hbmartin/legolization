@@ -207,7 +207,7 @@ class LayeredStrategy:
             )
         # Layered tilings are per-layer minima worth defending: best-of-k
         # bridging resists the count inflation measured in
-        # docs/kollsker-drift-report.md. The greedy path keeps the
+        # docs/reports/kollsker-drift-report.md. The greedy path keeps the
         # historical single draw (shipped goldens pin its exact bytes).
         from legolization.placement.layered.bridge import (  # noqa: PLC0415 - cycle guard
             BridgeSynthesizer,

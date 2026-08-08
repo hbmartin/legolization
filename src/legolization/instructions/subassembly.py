@@ -1,6 +1,6 @@
 """Subassembly extraction: rewrite floating clusters as table-built units.
 
-``docs/unstable-prefix-report.md`` showed that every warned unstable step
+``docs/reports/unstable-prefix-report.md`` showed that every warned unstable step
 in the corpus belongs to one class — a chunk whose only stud route to
 ground arrives in a LATER band — and that no reordering fixes it. This
 post-pass detects those persistent floating clusters in a finished plan

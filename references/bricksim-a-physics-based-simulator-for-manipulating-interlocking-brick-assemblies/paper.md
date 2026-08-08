@@ -7,7 +7,7 @@ Piao, Siyu Li, and Changliu Liu — Robotics Institute, Carnegie Mellon
 University. Code: https://github.com/intelligent-control-lab/BrickSim
 
 Text-only conversion (figures omitted; the repo's pdf-to-markdown tool
-needs undeclared dependencies — see docs/pr-19-review.md).
+needs undeclared dependencies — see the PR #19 review in git history).
 
 ## Abstract
 

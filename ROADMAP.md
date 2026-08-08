@@ -1,9 +1,11 @@
 # Roadmap
 
 This document is the current source of truth for legolization's pre-release
-engineering program. The former dated progress journal is preserved in
-[`docs/roadmap-history.md`](docs/roadmap-history.md); historical measurements
-there are evidence, not descriptions of current defaults.
+engineering program: verified current state, active work, and the open
+engineering backlog. The dated progress journal is preserved in
+[`docs/history/roadmap-history.md`](docs/history/roadmap-history.md);
+historical measurements there are evidence, not descriptions of current
+defaults. See [`docs/README.md`](docs/README.md) for the documentation index.
 
 ## Verified current state
 
@@ -94,6 +96,78 @@ The remaining pre-release work is maintenance rather than a new product area:
 - Finish removing legacy report duplication once all internal evaluation
   consumers read manifest-derived views. Existing evaluation and BOM behavior
   remains available during that mechanical migration.
+- Take the pending mesh-kind baseline cut when an idle machine is available.
+  This is an existing planned baseline, not corpus expansion; the measured
+  history, the release decision, and the exact commands are in
+  [`docs/reports/mesh-baseline-pending.md`](docs/reports/mesh-baseline-pending.md).
+
+## Engineering backlog
+
+Open engineering items, carried forward from the v3–v8 program backlogs.
+Items those programs closed have been removed rather than struck through;
+the dated entries in
+[`docs/history/roadmap-history.md`](docs/history/roadmap-history.md) hold the
+completion evidence. Items ruled out above under "Deferred by product
+decision" are not repeated here.
+
+### Performance
+
+- **Incremental re-analysis** — the stability-perf workstream. Refinement
+  changes a k-ring but re-solves the whole structure at ~n^2.8; v8 measured
+  that no solver-level swap helps (direct highspy identical, IPM ≤1.4x with
+  1e-9 drift). Design directions, in order: warm append-only scoring through
+  `PrefixSolver` for placement-time verdicts; frozen-boundary ring analysis
+  for ALNS/Luo accept/reject with a full exact solve on acceptance. Both must
+  clear the golden, scorecard, and dual-engine gates. Until then the v8 budget
+  guardrail (`time_budget_s` → one pipeline deadline honoured by repair,
+  hollow-restore, and Luo stabilize) bounds the tails.
+
+  *Current mechanism (2026-08-07/08):* BrickSim's reduced-variable
+  parameterization (arXiv:2603.16853; `references/bricksim-*/paper.md`) is
+  ported as an opt-in candidate screen — `stability/reduced.py` (affine
+  per-interface fields, a restriction of the exact LP's variable space, so
+  errors skew conservative; the screen's soft equilibrium term makes that a
+  strong tendency rather than a theorem, and measured undershoots do occur —
+  safety comes from cold-certifying every accepted candidate, not from the
+  error direction) + `stability/screen.py` (single OSQP QP mirroring the
+  certifier objective), behind `SolverConfig.screen = "bricksim"` (default
+  `"off"`, every historical byte preserved). Wired into
+  `FrozenBoundaryAnalyzer.certify`, Luo `_stabilize`, the
+  `redesign._validate_candidate` pre-gate (`failed_gate="screen"`), screened
+  `final_remerge`, and the `_snot_tiers` revert pre-empt. Lateral/SNOT mates
+  are supported (field plane rotated onto the mating plane), with
+  rank-rejection scoped to vertical-only layouts and binary
+  confident-unstable rejection everywhere. Hull-vertex constraint masking
+  shipped (16.6% shell-series win vs its ≥10% gate); `screen_fields=
+  "bricksim"` is a working research basis.
+
+  Sites measured NOT worth screening: hollow-restore (unconditional accept,
+  no test to skip), `_add_support` (no candidates), redesign's envelope
+  baselines (need `interface_forces`), global-exact stability cuts (MILP
+  dominates, needs `weakest_pair`), and
+  `_canonicalize_templates`/`_guarded_finish` (one binary-gated solve each).
+  Measurement gate: `scripts/benchmark_screen.py` against the pre-registered
+  thresholds in
+  [`docs/guides/performance-testing.md`](docs/guides/performance-testing.md).
+
+- **Candidate caching in greedy `_fill`.** `_placements` recomputes rotations
+  and validity per seed; memoize per (part, yaw) footprints and test cells
+  against numpy masks instead of Python sets.
+
+- **Multi-seed restarts.** Layout quality varies noticeably across seeds on
+  shell shapes (the r=4 hollow sphere spans ~135–205 parts over seeds), and
+  restarts are opt-in at `restarts = 1`. `--strategy all` (`compare.run_all`)
+  already fans out over a spawn process pool across strategies at one seed;
+  a multi-seed sweep that harvests the good tail is a small extension of the
+  same runner, and all state is copyable via `Layout.copy`.
+
+### Placement quality
+
+- **Validate the beauty scalar against human judgement.** Min-style
+  symmetry/balance and SM-GA/Bao perpendicularity are live objective terms
+  (`placement/aesthetics.py`) and the beauty strategy optimizes them
+  directly, but the scalar has never been checked against human preference
+  (the permutation-drift methodology).
 
 ## Research traceability
 
