@@ -1,0 +1,2566 @@
+{
+  "input": "macc.ldr",
+  "mode": "topological-spatial-fallback",
+  "brick_count": 3833,
+  "mass_g": 6317.23,
+  "step_count": 215,
+  "target_step_size": 20,
+  "max_step_size": 25,
+  "component_count": 9,
+  "floating_count": 11,
+  "grounded_base_bricks": 62,
+  "force_stability_certified": false,
+  "warnings": [
+    "Force-stability certification was not completed: the 3,833-part LP exceeded the practical audit window.",
+    "The source contains 9 stud-connected components and 11 bricks with no stud path to ground; revise or hand-support those details.",
+    "This fallback plan is support- and insertion-valid, spatially chunked to at most 25 parts per step, and topology-audited only."
+  ],
+  "flagged_steps": [
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    145,
+    146,
+    147,
+    148,
+    149,
+    150,
+    151,
+    152,
+    153,
+    154,
+    155,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161,
+    162,
+    163,
+    164,
+    165,
+    166,
+    167,
+    168,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "band_layer": 0,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 20,
+      "flags": []
+    },
+    {
+      "index": 2,
+      "band_layer": 0,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 40,
+      "flags": []
+    },
+    {
+      "index": 3,
+      "band_layer": 0,
+      "size": 22,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 62,
+      "flags": []
+    },
+    {
+      "index": 4,
+      "band_layer": 3,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 48,
+      "flags": []
+    },
+    {
+      "index": 5,
+      "band_layer": 3,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 31,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 6,
+      "band_layer": 3,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 19,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 7,
+      "band_layer": 3,
+      "size": 6,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 20,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 8,
+      "band_layer": 3,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 13,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 9,
+      "band_layer": 6,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 15,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 10,
+      "band_layer": 6,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 13,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 11,
+      "band_layer": 6,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 12,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 12,
+      "band_layer": 6,
+      "size": 10,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 13,
+      "band_layer": 6,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 14,
+      "band_layer": 9,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 15,
+      "band_layer": 9,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 16,
+      "band_layer": 9,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 17,
+      "band_layer": 9,
+      "size": 17,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 18,
+      "band_layer": 12,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 19,
+      "band_layer": 12,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 20,
+      "band_layer": 12,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 21,
+      "band_layer": 12,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 22,
+      "band_layer": 15,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 23,
+      "band_layer": 15,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 24,
+      "band_layer": 15,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 25,
+      "band_layer": 15,
+      "size": 19,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 26,
+      "band_layer": 18,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 27,
+      "band_layer": 18,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 28,
+      "band_layer": 18,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 29,
+      "band_layer": 18,
+      "size": 9,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 3,
+      "flags": []
+    },
+    {
+      "index": 30,
+      "band_layer": 21,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 31,
+      "band_layer": 21,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 32,
+      "band_layer": 21,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 33,
+      "band_layer": 21,
+      "size": 13,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 34,
+      "band_layer": 24,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 13,
+      "components_after": 16,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 35,
+      "band_layer": 24,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 14,
+      "components_after": 16,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 36,
+      "band_layer": 24,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 14,
+      "components_after": 16,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 37,
+      "band_layer": 24,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 13,
+      "components_after": 15,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 38,
+      "band_layer": 24,
+      "size": 13,
+      "prefix_topology_grounded": false,
+      "floating_after": 14,
+      "components_after": 16,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 39,
+      "band_layer": 27,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 19,
+      "components_after": 15,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 40,
+      "band_layer": 27,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 22,
+      "components_after": 18,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 41,
+      "band_layer": 27,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 21,
+      "components_after": 17,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 42,
+      "band_layer": 27,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 22,
+      "components_after": 17,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 43,
+      "band_layer": 27,
+      "size": 11,
+      "prefix_topology_grounded": false,
+      "floating_after": 22,
+      "components_after": 17,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 44,
+      "band_layer": 30,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 12,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 45,
+      "band_layer": 30,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 46,
+      "band_layer": 30,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 47,
+      "band_layer": 30,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 48,
+      "band_layer": 30,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 49,
+      "band_layer": 30,
+      "size": 6,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 50,
+      "band_layer": 33,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 51,
+      "band_layer": 33,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 52,
+      "band_layer": 33,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 53,
+      "band_layer": 33,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 54,
+      "band_layer": 33,
+      "size": 14,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 55,
+      "band_layer": 36,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 56,
+      "band_layer": 36,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 57,
+      "band_layer": 36,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 58,
+      "band_layer": 36,
+      "size": 24,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 59,
+      "band_layer": 39,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 60,
+      "band_layer": 39,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 61,
+      "band_layer": 39,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 62,
+      "band_layer": 39,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 63,
+      "band_layer": 39,
+      "size": 14,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 64,
+      "band_layer": 42,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 65,
+      "band_layer": 42,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 66,
+      "band_layer": 42,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 67,
+      "band_layer": 42,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 68,
+      "band_layer": 42,
+      "size": 8,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 69,
+      "band_layer": 45,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 70,
+      "band_layer": 45,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 71,
+      "band_layer": 45,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 72,
+      "band_layer": 45,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 73,
+      "band_layer": 45,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 74,
+      "band_layer": 48,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 75,
+      "band_layer": 48,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 76,
+      "band_layer": 48,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 77,
+      "band_layer": 48,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 78,
+      "band_layer": 48,
+      "size": 12,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 79,
+      "band_layer": 51,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 80,
+      "band_layer": 51,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 81,
+      "band_layer": 51,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 82,
+      "band_layer": 51,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 83,
+      "band_layer": 51,
+      "size": 21,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 84,
+      "band_layer": 54,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 85,
+      "band_layer": 54,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 86,
+      "band_layer": 54,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 87,
+      "band_layer": 54,
+      "size": 8,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 88,
+      "band_layer": 54,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 89,
+      "band_layer": 57,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 90,
+      "band_layer": 57,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 91,
+      "band_layer": 57,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 1,
+      "flags": []
+    },
+    {
+      "index": 92,
+      "band_layer": 57,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 1,
+      "flags": []
+    },
+    {
+      "index": 93,
+      "band_layer": 60,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 1,
+      "flags": []
+    },
+    {
+      "index": 94,
+      "band_layer": 60,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 1,
+      "flags": []
+    },
+    {
+      "index": 95,
+      "band_layer": 60,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 1,
+      "flags": []
+    },
+    {
+      "index": 96,
+      "band_layer": 60,
+      "size": 20,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 1,
+      "flags": []
+    },
+    {
+      "index": 97,
+      "band_layer": 60,
+      "size": 6,
+      "prefix_topology_grounded": true,
+      "floating_after": 0,
+      "components_after": 1,
+      "flags": []
+    },
+    {
+      "index": 98,
+      "band_layer": 63,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 1,
+      "components_after": 2,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 99,
+      "band_layer": 63,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 100,
+      "band_layer": 63,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 101,
+      "band_layer": 63,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 102,
+      "band_layer": 63,
+      "size": 12,
+      "prefix_topology_grounded": false,
+      "floating_after": 2,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 103,
+      "band_layer": 66,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 104,
+      "band_layer": 66,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 105,
+      "band_layer": 66,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 106,
+      "band_layer": 66,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 107,
+      "band_layer": 66,
+      "size": 12,
+      "prefix_topology_grounded": false,
+      "floating_after": 3,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 108,
+      "band_layer": 69,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 109,
+      "band_layer": 69,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 110,
+      "band_layer": 69,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 111,
+      "band_layer": 69,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 112,
+      "band_layer": 69,
+      "size": 9,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 113,
+      "band_layer": 72,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 114,
+      "band_layer": 72,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 115,
+      "band_layer": 72,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 116,
+      "band_layer": 72,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 117,
+      "band_layer": 72,
+      "size": 7,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 118,
+      "band_layer": 75,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 119,
+      "band_layer": 75,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 120,
+      "band_layer": 75,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 121,
+      "band_layer": 75,
+      "size": 18,
+      "prefix_topology_grounded": false,
+      "floating_after": 4,
+      "components_after": 3,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 122,
+      "band_layer": 78,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 123,
+      "band_layer": 78,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 124,
+      "band_layer": 78,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 125,
+      "band_layer": 78,
+      "size": 23,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 5,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 126,
+      "band_layer": 81,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 127,
+      "band_layer": 81,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 128,
+      "band_layer": 81,
+      "size": 16,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 129,
+      "band_layer": 81,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 130,
+      "band_layer": 84,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 131,
+      "band_layer": 84,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 132,
+      "band_layer": 84,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 5,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 133,
+      "band_layer": 84,
+      "size": 13,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 134,
+      "band_layer": 87,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 135,
+      "band_layer": 87,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 136,
+      "band_layer": 87,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 5,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 137,
+      "band_layer": 87,
+      "size": 18,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 138,
+      "band_layer": 90,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 139,
+      "band_layer": 90,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 140,
+      "band_layer": 90,
+      "size": 13,
+      "prefix_topology_grounded": false,
+      "floating_after": 5,
+      "components_after": 4,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 141,
+      "band_layer": 90,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 6,
+      "components_after": 5,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 142,
+      "band_layer": 93,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 143,
+      "band_layer": 93,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 144,
+      "band_layer": 93,
+      "size": 13,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 145,
+      "band_layer": 93,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 146,
+      "band_layer": 96,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 147,
+      "band_layer": 96,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 148,
+      "band_layer": 96,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 149,
+      "band_layer": 96,
+      "size": 6,
+      "prefix_topology_grounded": false,
+      "floating_after": 7,
+      "components_after": 6,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 150,
+      "band_layer": 99,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 17,
+      "components_after": 16,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 151,
+      "band_layer": 99,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 18,
+      "components_after": 17,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 152,
+      "band_layer": 99,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 17,
+      "components_after": 16,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 153,
+      "band_layer": 99,
+      "size": 21,
+      "prefix_topology_grounded": false,
+      "floating_after": 15,
+      "components_after": 14,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 154,
+      "band_layer": 102,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 15,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 155,
+      "band_layer": 102,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 13,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 156,
+      "band_layer": 102,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 16,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 157,
+      "band_layer": 102,
+      "size": 15,
+      "prefix_topology_grounded": false,
+      "floating_after": 16,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 158,
+      "band_layer": 105,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 159,
+      "band_layer": 105,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 160,
+      "band_layer": 105,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 161,
+      "band_layer": 105,
+      "size": 7,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 162,
+      "band_layer": 108,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 8,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 163,
+      "band_layer": 108,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 10,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 164,
+      "band_layer": 108,
+      "size": 18,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 165,
+      "band_layer": 109,
+      "size": 2,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 166,
+      "band_layer": 110,
+      "size": 2,
+      "prefix_topology_grounded": false,
+      "floating_after": 13,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 167,
+      "band_layer": 111,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 14,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 168,
+      "band_layer": 111,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 14,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 169,
+      "band_layer": 111,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 15,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 170,
+      "band_layer": 111,
+      "size": 7,
+      "prefix_topology_grounded": false,
+      "floating_after": 15,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 171,
+      "band_layer": 114,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 10,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 172,
+      "band_layer": 114,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 16,
+      "components_after": 12,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 173,
+      "band_layer": 114,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 21,
+      "components_after": 14,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 174,
+      "band_layer": 114,
+      "size": 14,
+      "prefix_topology_grounded": false,
+      "floating_after": 22,
+      "components_after": 15,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 175,
+      "band_layer": 117,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 22,
+      "components_after": 15,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 176,
+      "band_layer": 117,
+      "size": 18,
+      "prefix_topology_grounded": false,
+      "floating_after": 24,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 177,
+      "band_layer": 117,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 28,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 178,
+      "band_layer": 118,
+      "size": 1,
+      "prefix_topology_grounded": false,
+      "floating_after": 28,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 179,
+      "band_layer": 119,
+      "size": 1,
+      "prefix_topology_grounded": false,
+      "floating_after": 29,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 180,
+      "band_layer": 120,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 29,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 181,
+      "band_layer": 120,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 19,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 182,
+      "band_layer": 120,
+      "size": 14,
+      "prefix_topology_grounded": false,
+      "floating_after": 24,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 183,
+      "band_layer": 123,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 184,
+      "band_layer": 121,
+      "size": 2,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 185,
+      "band_layer": 123,
+      "size": 13,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 8,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 186,
+      "band_layer": 123,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 12,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 187,
+      "band_layer": 125,
+      "size": 2,
+      "prefix_topology_grounded": false,
+      "floating_after": 14,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 188,
+      "band_layer": 126,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 10,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 189,
+      "band_layer": 126,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 12,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 190,
+      "band_layer": 126,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 15,
+      "components_after": 14,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 191,
+      "band_layer": 126,
+      "size": 13,
+      "prefix_topology_grounded": false,
+      "floating_after": 20,
+      "components_after": 17,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 192,
+      "band_layer": 129,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 20,
+      "components_after": 17,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 193,
+      "band_layer": 129,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 19,
+      "components_after": 16,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 194,
+      "band_layer": 129,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 15,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 195,
+      "band_layer": 129,
+      "size": 9,
+      "prefix_topology_grounded": false,
+      "floating_after": 9,
+      "components_after": 7,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 196,
+      "band_layer": 132,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 197,
+      "band_layer": 132,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 198,
+      "band_layer": 132,
+      "size": 15,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 199,
+      "band_layer": 134,
+      "size": 2,
+      "prefix_topology_grounded": false,
+      "floating_after": 13,
+      "components_after": 11,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 200,
+      "band_layer": 135,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 12,
+      "components_after": 10,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 201,
+      "band_layer": 135,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 202,
+      "band_layer": 135,
+      "size": 17,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 203,
+      "band_layer": 138,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 204,
+      "band_layer": 138,
+      "size": 8,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 205,
+      "band_layer": 138,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 206,
+      "band_layer": 141,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 207,
+      "band_layer": 141,
+      "size": 15,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 208,
+      "band_layer": 144,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 209,
+      "band_layer": 144,
+      "size": 22,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 210,
+      "band_layer": 147,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 211,
+      "band_layer": 147,
+      "size": 14,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 212,
+      "band_layer": 150,
+      "size": 20,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 213,
+      "band_layer": 150,
+      "size": 6,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 214,
+      "band_layer": 153,
+      "size": 12,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    },
+    {
+      "index": 215,
+      "band_layer": 156,
+      "size": 10,
+      "prefix_topology_grounded": false,
+      "floating_after": 11,
+      "components_after": 9,
+      "flags": [
+        "floating"
+      ]
+    }
+  ]
+}

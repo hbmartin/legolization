@@ -1,0 +1,3389 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Turn a 3D model into a physically buildable LEGO-style model in LDraw format, with verified structural stability, step-by-step build instructions, and a bill of materials.
+">
+      
+      
+        <meta name="author" content="Harold Martin">
+      
+      
+        <link rel="canonical" href="https://hbmartin.github.io/legolization/reports/kollsker-drift-report/">
+      
+      
+        <link rel="prev" href="../../guides/performance-testing/">
+      
+      
+        <link rel="next" href="../unstable-prefix-report/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>Kollsker's per-layer optimum drifts upward downstream - Legolization</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#kollskers-per-layer-optimum-drifts-upward-downstream" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Legolization" class="md-header__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Legolization
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Kollsker's per-layer optimum drifts upward downstream
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Legolization" class="md-nav__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    Legolization
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../basics/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Basics
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Basics
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/install.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Install the skills
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/first-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/choosing-a-skill.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a skill
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/reading-results.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reading the results
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/troubleshooting.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Troubleshooting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Skill reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Skill reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/legolize-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  legolize-model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/prepare-lego-input.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  prepare-lego-input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/optimize-lego-build.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  optimize-lego-build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/publish-lego-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  publish-lego-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/analyze-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/repair-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  repair-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/inspect-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  inspect-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/render-ldraw.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  render-ldraw
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/extend-lego-part-support.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  extend-lego-part-support
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/eval-corpus.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  eval-corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Guide
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Guide
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Core concepts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/quality-and-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Quality tiers and budgets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/choosing-a-strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a strategy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/bundles-and-artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundles and artifacts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/exit-codes-and-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes and JSON
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/rendering-and-parts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Rendering and parts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Python API
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Command reference
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Command reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/bundle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/build/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/analyze/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/model-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  model and instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  catalog
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/parts-cache-validate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  parts, cache, validate
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Theory
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Theory
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/pipeline.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The pipeline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/representations.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Representations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/placement/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Placement
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Placement
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/constructive.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Constructive heuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/layered-engine.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The layered engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/metaheuristics.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Metaheuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/exact.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exact methods
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/merge-and-repair.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Merge and repair
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/finishing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Finishing passes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/stability/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Stability
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Stability
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/rbe.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The RBE model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/exactness.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exactness and certificates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/screens.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Screens
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/warm-solving.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Warm solving
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/sequencing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Sequencing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/subassemblies.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Subassemblies
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/analysis-stack.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The analysis stack
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/papers.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Papers and provenance
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../project/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Project notes
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Project notes
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/self-evaluation-playbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Self-evaluation playbook
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/performance-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance testing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: Kollsker drift
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: Kollsker drift
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tldr" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        TL;DR
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-mechanism-verified-against-the-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Mechanism (verified against the code)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-evidence-per-phase-trajectories-pre-fix-seed-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. Evidence: per-phase trajectories (pre-fix, seed 0)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-experiments-ablations-pre-fix-seed-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Experiments: ablations (pre-fix, seed 0)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-why-per-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. Why per case
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-ranked-recommendations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Ranked recommendations
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-pointers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Pointers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-outcome-post-fix-seed-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        7. Outcome (post-fix, seed 0)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Outcome (post-fix, seed 0)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v5-addendum-milp-bridge-synthesis-the-54-recommendation-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v5 addendum: MILP bridge synthesis (the §5.4 recommendation, built)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v7-addendum-re-phased-candidate-enumeration-built-not-promoted" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v7 addendum: re-phased candidate enumeration (built, not promoted)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v8-closure-2026-08-07-the-thin-shell-residual-is-closed-by-decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v8 closure (2026-08-07): the thin-shell residual is closed by decision
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../unstable-prefix-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: unstable prefixes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../physics-fidelity-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: physics fidelity
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mesh-baseline-pending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: mesh baseline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/roadmap-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Roadmap history
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tldr" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        TL;DR
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-mechanism-verified-against-the-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Mechanism (verified against the code)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-evidence-per-phase-trajectories-pre-fix-seed-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. Evidence: per-phase trajectories (pre-fix, seed 0)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-experiments-ablations-pre-fix-seed-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Experiments: ablations (pre-fix, seed 0)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-why-per-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. Why per case
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-ranked-recommendations" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Ranked recommendations
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-pointers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Pointers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-outcome-post-fix-seed-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        7. Outcome (post-fix, seed 0)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Outcome (post-fix, seed 0)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v5-addendum-milp-bridge-synthesis-the-54-recommendation-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v5 addendum: MILP bridge synthesis (the §5.4 recommendation, built)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v7-addendum-re-phased-candidate-enumeration-built-not-promoted" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v7 addendum: re-phased candidate enumeration (built, not promoted)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v8-closure-2026-08-07-the-thin-shell-residual-is-closed-by-decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v8 closure (2026-08-07): the thin-shell residual is closed by decision
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../../project/" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Project notes
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/hbmartin/legolization/edit/main/docs/reports/kollsker-drift-report.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="kollskers-per-layer-optimum-drifts-upward-downstream">Kollsker's per-layer optimum drifts upward downstream<a class="headerlink" href="#kollskers-per-layer-optimum-drifts-upward-downstream" title="Permanent link">&para;</a></h1>
+<p>The <code>kollsker</code> strategy solves each layer to a provably minimum brick
+count, yet finished end-to-end WORSE than the constructive <code>bond</code>
+heuristic on two corpus models. This report carries reproducible
+evidence from the corpus and ranks the fix space. Written 2026-07-19 on
+branch <code>roadmap-v4</code>; the measurement tooling
+(<code>scripts/count_trajectory.py</code>, telemetry value gauges) landed with the
+first draft, the fix landed separately — sections 2–4 are from the
+pre-fix code state, section 7 records the fix and its measured effect.</p>
+<h2 id="tldr">TL;DR<a class="headerlink" href="#tldr" title="Permanent link">&para;</a></h2>
+<p>The drift is real but it is NOT kollsker's fault, and it is NOT in
+repair or hollow-restore. Kollsker's tilings are simultaneously the
+smallest (mushroom 112 vs bond's 130; thin-shell 146 vs 182) AND the
+least fragmented (thin-shell 18 components vs bond's 26). The entire
+inflation happens inside <code>improve_connectivity</code>: its random-maximal
+region rewrite is accepted on component count alone, and a single
+accepted rewrite added +179 bricks to mushroom's 112-brick minimum
+tiling (+295 on thin-shell). The pass is essential — without it these
+placements are 2–26 components and unstable — but its count-blind
+acceptance taxed the strategy with the most structure to lose, which
+is exactly the per-layer-optimal one. Best-of-k acceptance
+(<code>bridge_draws=5</code>, layered strategies only) fixes the ranking:
+mushroom kollsker 269 → 251 (now beats bond's 263), thin-shell
+kollsker 417 → 386 (now beats bond's 398), with bond and fast
+unchanged or slightly improved.</p>
+<h2 id="1-mechanism-verified-against-the-code">1. Mechanism (verified against the code)<a class="headerlink" href="#1-mechanism-verified-against-the-code" title="Permanent link">&para;</a></h2>
+<ul>
+<li>After tiling, <code>LayeredStrategy.place</code> runs <code>compact_vertical</code>
+  (<code>merge.py</code> — reduce-only, plates only) then <code>improve_connectivity</code>
+  (<code>merge.py</code>): while the layout has more than one stud component, a
+  growing <code>k_ring</code> around the component border is split to 1×1 plates
+  and re-tiled by <code>maximal_random_merge</code> — a RANDOM MAXIMAL tiling —
+  and the candidate is accepted iff the component count strictly
+  drops (Luo's Algorithm 5). Historically <strong>brick count was never part
+  of the acceptance test</strong>, so each accepted iteration could trade the
+  MILP-minimal local structure for random-maximal structure.</li>
+<li><code>repair_stability</code> (<code>repair.py</code>) fires only on unstable placements
+  and accepts purely on the artificial-link deficit <code>q</code>
+  (<code>repair.py:90</code>) — also count-blind; <code>_merge_fill</code> refills freed
+  regions with a random regional merge when they exceed the MILP cell
+  limit.</li>
+<li>The hollow-restore loop (<code>pipeline.py</code>) adds material back to
+  the working grid while unstable and re-runs the whole placement per
+  round — monotone count growth wherever it fires.</li>
+<li><code>final_remerge</code> (<code>merge.py</code>) accepts only candidates that are
+  strictly smaller AND no worse in objective AND components — it can
+  only claw back, never inflate, and runs identically for every
+  strategy.</li>
+<li>Kollsker's stage 2 (<code>kollsker.py</code>) is pinned to the stage-1 minimum
+  N* by an equality row — it can re-shuffle which N* rects are chosen
+  but can never spend a brick to buy connectivity — and its
+  <code>_bond_reward</code> sees only the below layer's <code>seam_priority</code>, whose
+  <code>_seams_of</code> (<code>engine.py</code>) misses gap-separated seams and
+  seams outside the problem's own footprint. If every minimum-count
+  cover shares the same straight seam, no reward term can escape it.</li>
+<li><code>bond</code> bakes stagger into construction (<code>bond.py</code>) and its
+  layer repair only accepts refills that use FEWER parts
+  (<code>bond.py:234</code>) — so its tilings hand less work to the count-blind
+  passes.</li>
+</ul>
+<h2 id="2-evidence-per-phase-trajectories-pre-fix-seed-0">2. Evidence: per-phase trajectories (pre-fix, seed 0)<a class="headerlink" href="#2-evidence-per-phase-trajectories-pre-fix-seed-0" title="Permanent link">&para;</a></h2>
+<p>Reproduce: <code>uv run python scripts/count_trajectory.py MODEL
+--strategy NAME</code> (sha-stamped JSON artifact per run). Corpus
+cross-check: end-to-end counts match the committed scorecard rows
+(mushroom 269/265, thin-shell 417/398/370).</p>
+<p>mushroom (solid stem, hollowed cap overhang):</p>
+<table>
+<thead>
+<tr>
+<th>phase</th>
+<th>kollsker</th>
+<th>bond</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tiled (per-layer minimum)</td>
+<td><strong>112</strong></td>
+<td>130</td>
+</tr>
+<tr>
+<td>compact_vertical</td>
+<td>112</td>
+<td>130</td>
+</tr>
+<tr>
+<td>improve_connectivity</td>
+<td>291 (<strong>+179</strong>)</td>
+<td>281 (+151)</td>
+</tr>
+<tr>
+<td>post-place / repair</td>
+<td>291, stable</td>
+<td>281, stable</td>
+</tr>
+<tr>
+<td>final_remerge</td>
+<td><strong>269</strong></td>
+<td><strong>265</strong></td>
+</tr>
+</tbody>
+</table>
+<p>thin-shell (hollow cylinder, annulus slices):</p>
+<table>
+<thead>
+<tr>
+<th>phase</th>
+<th>kollsker</th>
+<th>bond</th>
+<th>fast</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tiled (per-layer minimum)</td>
+<td><strong>146</strong></td>
+<td>182</td>
+<td>203</td>
+</tr>
+<tr>
+<td>compact_vertical</td>
+<td>146</td>
+<td>182</td>
+<td>203</td>
+</tr>
+<tr>
+<td>improve_connectivity</td>
+<td>441 (<strong>+295</strong>)</td>
+<td>436 (+254)</td>
+<td>404 (+201)</td>
+</tr>
+<tr>
+<td>post-place / repair</td>
+<td>441, stable</td>
+<td>436, stable</td>
+<td>404, stable</td>
+</tr>
+<tr>
+<td>final_remerge</td>
+<td><strong>417</strong></td>
+<td><strong>398</strong></td>
+<td><strong>370</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Repair and hollow-restore contribute nothing on the default paths
+(post-place equals post-connectivity and is already stable);
+<code>final_remerge</code> claws back 16–38 bricks but cannot undo a +179..+295
+inflation. The whole ranking flip lives in one pass.</p>
+<h2 id="3-experiments-ablations-pre-fix-seed-0">3. Experiments: ablations (pre-fix, seed 0)<a class="headerlink" href="#3-experiments-ablations-pre-fix-seed-0" title="Permanent link">&para;</a></h2>
+<p><code>--fail-max 0</code> disables <code>improve_connectivity</code>; <code>--solid</code> disables
+hollow/restore; <code>--no-repair</code> disables ALNS repair. "Pure" =
+<code>--solid --no-repair --fail-max 0</code> (tiling + compact only).</p>
+<table>
+<thead>
+<tr>
+<th>model × variant</th>
+<th>kollsker</th>
+<th>bond</th>
+<th>fast</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mushroom pure</td>
+<td><strong>84</strong> (2 comps)</td>
+<td>103 (1 comp)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>mushroom default</td>
+<td>269</td>
+<td>265</td>
+<td>—</td>
+</tr>
+<tr>
+<td>thin-shell pure</td>
+<td><strong>146</strong> (18 comps)</td>
+<td>182 (26 comps)</td>
+<td>203 (22 comps)</td>
+</tr>
+<tr>
+<td>thin-shell default</td>
+<td>417</td>
+<td>398</td>
+<td>370</td>
+</tr>
+</tbody>
+</table>
+<p>Conclusions the ablations force:</p>
+<ul>
+<li><strong>Per-layer optimality holds end-to-end when the count-blind pass is
+  off</strong>: pure kollsker beats pure bond by 19 bricks on mushroom and 36
+  on thin-shell.</li>
+<li><strong>Kollsker does not fragment more</strong> — the opposite: thin-shell
+  kollsker leaves 18 components to bond's 26 and fast's 22, and its
+  mushroom tiling is 2 components to bond's 1 (bond's baked stagger
+  self-connects the solid variant). The §1 hypothesis "minimum tilings
+  ⇒ straighter seams ⇒ more components" is REFUTED on these models.</li>
+<li><strong>The pass is essential</strong>: every <code>--fail-max 0</code> run ends
+  multi-component and unstable (e.g. thin-shell kollsker 21
+  components). Removing it is not a fix.</li>
+<li>The inflation is roughly proportional to how much minimal structure
+  enters the pass: +179 on a 112-brick tiling vs +151 on a 130-brick
+  one (mushroom); +295/146 vs +254/182 vs +201/203 (thin-shell). A
+  random-maximal rewrite has more to destroy in a minimal tiling.</li>
+</ul>
+<h2 id="4-why-per-case">4. Why per case<a class="headerlink" href="#4-why-per-case" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>mushroom</strong>: one accepted rewrite (1 attempt, 1 accept) bridged the
+  2-component stem/cap split and re-tiled the k_ring randomly: +179
+  bricks. Bond entered with a worse tiling (130) but its stagger left
+  a 1-component solid body, so its rewrite touched less. Repair and
+  hollow-restore never fired on either default run — they are
+  bystanders, not causes.</li>
+<li><strong>thin-shell</strong>: annulus slices fragment every strategy (18–26
+  components). Bridging 18 components meant rewriting essentially the
+  whole border ring; the random-maximal result carries none of the
+  MILP structure. Fast ends best (370) not because its tiling is good
+  (203, the worst) but because random-maximal output resembles a
+  coarse heuristic tiling more than a minimal one — the pass
+  regresses every strategy toward the same random-maximal mean, so
+  entering with better structure bought nothing.</li>
+</ul>
+<h2 id="5-ranked-recommendations">5. Ranked recommendations<a class="headerlink" href="#5-ranked-recommendations" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>(a) Best-of-k acceptance in <code>improve_connectivity</code> — IMPLEMENTED</strong>
+   (<code>bridge_draws</code> parameter): per bridging step, draw k=5 candidates
+   and accept the bridging draw minimizing <code>(components, bricks)</code>.
+   Bridging guarantee and termination unchanged; deterministic (same
+   rng stream). Applied to the layered strategies only — the greedy
+   path keeps the historical single draw because its shipped goldens
+   pin exact bytes and, measured, local best-of-k choices shift
+   downstream refinement chaotically on tiny models (heart 12 → 29
+   bricks, arch 32 → 23, pyramid 124 → 118: two improvements and one
+   severe regression from the same change).</li>
+<li><strong>(b) Kollsker stage-2 bridging term — NOT INDICATED by the
+   evidence.</strong> The hypothesis motivating it (kollsker fragments more)
+   is refuted: kollsker already produces the fewest components. A
+   below-component coverage bonus could only reduce the number of
+   bridging steps, which is not what inflates counts — the accepted
+   rewrite is. Recorded for reconsideration only if a future model
+   shows kollsker-specific fragmentation.</li>
+<li><strong>&copy; Repair MILP cell-limit sizing / (d) multi-draw
+   <code>final_remerge</code></strong>: no evidence to act on — repair contributed
+   nothing on the default paths, and <code>final_remerge</code> already
+   monotonically improves. Record-only.</li>
+<li><strong>Non-recommendations</strong>: MILP ring refill inside
+   <code>improve_connectivity</code> can reproduce the very seam being repaired
+   (an exact-cover minimum of the ring is exactly what fragmented);
+   an [N*, N*+k] slack row in kollsker forfeits the strategy's
+   defining per-layer-minimum guarantee.</li>
+</ol>
+<h2 id="6-pointers">6. Pointers<a class="headerlink" href="#6-pointers" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Reproduce: <code>uv run python scripts/count_trajectory.py mushroom
+  --strategy kollsker --seed 0</code> (and <code>bond</code>; <code>thin-shell</code> likewise;
+  ablation flags in §3).</li>
+<li><code>docs/guides/self-evaluation-playbook.md</code>, <code>docs/guides/performance-testing.md</code>,
+  <code>ROADMAP.md</code> v4 progress notes.</li>
+</ul>
+<h2 id="7-outcome-post-fix-seed-0">7. Outcome (post-fix, seed 0)<a class="headerlink" href="#7-outcome-post-fix-seed-0" title="Permanent link">&para;</a></h2>
+<p><code>bridge_draws=5</code> for layered strategies (<code>engine.py</code>), default 1
+(byte-identical historical behaviour) elsewhere; greedy goldens
+byte-exact.</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>strategy</th>
+<th>before</th>
+<th>after</th>
+<th>Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mushroom</td>
+<td>kollsker</td>
+<td>269</td>
+<td><strong>251</strong></td>
+<td>−18</td>
+</tr>
+<tr>
+<td>mushroom</td>
+<td>bond</td>
+<td>265</td>
+<td>263</td>
+<td>−2</td>
+</tr>
+<tr>
+<td>thin-shell</td>
+<td>kollsker</td>
+<td>417</td>
+<td><strong>386</strong></td>
+<td>−31</td>
+</tr>
+<tr>
+<td>thin-shell</td>
+<td>bond</td>
+<td>398</td>
+<td>398</td>
+<td>0</td>
+</tr>
+<tr>
+<td>thin-shell</td>
+<td>fast</td>
+<td>370</td>
+<td>370</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="v5-addendum-milp-bridge-synthesis-the-54-recommendation-built">v5 addendum: MILP bridge synthesis (the §5.4 recommendation, built)<a class="headerlink" href="#v5-addendum-milp-bridge-synthesis-the-54-recommendation-built" title="Permanent link">&para;</a></h3>
+<p><code>BridgeSynthesizer</code> (placement/layered/bridge.py) re-tiles the repair
+ring through the same absolute-slab decomposition the strategies place
+with: per-slab exact-cover MILP, stage 1 minimum count subject to a
+hard bridging row (≥1 chosen rect must touch two components — the
+seam-reproduction trap is infeasible by construction), stage 2 pins
+the count and maximizes crossings plus the shared stagger reward. Its
+candidate <strong>competes</strong> in <code>improve_connectivity</code>'s best-of-k on the
+same <code>(components, bricks)</code> key — never preempts (a preempting accept
+measured +11 bricks on mushroom because the absolute-slab re-tiling
+cannot re-phase plate columns).</p>
+<p>Measured: on clean straight seams it is optimal — the two-tower
+fixture bridges as two 1x4 <strong>bricks</strong> where the random rewrite needs
+six 1x4 <strong>plates</strong>; corpus: fast's wide-arch improved (objective
+0.4231 → 0.4002, taking the model). On interleaved shell fragmentation
+(mushroom 23 components, thin-shell 18) per-slab covers with forced
+crossings cannot stitch the stack — the assembled ring re-fragments
+(measured mid-build label counts up to 24 vs 18) and the synthesizer's
+own component guard declines; the random path still handles those, so
+mushroom 251 / thin-shell 386 are unchanged. Closing the shell class
+needs a cross-slab formulation with explicit bond variables —
+recorded as future work, not attempted in v5.</p>
+<p>Kollsker now finishes ahead of bond on both drift models
+(251 &lt; 263, 386 &lt; 398); its <code>improve_connectivity</code> inflation dropped
+from +179 to +155 (mushroom) and +295 to +280 (thin-shell), with
+<code>final_remerge</code> clawing back more from the leaner accepted rewrites.
+All runs stable, single-component. <code>fast</code> keeps thin-shell's overall
+best (370) — regression-to-the-random-maximal-mean still caps how much
+a minimal tiling is worth on heavily fragmented models; closing that
+residual gap needs a structure-preserving bridge synthesis, out of
+scope here.</p>
+<h3 id="v7-addendum-re-phased-candidate-enumeration-built-not-promoted">v7 addendum: re-phased candidate enumeration (built, not promoted)<a class="headerlink" href="#v7-addendum-re-phased-candidate-enumeration-built-not-promoted" title="Permanent link">&para;</a></h3>
+<p>The absolute-slab limitation is now an explicit ablation rather than
+an unimplemented hypothesis. <code>BridgeSynthesizer(rephase=True)</code> tries
+phases 0, 1, and 2 under one placement deadline, measures all cheap
+per-slab candidates before flow, escalates the most promising partial
+phase first, and chooses by <code>(components, bricks, phase)</code>.</p>
+<p>The mechanism exposes the predicted shell candidates but does not beat
+the existing best-of-k repair:</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th style="text-align: right;">best re-phased intermediate</th>
+<th style="text-align: right;">competing random repair</th>
+<th style="text-align: right;">final</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mushroom</td>
+<td style="text-align: right;">phase 1: 3 components / 196 bricks</td>
+<td style="text-align: right;">1 / 267</td>
+<td style="text-align: right;">251 bricks</td>
+</tr>
+<tr>
+<td>thin-shell</td>
+<td style="text-align: right;">phase 2: 17 / 380</td>
+<td style="text-align: right;">1 component wins</td>
+<td style="text-align: right;">386 bricks</td>
+</tr>
+</tbody>
+</table>
+<p>Mushroom's other cheap candidates were phase 0 = 22 / 112 and phase 2
+= 4 / 193. A larger flow probe reached 2_322 candidates / 44_162 arcs
+on phase 0 without improving the final result. The feature therefore
+ships opt-in as <code>--bridge-rephase</code>, with phase telemetry and
+determinism tests, while default results remain unchanged. The
+remaining blocker is not candidate visibility alone: the selected
+minimal re-phased cover still loses to a heavier fully connected
+random repair under the production acceptance key.</p>
+<h3 id="v8-closure-2026-08-07-the-thin-shell-residual-is-closed-by-decision">v8 closure (2026-08-07): the thin-shell residual is closed by decision<a class="headerlink" href="#v8-closure-2026-08-07-the-thin-shell-residual-is-closed-by-decision" title="Permanent link">&para;</a></h3>
+<p>The residual this report leaves open — <code>fast</code> 370 vs kollsker 386 on
+thin-shell — is formally closed without further placement work, the
+same way the unstable-prefix report's recommendation 2 was closed.</p>
+<p>Four mechanisms were built against the shell class and none was
+promoted, which is the evidence base for the decision:</p>
+<ul>
+<li>the v5 per-slab <code>BridgeSynthesizer</code> (optimal on clean straight
+  seams; its own component guard declines interleaved shells);</li>
+<li>the WS-F cross-slab flow escalation (closes the cover-coordination
+  class, but thin-shell's ring at 1_364 rects / 15_752 arcs cannot
+  close in 60 s and declines at the 600/8_000 defaults);</li>
+<li>the v7 <code>--bridge-rephase</code> ablation (exposes the predicted shell
+  candidates — thin-shell's partial phase-2 at 17 / 380 — but the
+  minimal cover loses to a heavier fully connected random repair
+  under the production acceptance key);</li>
+<li>the opt-in hybrid phase-1 completion (closes mushroom at 1
+  component / 198 bricks vs 251, yet remains opt-in; thin-shell's
+  default result is unchanged at 386).</li>
+</ul>
+<p>The recorded diagnosis stands: stitching interleaved shell
+fragmentation needs a cross-slab formulation with explicit bond
+variables, and — the deeper v7 finding — the production acceptance
+key (components, then bricks) prefers heavier fully connected
+repairs over minimal covers, so candidate visibility alone cannot
+win. Funding that formulation is not justified by a 16-brick
+residual on one synthetic model where every strategy is stable and
+single-component and <code>fast</code> already holds the row's best.</p>
+<p>Reopen triggers: a future model (in particular a mesh-corpus row)
+widening a fast-vs-layered residual well beyond thin-shell's 16
+bricks, or evidence of kollsker-specific fragmentation (§5's
+recorded reconsideration condition). Until one fires, this item is
+closed.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../guides/performance-testing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Performance testing">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Performance testing
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../unstable-prefix-report/" class="md-footer__link md-footer__link--next" aria-label="Next: Report: unstable prefixes">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Report: unstable prefixes
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Harold Martin &mdash; GPL-3.0-or-later.
+Legolization is an independent open-source project. It is not affiliated with,
+sponsored by, or endorsed by the LEGO Group. LEGO&reg; is a trademark of the
+LEGO Group, which does not authorize or endorse this project.
+
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/hbmartin/legolization" target="_blank" rel="noopener" title="Legolization on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/legolization/" target="_blank" rel="noopener" title="Legolization on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.code.select","content.footnote.tooltips","content.tabs.link","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.highlight","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

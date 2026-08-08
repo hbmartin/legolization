@@ -31,6 +31,12 @@ data/corpus/meshes/
 data/corpus/synthetic/
 eval/runs/
 eval/profiles/
+eval/stablelego/
+eval/datasets/
 
 # default corpus evaluation output (legolization corpus collect/assemble/evaluate)
 legolization-eval/
+
+# external validation datasets fetched by scripts/fetch_datasets.py and
+# scripts/fetch_omr.py (a symlink here; the registry TOML is the committed truth)
+datasets/

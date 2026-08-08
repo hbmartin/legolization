@@ -203,3 +203,79 @@ These items are intentionally outside the current implementation program:
 
 Existing benchmark/evaluation utilities and BOM output are preserved, but no
 new work is planned in the deferred benchmark or inventory areas.
+
+## Assessment: screen-follow-ups review triage (2026-08-08)
+
+Eight review comments were raised against the reduced-QP screen branch, all
+but one labelled major. Three were adopted, five rejected as contrary to
+checked-in repo policy, and one adopted for a reason other than the one given.
+
+**Adopted.**
+
+- *Lateral status was lost on the research basis.* `_score_report` sets
+  `lateral=reduced.has_lateral`, but `_score_bricksim` never did, so every
+  `screen_fields="bricksim"` verdict reported `lateral=False`. Clad layouts
+  then fell into the `ReducedScreen.should_reject` stress-margin clause that
+  `ScreenReport.lateral` exists to disable. `BricksimModel.has_lateral` now
+  mirrors `reduced.py`'s own predicate (`any(key[2] != (0, 0, 1) ...)`) and
+  reaches the report. Pinned by
+  `test_bricksim_screen_reports_lateral_like_restricted`, which fails without
+  the fix.
+- *Connection-key type.* `bricksim_fields.py` spelled
+  `tuple[int, int, tuple[int, int, int]]` longhand three times and carried one
+  bare `list`, while `reduced.py` has defined `_ConnectionKey` for the same key
+  since the screen landed. The alias is now shared, as `_PLATES_PER_STUD`
+  already was.
+- *Undeclared fence language* in the performance-testing guide — the only
+  unlabelled opening fence in `docs/`.
+
+**Rejected.** Five comments asked for `-> None` and parameter annotations on
+new test functions, citing "always use type hints". That guideline is
+operationalized for tests by `pyproject.toml`, which ignores `ANN001`,
+`ANN002`, `ANN003`, and `ANN201` under `tests/**/*.py`; `pyrefly`'s
+`project-includes` covers `src/` and `scripts/` only. The convention the
+repo actually holds is that fixtures and helpers are typed while `def test_*`
+is bare, and the new code already followed it. Adopting the comments would
+have made the added tests the only annotated functions in their own files.
+Changing that is a repo-wide decision, not a per-branch one.
+
+**Adopted for a different reason than given.** One comment claimed a
+`monkeypatch` shim in `tests/test_repair.py` lacked annotations; it had them.
+But the annotations it had (`*args: object`) were too loose for the
+`analyze` passthrough and were producing five of the seven live `ty` errors on
+the tree. The shim now mirrors `analyze`'s signature. `ty` is down to two
+diagnostics, both pre-existing: deliberate negative tests whose
+`# type: ignore[arg-type]` pragma `ty` does not honour.
+
+### Follow-up finding: the bricksim fields study is not apples-to-apples
+
+Auditing the lateral defect surfaced a measurement problem in the
+`screen_fields="bricksim"` write-up in
+[`docs/guides/performance-testing.md`](docs/guides/performance-testing.md).
+The cited artifact (`20260808T161914Z`) predates the vertical/SNOT domain
+split: it pooled two shells and a clad model into one bucket at
+`--candidates 15`, and its clad candidates ran with the lateral guard
+inactive because of the defect above. The restricted numbers it is compared
+against (`20260808T165542Z`) came from the later domain-split protocol at
+`--candidates 30`. The guide therefore sets a pooled vertical+SNOT figure
+against a vertical-only one, at half the candidate count.
+
+Re-running the research basis under the restricted run's protocol, with the
+lateral fix in place (`--fields bricksim --radii 8 10 --candidates 30
+--skip-corpus --seed 0`, artifact `20260808T204443Z-screen-bench.json`),
+replaces both headline figures:
+
+| Axis | Guide (superseded) | Corrected re-run |
+| --- | --- | --- |
+| Candidate ranking, vertical | 83.7% | 100% |
+| Candidate ranking, SNOT | not reported | 81.4% |
+| Worst-consumer false rejects | 20% | 0% (both domains) |
+| Verdict agreement | 100% | 100% |
+
+The "bar NOT met" conclusion is not thereby overturned, but the two figures
+carrying it are gone; what remains against the research basis is per-brick
+score correlation near zero and a 1.03% non-converged share (below its own
+threshold). The guide paragraph is deliberately left unedited — updating it
+is the open action, together with deciding whether the restricted basis's own
+pre-split numbers quoted in `ScreenReport.lateral`'s docstring (90.5% / 5.6%)
+should be restated on the current protocol.

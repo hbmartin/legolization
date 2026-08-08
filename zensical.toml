@@ -1,0 +1,225 @@
+# Zensical configuration for the Legolization documentation site.
+#
+# Build:  uv run --group docs zensical build   (output in ./site)
+# Serve:  uv run --group docs zensical serve
+#
+# The navigation below is explicit rather than inferred from the directory
+# tree, so the reading order within each track is intentional. tests/test_docs.py
+# validates that every entry resolves and that no page under docs/ is orphaned.
+
+[project]
+
+site_name = "Legolization"
+site_description = """
+Turn a 3D model into a physically buildable LEGO-style model in LDraw format, \
+with verified structural stability, step-by-step build instructions, and a \
+bill of materials.
+"""
+site_author = "Harold Martin"
+site_url = "https://hbmartin.github.io/legolization/"
+
+repo_url = "https://github.com/hbmartin/legolization"
+repo_name = "hbmartin/legolization"
+edit_uri = "edit/main/docs/"
+
+copyright = """
+Copyright &copy; 2026 Harold Martin &mdash; GPL-3.0-or-later.
+Legolization is an independent open-source project. It is not affiliated with,
+sponsored by, or endorsed by the LEGO Group. LEGO&reg; is a trademark of the
+LEGO Group, which does not authorize or endorse this project.
+"""
+
+# ----------------------------------------------------------------------------
+# Navigation — four sections: three reader tracks plus the project archive.
+# ----------------------------------------------------------------------------
+nav = [
+  { "Home" = "index.md" },
+
+  { "Basics" = [
+    { "Overview" = "basics/index.md" },
+    { "Install the skills" = "basics/install.md" },
+    { "Your first model" = "basics/first-model.md" },
+    { "Choosing a skill" = "basics/choosing-a-skill.md" },
+    { "Reading the results" = "basics/reading-results.md" },
+    { "Troubleshooting" = "basics/troubleshooting.md" },
+    { "Skill reference" = [
+      { "legolize-model" = "basics/skills/legolize-model.md" },
+      { "prepare-lego-input" = "basics/skills/prepare-lego-input.md" },
+      { "optimize-lego-build" = "basics/skills/optimize-lego-build.md" },
+      { "publish-lego-instructions" = "basics/skills/publish-lego-instructions.md" },
+      { "analyze-lego-assembly" = "basics/skills/analyze-lego-assembly.md" },
+      { "repair-lego-assembly" = "basics/skills/repair-lego-assembly.md" },
+      { "inspect-instructions" = "basics/skills/inspect-instructions.md" },
+      { "render-ldraw" = "basics/skills/render-ldraw.md" },
+      { "extend-lego-part-support" = "basics/skills/extend-lego-part-support.md" },
+      { "eval-corpus" = "basics/skills/eval-corpus.md" },
+    ] },
+  ] },
+
+  { "Guide" = [
+    { "Overview" = "guide/index.md" },
+    { "Core concepts" = "guide/concepts.md" },
+    { "Quality tiers and budgets" = "guide/quality-and-budgets.md" },
+    { "Choosing a strategy" = "guide/choosing-a-strategy.md" },
+    { "Configuration reference" = "guide/configuration.md" },
+    { "Bundles and artifacts" = "guide/bundles-and-artifacts.md" },
+    { "Exit codes and JSON" = "guide/exit-codes-and-json.md" },
+    { "Rendering and parts" = "guide/rendering-and-parts.md" },
+    { "Python API" = "guide/python-api.md" },
+    { "Command reference" = [
+      { "Overview" = "guide/cli/index.md" },
+      { "bundle" = "guide/cli/bundle.md" },
+      { "build" = "guide/cli/build.md" },
+      { "analyze" = "guide/cli/analyze.md" },
+      { "input" = "guide/cli/input.md" },
+      { "model and instructions" = "guide/cli/model-and-instructions.md" },
+      { "catalog" = "guide/cli/catalog.md" },
+      { "corpus" = "guide/cli/corpus.md" },
+      { "parts, cache, validate" = "guide/cli/parts-cache-validate.md" },
+    ] },
+  ] },
+
+  { "Theory" = [
+    { "Overview" = "theory/index.md" },
+    { "The pipeline" = "theory/pipeline.md" },
+    { "Representations" = "theory/representations.md" },
+    { "Placement" = [
+      { "Overview" = "theory/placement/index.md" },
+      { "Constructive heuristics" = "theory/placement/constructive.md" },
+      { "The layered engine" = "theory/placement/layered-engine.md" },
+      { "Metaheuristics" = "theory/placement/metaheuristics.md" },
+      { "Exact methods" = "theory/placement/exact.md" },
+      { "Merge and repair" = "theory/placement/merge-and-repair.md" },
+      { "Finishing passes" = "theory/placement/finishing.md" },
+    ] },
+    { "Stability" = [
+      { "Overview" = "theory/stability/index.md" },
+      { "The RBE model" = "theory/stability/rbe.md" },
+      { "Exactness and certificates" = "theory/stability/exactness.md" },
+      { "Screens" = "theory/stability/screens.md" },
+      { "Warm solving" = "theory/stability/warm-solving.md" },
+    ] },
+    { "Sequencing" = "theory/sequencing.md" },
+    { "Subassemblies" = "theory/subassemblies.md" },
+    { "The analysis stack" = "theory/analysis-stack.md" },
+    { "Papers and provenance" = "theory/papers.md" },
+  ] },
+
+  { "Project notes" = [
+    { "Overview" = "project/index.md" },
+    { "Self-evaluation playbook" = "guides/self-evaluation-playbook.md" },
+    { "Performance testing" = "guides/performance-testing.md" },
+    { "Report: Kollsker drift" = "reports/kollsker-drift-report.md" },
+    { "Report: unstable prefixes" = "reports/unstable-prefix-report.md" },
+    { "Report: physics fidelity" = "reports/physics-fidelity-notes.md" },
+    { "Report: mesh baseline" = "reports/mesh-baseline-pending.md" },
+    { "Roadmap history" = "history/roadmap-history.md" },
+  ] },
+]
+
+extra_css = ["stylesheets/extra.css"]
+
+extra_javascript = [
+  "javascripts/mathjax.js",
+  "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js",
+]
+
+# ----------------------------------------------------------------------------
+# Theme
+# ----------------------------------------------------------------------------
+[project.theme]
+
+language = "en"
+
+features = [
+  "announce.dismiss",
+  "content.action.edit",
+  "content.code.annotate",
+  "content.code.copy",
+  "content.code.select",
+  "content.footnote.tooltips",
+  "content.tabs.link",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+  "toc.follow",
+]
+
+[project.theme.icon]
+logo = "lucide/blocks"
+repo = "fontawesome/brands/github"
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "red"
+accent = "amber"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "red"
+accent = "amber"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/hbmartin/legolization"
+name = "Legolization on GitHub"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/python"
+link = "https://pypi.org/project/legolization/"
+name = "Legolization on PyPI"
+
+# ----------------------------------------------------------------------------
+# Markdown extensions
+#
+# arithmatex is what renders the display math in the Theory track; it is paired
+# with the MathJax bootstrap in docs/javascripts/mathjax.js.
+# ----------------------------------------------------------------------------
+[project.markdown_extensions.abbr]
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+[project.markdown_extensions.toc]
+permalink = true
+toc_depth = 3
+[project.markdown_extensions.pymdownx.arithmatex]
+generic = true
+[project.markdown_extensions.pymdownx.betterem]
+[project.markdown_extensions.pymdownx.caret]
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.emoji]
+emoji_generator = "zensical.extensions.emoji.to_svg"
+emoji_index = "zensical.extensions.emoji.twemoji"
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.keys]
+[project.markdown_extensions.pymdownx.magiclink]
+[project.markdown_extensions.pymdownx.mark]
+[project.markdown_extensions.pymdownx.smartsymbols]
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+combine_header_slug = true
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+[project.markdown_extensions.pymdownx.tilde]

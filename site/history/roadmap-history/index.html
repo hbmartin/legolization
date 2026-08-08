@@ -1,0 +1,5181 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Turn a 3D model into a physically buildable LEGO-style model in LDraw format, with verified structural stability, step-by-step build instructions, and a bill of materials.
+">
+      
+      
+        <meta name="author" content="Harold Martin">
+      
+      
+        <link rel="canonical" href="https://hbmartin.github.io/legolization/history/roadmap-history/">
+      
+      
+        <link rel="prev" href="../../reports/mesh-baseline-pending/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>Historical roadmap and progress log - Legolization</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#historical-roadmap-and-progress-log" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Legolization" class="md-header__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Legolization
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Historical roadmap and progress log
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Legolization" class="md-nav__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    Legolization
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../basics/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Basics
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Basics
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/install.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Install the skills
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/first-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/choosing-a-skill.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a skill
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/reading-results.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reading the results
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/troubleshooting.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Troubleshooting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Skill reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Skill reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/legolize-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  legolize-model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/prepare-lego-input.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  prepare-lego-input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/optimize-lego-build.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  optimize-lego-build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/publish-lego-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  publish-lego-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/analyze-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/repair-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  repair-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/inspect-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  inspect-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/render-ldraw.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  render-ldraw
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/extend-lego-part-support.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  extend-lego-part-support
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/eval-corpus.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  eval-corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Guide
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Guide
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Core concepts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/quality-and-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Quality tiers and budgets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/choosing-a-strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a strategy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/bundles-and-artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundles and artifacts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/exit-codes-and-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes and JSON
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/rendering-and-parts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Rendering and parts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Python API
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Command reference
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Command reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/bundle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/build/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/analyze/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/model-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  model and instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  catalog
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/parts-cache-validate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  parts, cache, validate
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Theory
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Theory
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/pipeline.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The pipeline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/representations.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Representations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/placement/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Placement
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Placement
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/constructive.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Constructive heuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/layered-engine.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The layered engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/metaheuristics.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Metaheuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/exact.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exact methods
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/merge-and-repair.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Merge and repair
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/finishing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Finishing passes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/stability/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Stability
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Stability
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/rbe.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The RBE model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/exactness.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exactness and certificates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/screens.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Screens
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/warm-solving.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Warm solving
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/sequencing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Sequencing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/subassemblies.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Subassemblies
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/analysis-stack.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The analysis stack
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/papers.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Papers and provenance
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../project/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Project notes
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Project notes
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/self-evaluation-playbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Self-evaluation playbook
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/performance-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance testing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/kollsker-drift-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: Kollsker drift
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/unstable-prefix-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: unstable prefixes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/physics-fidelity-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: physics fidelity
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/mesh-baseline-pending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: mesh baseline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Roadmap history
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Roadmap history
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#v8-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v8 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v8 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-22-ws-p-where-the-armadillo-wall-actually-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-22 — WS-P: where the Armadillo wall actually is
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-22-ws-u-the-unstable-step-class-is-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-22 — WS-U: the unstable-step class is resolved
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-22-ws-h-stability-heatmap-stablelego-at-scale" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-22 — WS-H: stability heatmap + StableLego at scale
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-08-07-ws-t-thin-shell-bridge-residual-closed-by-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-08-07 — WS-T: thin-shell bridge residual closed by note
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v7-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v7 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v7 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-x-resumable-evaluation-and-targeted-quality-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-X: resumable evaluation and targeted quality work
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-r-pr-19-residual-correctness-remediation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-R: PR-19 residual correctness remediation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-b-re-phased-bridge-experiment-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-B: re-phased bridge experiment (opt-in)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-q-pr-21-post-merge-review-remediation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-Q: PR-21 post-merge review remediation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-v-fast-inner-loop-long-validation-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-V: fast inner loop; long validation opt-in
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v6-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v6 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v6 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-m-pending-measurements-closed-two-corpus-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-M: pending measurements closed + two corpus models
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-f-cross-slab-flow-bridge-escalate-on-decline" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-F: cross-slab flow bridge (escalate-on-decline)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-i-insertion-aware-sequencing-warm-press-probe" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-I: insertion-aware sequencing (warm press probe)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-e-v6-program-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-E: v6 program end
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v5-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v5 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v5 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-0-per-kind-eval-baselines" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-0: per-kind eval baselines
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-1-physics-fidelity-p1p6" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-1: physics fidelity (P1–P6)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-2-structure-preserving-bridge-synthesis" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-2: structure-preserving bridge synthesis
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-3-unstable-step-reduction-u1u3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-3: unstable-step reduction (U1–U3)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-4-always-k-seed-restarts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-4: always-k seed restarts
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-v5-program-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — v5 program end
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-eval-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Self-eval log
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v4-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v4 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v4 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-pr-17-review-remediation-12-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — PR #17 review remediation (12 commits)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-rescue-lp-performance-docsguidesperformance-testingmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Rescue-LP performance + docs/guides/performance-testing.md
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-kollsker-downstream-drift-instrumented-explained-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Kollsker downstream drift: instrumented, explained, fixed
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-snot-v2-data-driven-catalog-11211-sideways-1x2-tile-bonded-walls" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — SNOT v2: data-driven catalog, 11211 + sideways 1x2 tile, bonded walls
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-pr-18-review-remediation-11-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — PR #18 review remediation (11 commits)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-v4-program-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — v4 program end
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v3-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v3 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v3 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-1-sequencer-lp-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 1: sequencer LP performance
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-2-mpd-subassembly-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 2: MPD subassembly steps
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-3-shape-preserving-slopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 3: shape-preserving slopes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-6-ldraw-model-import-strict" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 6: LDraw model import (strict)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-5-per-layer-kollsker-milp-strategy-kollsker" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 5: per-layer Kollsker MILP (<code>--strategy kollsker</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-4-snot-sideways-finishing-pass-snot" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 4: SNOT sideways finishing pass (<code>--snot</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#superseded-design-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Superseded design notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Superseded design notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m6-mesh-front-end-meshpy-done-2026-07-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        M6 — Mesh front-end (<code>mesh.py</code>) — DONE (2026-07-18)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#surface-finishing-v2-slopes-and-tiles-that-earn-default-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Surface finishing v2 — slopes and tiles that earn default-on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build-instructions-v2-rendered-booklets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Build instructions v2 — rendered booklets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snot-sideways-building" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SNOT — sideways building
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#v8-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v8 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v8 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-22-ws-p-where-the-armadillo-wall-actually-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-22 — WS-P: where the Armadillo wall actually is
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-22-ws-u-the-unstable-step-class-is-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-22 — WS-U: the unstable-step class is resolved
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-22-ws-h-stability-heatmap-stablelego-at-scale" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-22 — WS-H: stability heatmap + StableLego at scale
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-08-07-ws-t-thin-shell-bridge-residual-closed-by-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-08-07 — WS-T: thin-shell bridge residual closed by note
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v7-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v7 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v7 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-x-resumable-evaluation-and-targeted-quality-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-X: resumable evaluation and targeted quality work
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-r-pr-19-residual-correctness-remediation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-R: PR-19 residual correctness remediation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-b-re-phased-bridge-experiment-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-B: re-phased bridge experiment (opt-in)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-q-pr-21-post-merge-review-remediation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-Q: PR-21 post-merge review remediation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-v-fast-inner-loop-long-validation-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-V: fast inner loop; long validation opt-in
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v6-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v6 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v6 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-m-pending-measurements-closed-two-corpus-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-M: pending measurements closed + two corpus models
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-f-cross-slab-flow-bridge-escalate-on-decline" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-F: cross-slab flow bridge (escalate-on-decline)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-i-insertion-aware-sequencing-warm-press-probe" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-I: insertion-aware sequencing (warm press probe)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-20-ws-e-v6-program-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-20 — WS-E: v6 program end
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v5-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v5 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v5 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-0-per-kind-eval-baselines" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-0: per-kind eval baselines
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-1-physics-fidelity-p1p6" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-1: physics fidelity (P1–P6)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-2-structure-preserving-bridge-synthesis" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-2: structure-preserving bridge synthesis
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-3-unstable-step-reduction-u1u3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-3: unstable-step reduction (U1–U3)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-ws-4-always-k-seed-restarts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — WS-4: always-k seed restarts
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-v5-program-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — v5 program end
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-eval-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Self-eval log
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v4-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v4 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v4 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-pr-17-review-remediation-12-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — PR #17 review remediation (12 commits)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-rescue-lp-performance-docsguidesperformance-testingmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Rescue-LP performance + docs/guides/performance-testing.md
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-kollsker-downstream-drift-instrumented-explained-fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Kollsker downstream drift: instrumented, explained, fixed
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-snot-v2-data-driven-catalog-11211-sideways-1x2-tile-bonded-walls" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — SNOT v2: data-driven catalog, 11211 + sideways 1x2 tile, bonded walls
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-pr-18-review-remediation-11-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — PR #18 review remediation (11 commits)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-v4-program-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — v4 program end
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v3-progress-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        v3 progress notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v3 progress notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-1-sequencer-lp-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 1: sequencer LP performance
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-2-mpd-subassembly-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 2: MPD subassembly steps
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-3-shape-preserving-slopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 3: shape-preserving slopes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-6-ldraw-model-import-strict" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 6: LDraw model import (strict)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-5-per-layer-kollsker-milp-strategy-kollsker" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 5: per-layer Kollsker MILP (<code>--strategy kollsker</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-07-19-item-4-snot-sideways-finishing-pass-snot" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2026-07-19 — Item 4: SNOT sideways finishing pass (<code>--snot</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#superseded-design-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Superseded design notes
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Superseded design notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m6-mesh-front-end-meshpy-done-2026-07-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        M6 — Mesh front-end (<code>mesh.py</code>) — DONE (2026-07-18)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#surface-finishing-v2-slopes-and-tiles-that-earn-default-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Surface finishing v2 — slopes and tiles that earn default-on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build-instructions-v2-rendered-booklets" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Build instructions v2 — rendered booklets
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snot-sideways-building" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        SNOT — sideways building
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../../project/" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Project notes
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/hbmartin/legolization/edit/main/docs/history/roadmap-history.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="historical-roadmap-and-progress-log">Historical roadmap and progress log<a class="headerlink" href="#historical-roadmap-and-progress-log" title="Permanent link">&para;</a></h1>
+<p>Append-only dated log of the v3–v8 engineering programs, followed by the
+design notes those programs worked from. Everything here is <strong>historical
+evidence, not current state</strong>: measurements describe the code at the date
+they carry, and design notes describe what was planned at the time.</p>
+<p><a href="../../../ROADMAP/"><code>ROADMAP.md</code></a> owns verified current state, active work,
+and the open engineering backlog. When this file and <code>ROADMAP.md</code> disagree,
+<code>ROADMAP.md</code> is correct. For the algorithms and formulas each item builds
+on, see the papers in <code>references/</code>.</p>
+<h2 id="v8-progress-notes">v8 progress notes<a class="headerlink" href="#v8-progress-notes" title="Permanent link">&para;</a></h2>
+<p>Living log of the v8 program (post-PR-23: the stability-perf
+measurement campaign, budget guardrails, and the diagnostic tooling
+from the phase plan).</p>
+<h3 id="2026-07-22-ws-p-where-the-armadillo-wall-actually-is">2026-07-22 — WS-P: where the Armadillo wall actually is<a class="headerlink" href="#2026-07-22-ws-p-where-the-armadillo-wall-actually-is" title="Permanent link">&para;</a></h3>
+<p>Three measurements closed the perf-backlog hypotheses
+(<code>docs/guides/performance-testing.md</code>, "where a cold analyze actually goes"):
+<code>build_model</code> is 0.12 s of a 12.5 s cold analyze at 902 bricks
+(vectorizing it is a dead end), the LP solve scales ~n^2.8 and is
+bit-identical between the scipy wrapper and direct highspy (no wrapper
+overhead), and <code>highs-ipm</code> is at best 1.4x with 1e-9 objective drift
+(no cheap solver swap). The response is budget enforcement:
+<code>time_budget_s</code> now derives one absolute deadline at <code>run()</code> start,
+honoured at round boundaries by ALNS <code>repair_stability</code>, the
+hollow-restore loop, and Luo's <code>_stabilize</code>, each with a
+<code>*.deadline_stop</code> telemetry value. In addition,
+repair and Luo now also stop before their initial full solve when the
+shared deadline has already expired, and repair reuses the pipeline's
+exact verdict when it accepted no layout change. <code>None</code> keeps every
+historical byte; the real per-solve fix is re-scoped under
+"Incremental re-analysis".</p>
+<h3 id="2026-07-22-ws-u-the-unstable-step-class-is-resolved">2026-07-22 — WS-U: the unstable-step class is resolved<a class="headerlink" href="#2026-07-22-ws-u-the-unstable-step-class-is-resolved" title="Permanent link">&para;</a></h3>
+<p>Re-measured every row of <code>docs/reports/unstable-prefix-report.md</code> §7 at
+current defaults: zero unstable steps across mushroom (was 17),
+wide-arch, cantilever, heart, letter-t, and two-towers-bridge.
+Support-aware placement (the report's recommendation 2) is closed
+without implementation — it would risk scorecard drift for a failure
+class subassembly extraction already eliminated.</p>
+<h3 id="2026-07-22-ws-h-stability-heatmap-stablelego-at-scale">2026-07-22 — WS-H: stability heatmap + StableLego at scale<a class="headerlink" href="#2026-07-22-ws-h-stability-heatmap-stablelego-at-scale" title="Permanent link">&para;</a></h3>
+<p><code>--heatmap out.ldr</code> writes the model recoloured by per-brick score on
+both generation and import paths. The ramp is quantized to five stock
+palette codes after measuring that headless LeoCAD renders LDraw
+direct colours (<code>0x2RRGGBB</code>, both decimal and hex forms) as
+unresolved grey; stair_19's black→red→white gradient is the visual
+pin. The StableLego release loaders moved into
+<code>legolization.stablelego</code> (the cross-validation test now consumes
+them), and <code>scripts/stablelego_sweep.py</code> compares our verdicts against
+the released dataset's per-object <code>stability_score.npy</code> under a
+documented convention (stands iff all scores finite and &lt; 1.0), with
+deterministic sampling and an agreement report.</p>
+<h3 id="2026-08-07-ws-t-thin-shell-bridge-residual-closed-by-note">2026-08-07 — WS-T: thin-shell bridge residual closed by note<a class="headerlink" href="#2026-08-07-ws-t-thin-shell-bridge-residual-closed-by-note" title="Permanent link">&para;</a></h3>
+<p>The structure-preserving-bridge residual (<code>fast</code> 370 vs kollsker 386
+on thin-shell) is closed without implementation — the cross-slab
+bond-variable formulation is not funded for a 16-brick gap on one
+stable, single-component synthetic row after four built mechanisms
+(per-slab MILP, WS-F flow escalation, <code>--bridge-rephase</code>, the hybrid
+phase-1 completion) all failed to promote past the production
+acceptance key. Closure note with the evidence base and reopen
+triggers: <code>docs/reports/kollsker-drift-report.md</code>, "v8 closure".</p>
+<h2 id="v7-progress-notes">v7 progress notes<a class="headerlink" href="#v7-progress-notes" title="Permanent link">&para;</a></h2>
+<p>Living log of the v7 program (PR-19/PR-21 residual remediation,
+re-phased bridge experiment, and the standing mesh baseline).</p>
+<h3 id="2026-07-20-ws-x-resumable-evaluation-and-targeted-quality-work">2026-07-20 — WS-X: resumable evaluation and targeted quality work<a class="headerlink" href="#2026-07-20-ws-x-resumable-evaluation-and-targeted-quality-work" title="Permanent link">&para;</a></h3>
+<p>Corpus evaluation is now a two-command transaction. The collector writes
+the full expected manifest before launching work and persists an atomic
+artifact as each model/strategy/seed future finishes. Exact successful
+commit + dirty-source + effective-config + input identities are reused;
+failed, corrupt, missing, or identity-mismatched candidates are retried,
+and <code>--fresh</code> bypasses reuse. The separate <code>assemble_eval.py</code> command
+never runs placement and refuses an incomplete or mismatched matrix
+before scorecard/baseline output. Dirty baselines are permitted but carry
+the full identity.</p>
+<p><code>profile_pipeline.py</code> now supervises an isolated child with fresh
+600-second watchdogs for voxelization, tiling, compaction, connectivity,
+stability analysis, and stability repair. Stage transitions plus
+30-second heartbeats are visible, and a terminated child leaves a durable
+partial telemetry artifact. Armadillo remains an explicit sequential,
+idle-machine release gate; it is not in pytest, default evaluation, or an
+inner-loop command.</p>
+<p>The release gate was then run serially for all seven strategies. Greedy
+and Luo timed out in generic placement at 600 seconds; Bond, Fast, SM-GA,
+Beauty, and Kollsker reached stability repair and timed out there. Across
+the layered strategies, voxelization took 0.17–0.19 seconds, tiling
+0.9–36.6 seconds, compaction about 0.001–0.003 seconds, and connectivity
+4.1–9.2 seconds. Bond completed one 596.9-second repair before its second
+repair timed out. The real Armadillo run also exposed and closed a
+watchdog attribution bug: enclosing placement/connectivity/repair stages
+now own nested stability spans, so inner solves cannot reset a parent
+stage indefinitely. The old 900-second wall failure is therefore
+localized to placement-time stability scoring for the legacy strategies
+and stability repair for every layered strategy.</p>
+<p>The opt-in hybrid bridge starts independently from mushroom's phase-1
+3-component/196-brick candidate. Bounded component-border k-rings are
+re-covered by exact-cover MILPs with hard no-slack connectivity flow;
+changed placements dominate final count and deterministic rank. The
+measured result is <strong>1 component / 198 bricks</strong> (10 changed placement
+signatures), versus the legacy random completion's 267 intermediate /
+251 final bricks. <code>--bridge-rephase</code> remains an independent ablation and
+all candidates still compete by components then count without consuming
+the RNG fallback stream.</p>
+<p>Press-aware instruction formation remains default-off and byte-identical
+when disabled. With insertion checking enabled, forced fragile chunks are
+pre-refined only when both halves become press-stable, otherwise bounded
+same/adjacent-band unions (support closure, blocker-safe topological
+order, max-step cap) coalesce ordinary and rescue-tail work while keeping
+truthful warnings. Ordinary/rescue residuals are press-tower <strong>2</strong>,
+cantilever <strong>2</strong>, mushroom <strong>18</strong>, with zero unstable steps, verifier
+violations, or oversized steps; whole-subassembly seating presses remain
+separate truthful checks.</p>
+<p>Finally, PrefixSolver and RemovalSolver derive direction-aware knob and
+side contact indexes from <code>ConnectionGraph</code>. Warm prefix probes now emit
+the same lateral contact normals, shear/drag forces, reachability, and
+rotated torque patterns as cold construction. Static, press, append,
+rollback, selective split lookahead, removal, and failure recovery are
+pinned to cold results within 1e-6 for 0/90/180/270-degree SNOT fixtures.</p>
+<h3 id="2026-07-20-ws-r-pr-19-residual-correctness-remediation">2026-07-20 — WS-R: PR-19 residual correctness remediation<a class="headerlink" href="#2026-07-20-ws-r-pr-19-residual-correctness-remediation" title="Permanent link">&para;</a></h3>
+<p>All production cold-model construction now goes through
+<code>build_model_from_config(layout, config)</code>: analysis, maximin candidate
+scoring, Luo capacity checks, link localization, and direct removal
+rescue therefore share <code>rotate_contact_pattern</code>, <code>torque_z</code>,
+<code>ground_pull</code>, and external-mass semantics. Rotation-invariance tests
+pin both configured maximin and the underlying solver; direct rescue
+has a table-physics regression. Side-contact transverse extents now
+use the shared face's physical edges (<code>min - 0.5</code>, <code>max + 0.5</code>) rather
+than cell centers, so a one-stud face supplies two distinct yaw levers.
+The <code>torsion-bridge</code> pin was recalibrated to an 18-cell arm after that
+geometry correction: seed-0 kollsker scores 0.202533 without yaw and
+0.227176 with <code>torque_z</code> (delta +0.024643); the synthetic baseline's
+intentional 20 → 24 brick move records the corrected fixture.</p>
+<p>The remaining configuration and termination defects are closed:
+one-element <code>--seeds</code> overrides are honored and profiled as effective
+config, race flags are explicitly rejected for <code>.ldr</code>/<code>.mpd</code>, bridge
+callbacks must strictly reduce component count before they can reset
+<code>fail_max</code>, Kollsker's bond and grounding rewards keep independent
+weights, and rectangle candidates stop incrementally at limit+1 or
+deadline. The bridge shares the placement strategy's absolute
+deadline instead of receiving a fresh ten seconds. CVXPY HiGHS calls
+also pin <code>threads=1</code>, preventing its process-global scheduler from
+poisoning a later warm prefix solver.</p>
+<h3 id="2026-07-20-ws-b-re-phased-bridge-experiment-opt-in">2026-07-20 — WS-B: re-phased bridge experiment (opt-in)<a class="headerlink" href="#2026-07-20-ws-b-re-phased-bridge-experiment-opt-in" title="Permanent link">&para;</a></h3>
+<p><code>slab_problems(..., phase=0|1|2)</code> and
+<code>PipelineConfig.bridge_rephase</code> let <code>BridgeSynthesizer</code> enumerate all
+three absolute slab phases under one outer deadline. It runs cheap
+per-slab covers first, orders flow escalation by the measured
+<code>(components, bricks, phase)</code> promise, chooses deterministically on
+the same key, and exposes attempted/solved/components/bricks/accepted
+telemetry. CLI and trajectory tooling expose the ablation as
+<code>--bridge-rephase</code>; imported LDraw models reject it because placement
+has already happened.</p>
+<p>The feature remains <strong>off by default</strong> because the end-to-end
+acceptance gate did not improve the two target rows. On mushroom the
+per-phase candidates were phase 0 = 22 components / 112 bricks, phase
+1 = 3 / 196, phase 2 = 4 / 193; phase 1 won inside the synthesizer,
+but the existing random rewrite still won best-of-k at 1 / 267 and the
+final result remained 251 bricks. Thin-shell reached a partial phase-2
+candidate at 17 / 380 while phases 0/1 declined; its final result
+remained 386. Raising the flow envelope did not change that outcome:
+mushroom phase 0 already generated 2_322 candidates / 44_162 arcs,
+and a 60-second-scale larger solve remained uneconomic. Re-phasing is
+therefore implemented and measurable, but not promoted.</p>
+<h3 id="2026-07-20-ws-q-pr-21-post-merge-review-remediation">2026-07-20 — WS-Q: PR-21 post-merge review remediation<a class="headerlink" href="#2026-07-20-ws-q-pr-21-post-merge-review-remediation" title="Permanent link">&para;</a></h3>
+<p>The four findings in the PR #21 review are implemented. The
+press-tower regression now generates its fixture from committed source
+under <code>tmp_path</code>, so ignored <code>.npy</code> files cannot hide a clean-checkout
+failure. <code>verify_plan</code> re-derives marked sub-build presses in the
+translated table frame and attachment presses over the complete
+seated unit before commit; false-positive marks for both step kinds
+are pinned. Warning regeneration now covers every marked final step,
+including the subassembly name for table-build context, and booklet
+coverage proves the builder still sees “press bricks home gently.”
+The playbook uses <code>--models thin-shell</code>, records 13 synthetic models,
+and generates the ignored corpus before consuming its paths.</p>
+<h3 id="2026-07-20-ws-v-fast-inner-loop-long-validation-opt-in">2026-07-20 — WS-V: fast inner loop; long validation opt-in<a class="headerlink" href="#2026-07-20-ws-v-fast-inner-loop-long-validation-opt-in" title="Permanent link">&para;</a></h3>
+<p>Tests marked <code>slow</code> now skip by default; <code>uv run pytest --run-slow</code>
+is the explicit full-suite gate and CI opts into it. A bare
+<code>scripts/eval_corpus.py</code> run now selects synthetics only, while mesh
+evaluation requires <code>--kind mesh</code>. This keeps normal implementation
+iterations bounded without deleting the release/performance checks.
+Measured default loop: <strong>609 passed, 4 skipped in 57.22 s</strong>; the
+explicit full collection remains 613 tests.</p>
+<p>The idle-machine mesh attempt also disproved the remaining 300-second
+assumption. At a 900-second cap, spot produced five valid strategies,
+Stanford Bunny two, and Teapot seven, but Armadillo still timed out on
+all seven. No baseline was written; Armadillo's failed row guarantees
+the guarded write would have declined it. The user stopped Homer after
+another ten minutes and made the mesh cut an explicit offline/release
+task with a cap above Armadillo's measured floor, not a default
+development gate.</p>
+<h2 id="v6-progress-notes">v6 progress notes<a class="headerlink" href="#v6-progress-notes" title="Permanent link">&para;</a></h2>
+<p>Living log of the v6 program (PR-18 remediation, pending-measurement
+closure + corpus growth, flow-connected cross-slab bridge, insertion-
+fragile reduction). Every landed workstream appends a dated entry with
+measured proof; append-only.</p>
+<h3 id="2026-07-20-ws-m-pending-measurements-closed-two-corpus-models">2026-07-20 — WS-M: pending measurements closed + two corpus models<a class="headerlink" href="#2026-07-20-ws-m-pending-measurements-closed-two-corpus-models" title="Permanent link">&para;</a></h3>
+<p>The three deferred v5 runs executed in isolated git worktrees (the
+session lesson: long runs never import the live tree; <code>git_sha</code> now
+resolves worktree indirections, so the artifacts keep their code-state
+stamps). <strong>spot@24 subassemblies cell</strong>: 80/155 unstable (v4 record)
+→ <strong>72/176</strong> with <code>--subassemblies</code> — the same partial-improvement
+class as suzanne (33→21), completing the U1 evidence table at six of
+six models, five improved. <strong>spot@24 v5-end profile</strong>: result block
+996 bricks / 176 steps (155 → 176 is the U1 subassembly trade, not a
+regression); wall was measured under four concurrent jobs and is
+excluded from regression claims per docs/guides/performance-testing.md.
+<strong>Mesh-kind baseline</strong>: swept in its own worktree post-flip (see the
+WS-E entry). Corpus grew two models with trait tests: <code>torsion-bridge</code>
+(one-stud dog-leg deck between corner towers; kollsker seed 0
+max_score 0.0496 → 0.0690 with <code>torque_z=True</code>, pinned as a score
+inequality — a wider deck and a ring-cap variant measured ~zero delta,
+so one-stud beams through few knobs are what makes the yaw row bind)
+and <code>press-tower</code> (stacked two-knob cantilever arms; statically clean,
+4/18 steps insertion-fragile under the 1 kg press — the audit's
+end-to-end corpus pin). Synthetic baseline regenerated clean worktree:
+13/13 PASS, new rows informational (torsion-bridge winner smga 7/7
+buildable Cs 0.0581; press-tower winner beauty 7/7 Cs 0.0732).</p>
+<h3 id="2026-07-20-ws-f-cross-slab-flow-bridge-escalate-on-decline">2026-07-20 — WS-F: cross-slab flow bridge (escalate-on-decline)<a class="headerlink" href="#2026-07-20-ws-f-cross-slab-flow-bridge-escalate-on-decline" title="Permanent link">&para;</a></h3>
+<p><code>BridgeSynthesizer</code> escalates on per-slab decline to one joint MILP
+over every slab problem: block-diagonal exact covers tied by a
+hub-aggregated single-commodity flow (hubs keyed on the actual MATING
+PLANE <code>(column, plane)</code>, so plate/brick interleaving falls out of the
+keying); remaining components attach through the same two guards as
+the bridging row (shared <code>_mates_of</code>); the root — largest remaining
+component, or the ground when everything is carved — is the sole net
+emitter, so chosen rects cannot fabricate connectivity from
+circulations. Join slacks per terminal and orphan slacks per rect
+(<code>o ≤ x</code>) keep un-stud-connectable rings feasible; objective is
+lexicographic joins &gt; orphans &gt; count, with a pinned reward stage.</p>
+<p>Measured honestly: the escalation closes the <strong>cover-coordination
+class</strong> — an elevated ten-column ladder whose z-course seam must land
+under a mid plate goes per-slab-None → flow 1 component, 0 floaters
+(pinned; determinism, plane-mating, grounded-root, and limit tests
+alongside). It does NOT close the interleaved-shell residual:
+mushroom's per-slab candidate (22 comps / 112 bricks) loses best-of-k
+to the random rewrite's (1 / 267) because the cap ring's
+absolute-slab re-tiling cannot stud-connect at all (stage 1 without
+orphan slacks is infeasible) — that class needs re-phased candidate
+enumeration (the drift report's known limitation), not coordination.
+Tractability measured far below the design estimate: ladder scale
+(54 rects / 648 arcs) proves optimality sub-second; thin-shell's ring
+(1_364 / 15_752) cannot close in 60 s and flat weight rescaling does
+not help — so <code>flow_candidate_limit</code>/<code>flow_arc_limit</code> default to
+600/8_000 and oversized rings decline in 0.04 s (thin-shell wall
+restored; corpus counts unchanged 251/386; goldens byte-exact).</p>
+<h3 id="2026-07-20-ws-i-insertion-aware-sequencing-warm-press-probe">2026-07-20 — WS-I: insertion-aware sequencing (warm press probe)<a class="headerlink" href="#2026-07-20-ws-i-insertion-aware-sequencing-warm-press-probe" title="Permanent link">&para;</a></h3>
+<p><code>PrefixSolver.press_probe(chunk, kg)</code> = Liu's virtual-brick press as
+a bound change on the warm model's chunk FZ rows (≡ cold
+<code>analyze(extra_masses=)</code>, ≤1e-6 pinned; restore-before-commit
+bitwise-idempotent, pinned; near-boundary/API/failure valves go
+cold). <code>InstructionsConfig.insertion_check</code> (default OFF; plans
+byte-identical without it) makes the ready-window scan skip
+press-fragile candidates while alternatives exist and accept
+least-fragile-with-warning otherwise — never rescue. Rescue/band
+steps get flag-only marks; the subassembly rewrite re-derives every
+kept step's press verdict against the FINAL prefix through one warm
+walker (pre-rewrite marks are provably stale — cantilever's audit
+flags moved 4 steps); attach steps get the whole-unit press the step
+audit cannot see; the verifier re-derives marks one-directionally;
+booklets collapse fragile runs into "press gently" callouts;
+<code>check_instructions --insertion-check</code> now measures the residual.</p>
+<p>Measured honestly: corpus reduction is a <strong>floor</strong> — press-tower /
+cantilever / mushroom fragile steps live in singleton ready windows
+and rescue tails (instrumented: zero windows offered a press-stable
+alternative), so residuals hold at 4/4/19 while plan marks became
+truthful end-to-end (plan-marked ⊇ audit flags, zero verifier
+violations, attach presses add coverage the audit misses). The
+avoidance mechanism is pinned at unit level. Cost: 2.7× sequencing on
+suzanne@16 with the check on (52 presses × ~1.1 s — a 1 kg press
+redistributes the whole force field, disproving the "few dual
+iterations" estimate); opt-in only, check-off unchanged.</p>
+<h3 id="2026-07-20-ws-e-v6-program-end">2026-07-20 — WS-E: v6 program end<a class="headerlink" href="#2026-07-20-ws-e-v6-program-end" title="Permanent link">&para;</a></h3>
+<p>Full gates green (580 fast tests; ruff/ty/pyrefly/lizard CCN-18
+clean). Program-end synthetic sweep in a fresh worktree at the
+WS-F/WS-I state: <strong>exit 0, 13/13 PASS, zero hard regressions</strong> against
+the baseline cut at the corpus commit — the flow bridge and the
+insertion machinery are corpus-neutral on default paths, as designed.
+<code>check_instructions</code> signatures unchanged (heart 8/1, mushroom 52/0,
+cantilever 16/0, wide-arch 16/0; press-tower 18/0 and torsion-bridge
+16/0 join the table clean). The PR #20 codex triage
+was implemented in full — 11 fixes, led by the
+severity-3 discovery that the <code>torque_z</code> warm path had been silently
+dead since v5 (hard-coded five-tolerance zip; every probe fell back
+cold while the dual-engine regression compared the fallback against
+itself — now a telemetry regression pins zero warm-fail spans).
+Version 0.5.0.</p>
+<p><strong>Mesh baseline: still pending.</strong> The worktree attempt ran under four
+concurrent jobs and five of six meshes timed out at the 300 s per-job
+cap across all strategies (only suzanne completed: greedy, 365
+bricks, PASS); the write-guard correctly refused. The command needs an
+otherwise idle machine — docs/reports/mesh-baseline-pending.md item 1 stays
+open with that evidence.</p>
+<h2 id="v5-progress-notes">v5 progress notes<a class="headerlink" href="#v5-progress-notes" title="Permanent link">&para;</a></h2>
+<p>Living log of the v5 program (physics fidelity, structure-preserving
+bridge synthesis, unstable-step reduction, always-k seed restarts,
+continuous self-eval). Every landed workstream appends a dated entry
+with measured proof; append-only.</p>
+<h3 id="2026-07-19-ws-0-per-kind-eval-baselines">2026-07-19 — WS-0: per-kind eval baselines<a class="headerlink" href="#2026-07-19-ws-0-per-kind-eval-baselines" title="Permanent link">&para;</a></h3>
+<p><code>eval_corpus</code> now owns one committed baseline file per corpus kind
+(synthetic <code>scorecard.json</code>, mesh <code>scorecard-mesh.json</code>);
+<code>--write-baseline --kind mesh</code> is legal (seed-0, unfiltered), and
+comparisons merge every committed per-kind file so mixed sweeps diff
+each model against its own kind. Deviation from plan: the intended
+<em>pre</em>-physics mesh reference run was killed externally mid-sweep, so
+the mesh baseline's first cut is post-flip (single cut — arguably
+cleaner; the pre-flip synthetic baseline plus the A/B table carry the
+before-physics record).</p>
+<h3 id="2026-07-19-ws-1-physics-fidelity-p1p6">2026-07-19 — WS-1: physics fidelity (P1–P6)<a class="headerlink" href="#2026-07-19-ws-1-physics-fidelity-p1p6" title="Permanent link">&para;</a></h3>
+<p>Four switches, all mirrored in both engines (batch <code>model.py</code> + warm
+<code>prefix.py</code>; dual-engine plan equality pinned with <code>torque_z</code> on), plus
+<code>docs/reports/physics-fidelity-notes.md</code>:</p>
+<ul>
+<li><strong><code>torque_z</code></strong> — sixth (yaw) residual row; side contacts move from
+  two vertical-extreme press generators to four (transverse, vertical)
+  corners with the spanning re-derivation in the code
+  (<code>SideContact.t_lo/t_hi</code> carries the extent).</li>
+<li><strong><code>paper_knob_rule</code></strong> — the paper's per-knob edge-3/interior-4 rule;
+  <strong>provably inert for the shipped catalog</strong> (no part has min footprint
+  dimension ≥ 3; pinned by a custom-catalog 3×3 test).</li>
+<li><strong><code>rotate_contact_pattern</code></strong> — contact patterns turn with the
+  gripping brick's yaw. The release's axis-aligned triangle scores the
+  same structure differently built rotated 90° (measured 0.0792 vs
+  0.1080 — 36%).</li>
+<li><strong><code>ground_pull=False</code></strong> (table mode) + <code>analyze(extra_masses=...)</code>
+  (per-brick kg at the centroid) — the enablers for loose-on-table
+  verdicts and Liu-style insertion-press audits.</li>
+</ul>
+<p>A/B verdict (analysis-level: identical layouts, physics switched; 9
+StableLego fixtures + 77 corpus layout×strategy rows):</p>
+<table>
+<thead>
+<tr>
+<th>config</th>
+<th>fixture verdicts</th>
+<th>corpus verdict flips</th>
+<th>score deltas</th>
+<th>LP cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rotate_contact_pattern</td>
+<td>9/9 reproduce</td>
+<td>0</td>
+<td>both directions (orientation fix)</td>
+<td>none</td>
+</tr>
+<tr>
+<td>torque_z</td>
+<td>9/9 reproduce</td>
+<td>0</td>
+<td>mostly up on lateral chains (thin-shell kollsker 0.0047→0.0259)</td>
+<td><strong>+49%</strong> (4.5→6.8 s at ~380 bricks)</td>
+</tr>
+<tr>
+<td>paper_knob_rule</td>
+<td>9/9 reproduce</td>
+<td>0</td>
+<td>exactly zero</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Default flips: <code>rotate_contact_pattern=True</code> only.</strong> It is a pure
+fidelity win with zero cost and zero verdict churn — example goldens
+stayed byte-identical through the flip. <code>torque_z</code> stays opt-in: it
+changed no measurable verdict while taxing every LP ~1.5×; it becomes
+the natural companion of external lateral loads (insertion checks,
+payloads) rather than a default. <code>paper_knob_rule</code> stays off (inert;
+release parity). The links QP now threads the physics config
+(<code>localize_instability(config=...)</code>) so repair judges with the same
+physics as the verdicts. BrickFEM (engrXiv 10.31224/2898) read in
+full: an MIT Abaqus model generator with a clamping-step trick but
+<strong>no published clutch numbers</strong> — T = 0.98 N stays the best-sourced
+constant; the five-fixture calibration path is recorded in the notes
+doc for the day an Abaqus seat exists.</p>
+<h3 id="2026-07-19-ws-2-structure-preserving-bridge-synthesis">2026-07-19 — WS-2: structure-preserving bridge synthesis<a class="headerlink" href="#2026-07-19-ws-2-structure-preserving-bridge-synthesis" title="Permanent link">&para;</a></h3>
+<p><code>slab_problems</code> extraction + shared <code>bond_reward</code> (B0, zero behavior);
+<code>BridgeSynthesizer</code> — per-slab exact-cover MILP over the repair ring
+with a hard bridging row (a min-count cover that reproduces the
+fragmenting seam is infeasible) and a crossings+stagger stage 2 — and
+the competing-candidate wiring: the MILP result enters
+<code>improve_connectivity</code>'s best-of-k on the same <code>(components, bricks)</code>
+key (never preempts; a preempting accept measured +11 bricks on
+mushroom). <code>PipelineConfig.milp_bridge</code> / <code>--no-milp-bridge</code> ablate.</p>
+<p>Proof: two-tower seam bridges as <strong>2 bricks vs the random rewrite's 6
+plates</strong> (pinned test); corpus zero hard regressions with fast's
+wide-arch improving (objective 0.4231 → 0.4002, winner beauty → fast;
+baseline regenerated); mushroom/thin-shell end-to-end unchanged at
+251/386 — interleaved shell fragmentation defeats per-slab covers
+(the ring re-fragments; measured label counts 24 vs 18 mid-build) and
+the random path keeps those. The honest residual: closing the shell
+class needs a cross-slab bond-variable formulation (future work,
+recorded in the drift report's v5 addendum). Wall cost ≈ nil
+(mushroom 3.1 s, thin-shell 6.8 s, unchanged).</p>
+<h3 id="2026-07-19-ws-3-unstable-step-reduction-u1u3">2026-07-19 — WS-3: unstable-step reduction (U1–U3)<a class="headerlink" href="#2026-07-19-ws-3-unstable-step-reduction-u1u3" title="Permanent link">&para;</a></h3>
+<p><strong>U1 — subassemblies default-on</strong> (pre-approved on evidence; seed 0,
+post-physics-flip): mushroom 17 → <strong>0</strong> unstable steps (max prefix
+score 1.00 → 0.10), wide-arch 2 → <strong>0</strong>, cantilever 1 → <strong>0</strong>, heart
+2 → 1, suzanne@16 33 → 21; the spot cell is pending
+(docs/reports/mesh-baseline-pending.md). CLI grows
+--subassemblies/--no-subassemblies with a None sentinel (explicit-only
+conflict with --steps layer); example goldens regenerated (counts
+unchanged 124/32/12); booklets collapse consecutive unstable-prefix
+warnings into one "steps N–M need temporary support" callout.</p>
+<p><strong>U2 — insertion-robustness audit</strong> (Liu et al. 2024 virtual-brick,
+arXiv:2408.10162 §IV-D, via the P4 extra_masses hook):
+<code>check_instructions --insertion-check</code> re-analyzes each statically
+stable prefix under a press mass (default 1 kg) on the just-placed
+chunk; press-collapsing steps flag <code>insertion-fragile</code>. Measured:
+cantilever flags 4/16 steps, mushroom 19/52 — on plans with ZERO
+static instability. Default off (an audit, not a gate). Scorecard rows
+gain <code>unsupported_ratio</code> (Liu's Cs difficulty stat).</p>
+<p><strong>U3 — support-aware placement</strong>: <code>LayerContext.grounded_below</code>
+(stud-path-to-ground at band time, from the now-shared per-problem
+graph) + <code>grounding_gain</code>; consumers kollsker stage-2
+(<code>ground_weight=2.0</code>, counts provably pinned at N<em>), beauty
+(<code>w_g=0.25</code>, positive-only), fast (retry key gains an unanchored
+term, <code>w_g=0.2</code>); every 0.0 opt-out restores pre-v5 bit-for-bit.
+Measured on mushroom: *</em>fast 6 → 0 unstable with subassemblies**
+(flat 24 → 16), beauty flat 20 → 19, kollsker unchanged — its cap
+ring overhangs empty cells (gap columns: nothing to anchor through at
+band time; the signal's documented limit). Corpus zero hard
+regressions; greedy untouched; goldens byte-exact.</p>
+<h3 id="2026-07-19-ws-4-always-k-seed-restarts">2026-07-19 — WS-4: always-k seed restarts<a class="headerlink" href="#2026-07-19-ws-4-always-k-seed-restarts" title="Permanent link">&para;</a></h3>
+<p>Single-strategy CLI runs now race <code>--restarts</code> seeds by default
+(3: seed..seed+2) through <code>compare.restart_race</code> — placement and
+physics per seed in parallel workers with instruction sequencing
+disabled, then one deterministic full re-run of the winner — so the
+expensive sequencing pass is paid exactly once. <code>--seeds</code> overrides
+with an explicit list, <code>--restarts 1</code> restores pre-v5 behaviour,
+<code>--jobs</code>/<code>--timeout</code> now also govern races, <code>--profile</code> demands
+<code>--restarts 1</code> (telemetry cannot cross workers), and
+<code>--report</code>/<code>--keep-candidates</code> stay sweep-only. The goldens mirror the
+policy: <code>test_examples_regression</code> races the same seeds the CLI does.</p>
+<p>Measured wins at the defaults: <strong>arch 32 → 15 bricks</strong> (seed 1 wins the
+race), heart re-seeds to seed 2 (12 bricks, better objective), pyramid
+keeps seed 0. Variance evidence: thin-shell's per-seed best spans
+<strong>287–386 bricks across seeds 0–2</strong> (<code>seed_spread</code>), exactly the tail
+the race harvests. Shipped examples and README sample output
+regenerated; race wall ≈ the slowest seed's placement (parallel) plus
+one sequencing run. Library <code>run()</code>/<code>run_file</code> APIs unchanged — the
+race is CLI-level policy; eval harnesses pin their own seeds and are
+unaffected.</p>
+<h3 id="2026-07-19-v5-program-end">2026-07-19 — v5 program end<a class="headerlink" href="#2026-07-19-v5-program-end" title="Permanent link">&para;</a></h3>
+<p>Full gates green (547 tests; ruff/ty/pyrefly/lizard CCN-18 clean).
+Final synthetic sweep: 11/11 PASS, zero diffs vs the WS-2 baseline.
+Fresh profiles (seed 0): pyramid 1.1 s / 124 bricks / 23 steps;
+suzanne@16 41.8 s / 365 / 77 — up from v4's 31.7 s/60 steps because
+default subassembly extraction sequences more, smaller steps (the U1
+trade: 21 fewer unstable steps for ~10 s on this model). spot@24's
+program-end profile and the mesh baseline cut remain in
+docs/reports/mesh-baseline-pending.md (long runs deferred by user call).
+Version 0.4.0.</p>
+<h2 id="self-eval-log">Self-eval log<a class="headerlink" href="#self-eval-log" title="Permanent link">&para;</a></h2>
+<p>Dated outcomes of the standing cadence (<code>docs/guides/self-evaluation-playbook.md</code>
+§10); append-only.</p>
+<ul>
+<li>2026-07-19 — v5 program-end sweep: synthetic corpus 11/11 PASS, zero
+  hard regressions vs the WS-2 baseline; mushroom worst-row check via
+  check_instructions (kollsker 8 unstable with subassemblies — the
+  gap-column limit recorded in WS-3); insertion audit flags cantilever
+  4/16, mushroom 19/52 press-fragile steps as the next quality target.</li>
+<li>2026-07-20 — v6 program-end sweep: synthetic corpus 13/13 PASS
+  (two new rows), zero hard regressions. The v5-declared insertion
+  target is measured a FLOOR, not headroom: fragile steps sit in
+  singleton ready windows and rescue tails (residuals 4/4/19), so the
+  next quality lever there is chunking/rescue press-awareness, not
+  window scanning. Flow-bridge residual likewise re-scoped: the
+  interleaved-shell class needs re-phased candidate enumeration.
+  Mesh-kind baseline still unwritten (contended-machine timeouts —
+  needs an idle box).</li>
+</ul>
+<h2 id="v4-progress-notes">v4 progress notes<a class="headerlink" href="#v4-progress-notes" title="Permanent link">&para;</a></h2>
+<p>Living log of the v4 program (PR #17 review remediation, residual
+rescue-LP performance + <code>docs/guides/performance-testing.md</code>, kollsker
+downstream-drift investigation/report/fixes, SNOT v2). Every landed
+workstream appends a dated entry with measured proof; append-only.</p>
+<h3 id="2026-07-19-pr-17-review-remediation-12-commits">2026-07-19 — PR #17 review remediation (12 commits)<a class="headerlink" href="#2026-07-19-pr-17-review-remediation-12-commits" title="Permanent link">&para;</a></h3>
+<p>All findings from the PR #17 review addressed: the CI lizard
+CCN-18 gate is green again (<code>verify_plan</code> 33 → dispatcher +
+<code>_PlanVerifier</code>; <code>_validate_args</code> 27 → three validators; <code>_mount</code> 22 →
+plan/mutate split); the three P1s (positional dataclass compatibility
+restored with a field-order pin test; the 3070b reverse-map collision
+that broke flat-tile import fixed with candidate-list decoding; one
+monotonic deadline over the sequential strategy sweep); the P2s (snot
+clads only faces whose straight slide-in ray reaches outside the model
+— enclosed cavities and pits rejected; sideways cladding excluded from
+generic side contacts — no phantom presses; blocker rays derive extent
+from layout bounds, not a 64-cell cap; strictness judged after the
+subassembly rewrite; every subassembly must attach exactly once and
+the final world must equal the layout; MPD stems case-insensitive;
+kollsker MILP calls guarded, tuning validated finite, deadlines honest
+across both stages; <code>--profile</code> rejected where it was silently
+ignored; attach steps are checker metadata, not warnings) and both P3s
+(floating shortcut defers to cross-check mode; finishing spans are
+<code>phase.finish_surfaces</code> + nested children). 486 tests at that point,
+all gates green.</p>
+<h3 id="2026-07-19-rescue-lp-performance-docsguidesperformance-testingmd">2026-07-19 — Rescue-LP performance + docs/guides/performance-testing.md<a class="headerlink" href="#2026-07-19-rescue-lp-performance-docsguidesperformance-testingmd" title="Permanent link">&para;</a></h3>
+<p>Shipped <code>docs/guides/performance-testing.md</code> (tools, schemas, the same-session
+before/after protocol, regression definitions, drift policy, measured
+dead ends), sha-stamped schema-2 CLI profiles sharing
+<code>telemetry.git_sha()</code> with the profiling script, two regression pins
+for the user's underneath-decoration constraint (warm grown-base probe
+≡ cold at 1e-9 incl. rollback; the rescue orders a hanging decoration
+before its overhang identically on both engines), and the committed
+optimization: <strong>direct-highspy cold rescue solves</strong>, size-gated at
+<code>SolverConfig.rescue_direct_min_bricks = 200</code> so small components keep
+the scipy-exact path the 1e-6/dual-engine tests pin. Shared
+<code>_lp_arrays()</code> guarantees both engines solve the byte-identical
+polytope; near-boundary or failed solves fall back under
+<code>stability.rescue.cold_fallback</code>.</p>
+<p>Proof (same-session sha-stamped profiles, seed 0):</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>before</th>
+<th>after</th>
+<th>migration</th>
+<th>notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>spot@24</td>
+<td>511.4 s</td>
+<td>490.3 s</td>
+<td>74 of 80 solves → <code>cold_direct</code>, 0 fallbacks</td>
+<td>result block identical</td>
+</tr>
+<tr>
+<td>suzanne@16</td>
+<td>37.7 s</td>
+<td>31.7 s</td>
+<td>14 solves → direct</td>
+<td>result block identical</td>
+</tr>
+<tr>
+<td>pyramid</td>
+<td>1.03 s</td>
+<td>1.02 s</td>
+<td>untouched (no rescue)</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>Deviations from plan: the C′ experiment — warm rescue by <strong>bound
+deactivation</strong> on one persistent model — was built dark, measured, and
+<strong>killed by its own criteria</strong>: correctness perfect (walk drift
+~1e-18) but warm re-solves ran ~4× SLOWER than presolved cold solves
+(23 s vs 5.6 s at n≈1000; spot 588 s vs 490 s) because the persistent
+model must keep presolve off for basis reuse while one-shot solves
+presolve the RBE down dramatically. Mechanism reverted; dead end
+recorded in <code>docs/guides/performance-testing.md</code> §6 with the same candor as
+the LP-deletion note. The SNOT decline gate on the warm solvers stays
+(documented revisit trigger: when SNOT contact semantics stabilize).</p>
+<h3 id="2026-07-19-kollsker-downstream-drift-instrumented-explained-fixed">2026-07-19 — Kollsker downstream drift: instrumented, explained, fixed<a class="headerlink" href="#2026-07-19-kollsker-downstream-drift-instrumented-explained-fixed" title="Permanent link">&para;</a></h3>
+<p>Landed <code>docs/reports/kollsker-drift-report.md</code> with the full measured story.
+C1 (behaviour-neutral): telemetry gains a lossless value-gauge channel
+(<code>record_value</code>/<code>values_dict</code>; spans keep power-of-two buckets), the
+pipeline and layered engine emit per-phase brick/component/stability
+gauges, <code>PipelineConfig.connectivity_fail_max</code> threads a clean
+ablation switch, and <code>scripts/count_trajectory.py</code> tabulates the
+trajectory (sha-stamped JSON artifacts). C2 (the fix): best-of-k
+acceptance in <code>improve_connectivity</code> — <code>bridge_draws=5</code> draws per
+bridging step, accept the bridging draw minimizing <code>(components,
+bricks)</code> — for the <strong>layered strategies only</strong>; the default of 1 is
+byte-identical to the historical loop and the greedy path keeps it
+(shipped goldens pin exact bytes; measured on the goldens, local
+best-of-k shifts downstream refinement chaotically: heart 12 → 29
+while arch 32 → 23 — not a trade worth breaking pins for).</p>
+<p>The verdict overturned the hypothesis: kollsker's tilings are both the
+smallest AND the least fragmented (thin-shell 146 bricks/18 components
+vs bond's 182/26); the entire inflation was <code>improve_connectivity</code>'s
+count-blind random-maximal rewrite (+179 on mushroom's 112-brick
+minimum in ONE accepted step), which taxes the best tiling hardest.
+Repair and hollow-restore contributed nothing on the drift models; the
+stage-2 bridging term (fix b) is not indicated and was not built.</p>
+<p>Proof (seed 0, determinism double-checked):</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>kollsker</th>
+<th>bond</th>
+<th>fast</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mushroom</td>
+<td>269 → <strong>251</strong></td>
+<td>265 → 263</td>
+<td>—</td>
+</tr>
+<tr>
+<td>thin-shell</td>
+<td>417 → <strong>386</strong></td>
+<td>398 → 398</td>
+<td>370 → 370</td>
+</tr>
+</tbody>
+</table>
+<p>13-model kollsker-vs-bond: <strong>13 wins/ties, up from 11</strong> — both drift
+losses flipped (mushroom, thin-shell), no previous win or tie
+regressed, pyramid also improved (128 → 126 vs bond's 136 → 129).
+Corpus sweep exit 0, zero hard regressions, three improving notes
+(cantilever 36 → 31, mushroom winner luo → kollsker at 251,
+thin-shell winner greedy → kollsker on objective); baseline
+regenerated per the pre-approval. Residual: <code>fast</code> still holds
+thin-shell's outright best (370) — the pass regresses every strategy
+toward the same random-maximal mean; closing that gap needs
+structure-preserving bridge synthesis (report §5 non-recommendations).</p>
+<h3 id="2026-07-19-snot-v2-data-driven-catalog-11211-sideways-1x2-tile-bonded-walls">2026-07-19 — SNOT v2: data-driven catalog, 11211 + sideways 1x2 tile, bonded walls<a class="headerlink" href="#2026-07-19-snot-v2-data-driven-catalog-11211-sideways-1x2-tile-bonded-walls" title="Permanent link">&para;</a></h3>
+<p>Four commits. (1) The catalog's two-key SNOT dispatcher became
+role-dispatched data: carriers declare <code>lateral_studs</code> +
+<code>emit_yaw_offset</code>, claddings declare windows/sockets/<code>mount_normal</code> +
+four pinned per-outward <code>mount_matrices</code> + <code>mount_offset_ldu</code>; 87087
+and 3070b migrated byte-compatibly (pinned-line tests unchanged).
+(2) Emission/import generalized from that data; ambiguous decodes
+report instead of resolving by catalog order; a v1-emitted fixture
+(<code>tests/data/snot_tower_v1.ldr</code>) pins cross-version import. (3) New
+parts: <code>brick_1x2_side_studs</code> (11211, 0.86 g, studs verified LDraw
+−Z at the same height as 87087 so v1's proven offsets transfer) and
+<code>tile_1x2_snot</code> (3069b sideways, analytically derived mount matrices,
+round-trips at every yaw; flat 3069b still decodes flat). Blocking fix
+(latent in 87087): a carrier's protruding studs sweep their neighbour
+columns during vertical insertion. (4) The pass works in paired
+2-column sites with running-bond stagger and single-column fallback;
+the single-column donor guard is replaced by a per-mount <strong>re-bond
+guard</strong> (carve+refill+mount on a copy; accept only if stud-graph
+components and floating count do not increase) plus a <strong>two-tier
+stability rail</strong> in the pipeline: the conservative tier (v1's
+own-column donors) lands under its own checkpoint before the bold
+wall-carving tier, so one destabilizing wall carve can no longer
+revert the whole pass (measured on mushroom: 86 accepted mounts, all
+lost under the old all-or-nothing rail; now the 41 safe mounts stay).</p>
+<p>Proof (seed 0; baseline = v1 pass at the pre-v2 commit, same session —
+the v3-era numbers were stale: suzanne's 6 died with the WS-A2
+cavity-reachability fix, not with v2):</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>pre-v2</th>
+<th>v2</th>
+<th>split 11211/87087</th>
+<th>stable</th>
+<th>comps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>two-towers-bridge</td>
+<td>13</td>
+<td><strong>108</strong></td>
+<td>49/59</td>
+<td>✓</td>
+<td>1</td>
+</tr>
+<tr>
+<td>mushroom</td>
+<td>41</td>
+<td>41</td>
+<td>0/41 (bold tier reverted)</td>
+<td>✓</td>
+<td>1</td>
+</tr>
+<tr>
+<td>thin-shell</td>
+<td>12</td>
+<td><strong>100</strong></td>
+<td>35/65</td>
+<td>✓</td>
+<td>1</td>
+</tr>
+<tr>
+<td>suzanne@16</td>
+<td>0</td>
+<td>1</td>
+<td>1/0</td>
+<td>✓</td>
+<td>1</td>
+</tr>
+<tr>
+<td>letter-t</td>
+<td>0</td>
+<td><strong>68</strong></td>
+<td>39/29</td>
+<td>✓</td>
+<td>1</td>
+</tr>
+<tr>
+<td>sparse-pillars</td>
+<td>0</td>
+<td><strong>44</strong></td>
+<td>12/32</td>
+<td>✓</td>
+<td>4 (pre-existing)</td>
+</tr>
+<tr>
+<td>pyramid</td>
+<td>0</td>
+<td>0</td>
+<td>—</td>
+<td>✓</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>Sequencing verifies CLEAN on the heaviest clad models (two-towers 108
+mounts/39 steps, letter-t 68/22); renders show flush tiles and the
+running-bond stagger. Guard cost: ≤1 s small models, mushroom 3.9 s,
+thin-shell 11 s (per-mount full-graph builds at ~500 bricks — an
+incremental-graph guard is future work if this grows). Deferred with
+reasons: the vertical 1×2 tile can never be plate-aligned (side studs
+at 8z+12 LDU; adjacent-window studs 24 LDU apart vs the tile's 20 LDU
+anti-stud pitch — the 5-plate quantum belongs to a stage-1 orientation
+field), 99781/4070/4733 (half-plate arms, sub-cell depth, blocker
+over-conservatism), true 8-LDU tile depth (the grid cannot express
+8-of-20-LDU horizontal occupancy).</p>
+<h3 id="2026-07-19-pr-18-review-remediation-11-commits">2026-07-19 — PR #18 review remediation (11 commits)<a class="headerlink" href="#2026-07-19-pr-18-review-remediation-11-commits" title="Permanent link">&para;</a></h3>
+<p>Every finding in the PR #18 review addressed on this branch
+(v4 scope; the two v5-scope responses — BridgeSynthesizer enumeration
+order, vectorized <code>unsupported_ratio</code> — land on roadmap-v5). P1: the
+outward ray walk in <code>instructions/blocking.py</code> now bisects per-line
+sorted occupancy indexes built in the same pass as the stud-sweep
+<code>columns</code> dict — a billion-stud gap costs one bisect (&lt;0.1 s test pin)
+instead of a coordinate-by-coordinate walk to global bounds, with a
+dense-vs-sparse semantics-equality test. P2s: <code>improve_connectivity</code>
+takes a monotonic <code>deadline</code> checked before every iteration and draw
+(engine passes its remaining budget); trajectory rows follow a global
+gauge-emission sequence (<code>Telemetry.events</code>), fixing the
+placed-before-repaired inversion; the layered engine emits the
+promised <code>place.tiled.components</code>/<code>place.compacted.components</code> gauges
+and <code>count_trajectory</code>'s docstring states exact per-phase coverage;
+<code>git_sha</code> resolves linked-worktree <code>gitdir:</code>/<code>commondir</code> indirections
+(pinned by a real <code>git worktree add</code> + <code>pack-refs</code> test); kollsker
+checks the deadline before AND after candidate enumeration; profiles
+stamp the effective input identity (<code>ResolvedInput</code>: source, manifest
+mesh options via the new shared <code>eval_corpus.model_mesh_options</code>,
+sha256/generator input hash) instead of the ignored CLI flags;
+<code>_Bucket</code> regained the legacy <code>[calls, seconds]</code> sequence interface
+(JSON pin untouched). P3s: <code>bridge_draws &lt; 1</code> and negative
+<code>connectivity_fail_max</code> raise at their boundaries; <code>count_trajectory</code>
+argparse validates strategy names and numeric flags up front.
+Pre-existing obs 1: LDraw inputs now reject all eight previously
+silently-ignored placement flags via a data-driven table that names
+the offenders. Pre-existing obs 2 (SNOT chunks force the cold rescue
+path) is deferred to the performance backlog below — it requires
+teaching the warm PrefixSolver lateral contacts, a workstream with
+dual-engine equivalence nets, not a checkbox. Gates per commit: ruff,
+526 fast tests, ty, pyrefly (pdfplumber baseline), lizard CCN-18.</p>
+<h3 id="2026-07-19-v4-program-end">2026-07-19 — v4 program end<a class="headerlink" href="#2026-07-19-v4-program-end" title="Permanent link">&para;</a></h3>
+<p>Full gates green (516 tests; ruff/ty/pyrefly/lizard CCN-18 clean;
+goldens byte-exact; StableLego and dual-engine plan tests untouched).
+Program-end corpus sweep: exit 0 with <strong>zero diffs</strong> against the
+baseline regenerated at the drift fix — SNOT v2 and the blocking
+changes are corpus-neutral. <code>check_instructions</code> signatures unchanged:
+heart 7 steps/2 unstable, mushroom 41/17, suzanne@16 60/33, spot@24
+155/80 (the 80 matches the rescue-solve census in the WS-B profile).
+Fresh end-of-program profiles: pyramid 1.5 s / 124 bricks / 21 steps,
+suzanne@16 31.7 s / 365 / 60 (identical to the WS-B after-run), spot@24
+538 s / 996 / 155 — result blocks identical to WS-B; spot's wall delta
+vs the earlier session is cross-session noise the perf doc's protocol
+excludes from regression claims. Version bumped to 0.3.0.</p>
+<p><em>(Future note — mesh-kind eval baseline: the committed scorecard
+baseline covers synthetics only. Now that v3's sequencing speedups make
+mesh sweeps feasible (suzanne@16 ≈ 30 s), commit a mesh-kind baseline
+via <code>uv run python scripts/eval_corpus.py --kind mesh --write-baseline</code>
+after a clean run, per the self-evaluation playbook's "widen baseline
+scope only on a clean run" rule. Not done in v4 — the drift fixes land
+first so the baseline is cut once, not twice.)</em></p>
+<h2 id="v3-progress-notes">v3 progress notes<a class="headerlink" href="#v3-progress-notes" title="Permanent link">&para;</a></h2>
+<p>Living log of the six-item v3 program (sequencer LP performance, MPD
+subassemblies, shape-preserving slopes, SNOT finishing pass, per-layer
+Kollsker MILP, LDraw model import). Every landed item appends a dated
+entry here with its measured proof numbers; entries are append-only.</p>
+<p><em>(Program plan approved 2026-07-18; evidence base: the profiling
+campaign on PR #16 — 99% of large-model runtime is cold HiGHS LP solves
+in sequencing, ~2 per step, superlinear per-solve cost — and
+<code>docs/reports/unstable-prefix-report.md</code> — the floating-until-later-band step
+class is unorderable without subassemblies.)</em></p>
+<h3 id="2026-07-19-item-1-sequencer-lp-performance">2026-07-19 — Item 1: sequencer LP performance<a class="headerlink" href="#2026-07-19-item-1-sequencer-lp-performance" title="Permanent link">&para;</a></h3>
+<p>Shipped <code>stability/prefix.py</code> behind <code>SolverConfig.engine</code> (default
+<code>"highspy"</code>; <code>"scipy"</code> preserves the legacy path bit-for-bit): a
+warm-started incremental <code>PrefixSolver</code> for the greedy loop (probe =
+append rows/cols + re-solve from the retained basis, ~20-90 simplex
+iterations per step instead of a full cold solve; commit of the probed
+chunk is free), an LP-free <strong>floating shortcut</strong> (a prefix with a
+stud-unreachable brick is unstable by definition — verdict + 1.0 score
+without any solve), and a component-decomposed <code>RemovalSolver</code> for the
+disassembly rescue (per-contact-component verdict cache; the RBE is
+block-diagonal across uncoupled components).</p>
+<p>Proof (same sha-pinned inputs as the PR #16 campaign, seed 0):</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>before</th>
+<th>after</th>
+<th>speedup</th>
+<th>notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>pyramid.npy</td>
+<td>1.26 s</td>
+<td>0.99 s</td>
+<td>1.3x</td>
+<td>clean greedy path</td>
+</tr>
+<tr>
+<td>suzanne @16</td>
+<td>81.3 s</td>
+<td>30.3 s</td>
+<td>2.7x</td>
+<td>72 of 104 solves shortcut</td>
+</tr>
+<tr>
+<td>spot @24</td>
+<td>1465.5 s</td>
+<td>468.6 s</td>
+<td><strong>3.1x</strong></td>
+<td>215 of 287 rescue probes LP-free</td>
+</tr>
+</tbody>
+</table>
+<p>Byte-exact goldens unchanged with the new default (dual-engine plan/byte
+equality pinned by tests on every shipped example); synthetic corpus
+scorecard row-for-row identical to the committed baseline; 408 tests.</p>
+<p>Deviations from plan: LP-deletion warm starts for the rescue do NOT pay
+(HiGHS discards too much basis on deletion — measured, not assumed);
+the rescue's win came from the floating shortcut + component
+decomposition instead. Byte-identity across engines is guaranteed for
+plans that never enter the rescue (includes all goldens); rescued plans
+are verdict-equivalent (equal unstable counts, <code>verify_plan</code> clean) with
+solver-tolerance-level score drift on degenerate optima — the same drift
+class scipy exhibits across its own versions. Remaining headroom: 80
+cold LPs on grounded-stable rescue states at n≈1000.</p>
+<h3 id="2026-07-19-item-2-mpd-subassembly-steps">2026-07-19 — Item 2: MPD subassembly steps<a class="headerlink" href="#2026-07-19-item-2-mpd-subassembly-steps" title="Permanent link">&para;</a></h3>
+<p>Shipped <code>instructions/subassembly.py</code> behind <code>--subassemblies</code>
+(<code>InstructionsConfig.subassemblies=False</code> default — flag-off is
+byte-identical to before, pinned by the goldens): a post-pass on the
+finished plan that walks per-prefix <code>ConnectionGraph.floating_ids()</code>
+(no extra LPs), finds persistent floating runs, closes them into
+stud-connected clusters of the run's placement window, validates each
+cluster (grounding on attach: <code>floating_ids(P∪S) ∩ S = ∅</code>; unit
+vertical insertability: no placed brick overhangs any cluster brick),
+and rewrites the plan: cluster bricks become a separately built unit —
+sequenced by a recursive <code>plan_instructions</code> on the grounded, table-
+level translated sub-layout — plus one attach step that places the unit
+as a whole. Emission writes real multi-<code>FILE</code> <code>.mpd</code> submodels (attach
+= one colour-16 reference line at <code>-8·anchor_layer</code>; <code>.ldr</code> falls back
+to world-frame flattening), the booklet gets per-unit sections, attach
+callouts, and "support while attaching" labels, <code>verify_plan</code> audits
+sub steps in the sub's own grounded frame, and step images render per
+submodel section (no renderer CLI flags needed).</p>
+<p>Proof (<code>scripts/check_instructions.py --subassemblies</code>, seed 0,
+before-JSONs from the pre-item baseline):</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>unstable steps</th>
+<th>subs</th>
+<th>attach steps</th>
+<th>violations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mushroom</td>
+<td><strong>17 → 0</strong></td>
+<td>5</td>
+<td>5</td>
+<td>0</td>
+</tr>
+<tr>
+<td>heart.vox</td>
+<td>2 → 1</td>
+<td>1</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td>letter-t</td>
+<td>1 → 0</td>
+<td>1</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td>cantilever</td>
+<td>1 → 0</td>
+<td>1</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td>wide-arch</td>
+<td>2 → 0</td>
+<td>1</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td>two-towers-bridge</td>
+<td>0 → 0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>Mushroom (the worst instruction-quality case in the corpus, 17 unstable
+steps with up to 26 bricks floating mid-build) now builds with zero
+unstable steps: the cap is assembled as five table-built units. Heart's
+one residual is <em>inside</em> a sub build (the lobe overhang floats even on
+the table until the next sub step ties it) and carries the honest
+"support the overhang by hand" warning. Two-towers-bridge extracts
+nothing and its flag-on JSON is byte-identical to flag-off on the same
+code. Booklet renders verified visually: sub steps build flat on the
+table with highlights, the attach step seats the whole highlighted unit
+on the stem. 422 tests; goldens untouched.</p>
+<p>Deviations from plan: <code>max_subassemblies</code> defaults to 6, not the
+planned 4 — measured on mushroom, cap 4 leaves one floating window
+uncaptured (1 unstable step); cap 6 captures all five. The planned
+"attach steps stay warned" caveat mostly did not materialize: attach
+prefixes re-analyze as stable everywhere in the proof set (the RBE sees
+the same final geometry; it was the <em>intermediate</em> orders that were
+unstable). Old roadmap "Deferred: MPD subassembly submodels" marked
+DONE.</p>
+<h3 id="2026-07-19-item-3-shape-preserving-slopes">2026-07-19 — Item 3: shape-preserving slopes<a class="headerlink" href="#2026-07-19-item-3-shape-preserving-slopes" title="Permanent link">&para;</a></h3>
+<p>Shipped preserve-mode slope fitting: <code>--slopes</code> (= <code>--slopes preserve</code>)
+matches each catalogued slope's own <code>filled_cells</code> profile — stud
+columns at full height plus 1-plate toes — against cells inside the
+target shape (sloped-void cells must be <em>outside</em> it), carves out the
+same-colour donor bricks covering the profile, places the slope, and
+MILP-refills any donor cells beyond the profile (exact cover, colours
+inherited per cell from the carved donors; the tiling is computed
+before any mutation so a failed candidate costs nothing). Zero
+material added or removed — the filled-cell set is asserted identical
+on every proof run. All three catalogued slopes now place (45° 2x1
+<code>3040b</code>, 45° 2x2 <code>3039</code>, 33° 3x1 <code>4286</code> — the latter two had never
+been placed by any pass), swept largest profile first. The legacy
+add-outside pass is <code>--slopes smooth</code>; <code>PipelineConfig.slopes=True</code>
+still means smooth for API back-compat.</p>
+<p>Two safety rails, both measured in: the carve is capped at 4 freed
+cells per swap (on suzanne@16, caps 0/2/4/6/8 place 2/10/29/44/51
+slopes and the structure collapses at 8 — fragmenting load-bearing
+bricks into weak stacks), and the pipeline snapshots the layout before
+the pass and reverts wholesale if the RBE verdict flips stable →
+unstable, so preserve mode can never trade stability for looks.</p>
+<p>Proof (seed 0; "fill-identical" = union of filled cells unchanged):</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>bricks</th>
+<th>slopes placed</th>
+<th>fill-identical</th>
+<th>stable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>suzanne@16</td>
+<td>331 → 330</td>
+<td>29</td>
+<td>yes</td>
+<td>yes → yes (worst 0.137)</td>
+</tr>
+<tr>
+<td>teapot@16</td>
+<td>270 → 270</td>
+<td>10</td>
+<td>yes</td>
+<td>yes → yes</td>
+</tr>
+<tr>
+<td>homer@16</td>
+<td>190 → 190</td>
+<td>0 (guard reverted)</td>
+<td>yes</td>
+<td>yes → yes</td>
+</tr>
+<tr>
+<td>heart.vox</td>
+<td>12 → 12</td>
+<td>0 (no sites)</td>
+<td>yes</td>
+<td>yes → yes</td>
+</tr>
+<tr>
+<td>pyramid.npy</td>
+<td>124 → 124</td>
+<td>0 (no sites)</td>
+<td>yes</td>
+<td>yes → yes</td>
+</tr>
+</tbody>
+</table>
+<p>On homer even the cap-4 carve trips the RBE verdict, the snapshot
+guard reverts the whole pass, and the model ships exactly as the
+baseline — the guard is load-bearing, not theoretical.</p>
+<p>Voxel models quantized at 3 plates/voxel (heart, pyramid) have no
+1-plate treads, so preserve mode correctly never fires there — the
+profile only exists on plate-resolution surfaces, i.e. mesh imports.
+Renders confirm visibly smoother ramps on suzanne's brow, nose, and
+chin. Off by default: goldens and corpus baseline untouched (428
+tests).</p>
+<p>Deviations from plan: the plan's expectation that pyramid-style
+brick-step models would gain slopes was wrong — their sloped-void
+cells are <em>inside</em> the shape, which shape preservation must reject;
+the win lives on mesh surfaces instead. The carve-and-refill
+extension (planned as a follow-up) shipped in v1 because measurement
+demanded it: exact-donor matching alone fired on only 2 of 82
+shape-valid sites on suzanne (0 of 68 on teapot) — merged bricks
+almost always span the profile boundary. Unguarded carving at a large
+cap breaks stability (suzanne/teapot/homer all flip unstable at cap
+24); the cap-4 + snapshot-revert combination is what ships. Old
+roadmap "Slopes" section marked DONE.</p>
+<h3 id="2026-07-19-item-6-ldraw-model-import-strict">2026-07-19 — Item 6: LDraw model import (strict)<a class="headerlink" href="#2026-07-19-item-6-ldraw-model-import-strict" title="Permanent link">&para;</a></h3>
+<p>Shipped <code>ldraw_in.layout_from_ldraw</code>: an existing <code>.ldr</code>/<code>.mpd</code> model
+becomes a <code>Layout</code> — the exact inverse of <code>ldraw_out.piece_for</code>'s
+transform (yaw decoded from the four canonical rotation matrices,
+<code>layer = -Y/8 - height</code>, x/y from position minus the rotated-footprint
+centroid and un-rotated slope <code>origin_offset</code>). MPD submodels flatten
+through <code>iter_occurrences</code>' composed world transforms (<code>iter_pieces</code>
+yields local frames — measured, not assumed). Strict by decision: any
+part outside the catalog, non-yaw rotation, off-grid position,
+out-of-palette colour, collision, or below-ground brick errors; ALL
+problems are aggregated into one <code>LdrawImportError</code> so a user sees the
+model's full distance to importable. CLI: <code>.ldr</code>/<code>.mpd</code> input skips
+placement entirely — import, analyze, sequence, emit (<code>legolization
+model.ldr -o out.ldr --instructions b.pdf</code>); placement/voxel/mesh
+flags and a defaulted output (which would overwrite the input) are
+argparse errors. <code>PipelineResult.grid</code> became optional (imported
+models have no voxel grid); <code>write_outputs</code> is reused unchanged.</p>
+<p>Proof (seed 0):</p>
+<table>
+<thead>
+<tr>
+<th>example</th>
+<th>round-trip</th>
+<th>steps (native → imported)</th>
+<th>unstable</th>
+<th>violations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>heart.ldr</td>
+<td>exact</td>
+<td>7 → 7</td>
+<td>2 → 2</td>
+<td>0</td>
+</tr>
+<tr>
+<td>pyramid.ldr</td>
+<td>exact</td>
+<td>21 → 21</td>
+<td>2 → 2</td>
+<td>0</td>
+</tr>
+<tr>
+<td>arch.ldr</td>
+<td>exact</td>
+<td>8 → 8</td>
+<td>1 → 1</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>"Round-trip exact" = import → write → re-import brick-multiset
+equality with nothing dropped (byte-identity is not the bar — shipped
+examples are emitted in plan-step order with ROTSTEPs, a bare
+re-emission rasters by layer). Slope parts round-trip at all four yaws
+(origin-offset inversion); a subassembly <code>.mpd</code> flattens back to the
+exact source layout. Live CLI run: heart.ldr → booklet + BOM, exit 0.
+A hand-built pathological file reports all five problem kinds in one
+error. 436 tests; goldens untouched.</p>
+<p>Deviations from plan: none. The planned "identical plan_quality to the
+natively-generated plan" held exactly (table above) — brick ids differ
+between import order and placement order, yet the sequencer's
+tiebreaks land on the same plan shape.</p>
+<h3 id="2026-07-19-item-5-per-layer-kollsker-milp-strategy-kollsker">2026-07-19 — Item 5: per-layer Kollsker MILP (<code>--strategy kollsker</code>)<a class="headerlink" href="#2026-07-19-item-5-per-layer-kollsker-milp-strategy-kollsker" title="Permanent link">&para;</a></h3>
+<p>Shipped <code>placement/layered/kollsker.py</code>: the paper's exact
+set-partitioning model (eqs. 1-3) solved per 4-connected component of
+each layer problem — the tractable scope; the whole-model MILP is
+exponential and the paper's own matheuristic re-optimizes regions the
+same way (eqs. 26-39). Two-stage lexicographic solve: stage 1
+minimizes part count (N<em>), stage 2 pins Σx = N</em> and maximizes a
+perimeter-normalized stagger reward (+<code>seam_priority</code> per straddled
+below-seam, −0.5·priority per border-aligned one) with a 1e-6 rank
+tiebreak for determinism. <code>h3</code> lookahead deliberately dropped — it
+guides sequential commitment, which the simultaneous cover subsumes.
+Fallback to the constructive bond pass per component on candidate
+blowup (&gt;20k), solver failure, or timeout (<code>layer_time_s</code>, default
+10 s, deadline-aware). Registered as <code>kollsker</code> → CLI, <code>--strategy
+all</code> sweeps, and eval tooling pick it up automatically;
+<code>PipelineConfig.milp_layer_time_s</code> / <code>milp_bond_weight</code> tune it.</p>
+<p>Proof (seed 0, end-to-end pipeline, layer-steps mode):</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>bond</th>
+<th>kollsker</th>
+<th></th>
+<th>model</th>
+<th>bond</th>
+<th>kollsker</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cantilever</td>
+<td>62</td>
+<td><strong>36</strong></td>
+<td></td>
+<td>thin-shell</td>
+<td>398</td>
+<td>417</td>
+</tr>
+<tr>
+<td>staircase-overhang</td>
+<td>42</td>
+<td><strong>16</strong></td>
+<td></td>
+<td>mushroom</td>
+<td>265</td>
+<td>269</td>
+</tr>
+<tr>
+<td>wide-arch</td>
+<td>41</td>
+<td><strong>28</strong></td>
+<td></td>
+<td>sparse-pillars</td>
+<td>20</td>
+<td>20</td>
+</tr>
+<tr>
+<td>letter-h</td>
+<td>26</td>
+<td><strong>18</strong></td>
+<td></td>
+<td>letter-t</td>
+<td>14</td>
+<td><strong>13</strong></td>
+</tr>
+<tr>
+<td>topple-arm</td>
+<td>14</td>
+<td><strong>8</strong></td>
+<td></td>
+<td>arch</td>
+<td>14</td>
+<td><strong>13</strong></td>
+</tr>
+<tr>
+<td>two-towers-bridge</td>
+<td>81</td>
+<td><strong>75</strong></td>
+<td></td>
+<td>pyramid</td>
+<td>136</td>
+<td><strong>128</strong></td>
+</tr>
+<tr>
+<td>letter-h-bicolour</td>
+<td>28</td>
+<td><strong>22</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>11 of 13 better or equal, up to 2.6× fewer bricks; stability verdicts
+identical to bond on every model. Tests pin the per-layer optimality
+claim exactly: brute-force DFS minimum matched on small shapes,
+never-worse-than-bond on seeded random layers, stage-2 border
+avoidance on a two-course wall, fallback and determinism. Runtime
+bounded and small (≤ 8.6 s on the largest synthetic).</p>
+<p>Corpus scorecard: zero hard regressions, all 11 manifest expectations
+PASS, and kollsker immediately <em>wins</em> cantilever outright in the
+all-strategies sweep (objective 0.6245 → 0.5555 vs the old beauty
+winner).</p>
+<h3 id="2026-07-19-item-4-snot-sideways-finishing-pass-snot">2026-07-19 — Item 4: SNOT sideways finishing pass (<code>--snot</code>)<a class="headerlink" href="#2026-07-19-item-4-snot-sideways-finishing-pass-snot" title="Permanent link">&para;</a></h3>
+<p>Shipped the first sideways building in the pipeline, end to end
+through the data model rather than as an emission hack. New
+<code>Category.SNOT</code> parts: the 1x1 side-stud bracket (87087 — a normal
+column plus a lateral stud at mid-height) and the sideways 1x1 tile
+(3070b — conservative 3-plate collision volume, token centre fill, one
+lateral anti-stud). The six planned seams all took the change:
+<code>graph</code> sockets are now keyed (cell, direction) with mates at cell +
+direction and a ground guard for down-only anti-studs (<code>KnobContact</code>
+gains <code>normal</code>); the RBE lays the FOUR_POINT diamond in the <em>vertical</em>
+mating plane, with pull-off riding the same T-bounded drag machinery
+and vertical stud-shear presses carrying the tile's weight;
+<code>piece_for</code> emits the bracket as yaw+90 about Y (the physical side
+stud points LDraw -Z — read from 87087.dat, not assumed) and the tile
+via four probed axis rotations; the LDraw importer round-trips both at
+every yaw; blockers for lateral-mount parts follow the outward
+slide-in ray instead of the vertical sweep; and the warm
+PrefixSolver/RemovalSolver decline SNOT layouts (their contact
+discovery is z-up-only) so physics falls back to the always-correct
+cold engine. The carve-and-refill surgery moved to shared
+<code>placement/carve.py</code> (slopes and snot both use it).</p>
+<p>The pass (<code>placement/snot.py</code>): brick-aligned wall windows whose
+outward neighbour is strictly outside the shape, in vertical runs of
+≥2 windows, get a bracket + outward-facing tile. Two measured safety
+rails: only free-standing 1x1 wall columns are converted — carving a
+bracket out of a wall-spanning brick demolishes its bonding (the first
+live run converted an entire 1x4 wall into disconnected bracket
+towers), and mounts re-check the target column at mount time (two
+perpendicular faces share an inside-corner column — collided on
+suzanne). The pipeline snapshot guard reverts wholesale on a
+stability flip, same as preserve slopes.</p>
+<p>Proof (seed 0): fire counts and physics —</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>mounts</th>
+<th>stable</th>
+<th>components</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>two-towers-bridge</td>
+<td>23</td>
+<td>yes</td>
+<td>1</td>
+</tr>
+<tr>
+<td>mushroom</td>
+<td>41</td>
+<td>yes</td>
+<td>1</td>
+</tr>
+<tr>
+<td>thin-shell</td>
+<td>12</td>
+<td>yes</td>
+<td>1</td>
+</tr>
+<tr>
+<td>suzanne@16</td>
+<td>6</td>
+<td>yes</td>
+<td>1</td>
+</tr>
+<tr>
+<td>pyramid / letter-t / sparse-pillars</td>
+<td>0</td>
+<td>yes</td>
+<td>unchanged</td>
+</tr>
+</tbody>
+</table>
+<p>Renders confirm visibly smooth clad tower faces on two-towers-bridge.
+Off by default: goldens byte-exact, StableLego cross-validation
+untouched, 467 tests. Sequencing orders every tile with or after its
+bracket (lateral contacts are support edges), <code>verify_plan</code> clean.</p>
+<p>Deviations from plan: the carve+refill mount path was narrowed to
+single-column donors after the wall-demolition measurement — the
+plan's "1x1-swap or carve+refill" became "1x1-column carve only"; the
+5-plate/2-stud quantum never arises, as designed. Old roadmap "SNOT —
+sideways building" section: v1 scope DONE (bracket + sideways tile);
+full sideways regions/orientation field remain future work.</p>
+<p>Deviations from plan: end-to-end brick counts on mushroom (+4) and
+thin-shell (+19) came out slightly worse than bond — the per-layer
+bound is structural, but remerge/repair/hollow-restore interact with
+the different layer seams downstream, exactly the drift the plan said
+to report empirically. <code>test_compare</code>'s hardcoded strategy counts now
+derive from <code>strategy_names()</code>. The committed synthetic baseline was
+regenerated in this commit to include the seventh strategy.</p>
+<h2 id="superseded-design-notes">Superseded design notes<a class="headerlink" href="#superseded-design-notes" title="Permanent link">&para;</a></h2>
+<p>The sections below are the design notes the programs above worked from.
+They describe work as it was <em>planned</em>; the dated entries record what
+actually shipped, sometimes differing from the sketch. Kept for rationale
+and for the plug-in points they name. Open work lives in <code>ROADMAP.md</code>.</p>
+<hr />
+<h3 id="m6-mesh-front-end-meshpy-done-2026-07-18">M6 — Mesh front-end (<code>mesh.py</code>) — DONE (2026-07-18)<a class="headerlink" href="#m6-mesh-front-end-meshpy-done-2026-07-18" title="Permanent link">&para;</a></h3>
+<p>Shipped as designed below, with two deviations: the pitch derives from the
+<strong>largest horizontal extent</strong> (<code>max(extents[:2]) / target_studs</code>), not the
+overall max — "target studs" means footprint, and the overall max would
+shrink tall models; and colour sampling landed as <strong>nearest-vertex</strong> via
+scipy's cKDTree (<code>--mesh-colour-mode sampled</code>; texture and vertex colours
+both route through trimesh's <code>to_color</code>), not <code>ProximityQuery.on_surface</code>
+— rtree is not a dependency, and vertex density exceeds voxel resolution
+for every corpus mesh. Meshes without colour data fall back to the
+uniform <code>--mesh-colour</code> with a note. A
+largest-component filter (6-connected, with a "dropped N voxels" progress
+warning) handles non-watertight meshes; <code>--up {x,y,z}</code> orients Y-up <code>.obj</code>
+files via a proper rotation. See <code>src/legolization/mesh.py</code> and
+<code>tests/test_mesh.py</code>.</p>
+<p><strong>Original design sketch</strong></p>
+<ul>
+<li><code>trimesh.load(path)</code> → optionally repair/fill → voxelize. For solid models
+  use <code>mesh.voxelized(pitch).fill()</code>; for shells skip <code>fill()</code> and let
+  auto-hollow's keep-fill logic handle support.</li>
+<li><strong>Scale control</strong> (per the decisions log): either an explicit <code>--pitch</code> in
+  model units, or <code>--target-studs N</code> with
+  <code>pitch = mesh.extents.max() / N</code>.</li>
+<li><strong>Aspect correction:</strong> LEGO cells are 20 LDU wide but only 8 LDU (one plate)
+  tall. Rather than mapping cubic voxels to 3-plate bricks (a 24/20 = 1.2×
+  vertical stretch), scale the mesh's z-axis by 20/8 = 2.5 before voxelizing
+  and load the result with <code>plates_per_voxel=1</code>. That gives true plate-level
+  vertical resolution and correct proportions for free.</li>
+<li><strong>Colour sampling:</strong> for each filled voxel, query the nearest surface point
+  (<code>trimesh.proximity.ProximityQuery</code>) and sample vertex colour / texture UV
+  → RGB → the existing <code>Palette.quantize</code>. Interior voxels can inherit the
+  nearest surface colour (they get hollowed anyway).</li>
+<li>Wire into <code>pipeline.run_file</code> as a third suffix branch and add
+  <code>--pitch</code>/<code>--target-studs</code> to the CLI.</li>
+</ul>
+<p><strong>Acceptance:</strong> a textured <code>.obj</code> (e.g. a Stanford bunny) converts to a
+stable, buildable <code>.ldr</code> at 20–60 studs; a pytest fixture with a tiny
+generated mesh (trimesh primitives) covers pitch/target-stud math and colour
+sampling. <code>trimesh</code> is already in the dependencies.</p>
+<p><strong>Risks:</strong> non-watertight meshes (voxelization artifacts → floating islands;
+lean on <code>improve_connectivity</code>, but consider a largest-component filter on the
+voxel grid); texture sampling needs meshes with materials — fall back to a
+uniform colour with a warning.</p>
+<hr />
+<h3 id="surface-finishing-v2-slopes-and-tiles-that-earn-default-on">Surface finishing v2 — slopes and tiles that earn default-on<a class="headerlink" href="#surface-finishing-v2-slopes-and-tiles-that-earn-default-on" title="Permanent link">&para;</a></h3>
+<p>Today <code>--slopes</code> only replaces free-standing <code>1x1</code> <strong>brick columns</strong> at
+descending steps with <code>slope_45_2x1</code>, and it <strong>adds volume</strong> where the voxel
+shape is empty (that is why it is opt-in). <code>--tiles</code> only swaps whole exposed
+plates whose footprint has an exact tile equivalent (1x1, 1x2, 1x4, 2x2).</p>
+<p><strong>Slope work items</strong></p>
+<ol>
+<li><strong>Shape-preserving mode (can become default).</strong> Match the slope's own
+   <code>filled_cells</code> against the target shape instead of requiring an empty
+   neighbour: a <code>slope_45_2x1</code> exactly covers "full column + 1-plate toe", so
+   any staircase voxelized at plate resolution contains real occurrences.
+   Zero added material → safe to enable by default; the current
+   volume-adding behaviour stays behind <code>--slopes=smooth</code>.</li>
+<li><strong>Fit the full slope family.</strong> <code>slope_45_2x2</code> (3039), <code>slope_33_3x1</code>
+   (4286) are already in the catalog but never placed; add width-2 and 33°
+   step patterns, and extend the catalog with the inverted slopes
+   (3665, 3660) for overhangs.</li>
+<li><strong>Normal-driven fitting (with M6).</strong> When the input is a mesh, choose the
+   slope angle from the local surface normal (the approach in the
+   "vivid architectural sculptures" paper) and only accept a placement if it
+   reduces surface error against the original mesh, not just the voxelization.</li>
+<li><strong>Cooperate with placement, not after it.</strong> The pass currently only sees
+   <code>1x1</code> bricks that survived merging. Either run slope fitting <em>before</em>
+   merging (reserve step cells), or teach the merge engine that slope-eligible
+   cells are worth leaving unmerged.</li>
+</ol>
+<p><strong>Tile work items</strong></p>
+<ul>
+<li>Split large exposed plates into tileable sub-rectangles instead of skipping
+  them; add <code>tile_2x4</code> (87079) and <code>tile_1x3</code> (63864) to the catalog.</li>
+<li>Brick-topped surfaces cannot be tiled without changing height — consider an
+  optional "plate-cap" mode that re-plans the top 3 plates of flat regions as
+  plate+plate+tile.</li>
+<li>Re-verify stability after finishing (already wired in <code>pipeline.run</code>).</li>
+</ul>
+<p><strong>Acceptance:</strong> shape-preserving slopes are on by default with no
+<code>_assert_exact_cover</code> regressions; a staircase fixture produces slopes with
+zero colour/volume error; tile coverage on a flat-roofed test model exceeds
+90 % of exposed top plates.</p>
+<hr />
+<h3 id="build-instructions-v2-rendered-booklets">Build instructions v2 — rendered booklets<a class="headerlink" href="#build-instructions-v2-rendered-booklets" title="Permanent link">&para;</a></h3>
+<p><strong>Done</strong> (all five items). Items 1–3 (the <code>instructions/</code> package): smart
+step chunking with mirror-pair co-stepping and ROTSTEP view hints, greedy
+prefix-stable sequencing over the vertical block graph (warn or strict
+policy), and a hand-rolled JSON/text BOM with per-step callouts (<code>--bom</code>).
+Items 4–5 shipped as <code>instructions/render.py</code> + <code>instructions/booklet.py</code>:</p>
+<p><strong>4. Rendering</strong> went LeoCAD-first rather than the LDView-first sketch:
+   LeoCAD's CLI exports a whole run of steps per invocation (<code>-f/-t</code>,
+   numbered by absolute step) and highlights each step's new bricks
+   (<code>--highlight</code>); LDView (<code>-SaveSnapshot -Step=N -AutoCrop=0</code>) is the
+   fallback, one process per step. Detection: <code>$LEGOLIZATION_RENDERER</code>
+   (<code>none</code> disables) → PATH → <code>/Applications</code> app bundles; parts library
+   via <code>$LDRAWDIR</code> → pyldraw3's cache → common install dirs. Success is a
+   non-empty PNG on disk, never the exit code. The camera is driven from
+   the plan's own RotStep data against a ROTSTEP-stripped temp copy, so
+   framing stays constant and both backends agree.
+<strong>5. Booklet assembly</strong> is HTML-first with a reportlab-canvas PDF writer:
+   one <code>Booklet</code> pagination model feeds both, so page counts match by
+   construction (cover + overflow parts pages + N steps/page, default 2).
+   No renderer → placeholder boxes, identical page count, warning banner.</p>
+<p>Acceptance holds: <code>legolization model.vox --instructions model.pdf</code> (or
+<code>.html</code>) writes the booklet; regression tests assert booklet step sections
+== <code>.ldr</code> <code>0 STEP</code> count == <code>PipelineResult.step_count</code> and pypdf page
+counts, with rendering disabled via <code>LEGOLIZATION_RENDERER=none</code> in CI and
+a <code>slow</code>-marked real-render test locally.</p>
+<h4 id="sequencing-upgrades-landed-with-v2">Sequencing upgrades (landed with v2)<a class="headerlink" href="#sequencing-upgrades-landed-with-v2" title="Permanent link">&para;</a></h4>
+<p>Paper-driven upgrades to the sequencer (<code>instructions/search.py</code>,
+<code>metrics.py</code>): a spatial-continuity tiebreak orders ready candidates by
+distance to the previous step before LP evaluation (zero extra LPs);
+both degradation paths (deadlock, no-stable-prefix) now re-plan the
+remainder by <strong>assembly-by-disassembly</strong> along a maximal-stability path
+(<code>fallback="band"</code> is the legacy escape hatch); an opt-in <strong>beam search</strong>
+(<code>search="beam"</code>, <code>beam_states</code>, <code>lp_budget</code>) explores whole build orders
+ranked by (unstable prefixes, summed scores); <code>sequence_similarity</code>
+(Kendall's τ + RLSD) and <code>plan_quality</code> quantify orders. MPD
+subassembly submodels: <strong>DONE in v3 item 2</strong> (<code>--subassemblies</code>, see the
+progress notes above). Still deferred: ±X/±Y block edges (SNOT-only; the
+blocker-map <code>Mapping[int, frozenset[int]]</code> seam in <code>blocking.py</code> is the
+plug-in point).</p>
+<hr />
+<h3 id="snot-sideways-building">SNOT — sideways building<a class="headerlink" href="#snot-sideways-building" title="Permanent link">&para;</a></h3>
+<p>The Part abstraction was designed for this: every connector already carries a
+<strong>direction vector</strong>, and the graph/physics read the direction rather than
+assuming "up". None of the consumers exercise it yet. This is the largest
+item on the roadmap; suggested staging:</p>
+<ol>
+<li><strong>Orientation model.</strong> Placements today are yaw-only. Introduce a proper
+   orientation type (the 24 axis-aligned rotations, or at minimum the 6 "stud
+   direction" cases × 4 yaws), rotate <code>occupied_cells</code>/connectors through it,
+   and extend the LDU matrix construction in <code>ldraw_out.py</code>. Grid cells stay
+   axis-aligned; the interesting problem is that a sideways brick occupies
+   20-LDU-tall space that is not a whole number of plates (2.5) — sideways
+   sections must be planned in 40-LDU (5-plate) vertical quanta, which is a
+   real constraint the placement layer has to own. <em>The vertical sideways
+   1×2 tile is proof this stage cannot be faked from stage 2: carrier side
+   studs sit at 8z+12 LDU, so studs in vertically adjacent 3-plate windows
+   are 24 LDU apart while the tile's anti-studs are 20 LDU apart — no
+   course-aligned carrier can ever double-mate it (measured in v4, recorded
+   with the SNOT v2 entry).</em></li>
+<li><strong>Catalog additions.</strong> Side-stud parts are the on-ramp before fully
+   sideways bricks — <em>stage 2 advanced in v3/v4: 87087 (1x1, one side
+   stud) ✓ and 11211 (1x2, two side studs) ✓ are catalogued as data-driven
+   carriers with sideways 3070b/3069b claddings; 4070 (headlight,
+   sub-cell stud depth) and 99781 (bracket, half-plate arm offsets)
+   remain — each needs geometry the unit grid cannot yet express.</em> These
+   keep the grid stud-up while exposing lateral connectors.</li>
+<li><strong>Graph + physics.</strong> Mating logic in <code>graph.py</code> currently matches top
+   connectors against <code>cell + (0,0,1)</code>; generalize to <code>cell + direction</code>.
+   In the RBE, a sideways knob contact rotates the contact-point pattern and
+   the friction axis into the contact plane — <code>add_force</code> already takes
+   arbitrary directions/positions, so this is mostly bookkeeping in
+   <code>build_model</code>.</li>
+<li><strong>Placement.</strong> Start with a post-pass (like slopes): replace surface
+   detail cells with side-stud assemblies. Full sideways <em>regions</em> (e.g.
+   curved surfaces built studs-out) are research-grade; keep them out of
+   scope until 1–3 are solid.</li>
+</ol>
+<p><strong>Acceptance for stage 1–3:</strong> a hand-authored layout with one bracket-mounted
+sideways tile round-trips through graph, physics, and LDraw output; analytic
+tests confirm a side-stud connection transmits the expected friction load.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../reports/mesh-baseline-pending/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Report: mesh baseline">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Report: mesh baseline
+              </div>
+            </div>
+          </a>
+        
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Harold Martin &mdash; GPL-3.0-or-later.
+Legolization is an independent open-source project. It is not affiliated with,
+sponsored by, or endorsed by the LEGO Group. LEGO&reg; is a trademark of the
+LEGO Group, which does not authorize or endorse this project.
+
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/hbmartin/legolization" target="_blank" rel="noopener" title="Legolization on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/legolization/" target="_blank" rel="noopener" title="Legolization on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.code.select","content.footnote.tooltips","content.tabs.link","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.highlight","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

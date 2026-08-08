@@ -55,10 +55,29 @@ if TYPE_CHECKING:
 _RING_GROWTH = 10  # failures per extra ring (Luo's N)
 
 
-def _rebase(screen: ReducedScreen | None, report: ScreenReport | None) -> None:
-    """Advance the screen baseline to an accepted candidate's report."""
-    if screen is not None and report is not None:
+def _rebase(
+    screen: ReducedScreen | None,
+    report: ScreenReport | None,
+    layout: Layout,
+    config: SolverConfig,
+    deadline: float | None,
+) -> ReducedScreen | None:
+    """Advance the screen baseline to an accepted candidate's report.
+
+    ``ReducedScreen.rebase`` keeps the old baseline for a non-"ok"
+    report, and ``should_reject`` passes any such report through to the
+    cold solve — so a nonconverged or errored candidate can be accepted
+    and leave the screen ranking every later candidate against a layout
+    that no longer exists. Rebuild the baseline from the new layout
+    instead; a decline returns ``None`` and drops the loop to the cold
+    path rather than screening against stale ground truth.
+    """
+    if screen is None:
+        return None
+    if report is not None and report.status == "ok":
         screen.rebase(report)
+        return screen
+    return ReducedScreen.create(layout, config, deadline=deadline)
 
 
 @dataclass(slots=True)
@@ -135,7 +154,10 @@ class LuoStrategy:
             return
         capacity = self._capacity(layout)
         screen = (
-            ReducedScreen.create(layout, self.solver_config)
+            # Deadline-gated: _capacity() above can start inside the
+            # budget and finish past it, and a declined create leaves
+            # the loop on the cold path.
+            ReducedScreen.create(layout, self.solver_config, deadline=deadline)
             if self.solver_config.screen == "bricksim"
             else None
         )
@@ -159,7 +181,7 @@ class LuoStrategy:
                 layout.replace_with(candidate)
                 result = candidate_result
                 capacity = candidate_capacity
-                _rebase(screen, report)
+                screen = _rebase(screen, report, layout, self.solver_config, deadline)
                 failures = 0
             else:
                 failures += 1

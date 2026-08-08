@@ -1,0 +1,3494 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Turn a 3D model into a physically buildable LEGO-style model in LDraw format, with verified structural stability, step-by-step build instructions, and a bill of materials.
+">
+      
+      
+        <meta name="author" content="Harold Martin">
+      
+      
+        <link rel="canonical" href="https://hbmartin.github.io/legolization/reports/dataset-survey/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>External dataset survey for testing and verification - Legolization</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#external-dataset-survey-for-testing-and-verification" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Legolization" class="md-header__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Legolization
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              External dataset survey for testing and verification
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Legolization" class="md-nav__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    Legolization
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../basics/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Basics
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Basics
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/install.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Install the skills
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/first-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/choosing-a-skill.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a skill
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/reading-results.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reading the results
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/troubleshooting.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Troubleshooting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Skill reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Skill reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/legolize-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  legolize-model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/prepare-lego-input.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  prepare-lego-input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/optimize-lego-build.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  optimize-lego-build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/publish-lego-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  publish-lego-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/analyze-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/repair-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  repair-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/inspect-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  inspect-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/render-ldraw.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  render-ldraw
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/extend-lego-part-support.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  extend-lego-part-support
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/eval-corpus.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  eval-corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Guide
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Guide
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Core concepts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/quality-and-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Quality tiers and budgets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/choosing-a-strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a strategy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/bundles-and-artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundles and artifacts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/exit-codes-and-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes and JSON
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/rendering-and-parts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Rendering and parts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Python API
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Command reference
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Command reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/bundle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/build/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/analyze/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/model-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  model and instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  catalog
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/parts-cache-validate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  parts, cache, validate
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Theory
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Theory
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/pipeline.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The pipeline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/representations.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Representations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/placement/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Placement
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Placement
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/constructive.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Constructive heuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/layered-engine.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The layered engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/metaheuristics.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Metaheuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/exact.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exact methods
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/merge-and-repair.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Merge and repair
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/finishing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Finishing passes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/stability/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Stability
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Stability
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/rbe.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The RBE model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/exactness.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exactness and certificates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/screens.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Screens
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/warm-solving.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Warm solving
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/sequencing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Sequencing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/subassemblies.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Subassemblies
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/analysis-stack.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The analysis stack
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/papers.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Papers and provenance
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../project/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Project notes
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Project notes
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/self-evaluation-playbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Self-evaluation playbook
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/performance-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance testing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kollsker-drift-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: Kollsker drift
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../unstable-prefix-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: unstable prefixes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../physics-fidelity-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: physics fidelity
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mesh-baseline-pending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: mesh baseline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/roadmap-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Roadmap history
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-gaps-in-priority-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The gaps, in priority order
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-brick-assembly-stability-ground-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Brick-assembly stability ground truth
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Brick-assembly stability ground truth">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stabletext2brick-the-top-recommendation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        StableText2Brick — the top recommendation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pointcloud2brick-stable-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        PointCloud2Brick (STABLE, 2026)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bricksims-own-repository" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        BrickSim's own repository
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stablelego-already-partly-integrated" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        StableLego (already partly integrated)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-human-designed-assemblies-real-ldraw" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. Human-designed assemblies (real LDraw)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Human-designed assemblies (real LDraw)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ldraw-official-model-repository-omr" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        LDraw Official Model Repository (OMR)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ltron-random-construction-rc_6_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        LTRON random construction (<code>rc_6_6</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bricknet-cvpr-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        BrickNet (CVPR 2026)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mobilebrick" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        MobileBrick
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-mesh-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. Mesh inputs
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Mesh inputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#thingi10k-pathology-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Thingi10K — pathology coverage
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shapenetcore-same-input-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ShapeNetCore — same-input comparison
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#objaverse-objaverse-xl" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Objaverse / Objaverse-XL
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#toys4k" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Toys4K
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-voxel-and-colour-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. Voxel and colour inputs
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Voxel and colour inputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3d-craft-craftassist-house-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3D-Craft / CraftAssist house data
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#magicavoxel-collections" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        MagicaVoxel collections
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-instruction-and-step-order-ground-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Instruction and step-order ground truth
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Instruction and step-order ground truth">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#omr-step-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        OMR step structure
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workbenchmark-arxiv-260619358-june-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        WorkBenchMark (arXiv 2606.19358, June 2026)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mepnet-eccv-2022-arxiv-220712572" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        MEPNet (ECCV 2022, arXiv 2207.12572)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ikea-manual-arxiv-230201881" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        IKEA-Manual (arXiv 2302.01881)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-parts-catalog-fidelity" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Parts-catalog fidelity
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Parts-catalog fidelity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rebrickable-bulk-csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Rebrickable bulk CSV
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ldraw-parts-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        LDraw parts library
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bricklink" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        BrickLink
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-independent-non-brick-physics-cross-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        7. Independent (non-brick) physics cross-validation
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Independent (non-brick) physics cross-validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shapestacks" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ShapeStacks
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compas-cra-compas_rbe" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        COMPAS CRA / compas_rbe
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fusion-360-gallery-assembly-assemble-them-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Fusion 360 Gallery Assembly / Assemble Them All
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-sequencing" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Suggested sequencing
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#licence-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Licence summary
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/hbmartin/legolization/edit/main/docs/reports/dataset-survey.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="external-dataset-survey-for-testing-and-verification">External dataset survey for testing and verification<a class="headerlink" href="#external-dataset-survey-for-testing-and-verification" title="Permanent link">&para;</a></h1>
+<p>Written 2026-08-08 on branch <code>bricksim-screen</code>, against the corpus in
+<code>src/legolization/data/corpus/manifest.toml</code> (6 meshes + 13 synthetics),
+the nine vendored StableLego fixtures in <code>tests/data/stablelego/</code>, and
+<code>scripts/stablelego_sweep.py</code>.</p>
+<p>A web survey of publicly available datasets that could widen this
+project's test and verification surface. Each entry records what
+verification gap it closes, the exact access path, the licence, and the
+practical caveat. <strong>Nothing here is a commitment</strong> — this ranks a space,
+<code>ROADMAP.md</code> owns what actually gets built.</p>
+<h2 id="the-gaps-in-priority-order">The gaps, in priority order<a class="headerlink" href="#the-gaps-in-priority-order" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Gap today</th>
+<th>Best dataset</th>
+<th>Why it closes the gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>RBE verdicts pinned by 9 fixtures + an optional 50k sweep</td>
+<td><strong>StableText2Brick</strong></td>
+<td>47k structures, all labelled stable, per-voxel scores, MIT, 44 MB</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Zero human-designed assemblies; <code>ldraw_in.py</code> only ever parses our own output</td>
+<td><strong>LDraw OMR</strong></td>
+<td>Thousands of real MPDs, real parts, human step order, CC BY</td>
+</tr>
+<tr>
+<td>3</td>
+<td>6 meshes, all organic, all from one repo</td>
+<td><strong>Thingi10K</strong> + <strong>ShapeNetCore</strong></td>
+<td>Stratified mesh pathologies; ShapeNet gives same-input comparison</td>
+</tr>
+<tr>
+<td>4</td>
+<td>One <code>.vox</code> file (<code>heart.vox</code>); colour path barely exercised</td>
+<td><strong>3D-Craft</strong> houses</td>
+<td>2,586 multi-colour voxel builds <em>with human build order</em></td>
+</tr>
+<tr>
+<td>5</td>
+<td>Instruction order checked only against internal invariants</td>
+<td><strong>OMR <code>0 STEP</code></strong> + <strong>WorkBenchMark</strong></td>
+<td>An external answer key for step order and subassembly splits</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Catalog facts come from a rate-limited API</td>
+<td><strong>Rebrickable bulk CSV</strong> + <strong>LDraw parts library</strong></td>
+<td>Hermetic, offline, daily-refreshed part truth</td>
+</tr>
+<tr>
+<td>7</td>
+<td>No independent check on the toppling / CoM branch</td>
+<td><strong>ShapeStacks</strong> + <strong>COMPAS CRA</strong></td>
+<td>Non-interlocking stability ground truth our LEGO sets never cover</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="1-brick-assembly-stability-ground-truth">1. Brick-assembly stability ground truth<a class="headerlink" href="#1-brick-assembly-stability-ground-truth" title="Permanent link">&para;</a></h2>
+<h3 id="stabletext2brick-the-top-recommendation">StableText2Brick — the top recommendation<a class="headerlink" href="#stabletext2brick-the-top-recommendation" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://huggingface.co/datasets/AvaLovelace/StableText2Lego">https://huggingface.co/datasets/AvaLovelace/StableText2Lego</a> (the
+  dataset kept its <code>StableText2Lego</code> repo id; the paper renamed it
+  <code>StableText2Brick</code>).</li>
+<li>47,389 rows — 42,600 train / 4,790 test. <strong>44.3 MB, Parquet, MIT.</strong></li>
+<li>Fields: <code>structure_id</code>, <code>object_id</code> (ShapeNetCore), <code>category_id</code>
+  (21 categories), <code>captions</code>, <code>bricks</code>, <code>stability_scores</code>.</li>
+<li><code>bricks</code> is one line per brick, <code>hxw (x,y,z)</code>, 1-unit-tall cuboids on a
+  20×20×20 grid — the same world our <code>stablelego.layout_from_task_graph</code>
+  already reads, so the adapter is a format shim, not new physics.</li>
+<li><code>stability_scores</code> is a <strong>20×20×20 per-voxel array</strong>, the same
+  convention <code>scripts/stablelego_sweep.py</code> already decodes from
+  <code>stability_score.npy</code>.</li>
+</ul>
+<p>Why this one first:</p>
+<ol>
+<li><strong>It is a 47k-row "must return stable" regression.</strong> Every row passed
+   Liu et al.'s stability analysis during dataset construction (the
+   BrickGPT paper, §3 and Appendix A: 62,000+ generated, ~47,000
+   survived the filter). Any row where our RBE says <em>unstable</em> is either
+   a real solver divergence or a documented modelling difference — both
+   are findings.</li>
+<li><strong>It is scored, not just labelled.</strong> The per-voxel array lets us
+   compare <code>max_score</code> numerically against the reference, not merely the
+   binary verdict. That is strictly more signal than the nine fixtures.</li>
+<li><strong>It is the accepted benchmark in this literature.</strong> BrickSim's
+   headline "100% accuracy on 150 real-world assemblies" is 150 rows
+   sampled from exactly this dataset (see
+   <code>references/bricksim-.../paper.md:194</code>). Sampling the same way gives a
+   number directly comparable to the paper we are currently
+   implementing a screen from.</li>
+<li>It costs 44 MB and needs no Google Drive scraping, unlike the
+   StableLego release.</li>
+</ol>
+<p>Caveat: it is a <em>positive-only</em> set. The ~15k structures that failed the
+filter are not published, so it tests false-negatives (we call a stable
+thing unstable) and not false-positives. Pair it with StableLego's mixed
+valid/invalid release for the other direction.</p>
+<h3 id="pointcloud2brick-stable-2026">PointCloud2Brick (STABLE, 2026)<a class="headerlink" href="#pointcloud2brick-stable-2026" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/miniHuiHui/STABLE">https://github.com/miniHuiHui/STABLE</a>, models at
+  <a href="https://huggingface.co/miniHui/STABLE">https://huggingface.co/miniHui/STABLE</a>.</li>
+<li>42,604 train / 4,785 test, converted from StableText2Brick; same
+  20×20×20 world, 8 brick types / 14 oriented variants, 21 ShapeNet
+  categories. Adds point-cloud inputs.</li>
+<li>Mostly a re-cut of the same corpus — take it only if the point-cloud
+  pairing is wanted for mesh-input work.</li>
+</ul>
+<h3 id="bricksims-own-repository">BrickSim's own repository<a class="headerlink" href="#bricksims-own-repository" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/intelligent-control-lab/BrickSim">https://github.com/intelligent-control-lab/BrickSim</a>.</li>
+<li>The repo README does not ship the 150-assembly evaluation set, but the
+  set is reproducible: random sample from StableText2Brick. The paper's
+  table (<code>paper.md:200</code>) reports solvable counts 98/150/150 across
+  methods — a concrete target for our reduced-QP screen to be measured
+  against.</li>
+</ul>
+<h3 id="stablelego-already-partly-integrated">StableLego (already partly integrated)<a class="headerlink" href="#stablelego-already-partly-integrated" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/intelligent-control-lab/StableLego">https://github.com/intelligent-control-lab/StableLego</a>, MIT repo,
+  dataset via the Google Drive link in its README.</li>
+<li>50k+ objects across 55 ShapeNetCore categories; each has <code>vox.npy</code>,
+  <code>task_graph.json</code>, <code>stability_score.npy</code>, <code>vis.png</code>. <strong>Contains a mix
+  of valid and invalid layouts</strong> — the negative class StableText2Brick
+  lacks.</li>
+<li>Already wired: nine fixtures vendored in <code>tests/data/stablelego/</code>,
+  full sweep in <code>scripts/stablelego_sweep.py</code>. The unclosed part is that
+  the sweep is manual and the dataset is Drive-gated, so it never runs in
+  CI.</li>
+</ul>
+<hr />
+<h2 id="2-human-designed-assemblies-real-ldraw">2. Human-designed assemblies (real LDraw)<a class="headerlink" href="#2-human-designed-assemblies-real-ldraw" title="Permanent link">&para;</a></h2>
+<p>Every <code>.ldr</code>/<code>.mpd</code> this project has ever parsed it also wrote. That is a
+blind spot in <code>ldraw_in.py</code>, in catalog coverage, and in the SNOT and
+submodel paths.</p>
+<h3 id="ldraw-official-model-repository-omr">LDraw Official Model Repository (OMR)<a class="headerlink" href="#ldraw-official-model-repository-omr" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://library.ldraw.org/omr">https://library.ldraw.org/omr</a>. Official LEGO sets rebuilt in LDraw,
+  one MPD per model, with submodels and human-authored <code>0 STEP</code> lines.</li>
+<li><strong>Licence: CC BY 2.0 (CCAL 2.0) for existing files; new submissions
+  require CC BY 4.0.</strong> Files carry
+  <code>0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt</code>
+  in the header, so per-file licence is machine-checkable — which suits
+  the manifest's existing <code>license =</code> field.</li>
+<li>No official bulk archive from the site. The practical bulk path is
+  <strong>LTRON</strong>: <code>pip install ltron &amp;&amp; ltron_asset_installer</code> caches the OMR
+  LDraw files to <code>~/.cache/ltron/collections/omr/ldraw</code> (~3 GB with the
+  rest of its assets). <a href="https://github.com/aaronwalsman/ltron">https://github.com/aaronwalsman/ltron</a></li>
+<li>What it unlocks:</li>
+<li><strong>Parser robustness</strong> — real MPDs use submodels, mirrored transforms,
+    unofficial parts, and colour codes we never emit.</li>
+<li><strong>Catalog coverage as a metric</strong> — "what fraction of parts in N real
+    models does our catalog support" is a concrete, reportable number
+    for <code>extend-lego-part-support</code>, replacing guesswork about which part
+    to add next.</li>
+<li><strong>Step-order answer key</strong> — see gap 5.</li>
+<li>Caveat: OMR models use hundreds of part types far outside our catalog,
+  so most will be <em>analysis</em> inputs, not generation targets. Scope it to
+  parser + catalog-coverage tests first.</li>
+</ul>
+<h3 id="ltron-random-construction-rc_6_6">LTRON random construction (<code>rc_6_6</code>)<a class="headerlink" href="#ltron-random-construction-rc_6_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Same install. LDraw files <strong>plus JSON metadata recording brick shapes,
+  colours, instances per scene, and connections per scene</strong>.</li>
+<li>The connection metadata is an external ground truth for
+  <code>assembly_connections.py</code> — currently our connection graph is only
+  ever checked against itself.</li>
+</ul>
+<h3 id="bricknet-cvpr-2026">BrickNet (CVPR 2026)<a class="headerlink" href="#bricknet-cvpr-2026" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://kulits.github.io/BrickNet">https://kulits.github.io/BrickNet</a>, arXiv 2604.22984.</li>
+<li><strong>100,000+ human-designed LDraw brick objects and scenes</strong>;
+  BrickNet-PT 320,808 samples, BrickNet-SFT 67,185.</li>
+<li>Largest human-designed LDraw corpus found. <strong>Access is form-gated</strong>
+  (<a href="https://forms.gle/dm4eYSa5gh4DqzRT6">https://forms.gle/dm4eYSa5gh4DqzRT6</a>) and neither the licence nor the
+  sourcing (Rebrickable MOCs? OMR? scraped?) is stated publicly. Request
+  it, but do not plan a pinned-hash corpus entry around it until the
+  terms are known.</li>
+</ul>
+<h3 id="mobilebrick">MobileBrick<a class="headerlink" href="#mobilebrick" title="Permanent link">&para;</a></h3>
+<ul>
+<li>153 real LEGO models, multi-view RGBD with <em>precise CAD ground-truth
+  geometry</em> — a genuine mesh↔brick pair, which would make a true
+  round-trip test (legolize the ground-truth mesh, compare against the
+  actual brick model).</li>
+<li><strong>Licence: CC BY-NC-ND 4.0.</strong> Non-commercial <em>and</em> no-derivatives makes
+  it unusable as a shipped corpus entry for this repo. Noted for
+  completeness only. <a href="https://arxiv.org/abs/2303.01932">https://arxiv.org/abs/2303.01932</a></li>
+</ul>
+<hr />
+<h2 id="3-mesh-inputs">3. Mesh inputs<a class="headerlink" href="#3-mesh-inputs" title="Permanent link">&para;</a></h2>
+<p>The current six meshes are all organic, all from
+<code>alecjacobson/common-3d-test-models</code>. Two additions cover different axes.</p>
+<h3 id="thingi10k-pathology-coverage">Thingi10K — pathology coverage<a class="headerlink" href="#thingi10k-pathology-coverage" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/Thingi10K/Thingi10K">https://github.com/Thingi10K/Thingi10K</a>,
+  <a href="https://huggingface.co/datasets/Thingi10K/Thingi10K">https://huggingface.co/datasets/Thingi10K/Thingi10K</a>,
+  <code>pip install thingi10k</code>.</li>
+<li>10,000 real 3D-printing meshes from Thingiverse, <strong>with per-model
+  geometric metadata</strong>: manifoldness, orientability, component count,
+  self-intersection, degenerate faces, genus — and a per-model licence
+  field.</li>
+<li>This is the point: it lets us build a <em>stratified</em> input-robustness
+  suite instead of hoping a pretty mesh happens to be broken. Direct
+  targets — <code>mesh.py</code>'s fill fallback (currently exercised by exactly one
+  non-watertight model, Suzanne), the <code>largest_component_only</code> filter
+  (exercised by exactly one, Homer), and the aspect-correct grid path.</li>
+<li>Licences vary per model; filter on the metadata's licence column to a
+  CC0/CC-BY subset before pinning anything.</li>
+</ul>
+<h3 id="shapenetcore-same-input-comparison">ShapeNetCore — same-input comparison<a class="headerlink" href="#shapenetcore-same-input-comparison" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The source of both StableLego and StableText2Brick. Taking the same
+  <code>object_id</code> a StableText2Brick row was built from and running it
+  through our pipeline gives <strong>their layout and our layout for the
+  identical input</strong>, both scorable by both solvers.</li>
+<li>That is the strongest available evidence for placement-quality claims:
+  not "our objective went down" but "on the same object, our layout is
+  stable/denser/fewer-bricks than the published one."</li>
+<li>Requires a ShapeNet account (research-use terms); the <code>object_id</code>
+  column makes the join trivial once you have it.</li>
+</ul>
+<h3 id="objaverse-objaverse-xl">Objaverse / Objaverse-XL<a class="headerlink" href="#objaverse-objaverse-xl" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://objaverse.allenai.org/">https://objaverse.allenai.org/</a>, 800K+ objects, <strong>ODC-By 1.0</strong>,
+  captions and tags, Hugging Face hosted.</li>
+<li>Scale and diversity for a broad regression sweep. Quality is uneven
+  (artist uploads); needs the same kind of metadata filtering as
+  Thingi10K, which it has less of.</li>
+</ul>
+<h3 id="toys4k">Toys4K<a class="headerlink" href="#toys4k" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/rehg-lab/lowshot-shapebias/tree/main/toys4k">https://github.com/rehg-lab/lowshot-shapebias/tree/main/toys4k</a></li>
+<li>4,179 instances, 105 categories, ≥15 per category, sourced from
+  CC/royalty-free Blendswap/Sketchfab/Poly/Turbosquid.</li>
+<li><strong>The best shape-prior match to what people actually legolize</strong> —
+  toys, not scans. Access is form-gated; obj files ship without
+  materials, so colour work would need the <code>.blend</code> set.</li>
+</ul>
+<hr />
+<h2 id="4-voxel-and-colour-inputs">4. Voxel and colour inputs<a class="headerlink" href="#4-voxel-and-colour-inputs" title="Permanent link">&para;</a></h2>
+<p><code>data/examples/heart.vox</code> is the only <code>.vox</code> in the repo, and
+<code>letter-h-bicolour.npy</code> is the only colour-constraint fixture.</p>
+<h3 id="3d-craft-craftassist-house-data">3D-Craft / CraftAssist house data<a class="headerlink" href="#3d-craft-craftassist-house-data" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Houses: <code>https://craftassist.s3-us-west-2.amazonaws.com/pubr/house_data.tar.gz</code></li>
+<li>Segmentation: <code>https://craftassist.s3-us-west-2.amazonaws.com/pubr/instance_segmentation_data.tar.gz</code></li>
+<li><a href="https://github.com/facebookresearch/craftassist">https://github.com/facebookresearch/craftassist</a>,
+  <a href="https://github.com/facebookresearch/voxelcnn">https://github.com/facebookresearch/voxelcnn</a></li>
+<li><strong>2,586 crowd-built Minecraft houses</strong>, each recorded as a
+  timestamped sequence <code>[timestamp, user_id, x, y, z, block_id,
+  place/break]</code>, 253 distinct block IDs.</li>
+<li>Two distinct uses:</li>
+<li>Large <strong>multi-colour voxel inputs</strong> — block IDs map to a palette,
+     which is exactly the colour-constraint regime
+     <code>letter-h-bicolour</code> gestures at with 2 colours and 253 available.</li>
+<li><strong>Human build order.</strong> The place/break sequence is a real person's
+     construction order for a real structure. That is an external
+     sanity check on the instruction sequencer's ordering heuristics
+     that no LEGO dataset offers. MEPNet used this same house set for
+     precisely this reason.</li>
+<li>Direct S3 download, no gating. Structures are architectural (walls,
+  floors, roofs) — different failure modes from our organic meshes.</li>
+</ul>
+<h3 id="magicavoxel-collections">MagicaVoxel collections<a class="headerlink" href="#magicavoxel-collections" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/ephtracy/voxel-model">https://github.com/ephtracy/voxel-model</a> — the official <code>.vox</code> sample
+  set from MagicaVoxel's author. Best <code>.vox</code> <em>format</em> conformance test
+  (multi-model scenes, palette chunks, extension chunks).</li>
+<li><a href="https://github.com/enkisoftware/voxel-models">https://github.com/enkisoftware/voxel-models</a> — <strong>CC BY 4.0</strong>, safe to
+  pin in the manifest.</li>
+<li><a href="https://github.com/lquesada/voxel-3d-models">https://github.com/lquesada/voxel-3d-models</a> — CC BY-NC-SA 3.0.
+  Non-commercial; <strong>do not</strong> put it in a shipped corpus.</li>
+</ul>
+<hr />
+<h2 id="5-instruction-and-step-order-ground-truth">5. Instruction and step-order ground truth<a class="headerlink" href="#5-instruction-and-step-order-ground-truth" title="Permanent link">&para;</a></h2>
+<h3 id="omr-step-structure">OMR step structure<a class="headerlink" href="#omr-step-structure" title="Permanent link">&para;</a></h3>
+<p>The highest-value and cheapest option, because gap 2 already downloads
+it. OMR MPDs carry human-authored <code>0 STEP</code> lines and submodel
+decomposition — an answer key for <code>instructions/subassembly.py</code> and the
+step sequencer. Metrics that become possible: step-size distribution
+versus human authors, submodel-boundary agreement, and whether our
+"floating parts" invariant ever fires on a model a human shipped.</p>
+<h3 id="workbenchmark-arxiv-260619358-june-2026">WorkBenchMark (arXiv 2606.19358, June 2026)<a class="headerlink" href="#workbenchmark-arxiv-260619358-june-2026" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://workbenchmark.github.io/">https://workbenchmark.github.io/</a></li>
+<li><strong>400 LEGO Duplo assembly tasks in four complexity tiers</strong>, plus a
+  simulation environment and an assembly-by-disassembly baseline. Tiers
+  explicitly scale order dependencies, interlocking sub-assemblies,
+  tight tolerances, and multi-layer insertions.</li>
+<li>Directly relevant to the insertion-pressure audit and the
+  disassembly-rescue path in the sequencer. Duplo geometry, so the
+  physics constants differ, but the <em>ordering</em> structure transfers.</li>
+<li>Release stated as forthcoming — verify availability before planning
+  around it.</li>
+</ul>
+<h3 id="mepnet-eccv-2022-arxiv-220712572">MEPNet (ECCV 2022, arXiv 2207.12572)<a class="headerlink" href="#mepnet-eccv-2022-arxiv-220712572" title="Permanent link">&para;</a></h3>
+<ul>
+<li>"Translating a Visual LEGO Manual to a Machine-Executable Plan."
+  Introduces three LEGO manual datasets plus the Minecraft house set.</li>
+<li>Public dataset links were not found in this survey; the datasets are
+  described in the paper but no release URL surfaced. Worth an email if
+  step-order ground truth becomes a priority.</li>
+</ul>
+<h3 id="ikea-manual-arxiv-230201881">IKEA-Manual (arXiv 2302.01881)<a class="headerlink" href="#ikea-manual-arxiv-230201881" title="Permanent link">&para;</a></h3>
+<ul>
+<li>102 objects, 3–21 parts each, with per-step part connections, manual
+  segmentations, and 3D poses.</li>
+<li>Not bricks — but a well-designed precedent for <em>how to score</em> a step
+  plan against a human one. Read for the metric design, not the data.</li>
+</ul>
+<hr />
+<h2 id="6-parts-catalog-fidelity">6. Parts-catalog fidelity<a class="headerlink" href="#6-parts-catalog-fidelity" title="Permanent link">&para;</a></h2>
+<h3 id="rebrickable-bulk-csv">Rebrickable bulk CSV<a class="headerlink" href="#rebrickable-bulk-csv" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://rebrickable.com/downloads/">https://rebrickable.com/downloads/</a> — <code>parts.csv</code>, <code>elements.csv</code>,
+  <code>colors.csv</code>, <code>sets.csv</code>, <code>inventories.csv</code>, <code>inventory_parts.csv</code>,
+  <code>part_relationships.csv</code>, <code>themes.csv</code>, <code>minifigs.csv</code>. <strong>Refreshed
+  daily; the site states the files may be used for any purpose.</strong></li>
+<li><code>catalog_infer/sources.py</code> already has a <code>rebrickable-api</code> rung
+  (<code>REBRICKABLE_API_KEY</code>, rate-limited, network-dependent). The bulk dump
+  gives the same facts <strong>hermetically and offline</strong> — which is what
+  <code>test_catalog_infer.py</code> actually wants. <code>part_relationships.csv</code> also
+  resolves the mould/print/pair variants that currently confuse part-id
+  lookups.</li>
+<li>Mirror scripts if a SQLite view is preferred:
+  <a href="https://github.com/jncraton/rebrickable-sqlite">https://github.com/jncraton/rebrickable-sqlite</a>.</li>
+</ul>
+<h3 id="ldraw-parts-library">LDraw parts library<a class="headerlink" href="#ldraw-parts-library" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://library.ldraw.org/updates">https://library.ldraw.org/updates</a> — <code>complete.zip</code>, <strong>17,052 unique
+  shapes</strong>, CCAL 2.0.</li>
+<li>Real <code>.dat</code> geometry for every official part. For
+  <code>extend-lego-part-support</code>, footprint and height could be <em>derived from
+  the actual primitive geometry</em> rather than estimated — turning
+  <code>catalog_infer/geometry.py</code> estimates into measurements.</li>
+<li>Git mirrors with version control: <a href="https://github.com/pybricks/ldraw">https://github.com/pybricks/ldraw</a>,
+  <a href="https://github.com/ctiller/ldraw">https://github.com/ctiller/ldraw</a>.</li>
+</ul>
+<h3 id="bricklink">BrickLink<a class="headerlink" href="#bricklink" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Already supported as a local export (<code>bricklink-catalog-dump</code> in
+  <code>sources.py</code>, and <code>scripts/ingest_bricklink_masses.py</code>). No change
+  recommended; noted so the ladder is documented in one place.</li>
+</ul>
+<hr />
+<h2 id="7-independent-non-brick-physics-cross-validation">7. Independent (non-brick) physics cross-validation<a class="headerlink" href="#7-independent-non-brick-physics-cross-validation" title="Permanent link">&para;</a></h2>
+<p>Every LEGO dataset above was labelled by <em>the same family of solver we
+are implementing</em>. Agreement with them is consistency, not correctness.
+These two are independent.</p>
+<h3 id="shapestacks">ShapeStacks<a class="headerlink" href="#shapestacks" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://ogroth.github.io/shapestacks/">https://ogroth.github.io/shapestacks/</a>,
+  <a href="https://github.com/ogroth/shapestacks">https://github.com/ogroth/shapestacks</a>, arXiv 1804.08018.</li>
+<li><strong>20,000 simulated block-stacking scenarios</strong> — cubes, cuboids,
+  cylinders, spheres — each with a <strong>binary stability label</strong>, plus
+  segmentation identifying <em>which object violates stability</em> and which
+  falls first.</li>
+<li>No knob interlocking, so it does not test our friction capacities. But
+  it is exactly the <code>ground_pull=False</code> regime described in
+  <code>physics-fidelity-notes.md</code> §1: bodies resting loose on a table, where
+  stability is pure CoM-over-support-polygon and toppling. That branch —
+  the one <code>topple-arm</code> pins with a single fixture — would get 20,000
+  independently-generated cases, including the "which brick is at fault"
+  label to check our per-brick attribution, not just the global verdict.</li>
+<li>MuJoCo MJCF scene files; would need a converter to our layout, and the
+  cuboids-only subset is the tractable slice.</li>
+</ul>
+<h3 id="compas-cra-compas_rbe">COMPAS CRA / compas_rbe<a class="headerlink" href="#compas-cra-compas_rbe" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/BlockResearchGroup/compas_cra">https://github.com/BlockResearchGroup/compas_cra</a>,
+  <a href="https://github.com/BlockResearchGroup/compas_rbe">https://github.com/BlockResearchGroup/compas_rbe</a>,
+  <a href="https://blockresearchgroup.github.io/compas_cra/latest/">https://blockresearchgroup.github.io/compas_cra/latest/</a></li>
+<li>Coupled Rigid-Block Analysis for masonry — <strong>the closest published
+  analogue of our LP formulation</strong>, from a group that ran "an extensive
+  benchmark campaign" on 3D discrete-element assemblies of rigid blocks.</li>
+<li>The strongest available external evidence for the "LP is exact" claim
+  recorded in the audit findings: run both formulations on the same
+  block assemblies and compare contact forces, not just verdicts. CRA
+  uses a nonlinear penalty formulation, so disagreement is informative
+  in both directions.</li>
+<li>Python, open source, installable — the lowest-friction cross-check on
+  this list after StableText2Brick.</li>
+</ul>
+<h3 id="fusion-360-gallery-assembly-assemble-them-all">Fusion 360 Gallery Assembly / Assemble Them All<a class="headerlink" href="#fusion-360-gallery-assembly-assemble-them-all" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="https://github.com/AutodeskAILab/Fusion360GalleryDataset">https://github.com/AutodeskAILab/Fusion360GalleryDataset</a> — 8,251
+  multi-part assemblies, 154,468 bodies, 32,148 parametric joints with
+  axis, pose, and contact metadata.</li>
+<li><a href="https://github.com/yunshengtian/Assemble-Them-All">https://github.com/yunshengtian/Assemble-Them-All</a> — SIGGRAPH Asia
+  2022; thousands of physically valid industrial assemblies with
+  required assembly motions (two-part set 221.1 MB, rotational 5.4 MB).</li>
+<li>Both are about <em>insertion directions and disassembly feasibility</em> —
+  the same question our straight-down-insertion audit asks, in a
+  non-brick setting. Lower priority than the above, but the only
+  large-scale insertion-motion ground truth found.</li>
+</ul>
+<hr />
+<h2 id="suggested-sequencing">Suggested sequencing<a class="headerlink" href="#suggested-sequencing" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>StableText2Brick</strong> — 44 MB, MIT, Parquet, same grid convention as
+   code we already have. Add an adapter next to <code>stablelego.py</code>, pin a
+   deterministic sample as a fast test, run the full 47k as an offline
+   release sweep alongside <code>scripts/stablelego_sweep.py</code>. Report the
+   150-sample number for direct comparison with BrickSim.</li>
+<li><strong>Rebrickable bulk CSV</strong> — makes <code>catalog_infer</code> tests hermetic and
+   kills a network dependency. Small, permissive, immediately useful.</li>
+<li><strong>OMR via LTRON</strong> — real MPDs for parser robustness plus a
+   catalog-coverage metric. CC BY, attribution is machine-readable from
+   the file headers.</li>
+<li><strong>Thingi10K stratified subset</strong> — pick ~10 models by <em>metadata
+   pathology</em>, not by looks; pin hashes in the manifest the same way the
+   six meshes are pinned.</li>
+<li><strong>ShapeStacks cuboid subset</strong> — the only independent check on the
+   toppling branch. Needs a converter; worth it because it tests the one
+   claim no LEGO dataset can.</li>
+<li><strong>COMPAS CRA</strong> — cross-validate the LP formulation itself. Highest
+   evidentiary value, highest effort.</li>
+<li>Request <strong>BrickNet</strong> access and watch for the <strong>WorkBenchMark</strong>
+   release; neither is plannable until terms and availability are known.</li>
+</ol>
+<h2 id="licence-summary">Licence summary<a class="headerlink" href="#licence-summary" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Licence</th>
+<th>Shippable in a pinned corpus?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>StableText2Brick</td>
+<td>MIT</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>StableLego (repo)</td>
+<td>MIT</td>
+<td>Yes (dataset terms unstated)</td>
+</tr>
+<tr>
+<td>LDraw OMR</td>
+<td>CC BY 2.0 / 4.0</td>
+<td>Yes, with attribution</td>
+</tr>
+<tr>
+<td>LDraw parts library</td>
+<td>CCAL 2.0</td>
+<td>Yes, with attribution</td>
+</tr>
+<tr>
+<td>Rebrickable CSV</td>
+<td>"any purpose" per site</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Thingi10K</td>
+<td>Per-model, in metadata</td>
+<td>Yes, after filtering</td>
+</tr>
+<tr>
+<td>Objaverse</td>
+<td>ODC-By 1.0</td>
+<td>Yes, with attribution</td>
+</tr>
+<tr>
+<td>enkisoftware voxel-models</td>
+<td>CC BY 4.0</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>3D-Craft / CraftAssist</td>
+<td>Repo is MIT</td>
+<td>Likely; confirm data terms</td>
+</tr>
+<tr>
+<td>ShapeStacks</td>
+<td>Research use</td>
+<td>Test-only</td>
+</tr>
+<tr>
+<td>ShapeNetCore</td>
+<td>Research-use account</td>
+<td>Test-only</td>
+</tr>
+<tr>
+<td>Toys4K</td>
+<td>Form-gated, CC/royalty-free</td>
+<td>Test-only</td>
+</tr>
+<tr>
+<td>BrickNet</td>
+<td>Form-gated, unstated</td>
+<td>Unknown — do not plan on it</td>
+</tr>
+<tr>
+<td>lquesada voxel-3d-models</td>
+<td>CC BY-NC-SA 3.0</td>
+<td><strong>No</strong> (non-commercial)</td>
+</tr>
+<tr>
+<td>MobileBrick</td>
+<td>CC BY-NC-ND 4.0</td>
+<td><strong>No</strong> (NC + ND)</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Harold Martin &mdash; GPL-3.0-or-later.
+Legolization is an independent open-source project. It is not affiliated with,
+sponsored by, or endorsed by the LEGO Group. LEGO&reg; is a trademark of the
+LEGO Group, which does not authorize or endorse this project.
+
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/hbmartin/legolization" target="_blank" rel="noopener" title="Legolization on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/legolization/" target="_blank" rel="noopener" title="Legolization on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.code.select","content.footnote.tooltips","content.tabs.link","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.highlight","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,4167 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Turn a 3D model into a physically buildable LEGO-style model in LDraw format, with verified structural stability, step-by-step build instructions, and a bill of materials.
+">
+      
+      
+        <meta name="author" content="Harold Martin">
+      
+      
+        <link rel="canonical" href="https://hbmartin.github.io/legolization/guide/configuration/">
+      
+      
+        <link rel="prev" href="../choosing-a-strategy/">
+      
+      
+        <link rel="next" href="../bundles-and-artifacts/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>Configuration reference - Legolization</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Legolization" class="md-header__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Legolization
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Legolization" class="md-nav__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    Legolization
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../basics/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Basics
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Basics
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/install.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Install the skills
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/first-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/choosing-a-skill.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a skill
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/reading-results.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reading the results
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/troubleshooting.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Troubleshooting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Skill reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Skill reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/legolize-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  legolize-model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/prepare-lego-input.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  prepare-lego-input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/optimize-lego-build.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  optimize-lego-build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/publish-lego-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  publish-lego-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/analyze-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/repair-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  repair-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/inspect-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  inspect-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/render-ldraw.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  render-ldraw
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/extend-lego-part-support.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  extend-lego-part-support
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/eval-corpus.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  eval-corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Guide
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Guide
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Core concepts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quality-and-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Quality tiers and budgets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../choosing-a-strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a strategy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-values-are-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        How values are resolved
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How values are resolved">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#-set-values-are-toml" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>--set</code> values are TOML
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#paths-are-relative-to-the-toml-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Paths are relative to the TOML file
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-happens-before-work-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Validation happens before work starts
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-field-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Cross-field rules
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Configuration hash
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A worked example
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#input" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[input]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inputmesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[input.mesh]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geometry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[geometry]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#placement" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[placement]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#placementexact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[placement.exact]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#placementweights" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[placement.weights]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#finishing" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[finishing]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stability" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[stability]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stabilitysolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[stability.solver]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stabilityrepair_options" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[stability.repair_options]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instructionsoptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[instructions.options]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[output]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[cache]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[catalog]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-each-key-lands" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where each key lands
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bundles-and-artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundles and artifacts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../exit-codes-and-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes and JSON
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rendering-and-parts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Rendering and parts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Python API
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Command reference
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Command reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/bundle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/build/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/analyze/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/model-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  model and instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  catalog
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/parts-cache-validate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  parts, cache, validate
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Theory
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Theory
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/pipeline.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The pipeline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/representations.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Representations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/placement/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Placement
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Placement
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/constructive.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Constructive heuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/layered-engine.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The layered engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/metaheuristics.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Metaheuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/exact.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exact methods
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/merge-and-repair.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Merge and repair
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/finishing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Finishing passes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/stability/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Stability
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Stability
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/rbe.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The RBE model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/exactness.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exactness and certificates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/screens.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Screens
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/warm-solving.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Warm solving
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/sequencing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Sequencing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/subassemblies.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Subassemblies
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/analysis-stack.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The analysis stack
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/papers.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Papers and provenance
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../project/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Project notes
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Project notes
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/self-evaluation-playbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Self-evaluation playbook
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/performance-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance testing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/kollsker-drift-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: Kollsker drift
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/unstable-prefix-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: unstable prefixes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/physics-fidelity-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: physics fidelity
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/mesh-baseline-pending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: mesh baseline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/roadmap-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Roadmap history
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-values-are-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        How values are resolved
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How values are resolved">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#-set-values-are-toml" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>--set</code> values are TOML
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#paths-are-relative-to-the-toml-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Paths are relative to the TOML file
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-happens-before-work-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Validation happens before work starts
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-field-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Cross-field rules
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Configuration hash
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A worked example
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#input" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[input]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inputmesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[input.mesh]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geometry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[geometry]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#placement" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[placement]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#placementexact" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[placement.exact]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#placementweights" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[placement.weights]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#finishing" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[finishing]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stability" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[stability]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stabilitysolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[stability.solver]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stabilityrepair_options" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[stability.repair_options]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instructionsoptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[instructions.options]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[output]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[cache]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>[catalog]</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-each-key-lands" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Where each key lands
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/hbmartin/legolization/edit/main/docs/guide/configuration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="configuration-reference">Configuration reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h1>
+<p>Configuration is strict nested TOML. Every key below is real, every default is taken
+from the dataclass that owns it, and anything not listed here is an error.</p>
+<hr />
+<h2 id="how-values-are-resolved">How values are resolved<a class="headerlink" href="#how-values-are-resolved" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>built-in defaults  →  --config FILE  →  --set KEY=VALUE  →  explicit CLI flags
+</span></code></pre></div>
+<p>Only flags the user <strong>explicitly supplied</strong> participate in the last step. An omitted
+<code>--seed</code> does not overwrite a TOML <code>placement.seed</code> with the parser's default.</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>legolization<span class="w"> </span>bundle<span class="w"> </span>model.obj<span class="w"> </span>--config<span class="w"> </span>legolization.toml
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>legolization<span class="w"> </span>bundle<span class="w"> </span>model.obj<span class="w"> </span>--set<span class="w"> </span>geometry.hollow<span class="o">=</span><span class="nb">false</span><span class="w"> </span>--set<span class="w"> </span>placement.seed<span class="o">=</span><span class="m">7</span>
+</span></code></pre></div>
+<p><code>--set</code> accepts one dotted key per occurrence and is repeatable.</p>
+<h3 id="-set-values-are-toml"><code>--set</code> values are TOML<a class="headerlink" href="#-set-values-are-toml" title="Permanent link">&para;</a></h3>
+<p>The right-hand side is parsed as a TOML value, so types come out right:</p>
+<table>
+<thead>
+<tr>
+<th>You write</th>
+<th>You get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--set geometry.hollow=false</code></td>
+<td>boolean <code>false</code></td>
+</tr>
+<tr>
+<td><code>--set placement.seed=7</code></td>
+<td>integer <code>7</code></td>
+</tr>
+<tr>
+<td><code>--set placement.colour_weight=2.5</code></td>
+<td>float <code>2.5</code></td>
+</tr>
+<tr>
+<td><code>--set placement.strategy=luo</code></td>
+<td>string <code>"luo"</code></td>
+</tr>
+<tr>
+<td><code>--set input.mesh.auto_scale=[16,32]</code></td>
+<td>array <code>[16, 32]</code></td>
+</tr>
+</tbody>
+</table>
+<p>A value that fails TOML parsing falls back to a bare string, which is why bare
+identifiers like <code>luo</code> work. A missing <code>=</code>, or an empty key, is an error.</p>
+<h3 id="paths-are-relative-to-the-toml-file">Paths are relative to the TOML file<a class="headerlink" href="#paths-are-relative-to-the-toml-file" title="Permanent link">&para;</a></h3>
+<p><code>cache.path</code>, <code>catalog.extensions</code>, and <code>catalog.estimate_sidecars</code> resolve against
+the directory containing the <code>--config</code> file — not the current working directory. A
+project config stays valid no matter where you invoke it from.</p>
+<h3 id="validation-happens-before-work-starts">Validation happens before work starts<a class="headerlink" href="#validation-happens-before-work-starts" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Unknown keys fail.</strong> A typo is an error, never a silently ignored setting.</li>
+<li><strong>Non-finite values fail.</strong> <code>NaN</code> and <code>inf</code> anywhere are rejected.</li>
+<li><strong>Sections must be tables.</strong></li>
+<li><strong>Cross-field rules</strong> (below) fail at parse time, not after 20 minutes of solving.</li>
+</ul>
+<h3 id="cross-field-rules">Cross-field rules<a class="headerlink" href="#cross-field-rules" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Message</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input.mesh.auto_scale</code> with an explicit <code>target_studs</code></td>
+<td>incompatible</td>
+</tr>
+<tr>
+<td><code>input.mesh.auto_scale</code> with an explicit <code>pitch</code></td>
+<td>incompatible</td>
+</tr>
+<tr>
+<td><code>output.emit_support = true</code> requires <code>stability.support = "baseplate"</code></td>
+<td><code>output.emit_support requires stability.support='baseplate'</code></td>
+</tr>
+<tr>
+<td><code>placement.exact.limit_policy = "continue"</code> requires <code>placement.time_budget_s</code></td>
+<td><code>exact continue policy requires placement.time_budget_s</code></td>
+</tr>
+<tr>
+<td><code>stability.solver.mode</code> must be <code>"lp"</code></td>
+<td><code>stability.solver.mode is production LP only</code></td>
+</tr>
+<tr>
+<td><code>instructions.options</code>: <code>min_step_size ≤ target_step_size ≤ max_step_size</code></td>
+<td><code>step sizes must satisfy minimum &lt;= target &lt;= maximum</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="configuration-hash">Configuration hash<a class="headerlink" href="#configuration-hash" title="Permanent link">&para;</a></h3>
+<p>The effective configuration is hashed (SHA-256 of its canonical JSON) into bundle
+identity and manifests. The <code>cache</code> and <code>output</code> sections are excluded from that
+hash, so a bundle resumes across machines with different cache locations.</p>
+<hr />
+<h2 id="a-worked-example">A worked example<a class="headerlink" href="#a-worked-example" title="Permanent link">&para;</a></h2>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># legolization.toml</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">[input]</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">plates_per_voxel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">[input.mesh]</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">target_studs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">28</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">up</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;y&quot;</span><span class="w">                    </span><span class="c1"># most .obj files are y-up</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">colour_mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sampled&quot;</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="k">[geometry]</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">hollow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="n">shell_plates</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="k">[placement]</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="n">strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;auto&quot;</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="n">objective</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;bricks&quot;</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">colour_mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;soft&quot;</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">restarts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="k">[placement.exact]</span>
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="n">max_cells</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">256</span>
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="n">time_limit_s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60</span>
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="n">limit_policy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;fail&quot;</span>
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>
+</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="k">[finishing]</span>
+</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="n">slopes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="n">tiles</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="n">snot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                 </span><span class="c1"># opt-in sideways cladding</span>
+</span><span id="__span-2-30"><a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>
+</span><span id="__span-2-31"><a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="k">[stability]</span>
+</span><span id="__span-2-32"><a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="n">profile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;corrected&quot;</span>
+</span><span id="__span-2-33"><a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="n">support</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;baseplate&quot;</span>
+</span><span id="__span-2-34"><a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>
+</span><span id="__span-2-35"><a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a><span class="k">[instructions.options]</span>
+</span><span id="__span-2-36"><a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="n">target_step_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span>
+</span><span id="__span-2-37"><a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a><span class="n">stability_policy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;strict&quot;</span>
+</span><span id="__span-2-38"><a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>
+</span><span id="__span-2-39"><a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a><span class="k">[output]</span>
+</span><span id="__span-2-40"><a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a><span class="n">manifest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span></code></pre></div>
+<hr />
+<h2 id="input"><code>[input]</code><a class="headerlink" href="#input" title="Permanent link">&para;</a></h2>
+<p>Voxel and mesh input options.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plates_per_voxel</code></td>
+<td>int &gt; 0</td>
+<td><code>3</code></td>
+<td>Vertical plate layers per source voxel. <code>3</code> makes one voxel one brick tall.</td>
+</tr>
+<tr>
+<td><code>aspect_correct</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Stretch voxel grids to correct the 2.5 plates-per-stud aspect ratio. Mesh inputs are aspect-correct regardless.</td>
+</tr>
+<tr>
+<td><code>dither</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Floyd–Steinberg colour dithering per horizontal slice. Error diffuses only into filled cells of the same slice.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="inputmesh"><code>[input.mesh]</code><a class="headerlink" href="#inputmesh" title="Permanent link">&para;</a></h2>
+<p>Mesh voxelization. Ignored for <code>.vox</code> / <code>.npy</code> inputs.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>target_studs</code></td>
+<td>int &gt; 0</td>
+<td><code>32</code></td>
+<td>Footprint width in studs. Incompatible with <code>auto_scale</code>.</td>
+</tr>
+<tr>
+<td><code>pitch</code></td>
+<td>float &gt; 0 | <code>null</code></td>
+<td><code>null</code></td>
+<td>Model units per stud. Overrides <code>target_studs</code>. Incompatible with <code>auto_scale</code>.</td>
+</tr>
+<tr>
+<td><code>up</code></td>
+<td><code>"x"</code> | <code>"y"</code> | <code>"z"</code></td>
+<td><code>"z"</code></td>
+<td>The mesh's vertical axis. Most <code>.obj</code> files are <strong>y-up</strong>.</td>
+</tr>
+<tr>
+<td><code>colour_code</code></td>
+<td>int</td>
+<td><code>7</code> (light grey)</td>
+<td>Uniform colour, and the fallback when a mesh carries no colour data.</td>
+</tr>
+<tr>
+<td><code>colour_mode</code></td>
+<td><code>"uniform"</code> | <code>"sampled"</code></td>
+<td><code>"uniform"</code></td>
+<td><code>sampled</code> colours each voxel from the nearest mesh vertex — texture and vertex colours both work.</td>
+</tr>
+<tr>
+<td><code>fill</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Flood the enclosed volume. Disable for shell meshes.</td>
+</tr>
+<tr>
+<td><code>keep_largest</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Keep only the largest connected component. Disconnected components are preserved by default.</td>
+</tr>
+<tr>
+<td><code>auto_scale</code></td>
+<td><code>[min, max]</code> | <code>null</code></td>
+<td><code>null</code></td>
+<td>Search a stud range instead of fixing one size. Requires <code>0 &lt; min ≤ max</code>.</td>
+</tr>
+<tr>
+<td><code>grid_phases</code></td>
+<td><code>1</code> | <code>2</code> | <code>4</code> | <code>8</code></td>
+<td><strong><code>8</code></strong></td>
+<td>Half-cell sampling offsets tried when selecting a voxelization.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title"><code>grid_phases</code> has two different defaults</p>
+<p>The <code>MeshOptions</code> dataclass defaults it to <code>1</code>, but <code>InputConfig</code> constructs
+<code>MeshOptions(grid_phases=8)</code>. <strong>Through configuration and the CLI, the default
+is 8.</strong> Only a direct <code>MeshOptions()</code> construction in the Python API gets <code>1</code>.</p>
+</div>
+<h2 id="geometry"><code>[geometry]</code><a class="headerlink" href="#geometry" title="Permanent link">&para;</a></h2>
+<p>Target-shell construction. All integers must be non-negative.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hollow</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Erode the interior to a shell before placement.</td>
+</tr>
+<tr>
+<td><code>hollow_rounds</code></td>
+<td>int ≥ 0</td>
+<td><code>5</code></td>
+<td>Maximum add-material rounds when repair alone cannot stabilize the layout.</td>
+</tr>
+<tr>
+<td><code>hollow_restore_radius</code></td>
+<td>int ≥ 0</td>
+<td><code>2</code></td>
+<td>Chebyshev radius around a trouble column whose interior fill is restored.</td>
+</tr>
+<tr>
+<td><code>shell_studs</code></td>
+<td>int ≥ 0</td>
+<td><code>1</code></td>
+<td>Lateral shell thickness in studs.</td>
+</tr>
+<tr>
+<td><code>shell_plates</code></td>
+<td>int ≥ 0</td>
+<td><code>3</code></td>
+<td>Vertical shell thickness in plates. <code>3</code> ≈ one brick.</td>
+</tr>
+<tr>
+<td><code>ignore_interior</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Mark interior cells colour-free so merges do not fragment on invisible boundaries.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="placement"><code>[placement]</code><a class="headerlink" href="#placement" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>strategy</code></td>
+<td><code>auto</code>, <code>global-exact</code>, <code>greedy</code>, <code>luo</code>, <code>bond</code>, <code>fast</code>, <code>smga</code>, <code>beauty</code>, <code>kollsker</code></td>
+<td><code>"auto"</code></td>
+<td>See <a href="../choosing-a-strategy/">Choosing a strategy</a>. <code>auto</code> picks <code>global-exact</code> below the cell cap, <code>placement.exact.fallback_strategy</code> otherwise.</td>
+</tr>
+<tr>
+<td><code>seed</code></td>
+<td>int</td>
+<td><code>0</code></td>
+<td>Deterministic RNG seed.</td>
+</tr>
+<tr>
+<td><code>restarts</code></td>
+<td>int &gt; 0</td>
+<td><code>1</code></td>
+<td>Multi-seed race over <code>[seed, seed+restarts)</code>. <strong>Error if the strategy resolves to <code>global-exact</code>.</strong></td>
+</tr>
+<tr>
+<td><code>jobs</code></td>
+<td>int &gt; 0</td>
+<td><code>1</code></td>
+<td>Parallelism for the restart race.</td>
+</tr>
+<tr>
+<td><code>refine</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Run the strategy's refinement/reinforcement pass.</td>
+</tr>
+<tr>
+<td><code>time_budget_s</code></td>
+<td>float &gt; 0 | <code>null</code></td>
+<td><code>null</code></td>
+<td>Per-strategy soft budget. Required by <code>exact.limit_policy = "continue"</code>.</td>
+</tr>
+<tr>
+<td><code>objective</code></td>
+<td><code>"bricks"</code> | <code>"mass"</code></td>
+<td><code>"bricks"</code></td>
+<td>Minimize part count or total mass.</td>
+</tr>
+<tr>
+<td><code>colour_mode</code></td>
+<td><code>"hard"</code> | <code>"soft"</code></td>
+<td><code>"hard"</code></td>
+<td><code>soft</code> permits probabilistically accepted miscolouring merges.</td>
+</tr>
+<tr>
+<td><code>colour_weight</code></td>
+<td>float ≥ 0</td>
+<td><code>1.0</code></td>
+<td>Discard weight in soft-colour sampling. Larger ⇒ closer to hard.</td>
+</tr>
+<tr>
+<td><code>ga_generations</code></td>
+<td>int &gt; 0</td>
+<td><code>200</code></td>
+<td>Generation cap for <code>smga</code>.</td>
+</tr>
+<tr>
+<td><code>beauty_preset</code></td>
+<td><code>balanced</code>, <code>stability</code>, <code>aesthetics</code>, <code>efficiency</code></td>
+<td><code>"balanced"</code></td>
+<td>Weight preset for <code>beauty</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="placementexact"><code>[placement.exact]</code><a class="headerlink" href="#placementexact" title="Permanent link">&para;</a></h2>
+<p>Guardrails for whole-model exact placement.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>max_cells</code></td>
+<td>int &gt; 0</td>
+<td><code>256</code></td>
+<td>Preflight cap on filled cells. Also the <code>auto</code> selector's threshold.</td>
+</tr>
+<tr>
+<td><code>max_candidates</code></td>
+<td>int &gt; 0</td>
+<td><code>100000</code></td>
+<td>Cap on enumerated placement candidates.</td>
+</tr>
+<tr>
+<td><code>max_stability_cuts</code></td>
+<td>int &gt; 0</td>
+<td><code>256</code></td>
+<td>Cap on stability no-good cuts before giving up.</td>
+</tr>
+<tr>
+<td><code>time_limit_s</code></td>
+<td>float &gt; 0</td>
+<td><code>60.0</code></td>
+<td>MILP solve time limit.</td>
+</tr>
+<tr>
+<td><code>limit_policy</code></td>
+<td><code>"fail"</code> | <code>"fallback"</code> | <code>"continue"</code></td>
+<td><code>"fail"</code></td>
+<td>What happens at a limit. <code>fail</code> exits 4; <code>fallback</code> switches strategy; <code>continue</code> keeps going until the deadline (requires <code>placement.time_budget_s</code>).</td>
+</tr>
+<tr>
+<td><code>fallback_strategy</code></td>
+<td><code>"bond"</code> | <code>"fast"</code> | <code>"greedy"</code></td>
+<td><code>"bond"</code></td>
+<td>Strategy used by <code>fallback</code>, and by <code>auto</code> above the cell cap.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="placementweights"><code>[placement.weights]</code><a class="headerlink" href="#placementweights" title="Permanent link">&para;</a></h2>
+<p>Relative importance of the objective terms. All must be finite and non-negative.
+The objective is a weighted sum of terms each normalized to roughly <code>[0, 1]</code>; lower
+is better. See <a href="../../theory/placement/">Placement</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th style="text-align: right;">Default</th>
+<th>Term</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cost</code></td>
+<td style="text-align: right;"><code>1.0</code></td>
+<td>Parts used per filled voxel</td>
+</tr>
+<tr>
+<td><code>stability</code></td>
+<td style="text-align: right;"><code>4.0</code></td>
+<td>Worst per-brick stress from the RBE</td>
+</tr>
+<tr>
+<td><code>aesthetics</code></td>
+<td style="text-align: right;"><code>0.5</code></td>
+<td>Seam alignment — stacked seams are penalized</td>
+</tr>
+<tr>
+<td><code>colour</code></td>
+<td style="text-align: right;"><code>1.0</code></td>
+<td>Fraction of covered voxels whose brick colour is wrong</td>
+</tr>
+<tr>
+<td><code>perpendicularity</code></td>
+<td style="text-align: right;"><code>0.25</code></td>
+<td>Fraction of support pairs whose long axes are parallel</td>
+</tr>
+<tr>
+<td><code>symmetry</code></td>
+<td style="text-align: right;"><code>0.25</code></td>
+<td>Per-layer unbalanced-brick fraction</td>
+</tr>
+<tr>
+<td><code>bond_alpha1</code></td>
+<td style="text-align: right;"><code>4.0</code></td>
+<td>Stretcher-bond penalty magnitude</td>
+</tr>
+<tr>
+<td><code>bond_alpha2</code></td>
+<td style="text-align: right;"><code>0.8</code></td>
+<td>Stretcher-bond distance decay</td>
+</tr>
+</tbody>
+</table>
+<h2 id="finishing"><code>[finishing]</code><a class="headerlink" href="#finishing" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slopes</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Shape-preserving slope substitution, including inverted slopes.</td>
+</tr>
+<tr>
+<td><code>tiles</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Replace exposed plates with tiles.</td>
+</tr>
+<tr>
+<td><code>snot</code></td>
+<td>bool</td>
+<td><strong><code>false</code></strong></td>
+<td>Sideways cladding on tall flat wall faces. Opt-in.</td>
+</tr>
+<tr>
+<td><code>plate_cap</code></td>
+<td>bool</td>
+<td><strong><code>false</code></strong></td>
+<td>Split exposed bricks into three plates. Opt-in — it changes layering and part count.</td>
+</tr>
+</tbody>
+</table>
+<p>Neither slopes nor tiles may change target occupancy, and every finishing pass is
+reverted wholesale if it would flip the stability verdict.</p>
+<h2 id="stability"><code>[stability]</code><a class="headerlink" href="#stability" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>profile</code></td>
+<td><code>"corrected"</code> | <code>"stablelego-parity"</code></td>
+<td><code>"corrected"</code></td>
+<td>Physics profile — see below.</td>
+</tr>
+<tr>
+<td><code>support</code></td>
+<td><code>"baseplate"</code> | <code>"table"</code></td>
+<td><code>"baseplate"</code></td>
+<td><code>baseplate</code> lets ground contacts pull down; <code>table</code> models bricks resting loose, so top-heavy shapes may tip.</td>
+</tr>
+<tr>
+<td><code>repair</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Run ALNS destroy-and-repair on unstable layouts.</td>
+</tr>
+</tbody>
+</table>
+<p>The profile is not a free-form switch set — it <em>derives</em> the solver flags:</p>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th><code>torque_z</code></th>
+<th><code>paper_knob_rule</code></th>
+<th><code>rotate_contact_pattern</code></th>
+<th><code>ground_pull</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>corrected</code> <em>(default)</em></td>
+<td><code>true</code></td>
+<td><code>true</code></td>
+<td><code>true</code></td>
+<td><code>support == "baseplate"</code></td>
+</tr>
+<tr>
+<td><code>stablelego-parity</code></td>
+<td><code>false</code></td>
+<td><code>false</code></td>
+<td><code>false</code></td>
+<td><code>true</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>stablelego-parity</code> exists to reproduce the StableLego paper's numbers. Use
+<code>corrected</code> for real work.</p>
+<h2 id="stabilitysolver"><code>[stability.solver]</code><a class="headerlink" href="#stabilitysolver" title="Permanent link">&para;</a></h2>
+<p>Advanced. Most of these exist for research and cross-checking.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mode</code></td>
+<td><code>"lp"</code></td>
+<td><code>"lp"</code></td>
+<td>Production is LP only; any other value is rejected.</td>
+</tr>
+<tr>
+<td><code>solver</code></td>
+<td>str | <code>null</code></td>
+<td><code>null</code></td>
+<td>cvxpy backend name (MILP debug mode only).</td>
+</tr>
+<tr>
+<td><code>tol_force</code></td>
+<td>float</td>
+<td><code>1e-6</code></td>
+<td>Force-residual equilibrium tolerance.</td>
+</tr>
+<tr>
+<td><code>tol_torque</code></td>
+<td>float</td>
+<td><code>1e-7</code></td>
+<td>Torque-residual equilibrium tolerance.</td>
+</tr>
+<tr>
+<td><code>drag_big_m</code></td>
+<td>float</td>
+<td><code>9.8</code> (<code>10 × T</code>)</td>
+<td>Big-M ceiling for MILP complementarity only. Never constrains LP mode.</td>
+</tr>
+<tr>
+<td><code>normal_big_m</code></td>
+<td>float</td>
+<td><code>100.0</code></td>
+<td>As above, for normal forces.</td>
+</tr>
+<tr>
+<td><code>engine</code></td>
+<td><code>"highspy"</code> | <code>"scipy"</code></td>
+<td><code>"highspy"</code></td>
+<td>Prefix-solve engine. <code>highspy</code> warm-starts incrementally; <code>scipy</code> keeps every solve cold.</td>
+</tr>
+<tr>
+<td><code>engine_cross_check</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Cold-solve every warm probe and record drift. Debug/CI.</td>
+</tr>
+<tr>
+<td><code>boundary_margin</code></td>
+<td>float</td>
+<td><code>0.02</code></td>
+<td>Relative band around the stability threshold within which a warm verdict is discarded for a cold solve.</td>
+</tr>
+<tr>
+<td><code>rescue_direct_min_bricks</code></td>
+<td>int</td>
+<td><code>200</code></td>
+<td>Rescue components at or above this size cold-solve through highspy directly.</td>
+</tr>
+<tr>
+<td><code>torque_z</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Model the yaw-torque row. Overridden by <code>profile</code>.</td>
+</tr>
+<tr>
+<td><code>paper_knob_rule</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>StableLego <em>paper</em> knob rule instead of the release's uniform rule. Overridden by <code>profile</code>.</td>
+</tr>
+<tr>
+<td><code>rotate_contact_pattern</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Rotate the contact pattern with brick yaw, restoring rotation invariance. Overridden by <code>profile</code>.</td>
+</tr>
+<tr>
+<td><code>ground_pull</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Whether layer-0 contacts may pull down. Derived from <code>stability.support</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="stabilityrepair_options"><code>[stability.repair_options]</code><a class="headerlink" href="#stabilityrepair_options" title="Permanent link">&para;</a></h2>
+<p>ALNS destroy-and-repair knobs (Kollsker's defaults).</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>beta0</code></td>
+<td>float ≥ 0</td>
+<td><code>0.8</code></td>
+<td>Initial destroy threshold.</td>
+</tr>
+<tr>
+<td><code>gamma</code></td>
+<td>float ≥ 0</td>
+<td><code>0.5</code></td>
+<td>Per-round threshold decay.</td>
+</tr>
+<tr>
+<td><code>epsilon</code></td>
+<td>float ≥ 0</td>
+<td><code>0.05</code></td>
+<td>Threshold slack when selecting victims.</td>
+</tr>
+<tr>
+<td><code>max_rounds</code></td>
+<td>int ≥ 0</td>
+<td><code>12</code></td>
+<td>Maximum destroy-and-repair rounds.</td>
+</tr>
+<tr>
+<td><code>localizer</code></td>
+<td><code>"qp"</code> | <code>"rbe"</code></td>
+<td><code>"qp"</code></td>
+<td>Artificial-link QP, or per-brick RBE scores.</td>
+</tr>
+<tr>
+<td><code>filler</code></td>
+<td><code>"merge"</code> | <code>"milp"</code></td>
+<td><code>"merge"</code></td>
+<td>How the freed region is refilled.</td>
+</tr>
+<tr>
+<td><code>milp_cell_limit</code></td>
+<td>int &gt; 0</td>
+<td><code>200</code></td>
+<td>Above this many freed cells, the MILP filler is skipped.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="instructionsoptions"><code>[instructions.options]</code><a class="headerlink" href="#instructionsoptions" title="Permanent link">&para;</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Two defaults differ from the dataclass</p>
+<p>Through configuration, <code>stability_policy</code> defaults to <strong><code>"strict"</code></strong> and
+<code>insertion_check</code> to <strong><code>true</code></strong>, overriding the <code>InstructionsConfig</code> dataclass
+defaults of <code>"warn"</code> and <code>false</code>. The table below shows the <strong>configuration</strong>
+defaults, which are what the CLI uses.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mode</code></td>
+<td><code>"smart"</code> | <code>"layer"</code></td>
+<td><code>"smart"</code></td>
+<td><code>smart</code> chunks each layer into spatially coherent steps; <code>layer</code> emits one step per layer.</td>
+</tr>
+<tr>
+<td><code>target_step_size</code></td>
+<td>int &gt; 0</td>
+<td><code>7</code></td>
+<td>Preferred bricks per step.</td>
+</tr>
+<tr>
+<td><code>max_step_size</code></td>
+<td>int &gt; 0</td>
+<td><code>10</code></td>
+<td>Hard cap per step.</td>
+</tr>
+<tr>
+<td><code>min_step_size</code></td>
+<td>int &gt; 0</td>
+<td><code>3</code></td>
+<td>Undersized tails below this fold into the previous step.</td>
+</tr>
+<tr>
+<td><code>rotstep</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Emit <code>0 ROTSTEP</code> view hints.</td>
+</tr>
+<tr>
+<td><code>beam_width</code></td>
+<td>int &gt; 0</td>
+<td><code>4</code></td>
+<td>Ready-chunk candidates examined per step.</td>
+</tr>
+<tr>
+<td><code>stability_policy</code></td>
+<td><code>"warn"</code> | <code>"strict"</code></td>
+<td><strong><code>"strict"</code></strong></td>
+<td><code>strict</code> raises on an unstable prefix; <code>warn</code> emits it with a warning.</td>
+</tr>
+<tr>
+<td><code>solver</code></td>
+<td>table | <code>null</code></td>
+<td><code>null</code></td>
+<td>Override the solver config for sequencing only.</td>
+</tr>
+<tr>
+<td><code>spatial_tiebreak</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Prefer steps spatially adjacent to the previous one.</td>
+</tr>
+<tr>
+<td><code>fallback</code></td>
+<td><code>"disassembly"</code> | <code>"band"</code></td>
+<td><code>"disassembly"</code></td>
+<td>Rescue path when the greedy pass stalls.</td>
+</tr>
+<tr>
+<td><code>search</code></td>
+<td><code>"greedy"</code> | <code>"beam"</code></td>
+<td><code>"greedy"</code></td>
+<td><code>beam</code> explores whole build orders — much slower.</td>
+</tr>
+<tr>
+<td><code>beam_states</code></td>
+<td>int &gt; 0</td>
+<td><code>3</code></td>
+<td>Beam width in states, for <code>search = "beam"</code>.</td>
+</tr>
+<tr>
+<td><code>lp_budget</code></td>
+<td>int &gt; 0 | <code>null</code></td>
+<td><code>null</code></td>
+<td>LP spend cap in beam mode. <code>null</code> = 8 × chunk count; at the cap, beam degrades to greedy.</td>
+</tr>
+<tr>
+<td><code>subassemblies</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Lift persistently floating stretches into separately built units.</td>
+</tr>
+<tr>
+<td><code>min_sub_bricks</code></td>
+<td>int &gt; 0</td>
+<td><code>3</code></td>
+<td>Minimum bricks for a subassembly.</td>
+</tr>
+<tr>
+<td><code>max_subassemblies</code></td>
+<td>int &gt; 0</td>
+<td><code>6</code></td>
+<td>Cap on extracted units.</td>
+</tr>
+<tr>
+<td><code>insertion_check</code></td>
+<td>bool</td>
+<td><strong><code>true</code></strong></td>
+<td>Prefer press-robust orderings; flag steps that collapse when pressed home.</td>
+</tr>
+<tr>
+<td><code>insertion_mass_kg</code></td>
+<td>float &gt; 0</td>
+<td><code>1.0</code></td>
+<td>Virtual mass used to model the insertion press.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="output"><code>[output]</code><a class="headerlink" href="#output" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>manifest</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Write the canonical assembly manifest sidecar.</td>
+</tr>
+<tr>
+<td><code>emit_support</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Emit a physical support plate. <strong>Requires <code>stability.support = "baseplate"</code>.</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="cache"><code>[cache]</code><a class="headerlink" href="#cache" title="Permanent link">&para;</a></h2>
+<p>Persistent architectural-template cache.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Reuse derived placements for repeated components.</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>path | <code>null</code></td>
+<td><code>null</code></td>
+<td>Cache root. <code>null</code> uses platform user-data storage. Must be a directory if it exists.</td>
+</tr>
+</tbody>
+</table>
+<p>Inspect and clear it with <a href="../cli/parts-cache-validate/"><code>legolization cache</code></a>.</p>
+<h2 id="catalog"><code>[catalog]</code><a class="headerlink" href="#catalog" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>extensions</code></td>
+<td>list of paths</td>
+<td><code>[]</code></td>
+<td>Parts-catalog extension bundles or JSON files.</td>
+</tr>
+<tr>
+<td><code>estimate_sidecars</code></td>
+<td>list of paths</td>
+<td><code>[]</code></td>
+<td>Physical-estimate sidecars with labeled provenance.</td>
+</tr>
+</tbody>
+</table>
+<p><code>--catalog</code> and <code>--catalog-estimates</code> on the command line <strong>append</strong> to these lists
+in order, deduplicated. See <a href="../cli/catalog/"><code>catalog</code></a>.</p>
+<hr />
+<h2 id="where-each-key-lands">Where each key lands<a class="headerlink" href="#where-each-key-lands" title="Permanent link">&para;</a></h2>
+<p>Configuration compiles into the pipeline engine's <code>PipelineConfig</code>. If you are
+reading the code, <code>ProjectConfig.to_pipeline()</code> in
+<code>src/legolization/configuration.py</code> is the complete mapping, and
+<code>mapping_hash(self.to_dict())</code> there is the configuration hash that feeds bundle
+identity, manifests, and template-cache keys.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../choosing-a-strategy/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Choosing a strategy">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Choosing a strategy
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../bundles-and-artifacts/" class="md-footer__link md-footer__link--next" aria-label="Next: Bundles and artifacts">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Bundles and artifacts
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Harold Martin &mdash; GPL-3.0-or-later.
+Legolization is an independent open-source project. It is not affiliated with,
+sponsored by, or endorsed by the LEGO Group. LEGO&reg; is a trademark of the
+LEGO Group, which does not authorize or endorse this project.
+
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/hbmartin/legolization" target="_blank" rel="noopener" title="Legolization on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/legolization/" target="_blank" rel="noopener" title="Legolization on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.code.select","content.footnote.tooltips","content.tabs.link","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.highlight","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

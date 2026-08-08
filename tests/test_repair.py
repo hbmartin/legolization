@@ -9,6 +9,7 @@ from scipy.sparse import issparse
 
 from legolization import telemetry
 from legolization.catalog import default_catalog
+from legolization.graph import ConnectionGraph
 from legolization.grid import VoxelGrid
 from legolization.layout import Layout
 from legolization.placement.repair import (
@@ -17,7 +18,7 @@ from legolization.placement.repair import (
     _milp_fill,
     repair_stability,
 )
-from legolization.stability import analyze
+from legolization.stability import SolverConfig, StabilityResult, analyze
 from legolization.stability.links import LinkForce, LinkReport, localize_instability
 
 
@@ -175,10 +176,23 @@ def test_rbe_report_reuses_cold_result(bad_bridge, monkeypatch):
     calls = 0
     real_analyze = repair_module.analyze
 
-    def counting(*args: object, **kwargs: object) -> object:
+    def counting(
+        target: Layout,
+        config: SolverConfig | None = None,
+        graph: ConnectionGraph | None = None,
+        *,
+        extra_masses: dict[int, float] | None = None,
+        deadline: float | None = None,
+    ) -> StabilityResult:
         nonlocal calls
         calls += 1
-        return real_analyze(*args, **kwargs)
+        return real_analyze(
+            target,
+            config,
+            graph,
+            extra_masses=extra_masses,
+            deadline=deadline,
+        )
 
     monkeypatch.setattr(repair_module, "analyze", counting)
     reused = _rbe_report(layout, None, cold_result=cold)

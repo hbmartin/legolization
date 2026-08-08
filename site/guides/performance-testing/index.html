@@ -1,0 +1,3675 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Turn a 3D model into a physically buildable LEGO-style model in LDraw format, with verified structural stability, step-by-step build instructions, and a bill of materials.
+">
+      
+      
+        <meta name="author" content="Harold Martin">
+      
+      
+        <link rel="canonical" href="https://hbmartin.github.io/legolization/guides/performance-testing/">
+      
+      
+        <link rel="prev" href="../self-evaluation-playbook/">
+      
+      
+        <link rel="next" href="../../reports/kollsker-drift-report/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>Performance testing - Legolization</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#performance-testing" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Legolization" class="md-header__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Legolization
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Performance testing
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="red" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Legolization" class="md-nav__button md-logo" aria-label="Legolization" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-blocks" viewBox="0 0 24 24"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect width="8" height="8" x="14" y="2" rx="1"/></svg>
+
+    </a>
+    Legolization
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hbmartin/legolization" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hbmartin/legolization
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../basics/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Basics
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Basics
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/install.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Install the skills
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/first-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/choosing-a-skill.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a skill
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/reading-results.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reading the results
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/troubleshooting.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Troubleshooting
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Skill reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Skill reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/legolize-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  legolize-model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/prepare-lego-input.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  prepare-lego-input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/optimize-lego-build.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  optimize-lego-build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/publish-lego-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  publish-lego-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/analyze-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/repair-lego-assembly.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  repair-lego-assembly
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/inspect-instructions.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  inspect-instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/render-ldraw.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  render-ldraw
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/extend-lego-part-support.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  extend-lego-part-support
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../basics/skills/eval-corpus.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  eval-corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Guide
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Guide
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Core concepts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/quality-and-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Quality tiers and budgets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/choosing-a-strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Choosing a strategy
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Configuration reference
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/bundles-and-artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundles and artifacts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/exit-codes-and-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes and JSON
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/rendering-and-parts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Rendering and parts
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Python API
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guide/cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Command reference
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Command reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/bundle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/build/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  build
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/analyze/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  analyze
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  input
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/model-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  model and instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  catalog
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/corpus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  corpus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/parts-cache-validate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  parts, cache, validate
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Theory
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Theory
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/pipeline.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The pipeline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/representations.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Representations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/placement/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Placement
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Placement
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/constructive.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Constructive heuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/layered-engine.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The layered engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/metaheuristics.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Metaheuristics
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/exact.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exact methods
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/merge-and-repair.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Merge and repair
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/placement/finishing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Finishing passes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../theory/stability/index.md" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Stability
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Stability
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/rbe.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The RBE model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/exactness.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Exactness and certificates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/screens.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Screens
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/stability/warm-solving.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Warm solving
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/sequencing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Sequencing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/subassemblies.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Subassemblies
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/analysis-stack.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  The analysis stack
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/papers.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Papers and provenance
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../project/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Project notes
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Project notes
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../self-evaluation-playbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Self-evaluation playbook
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance testing
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Performance testing
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Tools
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scriptsprofile_pipelinepy-the-primary-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>scripts/profile_pipeline.py</code> (the primary tool)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#armadillo-release-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Armadillo release gate
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-v8-follow-up-where-a-cold-analyze-actually-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The v8 follow-up: where a cold analyze actually goes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-reduced-qp-screen-bricksim-port-measurements-2026-08-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The reduced-QP screen: BrickSim port measurements (2026-08-07)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#screen-follow-ups-2026-08-08-snot-adoption-hull-vertices-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Screen follow-ups (2026-08-08): SNOT, adoption, hull vertices, fields
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#legolization-profile-outjson-cli-convenience" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>legolization ... --profile out.json</code> (CLI convenience)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-telemetry-api-srclegolizationtelemetrypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The telemetry API (<code>src/legolization/telemetry.py</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-beforeafter-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. The before/after protocol
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-what-counts-as-a-regression" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. What counts as a regression
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-correctness-gates-for-any-perf-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. Correctness gates for any perf change
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-engine-and-drift-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Engine and drift policy
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-measured-dead-ends-do-not-re-try-without-new-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Measured dead ends (do not re-try without new evidence)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-known-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        7. Known gaps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-deadline-and-enumeration-guardrails" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        8. Deadline and enumeration guardrails
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-pointers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        9. Pointers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/kollsker-drift-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: Kollsker drift
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/unstable-prefix-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: unstable prefixes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/physics-fidelity-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: physics fidelity
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/mesh-baseline-pending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Report: mesh baseline
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/roadmap-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Roadmap history
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        1. Tools
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scriptsprofile_pipelinepy-the-primary-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>scripts/profile_pipeline.py</code> (the primary tool)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#armadillo-release-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Armadillo release gate
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-v8-follow-up-where-a-cold-analyze-actually-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The v8 follow-up: where a cold analyze actually goes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-reduced-qp-screen-bricksim-port-measurements-2026-08-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The reduced-QP screen: BrickSim port measurements (2026-08-07)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#screen-follow-ups-2026-08-08-snot-adoption-hull-vertices-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Screen follow-ups (2026-08-08): SNOT, adoption, hull vertices, fields
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#legolization-profile-outjson-cli-convenience" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>legolization ... --profile out.json</code> (CLI convenience)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-telemetry-api-srclegolizationtelemetrypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The telemetry API (<code>src/legolization/telemetry.py</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-beforeafter-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        2. The before/after protocol
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-what-counts-as-a-regression" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        3. What counts as a regression
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-correctness-gates-for-any-perf-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        4. Correctness gates for any perf change
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-engine-and-drift-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        5. Engine and drift policy
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-measured-dead-ends-do-not-re-try-without-new-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        6. Measured dead ends (do not re-try without new evidence)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-known-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        7. Known gaps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-deadline-and-enumeration-guardrails" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        8. Deadline and enumeration guardrails
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-pointers" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        9. Pointers
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../../project/" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Project notes
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+    <a href="https://github.com/hbmartin/legolization/edit/main/docs/guides/performance-testing.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-pen" viewBox="0 0 24 24"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="performance-testing">Performance testing<a class="headerlink" href="#performance-testing" title="Permanent link">&para;</a></h1>
+<p>How to measure this project's speed, how to prove a performance change,
+and what counts as a regression. Written 2026-07-19 alongside the v4
+rescue-LP work; the canonical worked example is the v3 item-1 campaign
+(<code>ROADMAP.md</code>, "Item 1: sequencer LP performance").</p>
+<p>The one rule that governs everything else: <strong>correctness gates come
+before any timing claim.</strong> A perf change that shifts a golden byte, a
+scorecard row, a dual-engine plan, or an unstable-step count is a
+regression regardless of how much faster it is.</p>
+<p>The development inner loop is intentionally bounded:
+<code>uv run pytest</code> skips tests marked <code>slow</code>, and a bare
+<code>legolization corpus collect</code> sweep selects synthetics only. Use
+<code>uv run pytest --run-slow</code> for the full test suite and opt into mesh
+evaluation explicitly with <code>--kind mesh</code>; CI uses the full-test flag.</p>
+<h2 id="1-tools">1. Tools<a class="headerlink" href="#1-tools" title="Permanent link">&para;</a></h2>
+<h3 id="scriptsprofile_pipelinepy-the-primary-tool"><code>scripts/profile_pipeline.py</code> (the primary tool)<a class="headerlink" href="#scriptsprofile_pipelinepy-the-primary-tool" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/profile_pipeline.py<span class="w"> </span>MODEL<span class="w"> </span><span class="o">[</span>--strategy<span class="w"> </span>greedy<span class="o">]</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="o">[</span>--seed<span class="w"> </span><span class="m">0</span><span class="o">]</span><span class="w"> </span><span class="o">[</span>--target-studs<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--up<span class="w"> </span>x<span class="p">|</span>y<span class="p">|</span>z<span class="o">]</span><span class="w"> </span><span class="o">[</span>--label<span class="w"> </span>TEXT<span class="o">]</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="o">[</span>--out<span class="w"> </span>eval/profiles<span class="o">]</span><span class="w"> </span><span class="o">[</span>--cprofile<span class="o">]</span><span class="w"> </span><span class="o">[</span>--solid<span class="o">]</span><span class="w"> </span><span class="o">[</span>--no-repair<span class="o">]</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="o">[</span>--steps<span class="w"> </span>smart<span class="p">|</span>layer<span class="o">]</span>
+</span></code></pre></div>
+<p><code>MODEL</code> is a file path or a corpus manifest name (<code>spot</code>, <code>suzanne</code>,
+<code>letter-t</code>, ...). The command supervises one isolated child process
+under <code>telemetry.record()</code> and writes
+<code>eval/profiles/&lt;UTC&gt;-&lt;name&gt;-&lt;strategy&gt;.json</code> (schema 1):</p>
+<ul>
+<li><code>git_sha</code> — the exact code state (read from <code>.git</code>, no subprocess);</li>
+<li><code>host</code> — python/platform/cpu_count;</li>
+<li><code>run</code> — model, input, strategy, seed, target_studs, hollow, repair,
+  steps: the full input identity;</li>
+<li><code>result</code> — brick_count, step_count, mass_g, stable, buildable: the
+  <strong>verdict block</strong> every comparison must hold fixed;</li>
+<li><code>total_seconds</code> and <code>spans</code> — per-span calls, seconds, and
+  power-of-two <code>n</code> buckets.</li>
+</ul>
+<p>Voxelization, layer placement, vertical compaction, connectivity repair,
+stability analysis, and stability repair are watched separately. Every
+stage receives a fresh 600-second watchdog; stage transitions print
+immediately and the parent emits a heartbeat every 30 seconds. Override
+these only for a deliberate fixture with <code>--stage-timeout SECONDS</code> and
+<code>--heartbeat SECONDS</code>. On timeout the parent terminates the child and
+atomically writes a durable JSON artifact containing <code>active_stage</code> and
+all telemetry completed before the timeout.</p>
+<p><code>--cprofile</code> additionally writes a sibling <code>.pstats</code>. cProfile inflates
+wall times; with it on, compare <strong>call counts</strong>, never seconds. Supervised
+runs also execute watchdog checkpointing synchronously around spans, so
+their timings are not strictly comparable with historical unsupervised
+profiles even though a span's own start notification is excluded from its
+measured duration.</p>
+<h3 id="armadillo-release-gate">Armadillo release gate<a class="headerlink" href="#armadillo-release-gate" title="Permanent link">&para;</a></h3>
+<p>Armadillo is explicitly outside every inner loop. Profile it on an idle
+machine, one process and one strategy at a time, with layer-only
+instructions:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">for</span><span class="w"> </span>strategy<span class="w"> </span><span class="k">in</span><span class="w"> </span>greedy<span class="w"> </span>luo<span class="w"> </span>bond<span class="w"> </span>fast<span class="w"> </span>smga<span class="w"> </span>beauty<span class="w"> </span>kollsker<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/profile_pipeline.py<span class="w"> </span>armadillo<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span>--strategy<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$strategy</span><span class="s2">&quot;</span><span class="w"> </span>--steps<span class="w"> </span>layer<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>--stage-timeout<span class="w"> </span><span class="m">600</span><span class="w"> </span>--heartbeat<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span>--label<span class="w"> </span><span class="s2">&quot;armadillo-isolated-</span><span class="nv">$strategy</span><span class="s2">&quot;</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="k">done</span>
+</span></code></pre></div>
+<p>Do not parallelize this loop and do not add it to pytest or the default
+corpus collection. A timed-out artifact is a valid diagnostic result:
+its <code>active_stage</code> distinguishes voxelization, tiling, compaction,
+connectivity, stability analysis, and stability repair. The stage
+classification run remains the explicit offline release measurement in
+<code>docs/reports/mesh-baseline-pending.md</code>.</p>
+<p>The sequential idle-machine run on 2026-07-20 used seed 0, layer-only
+instructions, and the 600-second per-stage watchdog. All seven children
+produced timeout artifacts:</p>
+<table>
+<thead>
+<tr>
+<th>strategy</th>
+<th>timeout stage</th>
+<th style="text-align: right;">voxelize (s)</th>
+<th style="text-align: right;">tile (s)</th>
+<th style="text-align: right;">compact (s)</th>
+<th style="text-align: right;">connectivity (s)</th>
+<th style="text-align: right;">completed stability-analysis spans (s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>greedy</td>
+<td>generic placement</td>
+<td style="text-align: right;">0.191</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">0.265</td>
+<td style="text-align: right;">486.3</td>
+</tr>
+<tr>
+<td>luo</td>
+<td>generic placement</td>
+<td style="text-align: right;">0.181</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">0.547</td>
+<td style="text-align: right;">234.6</td>
+</tr>
+<tr>
+<td>bond</td>
+<td>stability repair (second pass)</td>
+<td style="text-align: right;">0.188</td>
+<td style="text-align: right;">1.567</td>
+<td style="text-align: right;">0.003</td>
+<td style="text-align: right;">9.166</td>
+<td style="text-align: right;">1,269.1</td>
+</tr>
+<tr>
+<td>fast</td>
+<td>stability repair</td>
+<td style="text-align: right;">0.187</td>
+<td style="text-align: right;">0.921</td>
+<td style="text-align: right;">0.001</td>
+<td style="text-align: right;">5.124</td>
+<td style="text-align: right;">628.8</td>
+</tr>
+<tr>
+<td>smga</td>
+<td>stability repair</td>
+<td style="text-align: right;">0.182</td>
+<td style="text-align: right;">20.754</td>
+<td style="text-align: right;">0.002</td>
+<td style="text-align: right;">7.460</td>
+<td style="text-align: right;">567.5</td>
+</tr>
+<tr>
+<td>beauty</td>
+<td>stability repair</td>
+<td style="text-align: right;">0.179</td>
+<td style="text-align: right;">36.579</td>
+<td style="text-align: right;">0.001</td>
+<td style="text-align: right;">4.133</td>
+<td style="text-align: right;">581.9</td>
+</tr>
+<tr>
+<td>kollsker</td>
+<td>stability repair</td>
+<td style="text-align: right;">0.172</td>
+<td style="text-align: right;">2.325</td>
+<td style="text-align: right;">0.001</td>
+<td style="text-align: right;">4.419</td>
+<td style="text-align: right;">580.7</td>
+</tr>
+</tbody>
+</table>
+<p>Leaf stability spans overlap their owning placement/repair span and are
+therefore diagnostic totals, not additive wall time. Bond completed one
+596.9-second repair pass before its second repair timed out. The result
+rules out voxelization, layered tiling, compaction, and connectivity as
+the old 900-second wall-time failure: legacy greedy/Luo exceed the cap in
+placement-time stability scoring, while every layered strategy reaches
+stability repair and spends its budget there.</p>
+<h3 id="the-v8-follow-up-where-a-cold-analyze-actually-goes">The v8 follow-up: where a cold analyze actually goes<a class="headerlink" href="#the-v8-follow-up-where-a-cold-analyze-actually-goes" title="Permanent link">&para;</a></h3>
+<p>Measured 2026-07-22 on hollow-shell greedy layouts (seed 0, default
+<code>SolverConfig</code>), one cold <code>analyze</code> per row:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">bricks</th>
+<th style="text-align: right;">LP variables</th>
+<th style="text-align: right;"><code>build_model</code></th>
+<th style="text-align: right;">LP solve (<code>highs</code>)</th>
+<th style="text-align: right;"><code>highs-ipm</code></th>
+<th style="text-align: right;">ipm no-crossover</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">348</td>
+<td style="text-align: right;">20,677</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">0.874 s</td>
+<td style="text-align: right;">1.905 s</td>
+<td style="text-align: right;">1.567 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">505</td>
+<td style="text-align: right;">30,434</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">2.830 s</td>
+<td style="text-align: right;">3.457 s</td>
+<td style="text-align: right;">3.006 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">712</td>
+<td style="text-align: right;">41,362</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">6.487 s</td>
+<td style="text-align: right;">6.631 s</td>
+<td style="text-align: right;">5.747 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">902</td>
+<td style="text-align: right;">52,911</td>
+<td style="text-align: right;">0.12 s</td>
+<td style="text-align: right;">12.391 s</td>
+<td style="text-align: right;">10.244 s</td>
+<td style="text-align: right;">8.724 s</td>
+</tr>
+</tbody>
+</table>
+<p>Three conclusions, each closing a backlog hypothesis:</p>
+<ul>
+<li><strong>The LP solve is ~99% of a cold analyze.</strong> Vectorizing <code>build_model</code>
+  (the old backlog item) is a measured dead end: 0.12 s of a 12.5 s
+  call at 902 bricks. The scipy wrapper is also not the cost — the
+  direct highspy path solves the identical polytope in the same 13 s
+  with zero per-brick score drift.</li>
+<li><strong>Cost scales ~n^2.8 in brick count.</strong> Armadillo-class layouts
+  (2,000+ bricks) pay minutes per full-structure solve, so any loop
+  that re-solves the whole structure per candidate round (ALNS repair,
+  Luo's split-remerge, hollow-restore) is unbounded in practice.</li>
+<li><strong>There is no cheap solver-level win.</strong> <code>highs-ipm</code> is at best 1.4x
+  with crossover off, and its solutions drift at 1e-9 in the
+  objective — below the exactness bar for a default swap.</li>
+</ul>
+<p>The v8 response is budget enforcement, not a faster LP:
+<code>PipelineConfig.time_budget_s</code> now derives ONE absolute monotonic
+deadline at <code>run()</code> start, honoured at round boundaries by ALNS
+<code>repair_stability</code>, the hollow-restore loop, and Luo's <code>_stabilize</code>.
+Repair and Luo also check it before their first full-structure solve,
+and repair reuses the pipeline's existing exact verdict when no layout
+change was accepted (telemetry: <code>repair.deadline_stop</code>,
+<code>pipeline.hollow_restore.deadline_stop</code>,
+<code>luo.stabilize.deadline_stop</code>). A running solve is never interrupted;
+<code>time_budget_s=None</code> keeps every historical byte. The real per-solve
+fix remains the incremental re-analysis workstream (warm append-only
+scoring, frozen-boundary ring analysis with exact-on-accept), which
+must clear the section-3 gates before it can ship.</p>
+<h3 id="the-reduced-qp-screen-bricksim-port-measurements-2026-08-07">The reduced-QP screen: BrickSim port measurements (2026-08-07)<a class="headerlink" href="#the-reduced-qp-screen-bricksim-port-measurements-2026-08-07" title="Permanent link">&para;</a></h3>
+<p>BrickSim (arXiv:2603.16853; <code>references/bricksim-*/paper.md</code>) collapses
+per-contact-point force variables into affine per-interface fields.
+That parameterization is ported over OUR force families and capacity
+(<code>stability/reduced.py</code>, a provable restriction of the exact LP's
+polytope) and solved as ONE OSQP QP mirroring the certifier objective
+(<code>stability/screen.py</code>) — not the paper's three-stage lexicographic
+scheme, whose stage-2 exact equality pinning measured 20_000+ ADMM
+iterations on force-propagation chains. It ships as an opt-in
+accept/reject screen (<code>SolverConfig.screen = "bricksim"</code>, default
+"off" — every historical byte preserved) inside
+<code>FrozenBoundaryAnalyzer.certify</code> and Luo <code>_stabilize</code>; accepted
+candidates always cold-solve.</p>
+<p>Measured by <code>scripts/benchmark_screen.py</code> (thin-shell greedy layouts,
+seed 0, default <code>SolverConfig</code>; same-session cold <code>analyze</code> per row per
+the section-2 protocol; artifact
+<code>eval/profiles/20260807T175431Z-screen-bench.json</code>):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">bricks</th>
+<th style="text-align: right;">cold analyze</th>
+<th style="text-align: right;">screen total</th>
+<th style="text-align: right;">screen build</th>
+<th style="text-align: right;">ratio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">378</td>
+<td style="text-align: right;">2.69 s</td>
+<td style="text-align: right;">0.849 s*</td>
+<td style="text-align: right;">0.036 s</td>
+<td style="text-align: right;">0.316*</td>
+</tr>
+<tr>
+<td style="text-align: right;">622</td>
+<td style="text-align: right;">13.35 s</td>
+<td style="text-align: right;">0.322 s</td>
+<td style="text-align: right;">0.061 s</td>
+<td style="text-align: right;">0.024</td>
+</tr>
+<tr>
+<td style="text-align: right;">673 (collapsing)</td>
+<td style="text-align: right;">8.37 s</td>
+<td style="text-align: right;">2.007 s</td>
+<td style="text-align: right;">0.058 s</td>
+<td style="text-align: right;">0.240</td>
+</tr>
+<tr>
+<td style="text-align: right;">1_172</td>
+<td style="text-align: right;">51.54 s</td>
+<td style="text-align: right;">1.374 s</td>
+<td style="text-align: right;">0.149 s</td>
+<td style="text-align: right;"><strong>0.027</strong></td>
+</tr>
+</tbody>
+</table>
+<p>* the 378-brick row absorbs first-call warmup; repeat runs measure
+0.187 s / ratio 0.077. The collapsing 673-brick shell shows the QP's
+honest worst case — a large active set still solves 4x faster than
+cold.</p>
+<p>Every pre-registered threshold passed: screen ≤ 1/10 of cold at the
+largest shell (0.027), setup ≤ 30% of screen total (11%), candidate
+pairwise-ranking agreement ≥ 95% (measured 100% over 305 pairs with
+cold-q gaps above the margin), confident-false-reject ≤ 2% (0%, but
+see the caveat below on which acceptance rule that measured),
+stable/unstable verdict agreement ≥ 98% (100% across all shells plus
+the 13 synthetic corpus models, both unstable rows correctly flagged),
+OSQP nonconverged &lt; 1% (0%).</p>
+<p>Three conditioning requirements were measured, not assumed — all three
+are load-bearing and documented in the modules:</p>
+<ul>
+<li><strong>Torque rows must be scaled to force units</strong> (<code>1/KNOB_PITCH_M</code>):
+  unscaled, a first-order solver "converges" with entire overhang
+  torques unbalanced (their metric coefficients sit below its stopping
+  tolerance) — the cantilever screen verdict was silently wrong.</li>
+<li><strong>The affine basis must be in stud units</strong>: with meter offsets the
+  field coefficients are O(1e3) and the ridge regularizer competes
+  with the actual objective (a 26-brick tower stuck at a 3.7e-4
+  false optimum).</li>
+<li><strong>Never form the Gram matrix <code>A^T A</code></strong>: force-propagation chains
+  make it numerically singular; explicit residual variables keep the
+  Hessian identity-conditioned (the BrickSim paper's own long-chain
+  caveat, rediscovered at QP level).</li>
+</ul>
+<p>Two honest caveats. Conservatism ("screen q &gt;= exact q") is a strong
+tendency, not a theorem — the soft equilibrium term permits small
+undershoots (measured 0.090 vs 0.151 at 1_172 bricks); either
+direction is safe because accepts are always cold-certified. And the
+accept/reject gate needs an absolute margin floor on top of the
+relative one (<code>should_reject</code>): a purely relative gate measured a 30%
+confident-false-reject rate in the relaxed regime (candidate stress a
+few percent of capacity, where restriction noise dwarfs real
+differences); with the floor, 0%.</p>
+<p><em>Both false-reject figures above (30% and 0%) were measured with a
+proxy for acceptance — "the cold solve says this candidate is stable
+and scores better than the baseline" — not with a consumer's actual
+rule. The three consumers disagree: Luo compares maximin capacity by
+default, Luo under <code>acceptance="rbe"</code> compares
+<code>(unstable count, min capacity)</code>, and ALNS repair compares the
+localizer <code>q</code>. <code>benchmark_screen.py</code> now scores all three separately
+per candidate domain and reports the worst as the gate number.
+Re-baselined 2026-08-08 under the production rules: *</em>0% for every
+consumer in both domains** (artifact
+<code>20260808T165542Z-screen-bench.json</code>; vertical ranking 100% over the
+same run). One measurement lesson en route: the ALNS rule must carry
+repair's own loop guard (<code>base.link_q &gt; _Q_TOLERANCE</code>) — without it
+the harness compares localizer q at noise level on <em>stable</em> baselines,
+a regime <code>repair_stability</code> never enters, and misreports those noise
+orderings as false rejects (measured 5.6-7.1% before the guard, 0%
+with it).*</p>
+<p>Enablement evidence (2026-08-07, full-pipeline A/B at seed 0, screen
+off vs on): cantilever, staircase-overhang, mushroom, wide-arch, and
+topple-arm all produce <strong>identical outputs</strong> in both arms. Four of the
+five never engage the screen — ALNS repair only runs on unstable
+initial placements — which is itself the correct dark-by-default
+behaviour. Topple-arm is the engaged case: 3 confident rejects + 9
+passes, 57 cold analyzes instead of 63, same final layout and verdict.
+The <code>engine_cross_check=True</code> sequencing run over mushroom is
+span-for-span identical between screen off and on (14
+<code>stability.rescue.cross_check_mismatch</code> + 13
+<code>stability.prefix.cross_check_mismatch</code> + 3 warm-fails in BOTH arms) —
+the screen adds zero mismatches; those pre-existing mushroom mismatch
+spans are independent of this work (plausibly the section-5
+degenerate-alternative-optima drift class, but flagged for a look —
+the historical proof runs on spot showed none). No
+<code>stability.screen.nonconverged</code>/<code>.error</code> fired anywhere in the A/B or
+the gate runs.</p>
+<p>Enablement status: <strong>dark by default.</strong> The screen is recommended only
+as an explicit opt-in (<code>[stability.solver] screen = "bricksim"</code>) for
+<code>time_budget_s</code>-constrained runs on repair-heavy models. A default
+flip would be an intentional output move (baseline + goldens
+regenerated in the same commit) and is not currently planned.</p>
+<h3 id="screen-follow-ups-2026-08-08-snot-adoption-hull-vertices-fields">Screen follow-ups (2026-08-08): SNOT, adoption, hull vertices, fields<a class="headerlink" href="#screen-follow-ups-2026-08-08-snot-adoption-hull-vertices-fields" title="Permanent link">&para;</a></h3>
+<p>Four follow-ups landed together; measurements below.</p>
+<p><strong>SNOT lateral support.</strong> <code>build_reduced_model</code> no longer declines
+lateral mates: the field plane rotates onto the mating plane
+((transverse, vertical) coordinates in stud units, shear generators as
+the press family, connections grouped by (pair, normal)). Structural
+verdict agreement is 100% on the clad fixtures (letter-h +116 tiles:
+screen q 0.017 vs cold 0.006; mushroom +173: 0.055 vs 0.043) and the
+yaw 0/90/180/270 rotation equivalence is pinned. Two measured
+consequences shipped with it:</p>
+<ul>
+<li><code>screen_max_iter</code> default 4_000 → 20_000 — lateral-heavy layouts
+  need ~5x the vertical-only iteration budget (the clad letter-h
+  nonconverged at 4_000 and solves at ~20_000 in 0.7 s; converged
+  solves stop early, so the cap only prices slow convergence).</li>
+<li><strong>The feather-light tie zone.</strong> On damaged clad candidates the exact
+  LP's own objective (<code>sum(t) + ALPHA·sum(dmax)</code>) can prefer leaving a
+  sub-tolerance equilibrium residual on a feather-light SNOT part over
+  paying drag for it — cold then flags bricks (q = 1.0) that the
+  screen, which drives residuals to ~1e-7, reports balanced. Measured
+  per domain (artifact <code>20260808T164332Z-screen-bench.json</code>): vertical
+  candidate ranking stays at <strong>100%</strong>, clad-candidate ranking against
+  cold q degrades to <strong>75.8%</strong> — the tie-zone q = 1.0 verdicts are not
+  a rankable ordering ground truth. Response: <strong>rank-rejection is
+  scoped to vertical-only layouts</strong> (<code>ScreenReport.lateral</code>;
+  <code>should_reject</code> keeps only the unstable-count clause on clad
+  layouts). Under that scoped gate the clad domain measures <strong>0% false
+  rejects</strong> (4 gated, every one justified under both production
+  rules). Binary confident-unstable rejection — what the tier pre-empt
+  and the redesign gate use — stays available everywhere; the flip
+  direction only ever costs a wasted cold certify.</li>
+</ul>
+<p><strong>Adoption sites.</strong> New opt-in consumers, all reject-only, verdicts
+still cold: the redesign repair search pre-gates candidates before its
+three exact solves (<code>failed_gate="screen"</code> + <code>screen_q</code> recorded in
+the analyze artifact — additive, emitted only when the screen is on),
+<code>final_remerge</code> compares like-for-like screened totals (the accepted
+layout is still cold-certified: the screened arm deliberately returns
+<code>RemergeResult(report=None)</code>), and <code>_snot_tiers</code> reverts a
+confidently-unstable tier without its cold solve. Two
+screen-independent reuse fixes landed alongside: ALNS localization
+reuses certify's cold result (one fewer whole-structure solve per
+accepted round), and <code>_remerge</code> reuses <code>final_remerge</code>'s accepted
+report instead of re-solving. Measured NOT worth screening:
+hollow-restore (no accept test), <code>_add_support</code>, redesign's envelope
+baselines (need <code>interface_forces</code>), global-exact cuts (MILP
+dominates), <code>_canonicalize_templates</code>/<code>_guarded_finish</code>.</p>
+<p><strong>Hull-vertex constraint reduction — SHIPPED (gate passed).</strong> The
+affine fields attain their extrema at each connection's convex-hull
+vertices, so pointwise nonnegativity and drag rows are constrained
+only there (<code>ReducedModel.constraint_mask</code>, collinear-safe monotone
+chain — scipy's ConvexHull raises QhullError on the common collinear
+1xN interface). Noise-controlled in-process comparison (masked vs
+full rows, alternating order, 3 reps per shell): <strong>16.6% total
+shell-series screen-time improvement</strong> with 17.7% of rows dropped
+(r=14: 1.16 → 0.83 s; the collapsing r=12: 3.54 → 3.01 s), against
+the pre-registered ≥ 10% ship gate. Scores are exact by construction
+(per-brick max drag is attained at a hull vertex); the masked-vs-full
+equivalence test pins it.</p>
+<p><strong><code>screen_fields="bricksim"</code> (research flag) — studied, bar NOT met.</strong>
+The paper's own basis solves behind the flag: nine coefficients per
+connection plus a co-located compression field (the paper's contact
+family C — without it, tension-only axial fields cannot support a
+stacked brick and everything flags unstable), linearized friction
+pyramid under the paper's constants (module-local mu = 0.2,
+mu·F0 = 0.7 N — NOT <code>T_CAPACITY_N</code>), utilization scoring on its own
+scale. Study run (<code>--fields bricksim</code>, shells r=8/10 + corpus + clad;
+artifact <code>20260808T161914Z-screen-bench.json</code>): stable/unstable
+<strong>verdict agreement 100%</strong> — the physics is sound — but against the
+pre-registered bar ("beat restricted on agreement at comparable
+speed") it fails every other axis: candidate ranking 83.7% (vs 100%
+restricted on vertical), worst-consumer false rejects 20% (vs 0%),
+per-brick score correlation near zero (utilization and drag stress
+order bricks differently), slightly slower solves. The restricted
+basis remains the production screen; the flag stays research-only and
+earns no further work.</p>
+<h3 id="legolization-profile-outjson-cli-convenience"><code>legolization ... --profile out.json</code> (CLI convenience)<a class="headerlink" href="#legolization-profile-outjson-cli-convenience" title="Permanent link">&para;</a></h3>
+<p>Writes a leaner schema-2 payload (<code>source: "cli"</code>, <code>git_sha</code>, input,
+strategy, seed, brick/step counts, total, spans). Rejected for
+<code>--strategy all</code> (telemetry cannot cross spawn workers) and for
+<code>.ldr</code>/<code>.mpd</code> inputs (import skips the profiled phases). Cross-producer
+comparisons (script vs CLI artifacts) use span call counts only.</p>
+<h3 id="the-telemetry-api-srclegolizationtelemetrypy">The telemetry API (<code>src/legolization/telemetry.py</code>)<a class="headerlink" href="#the-telemetry-api-srclegolizationtelemetrypy" title="Permanent link">&para;</a></h3>
+<p>Ambient span recording: <code>with telemetry.record() as session:</code> activates
+it; instrumented sites (<code>with telemetry.span("stability.lp", n=bricks):</code>)
+accumulate calls + wall seconds; outside <code>record()</code> every span is a
+shared no-op costing one <code>ContextVar.get</code>. Spans deliberately overlap
+(<code>stability.analyze</code> contains <code>stability.build_model</code> and
+<code>stability.lp</code>); attribute by family leaf, not by sum. <code>n</code> buckets by
+power of two so seconds-vs-size scaling reads from one run.
+<code>test_recording_never_changes_behaviour</code> pins that recording never
+alters placements — keep it green when adding spans.</p>
+<h2 id="2-the-beforeafter-protocol">2. The before/after protocol<a class="headerlink" href="#2-the-beforeafter-protocol" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Fresh before-run at the branch point.</strong> Never reuse a historical
+   JSON as the timing baseline — wall clocks are not comparable across
+   sessions, machines, thermal states, or background load (the v4
+   branch-point suzanne re-run measured 37.7 s where the v3 pin said
+   30.3 s for identical code and config). Historical pins are the
+   <em>structural</em> reference: call counts, span shapes, verdict blocks.</li>
+<li>Pinned inputs, seed 0: <code>pyramid.npy</code> (clean greedy path), <code>suzanne
+   --target-studs 16</code> (mid-size mesh), <code>spot --target-studs 24</code> (the
+   rescue-heavy stress case). Label them (<code>--label v4-before</code>).</li>
+<li><strong>After each perf commit</strong>, re-run the identical commands
+   back-to-back on the same machine in the same session.</li>
+<li>Compare, in order: (a) the <code>result</code> verdict block — must be
+   identical; (b) span <strong>call counts</strong> — e.g. cold <code>stability.analyze</code>
+   calls migrating to a warm/direct span is the mechanism evidence;
+   &copy; <code>total_seconds</code> and the per-span seconds — the speedup claim;
+   (d) new fallback spans — each firing on the proof set must be
+   explained, not averaged away.</li>
+<li>Record the numbers in the ROADMAP progress entry with the exact
+   commands (the v3 item-1 table is the format to copy).</li>
+</ol>
+<h2 id="3-what-counts-as-a-regression">3. What counts as a regression<a class="headerlink" href="#3-what-counts-as-a-regression" title="Permanent link">&para;</a></h2>
+<p>Hard failures (any one blocks the change):</p>
+<ul>
+<li>any golden <code>.ldr</code> byte diff (<code>tests/test_examples_regression.py</code>);</li>
+<li>any corpus scorecard row change that <code>legolization corpus assemble</code>
+  classifies as
+  hard (buildable-count drop, expectation failure, winner objective
+  worsening beyond tolerance);</li>
+<li>a dual-engine plan test diff (<code>tests/test_prefix_solver.py</code>);</li>
+<li>a changed <code>result</code> verdict block on any pinned profile input;</li>
+<li>unstable-step counts changing in <code>legolization instructions audit</code>
+  output on spot/suzanne/mushroom/heart.</li>
+</ul>
+<p>Soft signals to investigate:</p>
+<ul>
+<li>
+<blockquote>
+<p>5% same-session wall regression on a pinned model;</p>
+</blockquote>
+</li>
+<li>call-count growth of <code>stability.analyze</code> / <code>stability.lp</code> on pinned
+  inputs (an optimization quietly disabled);</li>
+<li>fallback spans (<code>*.warm_fail</code>, <code>*.boundary_fallback</code>,
+  <code>*.cold_fallback</code>) firing where the proof runs showed none.</li>
+</ul>
+<h2 id="4-correctness-gates-for-any-perf-change">4. Correctness gates for any perf change<a class="headerlink" href="#4-correctness-gates-for-any-perf-change" title="Permanent link">&para;</a></h2>
+<p>Every perf commit runs the full standard gates (ruff, pytest, ty,
+pyrefly, lizard CCN 18) <strong>plus</strong>: goldens byte-identical; <code>eval-corpus</code>
+synthetic scorecard vs the committed baseline; dual-engine plan
+equality tests; <code>verify_plan</code>/<code>legolization instructions audit</code> clean on the proof
+models; and at least one <code>engine_cross_check=True</code> run over a rescue-
+heavy model with zero mismatch spans. Optimizations must be
+verdict-preserving with a cold fallback: near-threshold results
+re-solve cold (the boundary guard), and any non-optimal warm solve
+falls back to the legacy chain.</p>
+<h2 id="5-engine-and-drift-policy">5. Engine and drift policy<a class="headerlink" href="#5-engine-and-drift-policy" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The LP polytope is identical across engines; scipy is the legacy
+  bit-for-bit reference (<code>SolverConfig(engine="scipy")</code>).</li>
+<li>Byte-identical plans are guaranteed wherever the greedy path runs and
+  for small rescue components below the direct-solve size gate; rescued
+  plans above the gate are <strong>verdict-equivalent</strong> — equal stability
+  verdicts and unstable-step counts, with solver-tolerance-level score
+  drift on degenerate alternative optima (the same drift class scipy
+  exhibits across its own versions).</li>
+<li>Presolve stays <strong>off</strong> on persistent warm models (required for basis
+  reuse) and <strong>on</strong> for one-shot cold solves (scipy's default; the
+  <code>_LP_ATTEMPTS</code> chain retries presolve-off then IPM on the known
+  degenerate-presolve failures).</li>
+</ul>
+<h2 id="6-measured-dead-ends-do-not-re-try-without-new-evidence">6. Measured dead ends (do not re-try without new evidence)<a class="headerlink" href="#6-measured-dead-ends-do-not-re-try-without-new-evidence" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>LP-deletion warm starts</strong>: deleting rows/cols from a HiGHS model
+  discards enough basis that re-solves are effectively cold (measured
+  49-63 warm fails, no speedup). The rescue's win came from the
+  floating shortcut + component-verdict caching instead.</li>
+<li><strong>Bound-deactivation warm rescue</strong> (v4, mechanism built, measured,
+  reverted): keep one persistent model of the rescue scope and "remove"
+  chunks by fixing their columns to zero and relaxing their rows —
+  basis dimensions preserved, dual simplex hot-starts, textbook
+  branch-and-bound pattern. Correctness was perfect (tower-walk drift
+  ~1e-18, clean fallback on the one warm_fail), but the economics
+  lose: the persistent model cannot presolve (basis reuse forbids it),
+  while one-shot cold solves presolve the RBE down dramatically.
+  Measured on spot@24: warm re-solves ~23 s each vs ~5.6 s cold-direct
+  at n≈1000, plus a 45 s scope build; totals 588 s warm vs 490 s cold
+  (suzanne 46 s vs 32 s). <strong>Presolve beats basis reuse on this LP
+  family</strong> — any future warm-rescue idea must beat the presolved cold
+  solve, not the unpresolved one.</li>
+<li><strong>Candidate pruning in <code>_choose_removal</code></strong>: the dominant
+  grounded-stable rescue state already costs exactly one LP (first
+  stable candidate short-circuits); there is no fan-out to prune.</li>
+<li><strong>Parallel rescue solves</strong>: one LP per state on the dominant path
+  leaves nothing to run concurrently.</li>
+</ul>
+<h2 id="7-known-gaps">7. Known gaps<a class="headerlink" href="#7-known-gaps" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Prefix sequencing now indexes vertical and lateral knob contacts from
+  <code>ConnectionGraph</code>, including rotated SNOT patterns, and remains warm.
+  Disassembly still solves newly encountered contact components through
+  the presolved cold analyzer; its component cache, rather than LP
+  deletion, is the measured optimization.</li>
+<li>Telemetry does not cross placement sweep workers: <code>--strategy all</code> sweeps
+  cannot be profiled; profile each strategy in its own supervised process.</li>
+</ul>
+<h2 id="8-deadline-and-enumeration-guardrails">8. Deadline and enumeration guardrails<a class="headerlink" href="#8-deadline-and-enumeration-guardrails" title="Permanent link">&para;</a></h2>
+<p>Placement owns one absolute monotonic deadline. Layered tiling,
+connectivity repair, and every bridge phase consume that same budget;
+no nested synthesizer may start a fresh default timeout. Rectangle
+enumeration is incremental and checks both the deadline and
+<code>candidate_limit</code> while yielding, stopping at limit+1 so callers can
+distinguish an exact in-budget list from overflow without
+materializing the full search space.</p>
+<p>The re-phased bridge ablation makes this especially important: phases
+0, 1, and 2 share one deadline, cheap per-slab candidates are gathered
+before flow escalation, and promising phases run first. Telemetry
+records the attempted and accepted phases plus candidate/arc counts.
+This holds on the default phase-0 path too (intentional, PR #22): a
+per-slab cover that merely reduces the component count no longer
+preempts flow escalation — the flow candidate competes on the same
+(components, bricks) key, so the default path can spend bounded extra
+MILP time to return a strictly better-connected bridge.
+Do not raise the 600-candidate / 8_000-arc flow defaults from a single
+partial result: mushroom already measured 2_322 candidates / 44_162
+arcs at the larger envelope without an end-to-end win.</p>
+<h2 id="9-pointers">9. Pointers<a class="headerlink" href="#9-pointers" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>docs/guides/self-evaluation-playbook.md</code> — the wider quality loop;
+  "seconds are noise" guidance.</li>
+<li><code>docs/reports/unstable-prefix-report.md</code> — the profiling campaign that
+  identified LP solves as 99% of large-model runtime.</li>
+<li><code>ROADMAP.md</code> v3/v4 progress notes — every measured claim with its
+  commands.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../self-evaluation-playbook/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Self-evaluation playbook">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Self-evaluation playbook
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../reports/kollsker-drift-report/" class="md-footer__link md-footer__link--next" aria-label="Next: Report: Kollsker drift">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Report: Kollsker drift
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Harold Martin &mdash; GPL-3.0-or-later.
+Legolization is an independent open-source project. It is not affiliated with,
+sponsored by, or endorsed by the LEGO Group. LEGO&reg; is a trademark of the
+LEGO Group, which does not authorize or endorse this project.
+
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/hbmartin/legolization" target="_blank" rel="noopener" title="Legolization on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/legolization/" target="_blank" rel="noopener" title="Legolization on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["announce.dismiss","content.action.edit","content.code.annotate","content.code.copy","content.code.select","content.footnote.tooltips","content.tabs.link","content.tooltips","navigation.footer","navigation.indexes","navigation.instant","navigation.instant.prefetch","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.highlight","toc.follow"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

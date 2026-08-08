@@ -1,0 +1,44 @@
+/* Legolization documentation — small typographic adjustments.
+ *
+ * Kept deliberately minimal: the theme's own palette does the work. These
+ * rules only address content this project actually produces — wide reference
+ * tables, provenance callouts in the Theory track, and terminal transcripts.
+ */
+
+/* Reference tables in the Guide track are wide (flag / type / default /
+ * effect). Let them scroll inside their own box rather than forcing the page
+ * to scroll horizontally. */
+.md-typeset__table {
+  width: 100%;
+}
+
+.md-typeset table:not([class]) {
+  font-size: 0.72rem;
+}
+
+.md-typeset table:not([class]) code {
+  white-space: nowrap;
+}
+
+/* Provenance line under a Theory heading: "Paper · file.py:120 · proved".
+ * Written as a paragraph whose first child is a `<strong>Source</strong>`. */
+.md-typeset .provenance {
+  border-left: 3px solid var(--md-accent-fg-color);
+  padding-left: 0.8rem;
+  margin-top: -0.4rem;
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Display equations get a little more breathing room than the theme default;
+ * the Theory pages stack several in a row. */
+.md-typeset div.arithmatex {
+  margin: 1.1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Terminal transcripts are quoted verbatim from real runs; keep them tight. */
+.md-typeset .highlight span.filename {
+  font-weight: 700;
+}
