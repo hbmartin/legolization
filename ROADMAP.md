@@ -5,7 +5,10 @@ engineering program: verified current state, active work, and the open
 engineering backlog. The dated progress journal is preserved in
 [`docs/history/roadmap-history.md`](docs/history/roadmap-history.md);
 historical measurements there are evidence, not descriptions of current
-defaults. See [`docs/README.md`](docs/README.md) for the documentation index.
+defaults. User- and contributor-facing documentation lives in
+[`docs/`](docs/index.md) and is published at
+<https://hbmartin.github.io/legolization/>; this file wins any disagreement
+about what is currently being worked on.
 
 ## Verified current state
 
@@ -169,6 +172,67 @@ decision" are not repeated here.
   directly, but the scalar has never been checked against human preference
   (the permutation-drift methodology).
 
+  *Unblocking data (2026-08-08):* the missing ingredient was a corpus of
+  human-authored assemblies to score against. Three now exist — LDraw OMR
+  (official sets, designed by LEGO), MobileBrick's curated brick models, and
+  StableText2Brick as the algorithmic contrast class. See "External validation
+  datasets" below; `scripts/aesthetics_baseline.py` is the consumer.
+
+### External validation datasets
+
+Externally sourced, independently labelled data used to check the existing
+implementation. Surveyed in
+[`docs/reports/dataset-survey.md`](docs/reports/dataset-survey.md); acquisition
+is `scripts/fetch_datasets.py` (pinned sha256, https-only, atomic) and
+`scripts/fetch_omr.py` (a polite crawl). Nothing here is a runtime dependency
+and nothing is vendored except small attribution-carrying reference tables.
+
+- **BrickNet** — <https://github.com/kulits/BrickNet>, **MIT**, Kulits & Schmid,
+  CVPR 2026 (arXiv:2604.22984). Adopted as a **dev-group dependency plus
+  vendored data tables** (`references/bricknet-data/`: part vocabulary,
+  per-part connector labels with exact part-local LDU rows, the part-alias
+  canonicalization table, and the extended colour table). Current use is the
+  independent cross-check in `scripts/ldraw_coverage.py`. Future iterations, in
+  rough value order:
+  1. `bricknet.parse_ldr` as a second opinion on `ldraw_in.py` — where two
+     independent parsers disagree on part count or connectivity, one is wrong;
+  2. `labels.json.xz` connector rows to validate `assembly_connections.py`,
+     whose connection graph is presently only ever checked against itself;
+  3. the per-part collision meshes (`inset.tar.xz`, 369 MB, watertight PLYs
+     inset 0.25 LDU) as an independent check on catalog collision geometry;
+  4. `part_aliases.json.xz` feeding `catalog_infer/sources.py`, whose part-id
+     canonicalization is currently one regex stripping a trailing revision
+     letter.
+
+  **The gated dataset is deliberately declined.** The 253,623 / 67,185 / 512
+  pretraining, SFT, and validation graphs sit behind a request form with
+  restrictive terms; we use only the MIT package and its bundled tables, both
+  of which are unconditionally redistributable. The two large archives
+  (`inset.tar.xz`, `ldraw.tar.xz`) are direct downloads and are *not* gated.
+
+- **MobileBrick** — <https://github.com/ActiveVisionLab/MobileBrick>, **MIT**
+  (the CC BY-NC-ND badge on the arXiv page covers the paper, not the dataset).
+  153 sequences: 135 random brick shapes plus **18 manually curated LEGO models**,
+  each with a `mesh/gt_mesh.ply` ground-truth shape derived from known brick
+  geometry. Two uses:
+  1. aesthetics calibration against assemblies a human actually built;
+  2. a genuine **mesh to brick round-trip** — legolize `gt_mesh.ply` and compare
+     against the real model it was built from, the only answer key of its kind
+     we have.
+
+  Acquisition policy: the distribution zip is **13.1 GB and ~99% RGBD imagery**.
+  Extract selectively (`unzip -j … '*/mesh/*.ply'`, ~300 MB); never unpack the
+  whole archive.
+
+- **StableText2Brick** (MIT, 47,389 rows, 44 MB parquet) — a positive-only
+  stability regression and the set BrickSim's headline 150-assembly number is
+  sampled from, so our figure is directly comparable. **StableLego** (MIT repo)
+  supplies the mixed valid/invalid negative class the existing
+  `scripts/stablelego_sweep.py` already consumes. **ShapeStacks** is the only
+  independent check on the toppling/CoM branch, which `topple-arm` pins with a
+  single fixture. **Thingi10K** stratifies mesh pathologies that `mesh.py`'s
+  fallback paths currently meet one fixture at a time.
+
 ## Research traceability
 
 The implementation deliberately borrows mechanisms rather than claiming paper
@@ -193,7 +257,12 @@ tests and the explicit configuration/profile name define package behavior.
 These items are intentionally outside the current implementation program:
 
 - standalone release/package-boundary work;
-- expansion of benchmark corpora, metrics, baselines, or performance gates;
+- expansion of *internally authored* benchmark corpora, metrics, baselines, or
+  performance gates. Adopting **externally sourced, independently labelled
+  validation data** is not deferred — see "External validation datasets" in the
+  backlog. The distinction is that we do not invent new synthetic fixtures or
+  new gates to chase; we do check the existing implementation against ground
+  truth someone else produced;
 - inventory-constrained placement, availability, sourcing, or pricing;
 - a product viewer;
 - a TUI;
@@ -203,3 +272,79 @@ These items are intentionally outside the current implementation program:
 
 Existing benchmark/evaluation utilities and BOM output are preserved, but no
 new work is planned in the deferred benchmark or inventory areas.
+
+## Assessment: screen-follow-ups review triage (2026-08-08)
+
+Eight review comments were raised against the reduced-QP screen branch, all
+but one labelled major. Three were adopted, five rejected as contrary to
+checked-in repo policy, and one adopted for a reason other than the one given.
+
+**Adopted.**
+
+- *Lateral status was lost on the research basis.* `_score_report` sets
+  `lateral=reduced.has_lateral`, but `_score_bricksim` never did, so every
+  `screen_fields="bricksim"` verdict reported `lateral=False`. Clad layouts
+  then fell into the `ReducedScreen.should_reject` stress-margin clause that
+  `ScreenReport.lateral` exists to disable. `BricksimModel.has_lateral` now
+  mirrors `reduced.py`'s own predicate (`any(key[2] != (0, 0, 1) ...)`) and
+  reaches the report. Pinned by
+  `test_bricksim_screen_reports_lateral_like_restricted`, which fails without
+  the fix.
+- *Connection-key type.* `bricksim_fields.py` spelled
+  `tuple[int, int, tuple[int, int, int]]` longhand three times and carried one
+  bare `list`, while `reduced.py` has defined `_ConnectionKey` for the same key
+  since the screen landed. The alias is now shared, as `_PLATES_PER_STUD`
+  already was.
+- *Undeclared fence language* in the performance-testing guide — the only
+  unlabelled opening fence in `docs/`.
+
+**Rejected.** Five comments asked for `-> None` and parameter annotations on
+new test functions, citing "always use type hints". That guideline is
+operationalized for tests by `pyproject.toml`, which ignores `ANN001`,
+`ANN002`, `ANN003`, and `ANN201` under `tests/**/*.py`; `pyrefly`'s
+`project-includes` covers `src/` and `scripts/` only. The convention the
+repo actually holds is that fixtures and helpers are typed while `def test_*`
+is bare, and the new code already followed it. Adopting the comments would
+have made the added tests the only annotated functions in their own files.
+Changing that is a repo-wide decision, not a per-branch one.
+
+**Adopted for a different reason than given.** One comment claimed a
+`monkeypatch` shim in `tests/test_repair.py` lacked annotations; it had them.
+But the annotations it had (`*args: object`) were too loose for the
+`analyze` passthrough and were producing five of the seven live `ty` errors on
+the tree. The shim now mirrors `analyze`'s signature. `ty` is down to two
+diagnostics, both pre-existing: deliberate negative tests whose
+`# type: ignore[arg-type]` pragma `ty` does not honour.
+
+### Follow-up finding: the bricksim fields study is not apples-to-apples
+
+Auditing the lateral defect surfaced a measurement problem in the
+`screen_fields="bricksim"` write-up in
+[`docs/guides/performance-testing.md`](docs/guides/performance-testing.md).
+The cited artifact (`20260808T161914Z`) predates the vertical/SNOT domain
+split: it pooled two shells and a clad model into one bucket at
+`--candidates 15`, and its clad candidates ran with the lateral guard
+inactive because of the defect above. The restricted numbers it is compared
+against (`20260808T165542Z`) came from the later domain-split protocol at
+`--candidates 30`. The guide therefore sets a pooled vertical+SNOT figure
+against a vertical-only one, at half the candidate count.
+
+Re-running the research basis under the restricted run's protocol, with the
+lateral fix in place (`--fields bricksim --radii 8 10 --candidates 30
+--skip-corpus --seed 0`, artifact `20260808T204443Z-screen-bench.json`),
+replaces both headline figures:
+
+| Axis | Guide (superseded) | Corrected re-run |
+| --- | --- | --- |
+| Candidate ranking, vertical | 83.7% | 100% |
+| Candidate ranking, SNOT | not reported | 81.4% |
+| Worst-consumer false rejects | 20% | 0% (both domains) |
+| Verdict agreement | 100% | 100% |
+
+The "bar NOT met" conclusion is not thereby overturned, but the two figures
+carrying it are gone; what remains against the research basis is per-brick
+score correlation near zero and a 1.03% non-converged share (below its own
+threshold). The guide paragraph is deliberately left unedited — updating it
+is the open action, together with deciding whether the restricted basis's own
+pre-split numbers quoted in `ScreenReport.lateral`'s docstring (90.5% / 5.6%)
+should be restated on the current protocol.

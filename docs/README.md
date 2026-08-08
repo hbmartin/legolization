@@ -24,6 +24,7 @@ fix space; they are not commitments — open work lives in `ROADMAP.md`.
 | [`reports/unstable-prefix-report.md`](reports/unstable-prefix-report.md) | Why "prefix unstable" steps survive the sequencer's rescue paths. Class resolved v8. |
 | [`reports/physics-fidelity-notes.md`](reports/physics-fidelity-notes.md) | What each RBE solver switch models, what was measured, and where capacity constants could come from. |
 | [`reports/mesh-baseline-pending.md`](reports/mesh-baseline-pending.md) | **Has one open item** — the mesh-kind baseline cut, with its measured history and the exact commands. Cross-linked from `ROADMAP.md` "Active work". |
+| [`reports/dataset-survey.md`](reports/dataset-survey.md) | Web survey of external datasets that could widen the test/verification surface — access paths, licences, and what verification gap each closes. Ranks a space; commits to nothing. |
 
 ## History — append-only
 

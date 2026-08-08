@@ -254,7 +254,18 @@ def _candidates(layout: Layout, count: int, rng: np.random.Generator) -> list[La
     return out
 
 
-_ACCEPTANCE_RULES = ("luo_maximin", "luo_rbe", "repair_alns")
+_ACCEPTANCE_RULES: tuple[str, ...] = ("luo_maximin", "luo_rbe", "repair_alns")
+
+
+def _active_rules(*, maximin: bool) -> tuple[str, ...]:
+    """Return the acceptance rules actually measured this run.
+
+    ``--skip-maximin`` drops ``luo_maximin`` from every consumer
+    measurement, so its counter stays at its seeded zero. Reporting
+    that zero would read as a perfect rule rather than an unmeasured
+    one, so every consumer-keyed payload is filtered through here.
+    """
+    return tuple(r for r in _ACCEPTANCE_RULES if maximin or r != "luo_maximin")
 
 
 @dataclass(slots=True)
@@ -483,11 +494,13 @@ def _verdicts(
     snot = ranking.domains["snot"]
     ranking_agreement = vertical.agree / vertical.pairs if vertical.pairs else None
 
+    active = _active_rules(maximin=ranking.maximin)
+
     def consumer_rates(stats: _DomainStats) -> dict[str, float]:
         return {
             rule: (count / stats.gated if stats.gated else 0.0)
             for rule, count in stats.false_rejects.items()
-            if ranking.maximin or rule != "luo_maximin"
+            if rule in active
         }
 
     by_consumer = consumer_rates(vertical)
@@ -642,6 +655,7 @@ def main() -> int:
         print(f"candidates snot: done ({ranking.pairs} scored pairs total)")
 
     verdicts = _verdicts(shells, ranking, tally)
+    active_rules = _active_rules(maximin=ranking.maximin)
     payload = {
         "schema": 1,
         "generated": datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ"),
@@ -661,15 +675,13 @@ def main() -> int:
                     "pairs": stats.pairs,
                     "agree": stats.agree,
                     "gated": stats.gated,
-                    "false_rejects_by_consumer": stats.false_rejects,
+                    "false_rejects_by_consumer": {
+                        rule: stats.false_rejects[rule] for rule in active_rules
+                    },
                 }
                 for name, stats in ranking.domains.items()
             },
-            "acceptance_rules": [
-                rule
-                for rule in _ACCEPTANCE_RULES
-                if ranking.maximin or rule != "luo_maximin"
-            ],
+            "acceptance_rules": list(active_rules),
             "per_shell": ranking.rows,
         },
         "corpus": corpus,

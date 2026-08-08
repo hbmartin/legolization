@@ -1,5 +1,7 @@
 """Reduced-QP screen wired into certify/accept, Luo, and configuration."""
 
+import time
+
 import numpy as np
 import pytest
 
@@ -9,10 +11,10 @@ from legolization.configuration import project_config_from_mapping
 from legolization.corpus.generators import cantilever
 from legolization.grid import VoxelGrid
 from legolization.layout import Layout
-from legolization.placement.luo import LuoStrategy
+from legolization.placement.luo import LuoStrategy, _rebase
 from legolization.stability import SolverConfig
 from legolization.stability.incremental import FrozenBoundaryAnalyzer
-from legolization.stability.screen import ScreenReport, screen_layout
+from legolization.stability.screen import ReducedScreen, ScreenReport, screen_layout
 
 
 @pytest.fixture
@@ -149,6 +151,57 @@ def test_should_reject_semantics():
     assert not analyzer.reduced.should_reject(near_equal, margin)
     declined = ScreenReport(status="declined")
     assert not analyzer.reduced.should_reject(declined, margin)
+
+
+def _propped_cantilever() -> Layout:
+    """Build the cantilever with its free end propped — strictly better."""
+    lay = _cantilever_layout()
+    lay.add("brick_1x1", 3, 0, 0, 0, 4)
+    return lay
+
+
+def test_rebase_advances_in_place_on_an_ok_report():
+    screen = ReducedScreen.create(_cantilever_layout(), _ON)
+    assert screen is not None
+    accepted = _propped_cantilever()
+    report = screen.evaluate(accepted)
+    assert report.status == "ok"
+    assert _rebase(screen, report, accepted, _ON, None) is screen
+    assert screen.baseline_q == report.q
+
+
+def test_rebase_rebuilds_the_baseline_after_a_non_ok_accept():
+    # should_reject() passes a nonconverged report through to the cold
+    # solve, so such a candidate can still be accepted. rebase() alone
+    # keeps the old baseline, which would leave every later candidate
+    # ranked against a layout that no longer exists.
+    screen = ReducedScreen.create(_cantilever_layout(), _ON)
+    assert screen is not None
+    stale = ScreenReport(status="nonconverged")
+    assert not screen.should_reject(stale, _ON.screen_margin)
+    stale_q = screen.baseline_q
+
+    accepted = _propped_cantilever()
+    rebased = _rebase(screen, stale, accepted, _ON, None)
+    assert rebased is not None
+    assert rebased.baseline_q != stale_q
+    assert rebased.baseline_q == pytest.approx(screen_layout(accepted, _ON).q)
+
+
+def test_rebase_disables_screening_when_the_rebuild_is_out_of_budget():
+    # No baseline is better than a stale one: a declined rebuild drops
+    # the loop to the cold path instead of ranking against the
+    # superseded layout.
+    screen = ReducedScreen.create(_cantilever_layout(), _ON)
+    assert screen is not None
+    rebased = _rebase(
+        screen,
+        ScreenReport(status="error"),
+        _propped_cantilever(),
+        _ON,
+        time.monotonic() - 1.0,
+    )
+    assert rebased is None
 
 
 def test_luo_place_completes_with_screen_on():

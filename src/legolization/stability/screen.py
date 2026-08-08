@@ -599,6 +599,7 @@ def _score_bricksim(
         unstable_ids=unstable,
         confident=not near_boundary,
         q_raw=max(raw.values(), default=0.0),
+        lateral=model.has_lateral,
     )
 
 
@@ -641,9 +642,20 @@ class ReducedScreen:
     baseline: ScreenReport
 
     @classmethod
-    def create(cls, layout: Layout, config: SolverConfig) -> Self | None:
-        """Build and evaluate the baseline; ``None`` when declined."""
-        report = screen_layout(layout, config)
+    def create(
+        cls,
+        layout: Layout,
+        config: SolverConfig,
+        *,
+        deadline: float | None = None,
+    ) -> Self | None:
+        """Build and evaluate the baseline; ``None`` when declined.
+
+        An expired ``deadline`` declines like any other non-"ok" report,
+        so a caller that has already spent its budget on an earlier
+        solve never starts the baseline QP.
+        """
+        report = screen_layout(layout, config, deadline=deadline)
         if report.status != "ok":
             return None
         return cls(config=config, baseline=report)

@@ -293,6 +293,34 @@ def test_bricksim_fields_use_their_own_builder(layout):
     np.testing.assert_allclose(fz[0], -fz[9], atol=1e-12)
 
 
+def test_bricksim_screen_reports_lateral_like_restricted(layout):
+    # Rank-rejection is scoped to vertical-only layouts, so the lateral
+    # flag has to survive the research basis too: reporting False on a
+    # clad layout drops it into the stress-margin clause that
+    # ScreenReport.lateral exists to disable (and silently un-scopes the
+    # false-reject measurement in scripts/benchmark_screen.py).
+    from legolization.stability.screen import screen_layout
+
+    bases = (
+        SolverConfig(screen_fields="restricted"),
+        SolverConfig(screen_fields="bricksim"),
+    )
+
+    vertical = Layout(catalog=default_catalog())
+    vertical.add("brick_2x4", 0, 0, 0, 0, 4)
+    for config in bases:
+        report = screen_layout(vertical, config)
+        assert report.status == "ok"
+        assert not report.lateral
+
+    layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
+    layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)
+    for config in bases:
+        report = screen_layout(layout, config)
+        assert report.status == "ok"
+        assert report.lateral
+
+
 def test_bricksim_screen_matches_cold_verdicts(layout):
     from legolization.stability import analyze
     from legolization.stability.screen import screen_layout
