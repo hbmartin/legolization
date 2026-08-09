@@ -191,7 +191,7 @@ def our_scores(baseline: Path, *, limit: int, min_bricks: int) -> list[Score]:
     return scores
 
 
-def distribution(scores: Sequence[Score], field: str) -> dict[str, float]:
+def distribution(scores: Sequence[Score], *, field: str) -> dict[str, float]:
     """Summarize one term's distribution over one population."""
     values = np.array([getattr(score, field) for score in scores])
     if not values.size:
@@ -207,7 +207,7 @@ def distribution(scores: Sequence[Score], field: str) -> dict[str, float]:
     }
 
 
-def to_markdown(summary: dict[str, dict]) -> str:
+def to_markdown(summary: dict[str, dict[str, dict[str, float]]]) -> str:
     """Render the comparison."""
     lines = [
         "# Beauty scalar: human vs algorithmic vs ours",
@@ -308,7 +308,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = {
         field: {
             population: distribution(
-                [score for score in scores if score.population == population], field
+                [score for score in scores if score.population == population],
+                field=field,
             )
             for population in ("human", "algorithmic", "ours")
         }

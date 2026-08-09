@@ -16,11 +16,9 @@ uvx legolization --help         # ephemeral run via uv
 pip install legolization        # classic pip
 ```
 
-If no package manager is available:
-
-```sh
-curl -LsSf https://uvx.sh/legolization/install.sh | sh
-```
+If no package manager is available, install uv first by following its
+[official installation instructions](https://docs.astral.sh/uv/getting-started/installation/),
+then use `uv tool install legolization` as above.
 
 Two optional pieces unlock rendering and part geometry — see
 [Rendering and parts](rendering-and-parts.md):

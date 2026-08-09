@@ -185,7 +185,7 @@ and stranded a remainder. Re-running that stretch backwards often merges them.
 The paper's model is one-dimensional rows. Here it is generalized per-row along the
 layer's scan axis, which is the natural 2D lift and is documented as such.
 
-### Cost
+### Complexity and deadline
 
 Single-pass constructive, $O(|\text{columns}| \times |\text{candidates per column}|)$.
 It deletes its deadline reference — a single constructive pass is fast enough not to

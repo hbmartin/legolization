@@ -9,6 +9,7 @@ sense or a transposed footprint produces plausible numbers and wrong answers.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -219,16 +220,27 @@ def _git(*args: str) -> str:
     ).stdout
 
 
+# A source archive has no .git, and a minimal environment has no git binary;
+# either way the integrity guards below have nothing to check and must skip
+# rather than fail on the missing tool.
+_REQUIRES_GIT = pytest.mark.skipif(
+    shutil.which("git") is None or not (_REPO / ".git").exists(),
+    reason="requires git and a git checkout",
+)
+
+
+@_REQUIRES_GIT
 @pytest.mark.parametrize("path", _MUST_STAY_UNTRACKED)
-def test_dataset_payloads_are_not_tracked(path):
+def test_dataset_payloads_are_not_tracked(path: str) -> None:
     # The guarantee that matters. An ignore rule can be edited away or bypassed
     # with `git add -f`; this fails loudly if a payload ever lands in the index.
     tracked = [line for line in _git("ls-files", "--", path).splitlines() if line]
     assert not tracked, f"{path} must never be committed; tracked: {tracked[:5]}"
 
 
+@_REQUIRES_GIT
 @pytest.mark.parametrize("path", _MUST_STAY_UNTRACKED)
-def test_dataset_paths_are_ignored_however_they_exist(path):
+def test_dataset_paths_are_ignored_however_they_exist(path: str) -> None:
     # `datasets` is a SYMLINK on at least one machine, and a trailing-slash
     # pattern (`datasets/`) does not match a symlink - git treats it as a file.
     # `check-ignore --no-index` answers for the pattern itself, so this holds

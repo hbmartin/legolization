@@ -127,8 +127,11 @@ $$
 \end{aligned}
 $$
 
-$m^\star = C_M$ is the extra force the weakest joint pair can still absorb. Higher is
-sturdier.
+$m^\star = C_M$ is the extra force the weakest joint pair can still absorb — or, when
+negative, how far past capacity that joint already is. Higher is sturdier. $m$ is
+deliberately unbounded below: a negative margin is an overloaded-but-feasible
+equilibrium, still strictly comparable across layouts, and distinct from an infeasible
+equilibrium (collapse).
 
 Note what changed from the RBE LP: equilibrium is a **hard equality** here, not an
 objective term. So this formulation *can* be infeasible — and LP status 2 (provably

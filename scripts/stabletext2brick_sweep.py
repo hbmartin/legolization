@@ -99,7 +99,7 @@ def evaluate(structure: s2b.Structure, *, config: SolverConfig) -> StructureRow 
     except (KeyError, ValueError) as error:
         return f"{structure.structure_id}: layout failed: {error}"
     try:
-        result = analyze(layout, config)
+        result = analyze(layout, config=config)
     except (ArithmeticError, RuntimeError, ValueError) as error:
         return f"{structure.structure_id}: analysis failed: {error}"
     stands, margin = s2b.release_verdict(structure)

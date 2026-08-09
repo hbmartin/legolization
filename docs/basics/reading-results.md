@@ -1,7 +1,8 @@
 # Reading the results
 
-Every operation produces a directory beside your input and a short verdict. This page
-explains both.
+Most operations produce a directory beside your input and a short verdict — only
+[`eval-corpus`](skills/eval-corpus.md) writes elsewhere, to `./legolization-eval/`.
+This page explains both.
 
 ---
 
@@ -14,7 +15,8 @@ dragon-legolization/
   bom/bom.json               every part, with quantities and colours
   comparison/report.json     what was tried, and why this one won
   instructions/audit.json    the buildability check
-  instructions/*.html *.pdf  the printable booklet, when a renderer exists
+  instructions/*.html
+  instructions/*.pdf         the printable booklet, when a renderer exists
   bundle.json                the record of the whole run
   diagnostics/               only when nothing worked — the best failed attempt
 ```

@@ -123,13 +123,15 @@ rather than stacking on them. The same bonding principle as the brickwork undern
 Every mount is validated on a copy and accepted only if the layout's **stud-graph
 component count and floating count do not increase**.
 
-!!! warning "Tier 1 converts only free-standing 1×1 wall columns"
+!!! warning "Tier 1 never carves beyond a site's own columns"
 
     Carving a bracket out of a wall-spanning brick would destroy that brick's bonding
-    contribution — the very thing holding the wall together. **Tier 1** refuses those
-    donors rather than trading structure for surface detail. **Tier 2** (below)
-    deliberately permits them, which is exactly why it runs under its own checkpoint:
-    the bolder carves are attempted only after the safe ones are banked.
+    contribution — the very thing holding the wall together. **Tier 1** therefore
+    requires every donor to live entirely inside the site's own one or two wall
+    columns, refusing wall-spanning donors rather than trading structure for surface
+    detail. **Tier 2** (below) deliberately permits them, which is exactly why it runs
+    under its own checkpoint: the bolder carves are attempted only after the safe ones
+    are banked.
 
 ### Two-tier checkpointing
 
@@ -137,7 +139,7 @@ The pipeline runs SNOT in two stability-checkpointed tiers:
 
 | Tier | Donor scope |
 | --- | --- |
-| 1 | Inside their own columns only |
+| 1 | Donors entirely inside the site's own columns — wall-spanning donors refused |
 | 2 | Wall-spanning donors permitted |
 
 A tier-2 failure retreats to the **tier-1 checkpoint**, not to zero.

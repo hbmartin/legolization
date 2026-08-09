@@ -189,7 +189,14 @@ def download(model: OmrModel, *, dest: Path) -> OmrModel | str:
     Returns a failure string rather than raising, so one dead link never ends a
     crawl of thousands.
     """
-    target = dest / model.filename
+    # discover() filters names, but this is the last line before a filesystem
+    # access - a hand-edited index or a future caller must not bypass it.
+    name = model.filename
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        return f"{model.name}: download failed (unsafe filename {name!r})"
+    target = dest / name
+    if target.resolve().parent != dest.resolve():
+        return f"{model.name}: download failed (filename escapes {dest})"
     if target.exists():
         body = target.read_bytes()
     elif isinstance(fetched := _get(model.url), FetchFailure):

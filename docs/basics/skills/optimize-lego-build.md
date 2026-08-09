@@ -81,6 +81,7 @@ stays exactly as you left it.
 | **partial** | Done, with a warning worth reading |
 | **unbuildable** | No rebuild passed the physics gate. It will offer the material ladder, with your consent and a time budget. |
 | **interrupted** | Saved its place; re-running continues |
+| **error** | Invalid input, a runtime problem, or the exact-placement limit was hit |
 
 ---
 

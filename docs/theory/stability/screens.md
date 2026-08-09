@@ -72,9 +72,14 @@ four shear generators take the press-field role.
     equilibrium, a reduced solve can therefore only **overestimate** the drag the
     exact LP needs — never underestimate it. $\blacksquare$
 
-That direction is the safe one for a *reject* decision: if even the restricted model
-says a candidate needs more friction than the baseline, the exact model will not
-disagree by finding extra slack that the restriction hid.
+Note the theorem's scope: it holds for each layout **separately** — a layout's reduced
+drag upper-bounds its own exact drag. It says nothing about candidate-versus-baseline
+*ordering*: the two layouts' overestimates need not match, so
+$\text{reduced}(cand) > \text{reduced}(base)$ does not entail
+$\text{exact}(cand) > \text{exact}(base)$. The reject predicate built on that
+comparison is an advisory, empirically calibrated heuristic — its margins and scope
+guards were tuned by measurement (below) — made safe by the certification interlock,
+not by the theorem.
 
 ### Where the theorem weakens
 

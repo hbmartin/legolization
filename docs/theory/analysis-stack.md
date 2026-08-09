@@ -94,7 +94,7 @@ On failure, `localize_instability` supplies the seeds that the repair search wor
 
 ### The registry
 
-A builtin curated table merged with user schema-1 JSON by priority, validated with
+A built-in curated table merged with user schema-1 JSON by priority, validated with
 JSON Schema Draft 2020-12.
 
 The stud capacity mirrors the generation model's constant:
@@ -135,7 +135,10 @@ Six rows per body — three force, three torque — rather than the generation m
 5-or-6 per brick. Moments are $(p - c) \times F$ about each body's own centre of mass.
 
 Unit conversions: `_LDU_M = 0.0004` m per LDU, `_GRAVITY_M_S2 = 9.80665`,
-`_DEFAULT_FRICTION = 0.5`.
+`_DEFAULT_FRICTION = 0.5`. These are `assembly_physics`'s own constants, distinct
+from the stability stack's `KNOB_PITCH_M`, `PLATE_HEIGHT_M`, and `GRAVITY` in
+`stability/constants.py` — the two sets are not interchangeable, and each stack's
+numbers stay inside its own model.
 
 Support resolution handles `auto | free | wheels | auto-ground | anchored-baseplate |
 selected:<sel>` with retained evidence for each choice — so the report can say *why* it
@@ -147,9 +150,11 @@ seated the model the way it did.
 selectors like `pages:1-20` or `occurrences:20-30`, and computes connector **minimum
 cuts** — the smallest set of connections whose removal separates two regions.
 
-This is the yield-line reading from Kollsker's thesis: the minimum cut is where the
-structure will fail, so finding it identifies the weak seam without needing to simulate
-the failure.
+This echoes the yield-line reading from Kollsker's thesis, with a caveat: the minimum
+cut is a *candidate* weak seam — the lowest-capacity connector separator between the
+two regions — not a proven failure location. Whether that seam actually fails depends
+on the loads it carries and on failure modes the cut does not model, so the result is
+a lead to validate against the physics checks, not a verdict.
 
 ### Counterfactuals
 

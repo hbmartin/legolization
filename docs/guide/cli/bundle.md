@@ -127,7 +127,7 @@ heart-legolization/
   bom/bom.json                   bill of materials
   instructions/audit.json        buildability audit (always)
   instructions/instructions.html only when a renderer is available
-  instructions/instructions.pdf
+  instructions/instructions.pdf  only when a renderer is available
   diagnostics/                   only when nothing was buildable
 ```
 

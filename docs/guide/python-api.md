@@ -206,7 +206,8 @@ draws LDraw direct colours as grey.
 
 Everything is seeded (default `0`). Mesh voxelization and the synthetic corpus
 generators are fully deterministic, so identical inputs produce byte-identical
-outputs. Exact placement ignores the RNG entirely.
+outputs on matching Legolization, Python, and dependency versions in the same
+environment. Exact placement ignores the RNG entirely.
 
 Two caveats:
 

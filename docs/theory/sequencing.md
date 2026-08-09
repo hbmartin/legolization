@@ -9,7 +9,12 @@ Placement produces a *set* of bricks. Instructions require an *order* — and th
 existence of a valid order is not implied by the set being buildable.
 
 The contract: order the bricks so that **every emitted prefix is a physically stable,
-vertically insertable structure**.
+vertically insertable structure**. Insertability holds on every path — each emits
+ready chunks or pure band order, both sweep-feasible. The stability half is
+guaranteed only on the certified paths: when no stable order exists, the degradation
+ladder below (`resolve_fragile`, `resolve_unstable`, `finish_unready`) emits the
+least-bad prefix — press-fragile or unstable — with its honest verdict recorded and
+an explicit warning, never a laundered certificate.
 
 ---
 

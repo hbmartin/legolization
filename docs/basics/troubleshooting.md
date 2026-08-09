@@ -133,8 +133,11 @@ Two things to know:
 
 ## The result changed between runs
 
-It should not have. Everything is seeded and deterministic — the same input with the
-same settings produces the same output, byte for byte.
+It should not have — if the run completed. Everything is seeded and deterministic:
+the same input with the same settings, run to completion, produces the same output,
+byte for byte. A result reported `partial` carries no byte-for-byte guarantee — it
+published the best candidate available at the deadline, and a rerun may reach a
+different one.
 
 If it changed, something changed with it:
 
