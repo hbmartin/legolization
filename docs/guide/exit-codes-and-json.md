@@ -82,8 +82,7 @@ Every command accepts `--json`. Under it:
     {"path": "model-legolization/model/model.mpd", "kind": "model", "sha256": "…"}
   ],
   "warnings": [],
-  "data": { /* command-specific */ },
-  "error": null
+  "data": { /* command-specific */ }
 }
 ```
 
@@ -128,12 +127,17 @@ legolization bundle model.obj --json \
   | jq -r '.artifacts[] | select(.kind == "model") | .path'
 ```
 
-Treat "partial" as acceptable but noisy:
+Treat "partial" as acceptable but noisy. Match codes 0 and 3 exactly — a
+`-le 3` range test would also wave through 1 (`OPERATIONAL_ERROR`) and 2
+(`UNBUILDABLE`):
 
 ```sh
 legolization bundle model.obj --json > out.json
 code=$?
-[ $code -le 3 ] || exit $code
+case "$code" in
+  0|3) ;;
+  *) exit "$code" ;;
+esac
 jq -r '.warnings[]' out.json
 ```
 

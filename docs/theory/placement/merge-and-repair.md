@@ -199,7 +199,7 @@ While unstable and `failures < 100`:
 | Metric | Basis |
 | --- | --- |
 | `maximin` | Luo's $C_M$ from `solve_maximin` — a **single strict ordering** over layouts. Positive means stable with margin; negative means unstable but still comparable; infeasible maps to $-\infty$. |
-| `rbe` (legacy) | Lexicographic $(|\mathrm{unstable\_ids}|, -\mathrm{min\_capacity})$ |
+| `rbe` (legacy) | Lexicographic $(\lvert\mathrm{unstable\_ids}\rvert, -\mathrm{min\_capacity})$ |
 
 Maximin is the better acceptance criterion precisely because it totally orders
 layouts, including unstable ones — which is the regime this loop spends most of its

@@ -44,8 +44,10 @@ bundle: /path/to/heart-legolization (partial)
   ingest: complete   candidates: complete   selection: complete   model: complete   bom: complete   instructions: partial
 ```
 
-The default is `balanced`, which tries every placement strategy and takes about fifteen
-minutes. `fast` was used here for a quick preview.
+The default is `balanced`, which tries the placement strategies under a fifteen-minute
+budget — most models finish well before it, and the slowest strategy joins in only
+when a quick pre-check says the model is small enough for it. `fast` was used here
+for a quick preview.
 
 The skill will recommend `balanced` unless you asked for speed. It will never pick
 `exhaustive` for you, because that tier requires a time budget only you can choose.
@@ -86,7 +88,7 @@ The winning candidate's numbers:
 
 ## 5. What landed on disk
 
-```
+```text
 heart-legolization/
   model/model.mpd              ← the model you would build
   model/model.ldr

@@ -358,10 +358,10 @@ replaces both headline figures:
 The "bar NOT met" conclusion is not thereby overturned, but the two figures
 carrying it are gone; what remains against the research basis is per-brick
 score correlation near zero and a 1.03% non-converged share (below its own
-threshold). The guide paragraph is deliberately left unedited — updating it
-is the open action, together with deciding whether the restricted basis's own
-pre-split numbers quoted in `ScreenReport.lateral`'s docstring (90.5% / 5.6%)
-should be restated on the current protocol.
+threshold). The guide paragraph now carries the corrected figures
+(`docs/guides/performance-testing.md`); still open is deciding whether the
+restricted basis's own pre-split numbers quoted in `ScreenReport.lateral`'s
+docstring (90.5% / 5.6%) should be restated on the current protocol.
 
 ## Speculative follow-up work
 

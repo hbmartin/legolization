@@ -4,7 +4,7 @@ This track explains why the system works and where its guarantees come from. It 
 written for someone who wants to change the algorithms, verify a claim, or read the
 papers alongside the code.
 
-Every section names its **source** — the paper, the file and line, and whether the
+Every section names its **source** — the paper, the file and symbol, and whether the
 claim is *proved*, *measured*, or *heuristic*. Those three words are not
 interchangeable, and the difference is the point of this track.
 

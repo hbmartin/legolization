@@ -560,9 +560,9 @@ conventions are now pinned by tests in `tests/test_datasets.py`.
 
 ### Solver agreement: 150/150, matching BrickSim
 
-`stabletext2brick_sweep.py --sample 150 --seed 0` — the same sample size
-BrickSim reports (`references/bricksim-*/paper.md:194`, scoring 150/150 at
-`:200`):
+`uv run python scripts/stabletext2brick_sweep.py --sample 150 --seed 0` — the
+same sample size BrickSim reports (`references/bricksim-*/paper.md:194`,
+scoring 150/150 at `:200`):
 
 - **150 agree, 0 disagree, 0 skipped.**
 - Score residual `|(1 − their margin) − our max_score|`: median 0.0020,

@@ -14,10 +14,13 @@ The idea: when choosing a placement, do not just count the cells it covers — c
 many parts the *remainder* will cost.
 
 Let $h(r)$ be the minimum number of parts needed to cover exactly $r$ contiguous studs
-using the catalog's available lengths $(1, 2, 3, 4, 6, 8)$.
+using the catalog's available lengths $(1, 2, 3, 4, 6, 8)$. Lengths may repeat —
+covering 16 studs is two 8s — so this is a multiset cover, written as the recurrence
+the code actually computes:
 
 $$
-h_{\text{exact}}(r) = \min\Big\{\,|P| \;:\; P \subseteq \text{lengths},\; \textstyle\sum P = r \,\Big\}
+h_{\text{exact}}(0) = 0, \qquad
+h_{\text{exact}}(r) = 1 + \min_{\ell \in \text{lengths},\ \ell \le r} h_{\text{exact}}(r - \ell)
 $$
 
 computed by an equality-DP and memoized. For large $r$ this becomes expensive, so
@@ -27,13 +30,13 @@ $$
 h_3(r) =
 \begin{cases}
 h_{\text{exact}}(r) & r < \rho\\
-\left\lfloor \frac{r - \rho}{8} \right\rfloor + 1 + h_3\big(r - 8\lfloor\cdot\rfloor\big) & r \ge \rho
+1 + h_3(r - 8) & r \ge \rho
 \end{cases}
 $$
 
-with $\rho = 25$ — peel 8-stud chunks while the remainder is large, then solve the tail
-exactly. Since 8 is the longest available length, peeling it is optimal whenever enough
-length remains.
+with $\rho = 25$ — peel one 8-stud chunk at a time while the remainder is large, then
+solve the tail exactly. Since 8 is the longest available length, peeling it is optimal
+whenever enough length remains.
 
 !!! note "An honest assessment of what $h(r)$ buys"
 
@@ -117,9 +120,12 @@ the reinforcement loop targets *that*, rather than spinning forever trying to re
 ### Cost and limits
 
 Candidate enumeration is $O(|\text{parts}| \times |\text{orientations}| \times
-|\text{cells per part}|)$ per seed. The refinement is iteration-bounded, and `greedy`
-**explicitly ignores the deadline** — it deletes its deadline reference. It is fast
-enough not to need one, and the shipped example goldens pin its exact output bytes.
+|\text{cells per part}|)$ per seed. The refinement is iteration-bounded **and
+deadline-aware**: the reinforcement loop checks the shared deadline at round
+boundaries — before the initial connectivity repair, before each rebuild round —
+and passes it into `improve_connectivity`. Individual fill and rebuild operations
+are not interruptible, so a round in flight runs to completion. With no deadline
+set (the golden-example path) the output is byte-identical to the pinned goldens.
 
 ---
 
@@ -182,7 +188,8 @@ layer's scan axis, which is the natural 2D lift and is documented as such.
 ### Cost
 
 Single-pass constructive, $O(|\text{columns}| \times |\text{candidates per column}|)$.
-Like `greedy`, it deletes its deadline reference — it is fast enough not to need one.
+It deletes its deadline reference — a single constructive pass is fast enough not to
+need one.
 
 ---
 
@@ -194,7 +201,7 @@ Like `greedy`, it deletes its deadline reference — it is fast enough not to ne
 | Diversity source | Jitter + shuffled rebuild | 8 scan orders |
 | Refinement | Destroy-and-rebuild around weak spots | Short-run repair |
 | Uses physics during search | ✅ — seeds come from `unstable_ids` | ❌ — geometry only |
-| Deadline-aware | ❌ | ❌ |
+| Deadline-aware | ✅ — at rebuild-round boundaries | ❌ |
 
 `greedy` is the only heuristic that consults the RBE *during* placement rather than
 after. That is why it is the `fast` quality tier's sole strategy: one pass, physics-

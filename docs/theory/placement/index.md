@@ -127,9 +127,17 @@ class PlacementStrategy(Protocol):
     outcome: ExactOutcome | None
 
     def place(
-        self, grid: VoxelGrid, *, rng: Random, deadline: float | None
+        self,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
     ) -> Layout: ...
 ```
+
+The `rng` is a **NumPy `Generator`**, not `random.Random` — registered strategies
+call NumPy-specific methods such as `rng.integers`, so a caller passing the
+standard-library type gets an `AttributeError`.
 
 !!! note "`strategy_names()` deliberately excludes `global-exact`"
 

@@ -120,9 +120,12 @@ nav = [
 
 extra_css = ["stylesheets/extra.css"]
 
+# MathJax is pinned to an exact version: unpkg URLs for exact versions are
+# immutable, whereas a floating `mathjax@3` tag can silently resolve to a
+# later release - arbitrary new JS on our pages with no review.
 extra_javascript = [
   "javascripts/mathjax.js",
-  "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js",
+  "https://unpkg.com/mathjax@3.2.2/es5/tex-mml-chtml.js",
 ]
 
 # ----------------------------------------------------------------------------

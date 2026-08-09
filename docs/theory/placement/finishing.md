@@ -123,11 +123,13 @@ rather than stacking on them. The same bonding principle as the brickwork undern
 Every mount is validated on a copy and accepted only if the layout's **stud-graph
 component count and floating count do not increase**.
 
-!!! warning "Only free-standing 1×1 wall columns are converted"
+!!! warning "Tier 1 converts only free-standing 1×1 wall columns"
 
     Carving a bracket out of a wall-spanning brick would destroy that brick's bonding
-    contribution — the very thing holding the wall together. The pass refuses those
-    donors rather than trading structure for surface detail.
+    contribution — the very thing holding the wall together. **Tier 1** refuses those
+    donors rather than trading structure for surface detail. **Tier 2** (below)
+    deliberately permits them, which is exactly why it runs under its own checkpoint:
+    the bolder carves are attempted only after the safe ones are banked.
 
 ### Two-tier checkpointing
 
@@ -162,7 +164,7 @@ tuple's SHA-256.
 
 The cache key is content-addressed:
 
-```
+```text
 (component_signature, catalog_hash, configuration_hash, physics_profile, algorithm_version)
 ```
 
