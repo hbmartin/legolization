@@ -18,7 +18,7 @@ from legolization.stability.screen import ReducedScreen, screen_layout
 
 
 @pytest.fixture
-def layout():
+def layout() -> Layout:
     return Layout(catalog=default_catalog())
 
 
@@ -255,7 +255,7 @@ def test_reduced_screen_baseline_and_rebase(layout):
     assert screen.baseline_q == report.q
 
 
-def test_reduced_screen_create_declines_past_the_deadline(layout):
+def test_reduced_screen_create_declines_past_the_deadline(layout: Layout) -> None:
     # create() is a solve boundary like any other: a caller that spent
     # its budget on an earlier solve must not start the baseline QP.
     layout.add("brick_1x1", 0, 0, 0, 0, 4)

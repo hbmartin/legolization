@@ -2,7 +2,7 @@
 
 Analyze LDraw geometry and, optionally, search for a valid repair.
 
-```
+```text
 legolization analyze [--config PATH] [--manifest PATH | --no-manifest]
                      [--report PATH] [--assembly-report PATH]
                      [--graph PATH] [--diagnostic-mpd PATH] [--floating-mpd PATH]

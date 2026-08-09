@@ -10,11 +10,11 @@ never need this.
 ## Say something like
 
 > Did my placement change make the whole corpus better or worse?
-
+>
 > How is the project doing overall?
-
+>
 > Find me the worst current case to improve next.
-
+>
 > Run the regression sweep.
 
 ---

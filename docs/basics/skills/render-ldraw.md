@@ -7,11 +7,11 @@
 ## Say something like
 
 > Show me what heart.ldr looks like from the front and the top.
-
+>
 > What does this look like?
-
+>
 > Preview the model.
-
+>
 > Did that change actually look right?
 
 **Accepts:** `.ldr`, `.mpd`, or a bundle directory.

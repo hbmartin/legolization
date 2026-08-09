@@ -3,7 +3,7 @@
 Eleven top-level commands. Everything in this section was verified against
 `legolization <command> --help`.
 
-```
+```text
 legolization [--version] COMMAND ...
 ```
 

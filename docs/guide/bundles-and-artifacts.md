@@ -94,7 +94,7 @@ Three properties are worth knowing:
 
 ## Generation bundle
 
-```
+```text
 model-legolization/
   bundle.json
   bundle.lock                     single-writer file lock
@@ -123,7 +123,7 @@ still match; a drifted artifact re-runs only its producing stage and records
 
 `--retry-materials` nests a complete bundle per rung and promotes the winner:
 
-```
+```text
 model-legolization/
   bundle.json
   rungs/four-plate/   … complete nested bundle
@@ -230,7 +230,7 @@ step leaves more than one component or something floating — see
 
 ## Prepared bundle
 
-```
+```text
 model-prepared/
   bundle.json
   normalized.npy       int16 colour codes on the plate lattice
@@ -244,7 +244,7 @@ caught rather than silently used.
 
 ## Analysis bundle
 
-```
+```text
 model-analysis/
   bundle.json
   report.json
@@ -261,7 +261,7 @@ problem — open them in a viewer rather than reading JSON.
 
 ## Repair bundle
 
-```
+```text
 model-repair/
   bundle.json
   repair.json                      schema: legolization.repair/v1
@@ -277,7 +277,7 @@ presented as one.
 
 ## Catalog support bundle
 
-```
+```text
 part_4070-legolization-support/
   bundle.json
   catalog-extension.json

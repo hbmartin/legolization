@@ -235,13 +235,13 @@ one baseplate look like one model.
 
 `src/legolization/physical.py` turns cells into geometry:
 
-```
+```text
 box_for_cell(x, y, z):
     x → [20x − 10, 20x + 10)      stud-centred horizontally
     z → [8z, 8(z+1))              plate-bottom-anchored vertically
 ```
 
-```
+```text
 physical_connector(c):
     point = (20·x + 10·dx,
              20·y + 10·dy,

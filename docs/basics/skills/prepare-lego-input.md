@@ -10,11 +10,11 @@ before you spend the time.
 ## Say something like
 
 > Is spot.obj oriented right, and how big should the brick version be?
-
+>
 > Will this file even work?
-
+>
 > What colours are in this model?
-
+>
 > This came out upside down — fix the orientation.
 
 **Accepts:** `.vox`, `.npy`, `.obj`, `.stl`, `.ply`.
@@ -55,7 +55,7 @@ The inspection reports *conditions*. Each has a specific response:
 
 Inspection alone just reports. If you ask it to write the result:
 
-```
+```text
 spot-prepared/
   normalized.npy     the target, normalized
   normalized.json    orientation, scale, and colour decisions, with your source's hash

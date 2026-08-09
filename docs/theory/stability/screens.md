@@ -188,7 +188,7 @@ properly", never to a verdict.
 
 ## The reject predicate
 
-```
+```text
 reject  ⟺  status == "ok"  and  confident  and
            (  |unstable(cand)| > |unstable(base)|
               OR ( not lateral(either)

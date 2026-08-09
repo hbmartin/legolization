@@ -2,7 +2,7 @@
 
 Run the complete generation pipeline into a portable bundle.
 
-```
+```text
 legolization bundle [-o DIR] [--fresh] [--retile]
                     [--quality {fast,balanced,exhaustive,direct}]
                     [--duration SECONDS] [--retry-materials]
@@ -118,7 +118,7 @@ is a warning rather than a failure. See
 
 The bundle contains:
 
-```
+```text
 heart-legolization/
   bundle.json                    authoritative record
   comparison/report.json         every candidate, scored

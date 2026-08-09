@@ -2,7 +2,7 @@
 
 Infer and validate parts-catalog extensions.
 
-```
+```text
 legolization catalog infer    [--key KEY] [-o DIR] [--offline] [--json] part_id
 legolization catalog validate [--json] path
 ```
@@ -30,7 +30,7 @@ legolization catalog infer 4070
 
 It writes a `<key>-legolization-support/` bundle:
 
-```
+```text
 part_4070-legolization-support/
   bundle.json
   catalog-extension.json     the drafted part definition

@@ -11,7 +11,7 @@ from legolization.stability.reduced import build_reduced_model
 
 
 @pytest.fixture
-def layout():
+def layout() -> Layout:
     return Layout(catalog=default_catalog())
 
 
@@ -293,7 +293,7 @@ def test_bricksim_fields_use_their_own_builder(layout):
     np.testing.assert_allclose(fz[0], -fz[9], atol=1e-12)
 
 
-def test_bricksim_screen_reports_lateral_like_restricted(layout):
+def test_bricksim_screen_reports_lateral_like_restricted(layout: Layout) -> None:
     # Rank-rejection is scoped to vertical-only layouts, so the lateral
     # flag has to survive the research basis too: reporting False on a
     # clad layout drops it into the stress-margin clause that

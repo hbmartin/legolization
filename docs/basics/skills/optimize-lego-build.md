@@ -10,11 +10,11 @@ or rebuilds its brickwork from scratch keeping the shape and colours.
 ## Say something like
 
 > Can you rebuild castle.ldr with fewer bricks without making it fragile?
-
+>
 > Optimize this model.
-
+>
 > Strengthen this build.
-
+>
 > Compare some different ways of building this shape.
 
 **Accepts:** `.ldr`, `.mpd`.
@@ -41,7 +41,7 @@ It recommends **preserve** when you just want instructions for what you built.
 
 For a retile, a full comparison of every candidate rebuild:
 
-```
+```text
 castle-optimized/
   model/model.mpd          the winning rebuild
   bom/bom.json

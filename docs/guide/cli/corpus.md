@@ -2,7 +2,7 @@
 
 Manage and evaluate the placement corpus.
 
-```
+```text
 legolization corpus list | generate | download | verify | collect | assemble | evaluate
 ```
 

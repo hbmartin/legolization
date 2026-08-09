@@ -7,7 +7,7 @@ explains both.
 
 ## The bundle
 
-```
+```text
 dragon-legolization/
   model/model.mpd            the model you would build
   model/model.ldr            the same model, flattened
@@ -145,7 +145,7 @@ Ask for a from-scratch rerun explicitly if you want one.
 
 An unbuildable result still gives you something:
 
-```
+```text
 dragon-legolization/
   diagnostics/best-rejected.ldr    the closest attempt
   diagnostics/best-rejected.json   why it failed

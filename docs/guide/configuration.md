@@ -7,7 +7,7 @@ from the dataclass that owns it, and anything not listed here is an error.
 
 ## How values are resolved
 
-```
+```text
 built-in defaults  →  --config FILE  →  --set KEY=VALUE  →  explicit CLI flags
 ```
 

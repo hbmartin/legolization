@@ -9,9 +9,9 @@ This is the main event: mesh or voxel file in, a complete buildable bundle out.
 ## Say something like
 
 > Turn dragon.stl into a LEGO model I can actually build.
-
+>
 > Brickify this shape.
-
+>
 > Make a buildable brick version of spot.obj.
 
 It also triggers on *legolize*, *Lego-ify*, *convert this mesh to bricks*, and *run the
@@ -36,7 +36,7 @@ whole pipeline*.
 
 ## What you get
 
-```
+```text
 dragon-legolization/
   model/model.mpd            the model you would build
   bom/bom.json               every part you need
