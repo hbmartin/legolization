@@ -3,8 +3,10 @@
 The objective is a weighted sum (all terms normalized to ~[0, 1], lower is
 better): part cost, physical instability (from the RBE), aesthetics (seam
 bonding), colour fidelity, perpendicularity (alternating brick directions
-between layers), and per-layer mirror symmetry. Strategies use it to accept
-or reject refinement steps; the CLI reports it.
+between layers; reported but unweighted by default), global-plane mirror
+symmetry, and the weightless audition terms colour speckle and profile
+roughness. Strategies use it to accept or reject refinement steps; the CLI
+reports it.
 """
 
 from __future__ import annotations
@@ -14,7 +16,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from legolization.graph import ConnectionGraph
-from legolization.placement.aesthetics import perpendicularity_error, symmetry_error
+from legolization.placement.aesthetics import (
+    colour_speckle_error,
+    perpendicularity_error,
+    profile_roughness,
+    symmetry_error,
+)
 from legolization.stability.solver import SolverConfig, StabilityResult, analyze
 
 if TYPE_CHECKING:
@@ -33,8 +40,16 @@ class ObjectiveWeights:
     stability: float = 4.0
     aesthetics: float = 0.5
     colour: float = 1.0
-    perpendicularity: float = 0.25
+    # Measured inverted against the human corpora — official sets score WORSE
+    # than we do, so any positive weight pushes away from how good builds
+    # actually look. Reported but unweighted; see
+    # docs/reports/aesthetics-validation.md.
+    perpendicularity: float = 0.0
     symmetry: float = 0.25
+    # Audition terms: reported for validation, weightless until they pass the
+    # population-separation and drift gates (same report).
+    speckle: float = 0.0
+    profile: float = 0.0
     # Kollsker stretcher-bond constants used by greedy candidate scoring:
     # a border whose seam below sits d studs away is penalized
     # ``bond_alpha1 * exp(-bond_alpha2 * d)`` (d = 0 is a stacked seam).
@@ -49,6 +64,8 @@ class ObjectiveWeights:
             ("colour", self.colour),
             ("perpendicularity", self.perpendicularity),
             ("symmetry", self.symmetry),
+            ("speckle", self.speckle),
+            ("profile", self.profile),
             ("bond_alpha1", self.bond_alpha1),
             ("bond_alpha2", self.bond_alpha2),
         )
@@ -68,6 +85,8 @@ class ObjectiveReport:
     colour_error: float
     perpendicularity: float
     symmetry: float
+    speckle: float
+    profile: float
     total: float
     stability: StabilityResult
 
@@ -81,6 +100,8 @@ def _objective_terms(layout: Layout, grid: VoxelGrid) -> dict[str, float]:
         "colour_error": _colour_mismatch(layout, grid.codes),
         "perpendicularity": perpendicularity_error(layout),
         "symmetry": symmetry_error(layout),
+        "speckle": colour_speckle_error(layout),
+        "profile": profile_roughness(layout),
     }
 
 
@@ -95,6 +116,8 @@ def _weighted_total(
         + weights.colour * terms["colour_error"]
         + weights.perpendicularity * terms["perpendicularity"]
         + weights.symmetry * terms["symmetry"]
+        + weights.speckle * terms["speckle"]
+        + weights.profile * terms["profile"]
     )
 
 
@@ -116,6 +139,8 @@ def evaluate(
         colour_error=terms["colour_error"],
         perpendicularity=terms["perpendicularity"],
         symmetry=terms["symmetry"],
+        speckle=terms["speckle"],
+        profile=terms["profile"],
         total=_weighted_total(terms, instability, weights),
         stability=stability,
     )

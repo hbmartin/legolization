@@ -63,7 +63,12 @@ def test_benchmark_isolates_strategy_failures(monkeypatch, capsys):
         )
 
     fake_report = SimpleNamespace(
-        aesthetics=0.0, perpendicularity=0.0, symmetry=0.0, colour_error=0.0
+        aesthetics=0.0,
+        perpendicularity=0.0,
+        symmetry=0.0,
+        speckle=0.0,
+        profile=0.0,
+        colour_error=0.0,
     )
     monkeypatch.setattr(module, "_example_grids", lambda: {"tiny": grid})
     monkeypatch.setattr(module, "strategy_names", lambda: ("broken", "greedy"))

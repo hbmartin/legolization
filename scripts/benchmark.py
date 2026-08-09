@@ -80,6 +80,8 @@ def benchmark(seed: int) -> list[dict]:
                         "seam_alignment": round(report.aesthetics, 3),
                         "perpendicularity": round(report.perpendicularity, 3),
                         "symmetry": round(report.symmetry, 3),
+                        "speckle": round(report.speckle, 3),
+                        "profile": round(report.profile, 3),
                         "colour_error": round(report.colour_error, 3),
                         "seconds": round(elapsed, 2),
                     }

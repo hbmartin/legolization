@@ -1,19 +1,41 @@
 """Layout-level beauty metrics shared by the objective and the strategies.
 
-Two terms the papers quantify beyond seam bonding: alternating brick
-directions between layers (SM-GA's perpendicularity count, Bao's direction
-weight) and per-layer mirror symmetry (Min's balance term g_a). Both are
-pure functions of a layout, normalized to [0, 1], lower is better.
+Four terms, all pure functions of a layout, normalized to [0, 1], lower is
+better. Two come from the placement papers: alternating brick directions
+between layers (SM-GA's perpendicularity count, Bao's direction weight) and
+mirror symmetry (Min's balance term g_a, corrected here to use one global
+mirror plane). Two are audition terms measured against the external human
+corpora before they may carry weight: exposed-surface colour speckle and
+silhouette profile roughness. Validation lives in
+``scripts/aesthetics_baseline.py`` (population separation) and
+``scripts/aesthetics_drift.py`` (permutation drift); the standing verdicts are
+recorded in ``docs/reports/aesthetics-validation.md``.
 """
 
 from __future__ import annotations
 
+import itertools
 from typing import TYPE_CHECKING
 
 from legolization.graph import GROUND_ID, ConnectionGraph
 
 if TYPE_CHECKING:
     from legolization.layout import Layout, PlacedBrick
+
+_NEIGHBOURS: tuple[tuple[int, int, int], ...] = (
+    (1, 0, 0),
+    (-1, 0, 0),
+    (0, 1, 0),
+    (0, -1, 0),
+    (0, 0, 1),
+    (0, 0, -1),
+)
+# One representative per unordered cell pair: the three positive directions.
+_FORWARD_NEIGHBOURS: tuple[tuple[int, int, int], ...] = (
+    (1, 0, 0),
+    (0, 1, 0),
+    (0, 0, 1),
+)
 
 
 def perpendicularity_error(layout: Layout) -> float:
@@ -39,11 +61,54 @@ def perpendicularity_error(layout: Layout) -> float:
 
 
 def symmetry_error(layout: Layout) -> float:
+    """Global-plane mirror symmetry error: unbalanced fraction of all bricks.
+
+    One mirror plane (x or y) and one mirror centre are shared by the whole
+    model, both taken from the model's footprint bounding box; the better of
+    the two axes is scored. A brick is balanced when it is centred on the
+    plane or a same-shape, same-colour partner sits at the mirrored position
+    in its own layer (a vertical mirror plane preserves the layer).
+
+    This supersedes :func:`layer_symmetry_error`, whose per-layer axis and
+    centre choices let a staircase of individually symmetric layers score a
+    perfect 0.0 — validated against the human corpora, see
+    ``docs/reports/aesthetics-validation.md``.
+    """
+    bricks = list(layout)
+    if not bricks:
+        return 0.0
+    footprints = {
+        brick.brick_id: frozenset((x, y) for x, y, _ in layout.cells_of(brick))
+        for brick in bricks
+    }
+    layer_shapes: dict[int, set[tuple[frozenset[tuple[int, int]], str, int]]] = {}
+    for brick in bricks:
+        layer_shapes.setdefault(brick.layer, set()).add(
+            (footprints[brick.brick_id], brick.part_key, brick.colour_code)
+        )
+    xs = [x for columns in footprints.values() for x, _ in columns]
+    ys = [y for columns in footprints.values() for _, y in columns]
+    unbalanced = min(
+        _global_axis_unbalanced(
+            bricks,
+            footprints,
+            layer_shapes,
+            axis=axis,
+            mirror_sum=mirror_sum,
+        )
+        for axis, mirror_sum in ((0, min(xs) + max(xs)), (1, min(ys) + max(ys)))
+    )
+    return unbalanced / len(bricks)
+
+
+def layer_symmetry_error(layout: Layout) -> float:
     """Min's balance term g_a: mean unbalanced-brick fraction per layer.
 
     A brick is balanced about a layer's central axis when it is centred on
     the axis or a same-shape, same-colour partner sits at the mirrored
-    position; each layer takes its better axis (x or y).
+    position; each layer takes its better axis (x or y) and its own mirror
+    centre. Superseded by :func:`symmetry_error` as an objective term; kept
+    so the drift harness can compare the two formulations side by side.
     """
     layers: dict[int, list[PlacedBrick]] = {}
     for brick in layout:
@@ -53,6 +118,90 @@ def symmetry_error(layout: Layout) -> float:
     return sum(
         _layer_symmetry_error(layout, bricks) for bricks in layers.values()
     ) / len(layers)
+
+
+def colour_speckle_error(layout: Layout) -> float:
+    """Fraction of exposed brick-to-brick cell adjacencies that change colour.
+
+    A cell is exposed when any of its six neighbours is unoccupied. Every
+    unordered pair of exposed, adjacent cells belonging to two different
+    bricks is one visible surface junction; the score is the share of those
+    junctions where the colour changes. Dithered per-brick colour assignment
+    produces many short colour runs (high); coherent colour blocking produces
+    large same-colour regions (low). Intentional multi-colour boundaries are
+    charged too — the population baseline decides whether that noise floor
+    still separates human from machine output.
+    """
+    occupancy = layout.occupancy
+    colour_of = {brick.brick_id: brick.colour_code for brick in layout}
+    exposed = {
+        cell
+        for cell in occupancy
+        if any(
+            (cell[0] + dx, cell[1] + dy, cell[2] + dz) not in occupancy
+            for dx, dy, dz in _NEIGHBOURS
+        )
+    }
+    junctions = 0
+    changes = 0
+    for x, y, z in exposed:
+        for dx, dy, dz in _FORWARD_NEIGHBOURS:
+            other = (x + dx, y + dy, z + dz)
+            if other not in exposed:
+                continue
+            brick_a = occupancy[x, y, z]
+            brick_b = occupancy[other]
+            if brick_a == brick_b:
+                continue
+            junctions += 1
+            if colour_of[brick_a] != colour_of[brick_b]:
+                changes += 1
+    return changes / junctions if junctions else 0.0
+
+
+def profile_roughness(layout: Layout) -> float:
+    """Mean Jaccard distance between consecutive layers' footprints.
+
+    Smooth tapers change few columns between layers (low); ragged silhouettes
+    change many (high). For layouts produced by this pipeline every strategy
+    fills the same voxel grid, so the term is placement-invariant there — it
+    is a population and shape diagnostic that informs voxelization and
+    finishing, never a placement tie-breaker.
+    """
+    columns_by_layer: dict[int, set[tuple[int, int]]] = {}
+    for x, y, z in layout.occupancy:
+        columns_by_layer.setdefault(z, set()).add((x, y))
+    layers = sorted(columns_by_layer)
+    steps = [
+        (columns_by_layer[a], columns_by_layer[b])
+        for a, b in itertools.pairwise(layers)
+        if b == a + 1
+    ]
+    if not steps:
+        return 0.0
+    return sum(len(below ^ above) / len(below | above) for below, above in steps) / len(
+        steps
+    )
+
+
+def _global_axis_unbalanced(
+    bricks: list[PlacedBrick],
+    footprints: dict[int, frozenset[tuple[int, int]]],
+    layer_shapes: dict[int, set[tuple[frozenset[tuple[int, int]], str, int]]],
+    *,
+    axis: int,
+    mirror_sum: int,
+) -> int:
+    unbalanced = 0
+    for brick in bricks:
+        mirrored = frozenset(
+            (mirror_sum - x, y) if axis == 0 else (x, mirror_sum - y)
+            for x, y in footprints[brick.brick_id]
+        )
+        key = (mirrored, brick.part_key, brick.colour_code)
+        if key not in layer_shapes[brick.layer]:
+            unbalanced += 1
+    return unbalanced
 
 
 def _layer_symmetry_error(layout: Layout, bricks: list[PlacedBrick]) -> float:
