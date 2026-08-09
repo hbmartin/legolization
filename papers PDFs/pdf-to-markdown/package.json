@@ -1,8 +1,0 @@
-{
-  "name": "lego-pdf-markdown-tools",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "unpdf": "1.6.2"
-  }
-}

@@ -72,6 +72,30 @@ shell's venv hook aborts them) — use absolute paths.
   `eval/stablelego/`). The dataset downloads from the StableLego
   release's Google Drive link; the nine vendored fixtures stay the
   committed regression.
+- **External datasets**: `scripts/fetch_datasets.py` (registry
+  `scripts/datasets.toml` + generated `datasets.lock.toml`; `--dry-run`
+  prices a fetch, `--verify` re-checks hashes offline) and
+  `scripts/fetch_omr.py` (a rate-limited, resumable crawl of the LDraw
+  Official Model Repository). Payloads land in `datasets/`, gitignored
+  and never vendored. Provenance and licences:
+  [`../reports/dataset-survey.md`](../reports/dataset-survey.md).
+- **StableText2Brick sweep**: `scripts/stabletext2brick_sweep.py`
+  — 47k positive-only stability rows. `--sample 150` reproduces
+  BrickSim's evaluation size for a directly comparable number;
+  `--screen bricksim` measures reduced-QP screen agreement at scale.
+  **Its score is a margin (higher is better); ours and StableLego's are
+  stress (higher is worse).** Reports under `eval/datasets/`.
+- **Catalog/parser coverage**: `scripts/ldraw_coverage.py` runs the
+  importer over real OMR sets and ranks the unsupported parts by how
+  often they actually occur — the input to `extend-lego-part-support`.
+  `--cross-check` adds BrickNet's independent parser as a second
+  opinion. It classifies rejected codes into real parts vs LDraw
+  primitives using `datasets/ldraw-library`; only the former are
+  addressable.
+- **Beauty-scalar calibration**: `scripts/aesthetics_baseline.py` scores
+  human (OMR), algorithmic (StableText2Brick), and our own layouts with
+  the *same* `placement/aesthetics.py` terms. Our layouts read from the
+  committed baseline scorecard, so no placement is re-run.
 - **Renderers**: LeoCAD at `/Applications/LeoCAD.app` works headlessly on
   this Mac (LDView's headless snapshot silently writes nothing); LDraw
   parts at `~/Library/Caches/pyldraw3/2018-02/ldraw`. A PNG on disk is the

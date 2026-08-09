@@ -44,15 +44,21 @@ legolization = "legolization.main:main"
 [project.urls]
 Homepage = "https://github.com/hbmartin/legolization"
 Repository = "https://github.com/hbmartin/legolization"
-Documentation = "https://github.com/hbmartin/legolization/blob/main/README.md"
+Documentation = "https://hbmartin.github.io/legolization/"
 Changelog = "https://github.com/hbmartin/legolization/releases"
 
 [dependency-groups]
 dev = [
+    # bricknet: MIT, CVPR 2026. Used only by the external-dataset analyses for
+    # an independent LDraw parser and its bundled connector-label tables; never
+    # imported by src/ and never a runtime dependency.
+    "bricknet>=0.1.0",
     "deptry>=0.23.0",
     "hypothesis>=6.156.7",
     "lizard>=1.23.0",
     "pillow>=12.1.0",
+    # pyarrow: reads the StableText2Brick parquet in the dataset adapters.
+    "pyarrow>=18.0.0",
     "pypdf>=5.1",
     "pyrefly>=1.1.1",
     "pyroma>=5.0.1",
@@ -68,7 +74,7 @@ docs = [
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "tools", "venv"]
+exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "datasets", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "tools", "venv"]
 
 line-length = 88
 indent-width = 4
@@ -88,7 +94,7 @@ markers = [
 ]
 
 [tool.ty.src]
-exclude = ['papers\ PDFs', 'tools']
+exclude = ['papers\ PDFs', 'tools', 'datasets']
 
 [tool.pyrefly]
 project-includes = [
@@ -101,7 +107,7 @@ pyldraw3 = { git = "https://github.com/hbmartin/pyldraw3.git", rev = "465f783723
 
 [tool.deptry]
 known_first_party = ["legolization"]
-extend_exclude = ["papers PDFs", "tools"]
+extend_exclude = ["papers PDFs", "tools", "datasets"]
 package_module_name_map = { pyldraw3 = ["ldraw"] }
 
 [tool.deptry.per_rule_ignores]

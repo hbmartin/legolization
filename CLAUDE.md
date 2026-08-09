@@ -4,6 +4,13 @@ Always run ruff and pytest and ty and pyrefly (with uv) after making any changes
 
 You may refer to the papers in @references/ for implementation guidance
 
+Project documentation lives in docs/ (entry point: docs/index.md; published
+at https://hbmartin.github.io/legolization/). It has three tracks:
+docs/basics/ (skills), docs/guide/ (CLI, configuration, artifacts), and
+docs/theory/ (algorithms, physics, sequencing, papers). Update the relevant
+track when you change behaviour it documents; tests/test_docs.py guards the
+navigation and internal links.
+
 For judging output quality (renders, strategy comparison, instruction
 sensibility, corpus regression sweeps), follow
 docs/guides/self-evaluation-playbook.md and the root skills/ suite (render-ldraw,

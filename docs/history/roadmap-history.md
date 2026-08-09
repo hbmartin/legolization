@@ -5,7 +5,8 @@ design notes those programs worked from. Everything here is **historical
 evidence, not current state**: measurements describe the code at the date
 they carry, and design notes describe what was planned at the time.
 
-[`ROADMAP.md`](../../ROADMAP.md) owns verified current state, active work,
+[`ROADMAP.md`](https://github.com/hbmartin/legolization/blob/main/ROADMAP.md)
+owns verified current state, active work,
 and the open engineering backlog. When this file and `ROADMAP.md` disagree,
 `ROADMAP.md` is correct. For the algorithms and formulas each item builds
 on, see the papers in `references/`.

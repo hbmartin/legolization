@@ -255,6 +255,21 @@ def test_reduced_screen_baseline_and_rebase(layout):
     assert screen.baseline_q == report.q
 
 
+def test_reduced_screen_create_declines_past_the_deadline(layout):
+    # create() is a solve boundary like any other: a caller that spent
+    # its budget on an earlier solve must not start the baseline QP.
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x4", 0, 0, 3, 0, 4)
+    assert ReducedScreen.create(layout, SolverConfig()) is not None
+    with telemetry.record() as session:
+        expired = ReducedScreen.create(
+            layout, SolverConfig(), deadline=time.monotonic() - 1.0
+        )
+    assert expired is None
+    assert "stability.screen.deadline_skip" in session.values_dict()
+    assert "stability.screen.qp" not in session.spans
+
+
 def test_reduced_screen_creates_on_snot(layout):
     layout.add("brick_1x1_side_stud", 0, 0, 0, 0, 4)
     layout.add("tile_1x1_snot", 1, 0, 0, 0, 4)

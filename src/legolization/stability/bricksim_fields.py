@@ -42,7 +42,7 @@ from legolization.stability.model import (
     force_entries,
     rows_per_brick,
 )
-from legolization.stability.reduced import _PLATES_PER_STUD
+from legolization.stability.reduced import _PLATES_PER_STUD, _ConnectionKey
 from legolization.stability.solver import SolverConfig, build_model_from_config
 
 if TYPE_CHECKING:
@@ -83,6 +83,11 @@ class BricksimModel:
     side_start: int
     var_count: int
     rows_per_brick: int
+
+    has_lateral: bool = False
+    """Whether any connection mates on a lateral (SNOT) normal, mirroring
+    ``ReducedModel.has_lateral``. Reaches ``ScreenReport.lateral`` so the
+    rank-rejection scoping is basis-independent."""
 
 
 @dataclass(slots=True)
@@ -127,14 +132,14 @@ def _collect_frames(
     layout: Layout,
     config: SolverConfig,
     graph: ConnectionGraph,
-) -> tuple[dict[tuple[int, int, tuple[int, int, int]], _Frames], list]:
+) -> tuple[dict[_ConnectionKey, _Frames], list[_ConnectionKey]]:
     patterns = _PatternSource(
         layout,
         paper_knob_rule=config.paper_knob_rule,
         rotate_contact_pattern=config.rotate_contact_pattern,
     )
-    frames: dict[tuple[int, int, tuple[int, int, int]], _Frames] = {}
-    order: list = []
+    frames: dict[_ConnectionKey, _Frames] = {}
+    order: list[_ConnectionKey] = []
     for knob in graph.knob_contacts:
         key = (knob.below_id, knob.above_id, knob.normal)
         if key not in frames:
@@ -204,7 +209,7 @@ class _Collector:
             self.data.append(weight * coeff)
 
     def emit_connection(
-        self, ordinal: int, key: tuple[int, int, tuple[int, int, int]], frame: _Frames
+        self, ordinal: int, key: _ConnectionKey, frame: _Frames
     ) -> None:
         """Emit one connection's four field families over its points."""
         below, above, _normal = key
@@ -308,6 +313,7 @@ def _build_body(
         side_start=side_start,
         var_count=var_count,
         rows_per_brick=collector.rpb,
+        has_lateral=any(key[2] != (0, 0, 1) for key in order),
     )
 
 

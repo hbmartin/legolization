@@ -20,7 +20,7 @@ evaluation explicitly with `--kind mesh`; CI uses the full-test flag.
 
 ### `scripts/profile_pipeline.py` (the primary tool)
 
-```
+```bash
 uv run python scripts/profile_pipeline.py MODEL [--strategy greedy]
     [--seed 0] [--target-studs N] [--up x|y|z] [--label TEXT]
     [--out eval/profiles] [--cprofile] [--solid] [--no-repair]

@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Zensical documentation site output (uv run --group docs zensical build)
+site/
+.zensical/
+
 # macOS
 .DS_Store
 
@@ -31,6 +35,20 @@ data/corpus/meshes/
 data/corpus/synthetic/
 eval/runs/
 eval/profiles/
+/eval/stablelego
+/eval/datasets
 
 # default corpus evaluation output (legolization corpus collect/assemble/evaluate)
 legolization-eval/
+
+# external validation datasets fetched by scripts/fetch_datasets.py and
+# scripts/fetch_omr.py. scripts/datasets.toml + datasets.lock.toml are the
+# committed truth; the payloads themselves are never committed.
+#
+# The dataset/eval-output entries above and here deliberately drop the trailing
+# slash. A `foo/` pattern is directory-only, so it does NOT match a symlink
+# (`datasets` is one, pointing at an external volume) and does not match a path
+# that does not exist yet. `/foo` matches a directory, a symlink, or a file,
+# present or absent — so the protection holds before the first fetch, not just
+# after it. tests/test_datasets.py pins both properties.
+/datasets
