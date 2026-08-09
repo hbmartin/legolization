@@ -154,6 +154,15 @@ order**. That restriction is what makes the search tractable: it collapses all
 permutations of the same tiling into a single path, so the search explores *tilings*
 rather than *orderings of tilings*.
 
+The balance term's mirror **centre is fixed globally before any tiling**:
+`BeautyStrategy.place` computes the whole-model footprint's `min + max` sums once
+and every layer balances about that plane, matching what the global-plane
+`symmetry_error` measures. (The paper balances each layer about its own bbox —
+which is exactly the centre-drift blind spot the corrected metric charges; a
+directly driven `tile()` call still falls back to the per-layer centre.) The
+per-layer *axis* min is unchanged: a truly global axis would couple layers and
+break the beam's per-layer cost accumulation.
+
 The priority queue is keyed `(accumulated cost, counter, covered, rects)`. On overflow,
 the beam is truncated with `nsmallest(beam_width, ...)` and re-heapified. Pruning:
 `if best is not None and priority >= best[0]: continue`.

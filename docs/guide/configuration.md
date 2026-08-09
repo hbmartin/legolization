@@ -201,8 +201,10 @@ is better. See [Placement](../theory/placement/index.md).
 | `stability` | `4.0` | Worst per-brick stress from the RBE |
 | `aesthetics` | `0.5` | Seam alignment — stacked seams are penalized |
 | `colour` | `1.0` | Fraction of covered voxels whose brick colour is wrong |
-| `perpendicularity` | `0.25` | Fraction of support pairs whose long axes are parallel |
-| `symmetry` | `0.25` | Per-layer unbalanced-brick fraction |
+| `perpendicularity` | `0.0` | Fraction of support pairs whose long axes are parallel — reported, not weighted (measured inverted against human builds; see the beauty-term validation report) |
+| `symmetry` | `0.25` | Whole-model unbalanced-brick fraction under one global mirror plane |
+| `speckle` | `0.0` | Exposed colour-junction change fraction — audition term, reported only |
+| `profile` | `0.0` | Layer-to-layer footprint churn — audition term, reported only |
 | `bond_alpha1` | `4.0` | Stretcher-bond penalty magnitude |
 | `bond_alpha2` | `0.8` | Stretcher-bond distance decay |
 
