@@ -487,7 +487,9 @@ def _finish_surfaces(
             finish=_FinishOperation(
                 operation=lambda: apply_slopes(layout, working),
                 span_name="finish.slopes",
-                warning="slopes: preserve pass would break stability; reverted",
+                warning=(
+                    "slopes: preserve pass would break stability or bonding; reverted"
+                ),
             ),
         )
     snot_added = 0
@@ -503,14 +505,28 @@ def _finish_surfaces(
             finish=_FinishOperation(
                 operation=lambda: apply_plate_caps(layout),
                 span_name="finish.plate_caps",
-                warning="plate caps: pass would break stability; reverted",
+                warning="plate caps: pass would break stability or bonding; reverted",
             ),
         )
-    with telemetry.span("finish.tiles"):
-        tiles_added = apply_tiles(layout) if config.tiles else 0
-    if tiles_added:
-        stability = analyze(layout, config.solver)
+    tiles_added = 0
+    if config.tiles:
+        tiles_added, stability = _guarded_finish(
+            layout,
+            stability,
+            config,
+            finish=_FinishOperation(
+                operation=lambda: apply_tiles(layout),
+                span_name="finish.tiles",
+                warning="tiles: pass would break stability or bonding; reverted",
+            ),
+        )
     return stability, slopes_added, tiles_added, snot_added, plate_caps_added
+
+
+def _connectivity(layout: Layout) -> tuple[int, int]:
+    """Stud-graph component count and floating-brick count."""
+    graph = ConnectionGraph.from_layout(layout)
+    return graph.component_count(), len(graph.floating_ids())
 
 
 def _guarded_finish(
@@ -520,13 +536,26 @@ def _guarded_finish(
     *,
     finish: _FinishOperation,
 ) -> tuple[int, StabilityResult]:
+    """Apply one finishing pass, reverting a stability *or* bonding regression.
+
+    A stable verdict alone is not the buildable predicate: a carve-and-refill
+    pass can sever the only bond between two grounded halves, and each half
+    stands perfectly well on its own - the solver stays happy while the model
+    now comes apart in your hands. So the guard holds the pass to the same
+    standard as the SNOT re-bond guard: component count and floating count
+    must not increase either.
+    """
     guard = (layout.copy(), stability) if stability.stable else None
+    bonding = _connectivity(layout) if guard is not None else None
     with telemetry.span(finish.span_name):
         added = finish.operation()
     if not added:
         return 0, stability
     updated = analyze(layout, config.solver)
-    if guard is None or updated.stable:
+    if guard is None or bonding is None:
+        return added, updated
+    components, floating = _connectivity(layout)
+    if updated.stable and components <= bonding[0] and floating <= bonding[1]:
         return added, updated
     layout.replace_with(guard[0])
     if config.progress is not None:

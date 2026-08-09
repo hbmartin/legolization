@@ -53,7 +53,9 @@ def load_task_graph(path: Path) -> TaskGraph:
             msg = "task graph steps must map string ids to objects"
             raise TypeError(msg)
         if not required <= raw_entry.keys() or not all(
-            isinstance(field, str) and isinstance(value, int)
+            isinstance(field, str)
+            and isinstance(value, int)
+            and not isinstance(value, bool)
             for field, value in raw_entry.items()
         ):
             msg = f"task graph step {step!r} has invalid fields"

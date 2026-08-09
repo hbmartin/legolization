@@ -74,7 +74,9 @@ docs = [
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "datasets", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "tools", "venv"]
+# `/datasets` is anchored to the repository root: a bare `datasets` pattern
+# also matches src/legolization/datasets and silently unchecks production code.
+exclude = [".bzr", ".direnv", ".eggs", ".git", ".git-rewrite", ".hg", ".ipynb_checkpoints", ".mypy_cache", ".nox", ".pants.d", ".pyenv", ".pytest_cache", ".pytype", ".ruff_cache", ".svn", ".tox", ".venv", ".vscode", "__pypackages__", "_build", "buck-out", "build", "/datasets", "dist", "node_modules", "papers PDFs", "setup.py", "site-packages", "tools", "venv"]
 
 line-length = 88
 indent-width = 4
@@ -94,7 +96,8 @@ markers = [
 ]
 
 [tool.ty.src]
-exclude = ['papers\ PDFs', 'tools', 'datasets']
+# `/datasets` anchored for the same reason as ruff's exclude above.
+exclude = ['papers\ PDFs', 'tools', '/datasets']
 
 [tool.pyrefly]
 project-includes = [
@@ -107,7 +110,7 @@ pyldraw3 = { git = "https://github.com/hbmartin/pyldraw3.git", rev = "465f783723
 
 [tool.deptry]
 known_first_party = ["legolization"]
-extend_exclude = ["papers PDFs", "tools", "datasets"]
+extend_exclude = ["papers PDFs", "tools", "^datasets"]
 package_module_name_map = { pyldraw3 = ["ldraw"] }
 
 [tool.deptry.per_rule_ignores]

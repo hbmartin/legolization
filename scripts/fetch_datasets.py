@@ -10,7 +10,10 @@ file via an HTTP Range request, and content hashes live in a generated lock
 
 Registry plus lock: ``datasets.toml`` says what we fetch and under what terms,
 ``datasets.lock.toml`` says what we got. An entry with no lock row is fetched and
-then pinned; an entry with one is verified against it.
+then pinned; an entry with one is verified against it. Pinning additionally
+requires the payload to match the registry's recorded byte size, so a truncated
+or swapped first download can never become the trust anchor that later
+``--verify`` runs bless.
 
 Usage::
 
@@ -291,7 +294,18 @@ def _reconcile_existing(
     actual = sha256_of(target)
     common = {"dataset": dataset.name, "file": item.name, "path": str(target)}
     if (locked := lock.get(key)) is None:
-        lock.put(key, sha256=actual, size=target.stat().st_size)
+        size = target.stat().st_size
+        if size != item.expected_bytes:
+            return FileReport(
+                **common,
+                status="size-mismatch",
+                ok=False,
+                detail=(
+                    f"registry records {item.expected_bytes:,} bytes, got {size:,}; "
+                    f"refusing to pin an unexpected payload as the trust anchor"
+                ),
+            )
+        lock.put(key, sha256=actual, size=size)
         return FileReport(**common, status="pinned", ok=True, sha256=actual)
     if actual == locked["sha256"]:
         return FileReport(**common, status="already-present", ok=True)
@@ -349,21 +363,18 @@ def fetch_one(
             detail=f"expected {locked['sha256']}, got {actual}; file discarded",
         )
     if locked is None:
-        lock.put(key, sha256=actual, size=size)
         if size != item.expected_bytes:
-            return FileReport(
-                dataset=dataset.name,
-                file=item.name,
-                status="size-mismatch",
-                ok=True,
+            target.unlink()
+            return report(
+                "size-mismatch",
+                ok=False,
                 detail=(
                     f"registry records {item.expected_bytes:,} bytes, "
-                    f"got {size:,}; upstream changed - review before committing "
-                    f"the lock"
+                    f"got {size:,}; upstream changed - file discarded, not "
+                    f"pinned. Update datasets.toml if the change is expected"
                 ),
-                path=str(target),
-                sha256=actual,
             )
+        lock.put(key, sha256=actual, size=size)
     return report("downloaded", ok=True)
 
 

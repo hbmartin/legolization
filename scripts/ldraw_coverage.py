@@ -228,15 +228,38 @@ class Summary:
     bricknet_disagreements: list[tuple[str, int, int]]
     unsupported_by_kind: dict[str, int] = field(default_factory=dict)
     unsupported_real_parts: dict[str, int] = field(default_factory=dict)
+    library_indexed: bool = False
 
     @property
     def occurrence_coverage(self) -> float:
-        """Share of real part occurrences the importer placed."""
+        """Share of ALL references the importer placed, primitives included.
+
+        ``occurrences`` counts every reference the analysis descends into, so
+        primitive references from inlined part definitions are in the
+        denominator. :attr:`real_part_coverage` removes the ones the library
+        classifies as primitives.
+        """
         return self.placed / self.occurrences if self.occurrences else 0.0
 
+    @property
+    def real_part_coverage(self) -> float | None:
+        """Coverage with library-classified primitives removed, or ``None``.
+
+        Codes the library cannot classify stay in the denominator, so this is
+        a conservative (lower-bound) reading of real-part coverage. ``None``
+        without a library index - the split cannot be made honestly.
+        """
+        if not self.library_indexed:
+            return None
+        real = self.occurrences - self.unsupported_by_kind.get("primitive", 0)
+        return self.placed / real if real else 0.0
+
     def to_dict(self) -> Mapping[str, object]:
-        """JSON payload, with the derived coverage folded in."""
-        return asdict(self) | {"occurrence_coverage": self.occurrence_coverage}
+        """JSON payload, with the derived coverages folded in."""
+        return asdict(self) | {
+            "occurrence_coverage": self.occurrence_coverage,
+            "real_part_coverage": self.real_part_coverage,
+        }
 
 
 def aggregate(
@@ -270,6 +293,7 @@ def aggregate(
         unsupported_part_kinds=len(unsupported),
         unsupported_by_kind=dict(by_kind),
         unsupported_real_parts=dict(real_parts.most_common(40)),
+        library_indexed=library is not None,
         bricknet_disagreements=[
             (report.name, report.occurrences, report.bricknet_parts)
             for report in reports
@@ -281,6 +305,7 @@ def aggregate(
 
 def to_markdown(reports: Sequence[ModelReport], summary: Summary) -> str:
     """Render the coverage report."""
+    real_coverage = summary.real_part_coverage
     lines = [
         "# LDraw catalog + parser coverage over the OMR",
         "",
@@ -290,9 +315,18 @@ def to_markdown(reports: Sequence[ModelReport], summary: Summary) -> str:
             f"occurrences={summary.occurrences:,} "
             f"placed={summary.placed:,} "
             f"coverage={summary.occurrence_coverage:.1%}"
+            + (
+                f" real-part-coverage={real_coverage:.1%}"
+                if real_coverage is not None
+                else ""
+            )
         ),
         "",
-        "`coverage` is the share of real part occurrences the importer placed.",
+        "`coverage` is the share of ALL references the importer placed -",
+        "primitive references from inlined part definitions included, so it",
+        "understates catalog coverage. `real-part-coverage` removes",
+        "library-classified primitives from the denominator (codes the library",
+        "cannot classify stay counted, so it is still a lower bound).",
         "A model counts as `ok` only when it imported with zero problems; the",
         "OMR uses hundreds of part types outside our catalog, so `partial` is",
         "the expected outcome and the interesting number is which parts are",
@@ -346,18 +380,29 @@ def to_markdown(reports: Sequence[ModelReport], summary: Summary) -> str:
         "",
         "## Unsupported REAL parts, ranked by real-world occurrence",
         "",
-        'This ranking is the answer to "which part should',
-        '`extend-lego-part-support` add next".',
-        "",
-        "| ldraw part | occurrences |",
-        "| --- | ---: |",
     ]
-    lines += [
-        f"| {code} | {count:,} |"
-        for code, count in (
-            summary.unsupported_real_parts or summary.unsupported_parts
-        ).items()
-    ]
+    if not summary.library_indexed:
+        lines.append(
+            "_Real-part classification unavailable - no library index. The raw"
+            " ranking above mixes primitives in; run `fetch_datasets.py --only"
+            " ldraw-library` and re-run this sweep to rank real parts._"
+        )
+    elif not summary.unsupported_real_parts:
+        lines.append(
+            "_None - every unsupported code classified as primitive or unknown._"
+        )
+    else:
+        lines += [
+            'This ranking is the answer to "which part should',
+            '`extend-lego-part-support` add next".',
+            "",
+            "| ldraw part | occurrences |",
+            "| --- | ---: |",
+        ]
+        lines += [
+            f"| {code} | {count:,} |"
+            for code, count in summary.unsupported_real_parts.items()
+        ]
     if summary.bricknet_disagreements:
         lines += [
             "",
@@ -378,6 +423,19 @@ def to_markdown(reports: Sequence[ModelReport], summary: Summary) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _non_negative_int(text: str) -> int:
+    """Parse a count argument, rejecting negatives.
+
+    A negative ``--limit`` would silently slice models off the *end* of the
+    list rather than capping it.
+    """
+    value = int(text)
+    if value < 0:
+        msg = f"must be >= 0, got {value}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the command line."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -388,7 +446,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=_DEFAULT_LIBRARY,
         help="official LDraw tree used to tell real parts from primitives",
     )
-    parser.add_argument("--limit", type=int, default=0, help="inspect at most N models")
+    parser.add_argument(
+        "--limit",
+        type=_non_negative_int,
+        default=0,
+        help="inspect at most N models (0 = all)",
+    )
     parser.add_argument(
         "--cross-check",
         action="store_true",

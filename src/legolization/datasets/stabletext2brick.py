@@ -99,14 +99,42 @@ class Structure:
 
     @classmethod
     def from_row(cls, row: Mapping[str, object]) -> Self:
-        """Build a structure from one parquet row, parsing its brick text."""
+        """Build a structure from one parquet row, validating as it parses.
+
+        Geometry and score-shape checks live here rather than downstream
+        because :attr:`occupancy` applies coordinates as NumPy slices - an
+        oversized extent would silently truncate - and a mis-shaped score
+        array would fail later, outside :func:`iter_structures`' skip
+        handling, or worse, produce a wrong margin. Raising
+        :class:`BrickParseError` turns either into a recorded skip.
+        """
+        scores = np.asarray(row["stability_scores"], dtype=float)
+        if scores.shape != (GRID, GRID, GRID):
+            msg = (
+                f"stability_scores has shape {scores.shape}, "
+                f"expected {(GRID, GRID, GRID)}"
+            )
+            raise BrickParseError(msg)
+        bricks = parse_bricks(str(row["bricks"]))
+        for index, brick in enumerate(bricks):
+            if (
+                min(brick.x_extent, brick.y_extent) < 1
+                or brick.x + brick.x_extent > GRID
+                or brick.y + brick.y_extent > GRID
+                or brick.z >= GRID
+            ):
+                msg = (
+                    f"brick {index}: {brick.x_extent}x{brick.y_extent} at "
+                    f"({brick.x},{brick.y},{brick.z}) leaves the {GRID}^3 grid"
+                )
+                raise BrickParseError(msg)
         return cls(
             structure_id=str(row["structure_id"]),
             object_id=str(row["object_id"]),
             category_id=str(row["category_id"]),
             captions=_string_tuple(row["captions"]),
-            bricks=parse_bricks(str(row["bricks"])),
-            scores=np.asarray(row["stability_scores"], dtype=float),
+            bricks=bricks,
+            scores=scores,
         )
 
     @property
@@ -205,6 +233,52 @@ def release_verdict(structure: Structure) -> tuple[bool, float]:
 def shard_paths(root: Path) -> list[Path]:
     """Return the release's parquet shards under ``root``, sorted."""
     return sorted((root / "data").glob("*.parquet")) or sorted(root.glob("*.parquet"))
+
+
+def shard_row_counts(paths: Sequence[Path]) -> list[int]:
+    """Row count per shard, read from parquet metadata without loading data."""
+    import pyarrow.parquet as pq  # noqa: PLC0415 - dev-only dependency
+
+    return [pq.ParquetFile(path).metadata.num_rows for path in paths]
+
+
+def sample_indices(counts: Sequence[int], *, sample: int, seed: int) -> list[int]:
+    """Choose global row indices deterministically, in ascending order.
+
+    Same convention as ``stablelego_sweep.sample_objects``: seed a
+    ``default_rng``, draw without replacement, then sort - so the same seed over
+    the same shards always yields the same structures in the same order.
+    """
+    total = sum(counts)
+    if sample <= 0 or sample >= total:
+        return list(range(total))
+    rng = np.random.default_rng(seed)
+    return sorted(int(index) for index in rng.choice(total, size=sample, replace=False))
+
+
+def load_selected(
+    paths: Sequence[Path],
+    counts: Sequence[int],
+    indices: Sequence[int],
+) -> list[Structure | str]:
+    """Read only the sampled rows, one shard at a time."""
+    import pyarrow.parquet as pq  # noqa: PLC0415 - dev-only dependency
+
+    wanted = set(indices)
+    loaded: list[Structure | str] = []
+    base = 0
+    for path, count in zip(paths, counts, strict=True):
+        local = sorted(index - base for index in wanted if base <= index < base + count)
+        base += count
+        if not local:
+            continue
+        table = pq.read_table(path).take(local)
+        for offset, row in enumerate(table.to_pylist()):
+            try:
+                loaded.append(Structure.from_row(row))
+            except (BrickParseError, KeyError, TypeError, ValueError) as error:
+                loaded.append(f"{path.name}:{local[offset]}: {error}")
+    return loaded
 
 
 def iter_structures(paths: Sequence[Path]) -> Iterator[Structure | str]:

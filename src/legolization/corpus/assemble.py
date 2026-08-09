@@ -208,6 +208,11 @@ def _is_str_list(value: object) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def _is_int(value: object) -> bool:
+    """Accept only real integers; ``bool`` is an ``int`` subclass and must not count."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _validate_candidate(entry: object, model: str, index: int) -> tuple[str, int]:
     """Check one candidate row and return its ``(strategy, seed)`` position."""
     label = f"model {model!r} candidate[{index}]"
@@ -220,7 +225,7 @@ def _validate_candidate(entry: object, model: str, index: int) -> tuple[str, int
         message=f"{label} has a non-string strategy",
     )
     _require(
-        condition=isinstance(seed, int),
+        condition=_is_int(seed),
         message=f"{label} has a non-integer seed",
     )
     # None is the well-formed "not collected yet" state; `_rows` turns that
@@ -258,7 +263,7 @@ def _validate_model(entry: object, index: int, expected: set[tuple[str, int]]) -
         message=f"model {label!r} has invalid traits",
     )
     _require(
-        condition=isinstance(model.get("expect_min_buildable"), int),
+        condition=_is_int(model.get("expect_min_buildable")),
         message=f"model {label!r} has a non-integer expect_min_buildable",
     )
     _require(
@@ -299,8 +304,7 @@ def _validate_scope(scope: object) -> tuple[list[str], set[tuple[str, int]]]:
         message="scope.strategies must be a list of strings",
     )
     _require(
-        condition=isinstance(seeds, list)
-        and all(isinstance(seed, int) for seed in seeds),
+        condition=isinstance(seeds, list) and all(_is_int(seed) for seed in seeds),
         message="scope.seeds must be a list of integers",
     )
     return cast("list[str]", fields["models"]), {
