@@ -94,8 +94,15 @@ shell's venv hook aborts them) — use absolute paths.
   addressable.
 - **Beauty-scalar calibration**: `scripts/aesthetics_baseline.py` scores
   human (OMR), algorithmic (StableText2Brick), and our own layouts with
-  the *same* `placement/aesthetics.py` terms. Our layouts read from the
-  committed baseline scorecard, so no placement is re-run.
+  the *same* `placement/aesthetics.py` terms and reports the audition
+  promotion gates. Our layouts read from the committed baseline
+  scorecard, so no placement is re-run. `scripts/aesthetics_drift.py` is
+  the companion validity check: it vandalizes OMR skeletons and asks
+  whether each term notices. Judged render pairs
+  (`judge-aesthetics`, §4b) accumulate in
+  `references/aesthetic-preferences/`; `scripts/fit_preference_weights.py`
+  turns them into weight recommendations. Standing verdicts:
+  `docs/reports/aesthetics-validation.md`.
 - **Renderers**: LeoCAD at `/Applications/LeoCAD.app` works headlessly on
   this Mac (LDView's headless snapshot silently writes nothing); LDraw
   parts at `~/Library/Caches/pyldraw3/2018-02/ldraw`. A PNG on disk is the
@@ -136,9 +143,44 @@ Per step (inspect-instructions): new bricks rest on structure/ground;
 nothing hovers; one coherent region per step; straight-down insertion
 possible; view rotations don't disorient.
 
-Trust order: physics gate > your eyes > objective_total. Eyes may veto a
-metrics winner; eyes-vs-objective disagreement is a finding about the
-weights (`ObjectiveWeights`) worth reporting.
+Trust order: physics gate > the human's verdict > your eyes >
+objective_total. Eyes may veto a metrics winner; eyes-vs-objective
+disagreement is a finding about the weights (`ObjectiveWeights`) worth
+reporting, and it is exactly what the paired-comparison protocol below
+turns into data.
+
+### 4b. Paired-comparison protocol
+
+Single-render checklists catch defects; *pairs* measure preference, and
+recorded preferences calibrate the beauty weights
+(`scripts/fit_preference_weights.py`). The `judge-aesthetics` skill runs
+this protocol end to end; the rules that make the data usable:
+
+- **Fixed camera or no comparison.** Both sides render through
+  `scripts/render_pairs.py` with the same views and size; a pair with any
+  failed view is `render-failed` and is never judged.
+- **Judge the images, then look at the labels.** Strategy names and
+  paths bias close calls; form the verdict from the renders alone.
+  Presentation order is randomized and *recorded* so position bias stays
+  measurable.
+- **The verdict names the model, never the screen side** — `winner: "a"`
+  is `model_a` by sha256, whatever order the images appeared in
+  (`references/aesthetic-preferences/README.md` pins this).
+- **Forced choice with honest abstention.** `"tie"` is a verdict;
+  ambiguity is not — a close or view-contradicted call records
+  `confidence: "low"` and escalates to the human, live when present,
+  else via the batch page (`scripts/review_pairs.py --manifest …`, merge
+  answers back with `--merge`).
+- Verdicts append to the tracked log
+  `references/aesthetic-preferences/pairs.jsonl` through
+  `review_pairs.py --record` only, so schema violations cannot enter
+  silently. Renders and review pages stay untracked
+  (`eval/preferences`).
+
+Good pair sources: strategy-vs-strategy and seed-vs-seed candidates from
+one bundle comparison; before/after an objective or weight change on the
+flagship set; ours-vs-human via the MobileBrick round trip (legolize
+`gt_mesh.ply`, pair against the curated human model it came from).
 
 ## 5. The improvement loop
 
@@ -247,6 +289,10 @@ outcome as a dated line in the "Self-eval log" section of
   against the §4 checklists; the bundle comparison (optimize-lego-build)
   on the worst corpus row; ratchet `expect_min_buildable` when reality
   improves — that ratchet is the point.
+- **Each session that touches the aesthetic terms or weights**: judge a
+  before/after pair per flagship model with `judge-aesthetics` (§4b) so
+  the preference log grows alongside the change it will later calibrate;
+  escalations ride along in the next batch review.
 - **Periodically (roughly monthly, or before a release)** — the exact
   commands, copy-pasteable (PR #20 review):
 

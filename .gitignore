@@ -37,6 +37,9 @@ eval/runs/
 eval/profiles/
 /eval/stablelego
 /eval/datasets
+# pair renders and review pages (scripts/render_pairs.py, review_pairs.py);
+# the judged verdicts themselves are TRACKED at references/aesthetic-preferences
+/eval/preferences
 
 # default corpus evaluation output (legolization corpus collect/assemble/evaluate)
 legolization-eval/

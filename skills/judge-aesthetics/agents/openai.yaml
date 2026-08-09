@@ -1,0 +1,9 @@
+interface:
+  display_name: "Judge Aesthetics"
+  short_description: "Render model pairs, judge which looks better, and log the verdicts."
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.svg"
+  brand_color: "#D92B2B"
+  default_prompt: "Use $judge-aesthetics to compare these two models and record which looks better."
+policy:
+  allow_implicit_invocation: true
