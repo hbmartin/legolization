@@ -352,3 +352,30 @@ mobilebrick` performs exactly this extraction against the existing zip.
 name = "MobileBrick_Mar23.zip"
 url = "https://www.robots.ox.ac.uk/~victor/data/MobileBrick/MobileBrick_Mar23.zip"
 bytes = 13_128_305_497
+
+[[dataset]]
+name = "shape-aesthetics-pairs"
+group = "manual"
+available = false
+license = "unreleased — promised public; verify licence terms on release"
+source = "https://arxiv.org/abs/2505.12373"
+citation = "Dev, Modeling Aesthetic Preferences in 3D Shapes: A Large-Scale Paired Comparison Study Across Object Categories (arXiv:2505.12373); predecessor Dev, Lau & Liu, A Perceptual Aesthetics Measure for 3D Shapes (arXiv:1608.04953)"
+notes = """
+UNAVAILABLE as of 2026-08-09. 22,301 forced-choice pairwise comparisons over
+five object categories with Bradley-Terry latent aesthetic scores and
+RF/SHAP attribution onto interpretable geometry (symmetry, curvature,
+compactness). The paper states code and the full dataset (pairwise comparison
+files plus BT scores) "will be made publicly available on GitHub ... upon
+publication"; no release was locatable on GitHub or the author's pages when
+this entry was added. The predecessor study (arXiv:1608.04953) likewise has no
+public data.
+
+Kept in the registry despite the mesh-shaped payload because what we adopt is
+the METHODOLOGY, not the meshes: forced-choice pairs -> Bradley-Terry latent
+scores -> attribution onto interpretable terms, run on our own domain via the
+judge-aesthetics preference log (references/aesthetic-preferences/) and
+scripts/fit_preference_weights.py. If the dataset ships, it becomes an
+external calibration check on the same pipeline. Re-check when touching the
+aesthetics validation programme; flip `available` and add [[dataset.file]]
+entries with measured sizes then.
+"""

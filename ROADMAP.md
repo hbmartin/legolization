@@ -166,17 +166,29 @@ decision" are not repeated here.
 
 ### Placement quality
 
-- **Validate the beauty scalar against human judgement.** Min-style
-  symmetry/balance and SM-GA/Bao perpendicularity are live objective terms
-  (`placement/aesthetics.py`) and the beauty strategy optimizes them
-  directly, but the scalar has never been checked against human preference
-  (the permutation-drift methodology).
+- **Beauty-scalar validation: CLOSED 2026-08-09** (was "validate the beauty
+  scalar against human judgement"). Both the population baseline
+  (`scripts/aesthetics_baseline.py`, with mechanical promotion gates) and the
+  permutation-drift harness (`scripts/aesthetics_drift.py` — the methodology
+  the item named, now implemented) ran against the external corpora. Verdicts
+  and decisions in
+  [`docs/reports/aesthetics-validation.md`](docs/reports/aesthetics-validation.md):
+  perpendicularity measured inverted and is demoted to weight 0.0 (kept as a
+  structural diagnostic); `symmetry_error` replaced in place with a
+  global-plane form (v1 kept as `layer_symmetry_error`) and the `beauty`
+  strategy now aims its balance term at the same global mirror centre; two
+  audition terms (`speckle`, `profile`) are computed and reported at weight
+  0.0, gates unmet.
 
-  *Unblocking data (2026-08-08):* the missing ingredient was a corpus of
-  human-authored assemblies to score against. Three now exist — LDraw OMR
-  (official sets, designed by LEGO), MobileBrick's curated brick models, and
-  StableText2Brick as the algorithmic contrast class. See "External validation
-  datasets" below; `scripts/aesthetics_baseline.py` is the consumer.
+- **Aesthetic preference program (open, data-gated).** Weight *magnitudes*
+  now come from judged forced-choice render pairs — the `judge-aesthetics`
+  skill and `scripts/render_pairs.py`/`review_pairs.py` grow the tracked log
+  in `references/aesthetic-preferences/`, and
+  `scripts/fit_preference_weights.py` (Bradley-Terry + bootstrapped sign
+  checks, Dev arXiv:2505.12373's methodology on our own domain) turns it into
+  recommendations once ≥ 15 models / ≥ 5 pairs-per-term accumulate. Next
+  concrete data source: the MobileBrick ours-vs-human round trip (legolize
+  `gt_mesh.ply`, pair against the curated human build).
 
 ### External validation datasets
 
@@ -188,12 +200,17 @@ is `scripts/fetch_datasets.py` (pinned sha256, https-only, atomic) and
 and nothing is vendored except small attribution-carrying reference tables.
 
 - **BrickNet** — <https://github.com/kulits/BrickNet>, **MIT**, Kulits & Schmid,
-  CVPR 2026 (arXiv:2604.22984). Adopted as a **dev-group dependency plus
-  vendored data tables** (`references/bricknet-data/`: part vocabulary,
-  per-part connector labels with exact part-local LDU rows, the part-alias
-  canonicalization table, and the extended colour table). Current use is the
-  independent cross-check in `scripts/ldraw_coverage.py`. Future iterations, in
-  rough value order:
+  CVPR 2026 (arXiv:2604.22984). Adopted as a **pinned dev-group dependency
+  (`bricknet==0.1.0`), a vendored source snapshot of the same release
+  (`tools/vendored/bricknet/`, MIT notice carried in
+  `tools/vendored/LICENSE-bricknet.txt` and the root README), and vendored
+  data tables** (`references/bricknet-data/`: part vocabulary, per-part
+  connector labels with exact part-local LDU rows, the part-alias
+  canonicalization table, and the extended colour table;
+  `tests/test_vendored.py` pins the two copies byte-identical). Analyses
+  prefer the snapshot so an upstream release can never move under a committed
+  measurement. Current use is the independent cross-check in
+  `scripts/ldraw_coverage.py`. Future iterations, in rough value order:
   1. `bricknet.parse_ldr` as a second opinion on `ldraw_in.py` — where two
      independent parsers disagree on part count or connectivity, one is wrong;
   2. `labels.json.xz` connector rows to validate `assembly_connections.py`,
@@ -242,6 +259,14 @@ and nothing is vendored except small attribution-carrying reference tables.
   formulation from the ETH Block Research Group, with stable/unstable variants
   (`shelf-stable` vs `shelf-s1/s2/s3`) and a pinned force convention that is
   directly comparable to our per-contact forces.
+
+- **Shape-aesthetics pairs (Dev, arXiv:2505.12373) — UNAVAILABLE, registered
+  anyway** (`shape-aesthetics-pairs`, `available = false`). 22,301 pairwise
+  comparisons with Bradley-Terry scores; the paper promises release "upon
+  publication" and nothing is locatable as of 2026-08-09. The *methodology* is
+  adopted regardless via the judged-preference program
+  (`references/aesthetic-preferences/`, `scripts/fit_preference_weights.py`);
+  if the data ships it becomes an external calibration check on that pipeline.
 
 **Scope:** this programme covers **voxel and brick data only**. Pure-geometry
 mesh corpora and non-brick stacking benchmarks are out of scope and recorded

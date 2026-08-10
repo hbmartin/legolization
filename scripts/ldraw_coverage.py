@@ -144,6 +144,10 @@ def classify(problem: LdrawImportProblem) -> tuple[str, str | None]:
 def _bricknet_part_count(path: Path) -> int | None:
     """Part count from BrickNet's independent parser, or ``None`` if it cannot."""
     try:
+        # Prefer the frozen snapshot in tools/vendored/ over any installed
+        # release, so a committed measurement never moves with an upgrade.
+        if (vendored := str(_REPO / "tools" / "vendored")) not in sys.path:
+            sys.path.insert(0, vendored)
         import bricknet  # noqa: PLC0415 - dev-only dependency, optional at runtime
 
         graph = bricknet.parse_ldr(path.read_text(encoding="utf-8", errors="replace"))

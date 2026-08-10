@@ -28,6 +28,8 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Self
 
+import numpy as np
+
 from legolization.grid import merge_colour
 from legolization.placement.layered.engine import (
     Column,
@@ -41,7 +43,8 @@ from legolization.placement.layered.engine import (
 )
 
 if TYPE_CHECKING:
-    import numpy as np
+    from legolization.grid import VoxelGrid
+    from legolization.layout import Layout
 
 _A_MAX = 16  # largest catalog footprint (2x8)
 
@@ -84,6 +87,36 @@ class BeautyStrategy(LayeredStrategy):
     """Cost per covered ungrounded-support column the rect fails to
     anchor (positive-only, so the best-first prune stays sound); 0.0
     restores pre-v5 behaviour."""
+    _mirror_x: int | None = field(default=None, init=False)
+    _mirror_y: int | None = field(default=None, init=False)
+
+    def place(
+        self,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None = None,
+    ) -> Layout:
+        """Fix one whole-model mirror centre, then tile as usual.
+
+        Every layer balancing about its own bbox centre is the drift blind
+        spot the global-plane ``symmetry_error`` charges (a staircase of
+        individually centred layers scores perfectly); the target footprint
+        is known before any tiling, so the search can aim at the same global
+        plane the objective measures at no cost.
+        """
+        footprint = grid.filled_mask.any(axis=2)
+        xs, ys = np.nonzero(footprint)
+        if xs.size:
+            self._mirror_x = int(xs.min()) + int(xs.max())
+            self._mirror_y = int(ys.min()) + int(ys.max())
+        try:
+            # Explicit base call: slots=True rebuilds the class, which breaks
+            # the zero-argument super()'s captured __class__ cell.
+            return LayeredStrategy.place(self, grid, rng=rng, deadline=deadline)
+        finally:
+            self._mirror_x = None
+            self._mirror_y = None
 
     def tile(
         self,
@@ -93,10 +126,23 @@ class BeautyStrategy(LayeredStrategy):
         rng: np.random.Generator,
         deadline: float | None,
     ) -> list[Rect2D]:
-        """Search for the min-cost tiling; fall back to a random fill."""
+        """Search for the min-cost tiling; fall back to a random fill.
+
+        The mirror centre comes from the whole-model footprint when
+        :meth:`place` set one; a directly driven ``tile`` call falls back to
+        the layer's own bbox, keeping the paper's per-layer behaviour.
+        """
         order = sorted(problem.columns)
-        mirror_x = min(x for x, _ in order) + max(x for x, _ in order)
-        mirror_y = min(y for _, y in order) + max(y for _, y in order)
+        mirror_x = (
+            self._mirror_x
+            if self._mirror_x is not None
+            else min(x for x, _ in order) + max(x for x, _ in order)
+        )
+        mirror_y = (
+            self._mirror_y
+            if self._mirror_y is not None
+            else min(y for _, y in order) + max(y for _, y in order)
+        )
         counter = 0
         open_list: list[_Node] = [(0.0, counter, frozenset(), ())]
         best: tuple[float, tuple[Rect2D, ...]] | None = None

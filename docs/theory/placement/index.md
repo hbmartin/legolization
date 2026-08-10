@@ -39,6 +39,8 @@ J = w_{c}\,\frac{|S|}{|V|}
   + w_{\ell}\,\mathrm{colour\_mismatch}
   + w_{p}\,\mathrm{perp\_error}
   + w_{y}\,\mathrm{sym\_error}
+  + w_{k}\,\mathrm{speckle}
+  + w_{r}\,\mathrm{profile}
 $$
 
 | Weight | Default | Term |
@@ -47,10 +49,15 @@ $$
 | $w_s$ `stability` | **4.0** | Worst per-brick RBE stress |
 | $w_a$ `aesthetics` | 0.5 | Seam alignment |
 | $w_\ell$ `colour` | 1.0 | Colour mismatch |
-| $w_p$ `perpendicularity` | 0.25 | Parallel-to-support fraction |
-| $w_y$ `symmetry` | 0.25 | Per-layer imbalance |
+| $w_p$ `perpendicularity` | 0.0¹ | Parallel-to-support fraction |
+| $w_y$ `symmetry` | 0.25 | Global-plane imbalance |
+| $w_k$ `speckle` | 0.0¹ | Exposed colour-junction changes |
+| $w_r$ `profile` | 0.0¹ | Layer-to-layer footprint churn |
 
-Stability dominates by design.
+Stability dominates by design. ¹ Reported but unweighted: perpendicularity
+measured *inverted* against the human corpora, and the two audition terms
+have not passed their promotion gates — the evidence and the gates live in
+[the beauty-term validation report](../../reports/aesthetics-validation.md).
 
 ### `seam_alignment`
 
@@ -69,11 +76,35 @@ SM-GA's $n_p$, inverted: the fraction of rectangular support pairs whose long ax
 parallel stacking does not. Square and 1×1 parts carry no direction and are skipped
 rather than counted as either.
 
+Measured against the external corpora, this term points the wrong way as a
+*beauty* signal — official sets score worse than our output, and the
+permutation-drift harness finds it blind to vandalism — so its default weight
+is 0.0 and it is kept as a structural bonding diagnostic alongside
+`seam_alignment`. Evidence:
+[the beauty-term validation report](../../reports/aesthetics-validation.md).
+
 ### `symmetry_error`
 
-Min's balance term $g_a$: the mean per-layer unbalanced-brick fraction, with each layer
-taking its **better** mirror axis. A layer symmetric about $x$ is not penalized for
-being asymmetric about $y$.
+Global-plane mirror symmetry: one mirror plane ($x$ or $y$) and one mirror
+centre shared by the whole model, both from the footprint bounding box, scoring
+the unbalanced-brick fraction under the better axis. A brick is balanced when a
+same-shape, same-colour partner sits at the mirrored position in its own layer.
+
+This corrects Min's per-layer $g_a$ (kept as `layer_symmetry_error`), whose
+per-layer axis and centre choices score a staircase of individually symmetric
+layers as perfect. The correction is validated on the human corpora: real sets
+are strongly globally mirror-symmetric, and the global form detects
+progressive vandalism with a larger effect than the per-layer form.
+
+### `colour_speckle_error` and `profile_roughness` (audition terms)
+
+`speckle`: of the exposed, adjacent cell pairs belonging to two different
+bricks, the fraction whose colours differ. `profile`: the mean Jaccard
+distance between consecutive layers' occupied-column sets. Both are computed
+and reported at weight 0.0; each may gain a default weight only by passing the
+population-separation and drift gates — which, so far, **neither does** (they
+measure palette richness and shape complexity respectively, not beauty; the
+validation report has the numbers).
 
 ### `connection_density`
 

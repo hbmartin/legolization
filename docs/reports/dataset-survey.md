@@ -600,6 +600,13 @@ occurrences:
 
 ### The beauty scalar: one term is pointing the wrong way
 
+> **Actioned 2026-08-09.** This finding triggered the beauty-term overhaul:
+> perpendicularity demoted to weight 0.0, `symmetry_error` corrected to a
+> global mirror plane, the permutation-drift harness implemented, and two
+> audition terms measured (both rejected). The standing verdicts live in
+> [the beauty-term validation report](aesthetics-validation.md); the numbers
+> below are the original v1-metric measurement that started it.
+
 `aesthetics_baseline.py` — the ROADMAP's *"validate the beauty scalar against
 human judgement"* item. Both terms are errors, lower is better. Medians:
 

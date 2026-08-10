@@ -76,6 +76,10 @@ class CandidateMetrics:
     colour_error: float
     perpendicularity: float
     symmetry: float
+    # Appended after the original fields with defaults so persisted metrics
+    # payloads from before the audition terms still rehydrate via **payload.
+    speckle: float | None = None
+    profile: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +172,8 @@ def candidate_metrics(
         colour_error=report.colour_error,
         perpendicularity=report.perpendicularity,
         symmetry=report.symmetry,
+        speckle=report.speckle,
+        profile=report.profile,
     )
 
 

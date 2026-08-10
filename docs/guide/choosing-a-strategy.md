@@ -54,8 +54,9 @@ Default weights put stability first by a wide margin:
 | `cost` | 1.0 |
 | `colour` | 1.0 |
 | `aesthetics` (seam alignment) | 0.5 |
-| `perpendicularity` | 0.25 |
-| `symmetry` | 0.25 |
+| `symmetry` (global mirror plane) | 0.25 |
+| `perpendicularity` | 0.0 (reported only) |
+| `speckle`, `profile` | 0.0 (audition, reported only) |
 
 Tune them under [`[placement.weights]`](configuration.md#placementweights). If your
 eye disagrees with the objective's winner, that is a finding about the weights worth

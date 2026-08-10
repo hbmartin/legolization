@@ -51,8 +51,10 @@ Changelog = "https://github.com/hbmartin/legolization/releases"
 dev = [
     # bricknet: MIT, CVPR 2026. Used only by the external-dataset analyses for
     # an independent LDraw parser and its bundled connector-label tables; never
-    # imported by src/ and never a runtime dependency.
-    "bricknet>=0.1.0",
+    # imported by src/ and never a runtime dependency. Pinned exactly: the same
+    # release is vendored at tools/vendored/bricknet/ and the analyses prefer
+    # that snapshot, so the two copies must never drift apart silently.
+    "bricknet==0.1.0",
     "deptry>=0.23.0",
     "hypothesis>=6.156.7",
     "lizard>=1.23.0",

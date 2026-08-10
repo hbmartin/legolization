@@ -17,6 +17,7 @@ you want to understand *why* it picked what it picked — or to point it somewhe
 | Any model | A booklet | [`publish-lego-instructions`](skills/publish-lego-instructions.md) |
 | Existing instructions | To check them | [`inspect-instructions`](skills/inspect-instructions.md) |
 | LDraw model or bundle | To see it | [`render-ldraw`](skills/render-ldraw.md) |
+| Two models or variants | To know which looks better | [`judge-aesthetics`](skills/judge-aesthetics.md) |
 | A part the tool does not know | Support for it | [`extend-lego-part-support`](skills/extend-lego-part-support.md) |
 | A code change | To know if it helped overall | [`eval-corpus`](skills/eval-corpus.md) |
 
@@ -42,6 +43,8 @@ flowchart TD
     E -.->|"--catalog"| A
     EV["eval-corpus"] --> R
     EV --> I
+    R -->|"two candidates to compare"| J["judge-aesthetics"]
+    O --> J
 ```
 
 Solid arrows are "and then do this". Dotted arrows are "this supplies something that
@@ -126,6 +129,7 @@ You do not need the skill names. These all work:
 | "build instructions" / "booklet" / "printable steps" / "A4" | `publish-lego-instructions` |
 | "do these steps make sense?" / "will something fall off halfway?" | `inspect-instructions` |
 | "show me" / "view" / "preview" / "screenshot" / "render" | `render-ldraw` |
+| "which looks better?" / "compare these two" / "did it get prettier?" | `judge-aesthetics` |
 | "unsupported part" / "add support for part 4070" | `extend-lego-part-support` |
 | "did my change make things better or worse overall?" | `eval-corpus` |
 

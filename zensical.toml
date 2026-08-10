@@ -51,6 +51,7 @@ nav = [
       { "repair-lego-assembly" = "basics/skills/repair-lego-assembly.md" },
       { "inspect-instructions" = "basics/skills/inspect-instructions.md" },
       { "render-ldraw" = "basics/skills/render-ldraw.md" },
+      { "judge-aesthetics" = "basics/skills/judge-aesthetics.md" },
       { "extend-lego-part-support" = "basics/skills/extend-lego-part-support.md" },
       { "eval-corpus" = "basics/skills/eval-corpus.md" },
     ] },
@@ -114,6 +115,7 @@ nav = [
     { "Report: physics fidelity" = "reports/physics-fidelity-notes.md" },
     { "Report: mesh baseline" = "reports/mesh-baseline-pending.md" },
     { "Survey: external datasets" = "reports/dataset-survey.md" },
+    { "Report: beauty-term validation" = "reports/aesthetics-validation.md" },
     { "Roadmap history" = "history/roadmap-history.md" },
   ] },
 ]

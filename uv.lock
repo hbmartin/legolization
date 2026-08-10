@@ -610,7 +610,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "bricknet", specifier = ">=0.1.0" },
+    { name = "bricknet", specifier = "==0.1.0" },
     { name = "deptry", specifier = ">=0.23.0" },
     { name = "hypothesis", specifier = ">=6.156.7" },
     { name = "lizard", specifier = ">=1.23.0" },

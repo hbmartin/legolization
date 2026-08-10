@@ -29,6 +29,7 @@ EXPECTED_SKILLS = frozenset(
         "render-ldraw",
         "inspect-instructions",
         "eval-corpus",
+        "judge-aesthetics",
     }
 )
 

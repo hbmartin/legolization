@@ -6,7 +6,13 @@ import pytest
 from legolization.catalog import default_catalog
 from legolization.grid import EMPTY, IGNORE, VoxelGrid
 from legolization.layout import Layout
-from legolization.placement.aesthetics import perpendicularity_error, symmetry_error
+from legolization.placement.aesthetics import (
+    colour_speckle_error,
+    layer_symmetry_error,
+    perpendicularity_error,
+    profile_roughness,
+    symmetry_error,
+)
 from legolization.placement.base import ObjectiveWeights, _seam_alignment, evaluate
 from legolization.placement.greedy import _h_lookahead
 from legolization.placement.layered import (
@@ -327,6 +333,31 @@ def test_fast_merge_loop_respects_expired_deadline():
     assert result == rects
 
 
+def test_beauty_uses_global_mirror_center():
+    # An L-shaped model: the upper layer's own bbox centre differs from the
+    # whole-model centre. The strategy must balance about the global plane the
+    # objective measures, not each layer's private one.
+    codes = np.full((8, 2, 6), -1, dtype=np.int16)
+    codes[:, :, :3] = 4  # full 8x2 slab
+    codes[2:8, :, 3:6] = 4  # offset upper slab
+    grid = VoxelGrid(codes=codes)
+    strategy = BeautyStrategy(beauty=BeautyWeights.preset("aesthetics"))
+    layout = strategy.place(grid, rng=np.random.default_rng(0))
+    assert layout is not None
+    # The per-run mirror stash must not leak between placements.
+    assert strategy._mirror_x is None  # noqa: SLF001
+    assert strategy._mirror_y is None  # noqa: SLF001
+
+    # Directly driven tile() still uses the per-problem bbox (the paper's
+    # behaviour), so unit tests over bare problems keep meaning.
+    problem = _layer_problem({(x, 0): 4 for x in range(4)})
+    context = build_context(Layout(catalog=default_catalog()), problem)
+    rects = strategy.tile(problem, context, rng=np.random.default_rng(0), deadline=None)
+    assert {column for rect in rects for column in rect.columns()} == set(
+        problem.columns
+    )
+
+
 def test_aesthetics_metrics_on_hand_layouts():
     crossing = Layout(catalog=default_catalog())
     crossing.add("brick_1x4", 0, 0, 0, 0, 4)
@@ -348,6 +379,67 @@ def test_aesthetics_metrics_on_hand_layouts():
     lopsided.add("brick_1x1", 4, 1, 0, 0, 4)  # off both central axes
     assert symmetry_error(lopsided) == 1.0
 
+    assert symmetry_error(Layout(catalog=default_catalog())) == 0.0
+    centred = Layout(catalog=default_catalog())
+    centred.add("brick_1x2", 0, 0, 0, 0, 4)  # its own mirror partner
+    assert symmetry_error(centred) == 0.0
+
+
+def test_symmetry_v2_uses_one_global_plane():
+    # Layer 0 mirrors about x only, layer 1 about y only. Each layer alone is
+    # perfect, so the per-layer v1 scores 0.0; no single global plane exists.
+    axis_flip = Layout(catalog=default_catalog())
+    axis_flip.add("brick_1x2", 0, 0, 0, 0, 4)
+    axis_flip.add("brick_1x2", 4, 0, 0, 0, 4)  # x-mirror partner
+    axis_flip.add("brick_1x2", 0, 0, 3, 90, 4)
+    axis_flip.add("brick_1x2", 0, 3, 3, 90, 4)  # y-mirror partner
+    assert layer_symmetry_error(axis_flip) == 0.0
+    assert symmetry_error(axis_flip) == 0.5
+
+    # Both layers are x-symmetric about their OWN bbox centres, but layer 1 is
+    # shifted two studs along x: v1's per-layer centre hides the drift.
+    drift = Layout(catalog=default_catalog())
+    drift.add("brick_1x2", 0, 0, 0, 0, 4)
+    drift.add("brick_1x2", 4, 0, 0, 0, 4)
+    drift.add("brick_1x2", 2, 1, 0, 0, 4)  # centred filler, breaks y-mirror
+    drift.add("brick_1x2", 2, 0, 3, 0, 4)
+    drift.add("brick_1x2", 6, 0, 3, 0, 4)
+    drift.add("brick_1x2", 4, 1, 3, 0, 4)
+    assert layer_symmetry_error(drift) == 0.0
+    assert symmetry_error(drift) == 1.0
+
+
+def test_audition_metrics_pin_their_sign_conventions():
+    # Alternating-colour checkerboard of 1x1s: every visible junction changes
+    # colour. A monochrome pair: none do. Same-brick adjacencies never count.
+    checker = Layout(catalog=default_catalog())
+    checker.add("brick_1x1", 0, 0, 0, 0, 4)
+    checker.add("brick_1x1", 1, 0, 0, 0, 1)
+    checker.add("brick_1x1", 0, 1, 0, 0, 1)
+    checker.add("brick_1x1", 1, 1, 0, 0, 4)
+    assert colour_speckle_error(checker) == 1.0
+
+    slab = Layout(catalog=default_catalog())
+    slab.add("brick_1x2", 0, 0, 0, 0, 4)
+    slab.add("brick_1x2", 0, 1, 0, 0, 4)
+    assert colour_speckle_error(slab) == 0.0
+    lone = Layout(catalog=default_catalog())
+    lone.add("brick_2x2", 0, 0, 0, 0, 4)
+    assert colour_speckle_error(lone) == 0.0
+
+    # Identical stacked footprints taper nowhere; fully disjoint consecutive
+    # plate footprints change every column.
+    tower = Layout(catalog=default_catalog())
+    tower.add("brick_1x2", 0, 0, 0, 0, 4)
+    tower.add("brick_1x2", 0, 0, 3, 0, 4)
+    assert profile_roughness(tower) == 0.0
+
+    ragged = Layout(catalog=default_catalog())
+    ragged.add("plate_1x2", 0, 0, 0, 0, 4)
+    ragged.add("plate_1x2", 4, 0, 1, 0, 4)
+    assert profile_roughness(ragged) == 1.0
+    assert profile_roughness(Layout(catalog=default_catalog())) == 0.0
+
 
 def test_evaluate_reports_new_terms_and_zero_weights_reproduce_old_total():
     grid = VoxelGrid(codes=np.full((4, 1, 3), 4, dtype=np.int16))
@@ -356,6 +448,8 @@ def test_evaluate_reports_new_terms_and_zero_weights_reproduce_old_total():
     report = evaluate(layout, grid)
     assert report.perpendicularity == 0.0
     assert report.symmetry == 0.0
+    assert report.speckle == 0.0
+    assert report.profile == 0.0
 
     weights = ObjectiveWeights(perpendicularity=0.0, symmetry=0.0)
     old_style = evaluate(layout, grid, weights)
@@ -365,6 +459,16 @@ def test_evaluate_reports_new_terms_and_zero_weights_reproduce_old_total():
         + weights.aesthetics * old_style.aesthetics
         + weights.colour * old_style.colour_error
     )
+
+    # The audition terms default to weight 0.0, so scoring them must not move
+    # the total; giving them weight must.
+    speckled = Layout(catalog=default_catalog())
+    speckled.add("brick_1x2", 0, 0, 0, 0, 4)
+    speckled.add("brick_1x2", 0, 1, 0, 0, 1)
+    baseline = evaluate(speckled, grid)
+    assert baseline.speckle == 1.0
+    weighted = evaluate(speckled, grid, ObjectiveWeights(speckle=1.0))
+    assert weighted.total == pytest.approx(baseline.total + baseline.speckle)
 
 
 # --- grounded-at-band-time (support-aware placement) ---

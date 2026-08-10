@@ -36,6 +36,7 @@ _MUST_STAY_UNTRACKED = (
     "datasets",  # scripts/fetch_datasets.py, scripts/fetch_omr.py
     "eval/datasets",  # every analysis report
     "eval/stablelego",  # scripts/stablelego_sweep.py
+    "eval/preferences",  # pair renders and review pages; the log is tracked
 )
 
 # The release's complete brick library, from the BrickGPT paper's appendix:

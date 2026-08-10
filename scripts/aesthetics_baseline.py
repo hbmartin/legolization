@@ -1,16 +1,21 @@
 """Compare our beauty scalar across human-authored, algorithmic, and our layouts.
 
-ROADMAP, "Placement quality", carries an open item: *validate the beauty scalar
-against human judgement*. Min-style symmetry/balance and SM-GA/Bao
-perpendicularity are live objective terms in
-:mod:`legolization.placement.aesthetics` and the ``beauty`` strategy optimizes
-them directly, but neither has ever been checked against a build a person
-actually designed. The missing ingredient was a corpus of human-authored
-assemblies; the OMR crawl supplies one.
+This is the population half of the beauty-term validation programme (the
+trajectory half is ``scripts/aesthetics_drift.py``; standing verdicts in
+``docs/reports/aesthetics-validation.md``). Its first run measured
+perpendicularity *inverted* against official sets — the finding that demoted
+the term to weight 0.0 — and it remains the standing instrument: every term
+change reruns it, and the audition gates below decide whether a reported-only
+term may ever carry weight.
 
-Three populations, scored by the **same two existing pure functions**
-(``perpendicularity_error``, ``symmetry_error``) so nothing new is being
-measured - only the same metric on different authors:
+Three populations, scored by the **same pure functions the objective uses**
+(``perpendicularity_error``, global-plane ``symmetry_error``, and the audition
+terms ``colour_speckle_error`` and ``profile_roughness``) so nothing new is
+being measured - only the same metrics on different authors. The report also
+carries the audition **promotion gates**: an audition term may only gain a
+non-zero default weight when the population medians order
+``human < ours < algorithmic`` strictly AND a one-sided Mann-Whitney U test
+(human < ours) clears p < 0.01 - see ``docs/reports/aesthetics-validation.md``:
 
 ===============  ==========================================================
 ``human``        LDraw OMR - official LEGO sets, designed by LEGO
@@ -47,14 +52,20 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from ldraw import load_model
+from scipy.stats import mannwhitneyu
 
 from legolization.catalog import default_catalog
 from legolization.datasets import stabletext2brick as s2b
 from legolization.ldraw_in import import_occurrences
-from legolization.placement.aesthetics import perpendicularity_error, symmetry_error
+from legolization.placement.aesthetics import (
+    colour_speckle_error,
+    perpendicularity_error,
+    profile_roughness,
+    symmetry_error,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from legolization.layout import Layout
 
@@ -64,16 +75,22 @@ _DEFAULT_S2B = _REPO / "datasets" / "stabletext2brick"
 _DEFAULT_BASELINE = _REPO / "eval" / "baselines" / "scorecard.json"
 _DEFAULT_OUT = _REPO / "eval" / "datasets" / "aesthetics"
 
+# Every term the report compares, in table order. All are errors in [0, 1].
+_FIELDS = ("perpendicularity", "symmetry", "speckle", "profile")
+_GATE_P_THRESHOLD = 0.01
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Score:
-    """One layout's beauty terms. Both are errors: lower is 'prettier'."""
+    """One layout's beauty terms. All are errors: lower is 'prettier'."""
 
     population: str
     name: str
     bricks: int
     perpendicularity: float
     symmetry: float
+    speckle: float
+    profile: float
 
 
 def score_layout(layout: Layout, *, population: str, name: str) -> Score | None:
@@ -86,19 +103,24 @@ def score_layout(layout: Layout, *, population: str, name: str) -> Score | None:
         bricks=bricks,
         perpendicularity=perpendicularity_error(layout),
         symmetry=symmetry_error(layout),
+        speckle=colour_speckle_error(layout),
+        profile=profile_roughness(layout),
     )
 
 
-def human_scores(models: Path, *, limit: int, min_bricks: int) -> list[Score]:
-    """Score the importable skeleton of each OMR model.
+def human_layouts(
+    models: Path, *, limit: int, min_bricks: int
+) -> Iterator[tuple[str, Layout]]:
+    """Yield each OMR model's importable skeleton, largest-vocabulary first.
 
-    ``limit`` caps *eligible* scores, not attempted files: unreadable models
+    ``limit`` caps *eligible* layouts, not attempted files: unreadable models
     and skeletons below ``min_bricks`` do not consume the cap, so ``--sample``
-    means the same thing for every population.
+    means the same thing for every population. Shared with
+    ``scripts/aesthetics_drift.py``, which perturbs these same skeletons.
     """
     catalog = default_catalog()
     paths = sorted(models.glob("*.mpd")) + sorted(models.glob("*.ldr"))
-    scores: list[Score] = []
+    yielded = 0
     for path in paths:
         try:
             loaded = load_model(path)
@@ -113,13 +135,21 @@ def human_scores(models: Path, *, limit: int, min_bricks: int) -> list[Score]:
             )
         except Exception:  # noqa: BLE001, S112 - a model we cannot read is not a failure here
             continue
-        if (
-            score := score_layout(imported.layout, population="human", name=path.name)
-        ) and (score.bricks >= min_bricks):
-            scores.append(score)
-            if limit and len(scores) >= limit:
-                break
-    return scores
+        if sum(1 for _ in imported.layout) < min_bricks:
+            continue
+        yield path.name, imported.layout
+        yielded += 1
+        if limit and yielded >= limit:
+            return
+
+
+def human_scores(models: Path, *, limit: int, min_bricks: int) -> list[Score]:
+    """Score the importable skeleton of each OMR model."""
+    return [
+        score
+        for name, layout in human_layouts(models, limit=limit, min_bricks=min_bricks)
+        if (score := score_layout(layout, population="human", name=name)) is not None
+    ]
 
 
 def algorithmic_scores(
@@ -173,17 +203,21 @@ def our_scores(baseline: Path, *, limit: int, min_bricks: int) -> list[Score]:
                 continue
             if (bricks := metrics.get("brick_count", 0)) < min_bricks:
                 continue
-            if (perp := metrics.get("perpendicularity")) is None:
-                continue
-            if (symmetry := metrics.get("symmetry")) is None:
-                continue
+            extracted: dict[str, float] = {}
+            for field in _FIELDS:
+                if isinstance(value := metrics.get(field), int | float):
+                    extracted[field] = float(value)
+            if len(extracted) != len(_FIELDS):
+                continue  # a pre-audition scorecard; regenerate the baseline
             scores.append(
                 Score(
                     population="ours",
                     name=f"{model['model']}/{candidate['strategy']}",
                     bricks=int(bricks),
-                    perpendicularity=float(perp),
-                    symmetry=float(symmetry),
+                    perpendicularity=extracted["perpendicularity"],
+                    symmetry=extracted["symmetry"],
+                    speckle=extracted["speckle"],
+                    profile=extracted["profile"],
                 )
             )
             if limit and len(scores) >= limit:
@@ -207,16 +241,62 @@ def distribution(scores: Sequence[Score], *, field: str) -> dict[str, float]:
     }
 
 
-def to_markdown(summary: dict[str, dict[str, dict[str, float]]]) -> str:
+def promotion_gates(scores: Sequence[Score]) -> dict[str, dict[str, object]]:
+    """Compute the mechanical promotion gate per term.
+
+    A term may gain a non-zero default weight only when the medians order
+    ``human < ours < algorithmic`` strictly and a one-sided Mann-Whitney U
+    test (human < ours) clears ``p < 0.01``. The drift harness
+    (``scripts/aesthetics_drift.py``) is the third, separate condition.
+    """
+    by_population = {
+        population: [score for score in scores if score.population == population]
+        for population in ("human", "algorithmic", "ours")
+    }
+    gates: dict[str, dict[str, object]] = {}
+    for field in _FIELDS:
+        values = {
+            population: np.array([getattr(score, field) for score in members])
+            for population, members in by_population.items()
+        }
+        if any(not array.size for array in values.values()):
+            gates[field] = {"computed": False, "reason": "a population is empty"}
+            continue
+        medians = {
+            population: float(np.median(array)) for population, array in values.items()
+        }
+        ordering_ok = medians["human"] < medians["ours"] < medians["algorithmic"]
+        p_value = float(
+            mannwhitneyu(values["human"], values["ours"], alternative="less").pvalue
+        )
+        gates[field] = {
+            "computed": True,
+            "medians": medians,
+            "ordering_ok": ordering_ok,
+            "p_value": p_value,
+            "passed": ordering_ok and p_value < _GATE_P_THRESHOLD,
+        }
+    return gates
+
+
+def to_markdown(
+    summary: dict[str, dict[str, dict[str, float]]],
+    gates: dict[str, dict[str, object]],
+) -> str:
     """Render the comparison."""
     lines = [
         "# Beauty scalar: human vs algorithmic vs ours",
         "",
-        "Both terms are **errors**, normalized to [0, 1], lower is better",
+        "All terms are **errors**, normalized to [0, 1], lower is better",
         "(`placement/aesthetics.py`). `perpendicularity` is the fraction of",
         "rectangular support pairs whose long axes are parallel - SM-GA's n_p,",
-        "where crossing bricks bond layers like plywood. `symmetry` is Min's",
-        "balance term g_a, the mean unbalanced-brick fraction per layer.",
+        "where crossing bricks bond layers like plywood; it is reported but",
+        "unweighted by default. `symmetry` is the global-plane mirror error:",
+        "the unbalanced-brick fraction under one whole-model mirror plane.",
+        "`speckle` (exposed-surface colour junctions that change colour) and",
+        "`profile` (mean Jaccard distance between consecutive layer",
+        "footprints) are audition terms, weightless until they pass the gates",
+        "below.",
         "",
         "**Read the caveat before drawing conclusions.** No OMR model imports",
         "completely - our catalog covers ~14% of real part occurrences - so the",
@@ -225,7 +305,7 @@ def to_markdown(summary: dict[str, dict[str, dict[str, float]]]) -> str:
         "comparison is meaningful, but it is not a comparison of finished sets.",
         "",
     ]
-    for field in ("perpendicularity", "symmetry"):
+    for field in _FIELDS:
         lines += [
             f"## {field}",
             "",
@@ -242,6 +322,27 @@ def to_markdown(summary: dict[str, dict[str, dict[str, float]]]) -> str:
             )
         lines.append("")
     lines += [
+        "## Promotion gates",
+        "",
+        "A term may carry weight only when medians order",
+        "`human < ours < algorithmic` strictly AND the one-sided Mann-Whitney",
+        f"U (human < ours) clears p < {_GATE_P_THRESHOLD}; the drift harness",
+        "is the separate third condition.",
+        "",
+        "| term | ordering ok | p (human < ours) | gate |",
+        "| --- | --- | ---: | --- |",
+    ]
+    for field in _FIELDS:
+        gate = gates.get(field, {})
+        if not gate.get("computed"):
+            lines.append(f"| {field} | - | - | not computed |")
+            continue
+        lines.append(
+            f"| {field} | {gate['ordering_ok']} | {gate['p_value']:.2e} | "
+            f"{'PASS' if gate['passed'] else 'fail'} |"
+        )
+    lines += [
+        "",
         "## How to read a difference",
         "",
         "If our layouts score *lower* (better) than the human population on a",
@@ -313,12 +414,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             for population in ("human", "algorithmic", "ours")
         }
-        for field in ("perpendicularity", "symmetry")
+        for field in _FIELDS
     }
     summary = {
         field: {name: row for name, row in populations.items() if row}
         for field, populations in summary.items()
     }
+    gates = promotion_gates(scores)
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = args.out / stamp
@@ -331,13 +433,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "sample": args.sample,
                 "seed": args.seed,
                 "summary": summary,
+                "gates": gates,
                 "scores": [asdict(score) for score in scores],
             },
             indent=2,
         ),
         encoding="utf-8",
     )
-    markdown = to_markdown(summary)
+    markdown = to_markdown(summary, gates)
     (out / "report.md").write_text(markdown, encoding="utf-8")
     print(markdown)
     print(f"wrote {out}", file=sys.stderr)

@@ -141,3 +141,14 @@ uv run --group docs zensical build   # static output in ./site
 ## License
 
 GPL-3.0-or-later (inherited from pyldraw3).
+
+Third-party vendored components keep their own licences:
+
+- **BrickNet** (`bricknet` 0.1.0) — MIT, Copyright (c) 2026 Peter Kulits.
+  Vendored at `tools/vendored/bricknet/` (package source, see
+  `tools/vendored/LICENSE-bricknet.txt`) and `references/bricknet-data/`
+  (reference data tables, see the LICENSE there). Upstream:
+  <https://github.com/kulits/BrickNet>. The BrickNet datasets distributed
+  behind a request form are not used or redistributed here.
+- **quick_validate.py** — Apache-2.0, from Anthropic's skill-creator skill
+  (`tools/vendored/LICENSE-quick-validate.txt`).
