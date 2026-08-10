@@ -8,7 +8,7 @@ Three small commands that support the rest.
 
 Install or update the managed official LDraw parts library.
 
-```
+```text
 legolization parts sync [--force] [--json]
 ```
 
@@ -44,7 +44,7 @@ Always exits 0 when the operation completed, including the offline-but-usable ca
 
 Inspect or clear the persistent architectural-template cache.
 
-```
+```text
 legolization cache [--config PATH] [--set KEY=VALUE] OPERATION ...
 legolization cache inspect [--json]
 legolization cache clear (--key KEY | --all) [--json]
@@ -64,11 +64,16 @@ legolization cache clear (--key KEY | --all) [--json]
 When a model contains repeated components — four identical turrets, eight identical
 windows — the placement derived for the first one is reused for the rest. The cache
 key is content-addressed: the component's canonical signature (invariant under yaw,
-translation, and colour relabelling), the catalog hash, the configuration hash, and
-the physics profile. Nothing about paths or timestamps enters it.
+translation, and colour relabelling), the catalog hash, the configuration hash, the
+physics profile, and the **placement algorithm version**. Nothing about paths or
+timestamps enters it.
 
-That means a cache hit is always safe: a different catalog, a different config, or a
-different physics profile produces a different key.
+That means a cache hit is always safe: a different catalog, a different config, a
+different physics profile, or a changed placement algorithm produces a different
+key. Two further safeguards back that up: every entry carries a schema/version
+envelope and is rejected (quarantined, not trusted) on a mismatch or corruption,
+and any change to the placement algorithm must bump `algorithm_version` so stale
+templates can never be replayed against new code.
 
 ### `cache inspect`
 
@@ -97,7 +102,7 @@ Both operations always exit 0 on success.
 
 Validate an assembly manifest.
 
-```
+```text
 legolization validate [--against PATH] [--json] manifest
 ```
 

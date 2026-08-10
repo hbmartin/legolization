@@ -41,7 +41,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from legolization import telemetry
 from legolization.corpus import generators
@@ -57,17 +57,6 @@ if TYPE_CHECKING:
 
 _REPO = Path(__file__).resolve().parent.parent
 PROFILES = _REPO / "eval" / "profiles"
-_WATCHED_STAGES = frozenset(
-    {
-        "phase.voxelize",
-        "phase.place",
-        "place.tile",
-        "place.compact",
-        "place.connectivity",
-        "stability.analyze",
-        "phase.repair",
-    }
-)
 # These enclosing stages own any stability solves they invoke. Without this
 # ordering, a nested ``stability.analyze`` repeatedly resets the watchdog for
 # a long connectivity or stability-repair pass and misattributes its time.
@@ -80,6 +69,9 @@ _STAGE_OWNERSHIP = (
     "phase.place",
     "stability.analyze",
 )
+# Watched and owned are the same set by construction: a stage the watchdog
+# times has to have an owner, and the two lists used to drift apart by hand.
+_WATCHED_STAGES = frozenset(_STAGE_OWNERSHIP)
 
 
 git_sha = telemetry.git_sha
@@ -197,7 +189,7 @@ class _Lifecycle:
     last_write: float = 0.0
 
     @classmethod
-    def create(cls, path: Path, model: str) -> _Lifecycle:
+    def create(cls, path: Path, model: str) -> Self:
         return cls(path=path, model=model, stack=[])
 
     def __call__(
@@ -219,7 +211,7 @@ class _Lifecycle:
             span_name for span_name, _ in self.stack if span_name in _WATCHED_STAGES
         }
         active = next(
-            (name for name in _STAGE_OWNERSHIP if name in present),
+            (owner for owner in _STAGE_OWNERSHIP if owner in present),
             None,
         )
         changed = active != self.active_stage
@@ -264,7 +256,7 @@ def _profile_worker(
         progress=lambda message: print(f"  {message}", file=sys.stderr),
     )
     pstats_path = base.with_suffix(".pstats") if args.cprofile else None
-    lifecycle = _Lifecycle.create(events_path, args.model)
+    lifecycle = _Lifecycle.create(path=events_path, model=args.model)
     profiler = cProfile.Profile() if args.cprofile else None
     started = time.perf_counter()
     with telemetry.record(span_sink=lifecycle) as session:
@@ -347,7 +339,28 @@ def _validate_model_reference(model: str) -> None:
         raise SystemExit(msg)
 
 
-def _monitor(  # noqa: C901 - lifecycle loop keeps timeout state together
+def _monitor(
+    process: subprocess.Popen[str],
+    *,
+    args: argparse.Namespace,
+    base: Path,
+    events_path: Path,
+) -> int:
+    """Supervise the worker and guarantee child/checkpoint cleanup.
+
+    The loop below has several exits, and an escaping exception used to leave
+    both a live child process and its events file behind.
+    """
+    try:
+        return _monitor_loop(process, args=args, base=base, events_path=events_path)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        events_path.unlink(missing_ok=True)
+
+
+def _monitor_loop(  # noqa: C901 - lifecycle loop keeps timeout state together
     process: subprocess.Popen[str],
     *,
     args: argparse.Namespace,
@@ -395,9 +408,50 @@ def _monitor(  # noqa: C901 - lifecycle loop keeps timeout state together
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
-        if process.stdout is not None and (output := process.stdout.read()):
-            print(output, end="")
-        payload = {
+        _drain(process)
+        _write_timeout_artifact(
+            base.with_suffix(".json"),
+            args=args,
+            active=active,
+            elapsed=elapsed,
+            latest=latest,
+        )
+        return 124
+    _drain(process)
+    return_code = process.returncode or 0
+    # A signalled child reports -N, which collapses to 0 under `or 0` in a
+    # caller that reads it as an exit status; use the shell's 128+N encoding.
+    normalized_code = 128 - return_code if return_code < 0 else return_code
+    artifact_path = base.with_suffix(".json")
+    if normalized_code and not artifact_path.exists():
+        _write_failure_artifact(
+            artifact_path,
+            args=args,
+            return_code=return_code,
+            active=active,
+            latest=latest,
+        )
+    return normalized_code
+
+
+def _drain(process: subprocess.Popen[str]) -> None:
+    """Echo whatever the exited child left buffered, if it was piped at all."""
+    if process.stdout is not None and (output := process.stdout.read()):
+        print(output, end="")
+
+
+def _write_timeout_artifact(
+    path: Path,
+    *,
+    args: argparse.Namespace,
+    active: str | None,
+    elapsed: float,
+    latest: dict[str, object],
+) -> None:
+    """Record a worker killed for exceeding its per-stage cap."""
+    atomic_json(
+        path,
+        {
             "schema": 1,
             "status": "timed_out",
             "generated": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
@@ -413,20 +467,49 @@ def _monitor(  # noqa: C901 - lifecycle loop keeps timeout state together
             "active_stage": active,
             "active_stage_seconds": round(elapsed, 3),
             "stage_timeout_seconds": args.stage_timeout,
+            "telemetry_updated": latest.get("updated"),
             "spans": latest.get("spans", {}),
-        }
-        atomic_json(base.with_suffix(".json"), payload)
-        print(
-            f"timed out {active} after {elapsed:.1f}s; "
-            f"wrote {base.with_suffix('.json')}",
-            file=sys.stderr,
-        )
-        events_path.unlink(missing_ok=True)
-        return 124
-    if process.stdout is not None and (output := process.stdout.read()):
-        print(output, end="")
-    events_path.unlink(missing_ok=True)
-    return process.returncode or 0
+        },
+    )
+    print(
+        f"timed out {active} after {elapsed:.1f}s; wrote {path}",
+        file=sys.stderr,
+    )
+
+
+def _write_failure_artifact(
+    path: Path,
+    *,
+    args: argparse.Namespace,
+    return_code: int,
+    active: str | None,
+    latest: dict[str, object],
+) -> None:
+    """Record a crashed worker.
+
+    A worker that dies mid-run writes no artifact of its own, which makes the
+    run indistinguishable from one that was never started.
+    """
+    atomic_json(
+        path,
+        {
+            "schema": 1,
+            "status": "failed",
+            "generated": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+            "git_sha": git_sha(),
+            "run": {
+                "model": args.model,
+                "strategy": args.strategy,
+                "seed": args.seed,
+                "steps": args.steps,
+            },
+            "exit_code": 128 - return_code if return_code < 0 else return_code,
+            "signal": -return_code if return_code < 0 else None,
+            "active_stage": active,
+            "telemetry_updated": latest.get("updated"),
+            "spans": latest.get("spans", {}),
+        },
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -473,9 +556,11 @@ def main(argv: list[str] | None = None) -> int:
         "--events",
         str(events_path),
     ]
+    # No stdout pipe: the monitor only drains it after the child exits, so a
+    # worker verbose enough to fill the pipe buffer would block mid-run and
+    # then be killed as a false stage timeout. Let it inherit our stdout.
     process = subprocess.Popen(  # noqa: S603 - fixed current interpreter
         command,
-        stdout=subprocess.PIPE,
         text=True,
     )
     return _monitor(

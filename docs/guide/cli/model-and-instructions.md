@@ -9,7 +9,7 @@ steps.
 
 Render a model or bundle to PNG images from requested views.
 
-```
+```text
 legolization model render [--views NAMES] [--size PIXELS] [-o DIR] [--json] input
 ```
 
@@ -59,7 +59,7 @@ Installing a renderer: [Rendering and parts](../rendering-and-parts.md).
 
 Audit step ordering, stability, and insertion pressure.
 
-```
+```text
 legolization instructions audit [--report PATH] [--render-dir DIR] [--json] input
 ```
 

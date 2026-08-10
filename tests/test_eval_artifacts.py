@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import replace
+from enum import Enum
 from typing import TYPE_CHECKING
+
+import pytest
 
 from legolization.compare import Candidate, CandidateMetrics
 from legolization.eval_artifacts import (
@@ -14,6 +17,7 @@ from legolization.eval_artifacts import (
     atomic_json,
     candidate_path,
     candidate_payload,
+    canonical_value,
     configuration_hash,
     matching_candidate,
     source_identity,
@@ -48,6 +52,28 @@ def _metrics() -> CandidateMetrics:
 
 def _candidate() -> Candidate:
     return Candidate(strategy="greedy", seconds=1.25, metrics=_metrics(), seed=3)
+
+
+class _Mode(Enum):
+    FAST = "fast"
+
+
+def test_canonical_value_covers_nested_dispatch_and_rejects_unknowns() -> None:
+    assert canonical_value(
+        {
+            "mode": _Mode.FAST,
+            "mapping": {"b": 2, "a": 1},
+            "set": {3, 1},
+            "frozen": frozenset({"z", "a"}),
+        }
+    ) == {
+        "frozen": ["a", "z"],
+        "mapping": {"a": 1, "b": 2},
+        "mode": "fast",
+        "set": [1, 3],
+    }
+    with pytest.raises(TypeError, match="cannot canonically serialize object"):
+        canonical_value(object())
 
 
 def test_matching_artifact_invalidates_each_identity_axis(tmp_path: Path) -> None:

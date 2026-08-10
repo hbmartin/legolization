@@ -323,14 +323,17 @@ pyramid under the paper's constants (module-local mu = 0.2,
 mu·F0 = 0.7 N — NOT `T_CAPACITY_N`), utilization scoring on its own
 scale. Study run (`--fields bricksim`, shells r=8/10 + corpus + clad;
 artifact `20260808T161914Z-screen-bench.json`): stable/unstable
-**verdict agreement 100%** — the physics is sound — but against the
-pre-registered bar ("beat restricted on agreement at comparable
-speed") it fails every other axis: candidate ranking 83.7% (vs 100%
-restricted on vertical), worst-consumer false rejects 20% (vs 0%),
-per-brick score correlation near zero (utilization and drag stress
-order bricks differently), slightly slower solves. The restricted
-basis remains the production screen; the flag stays research-only and
-earns no further work.
+**verdict agreement 100%** — the physics is sound. A re-run under the
+restricted protocol with the lateral fix in place (`--fields bricksim
+--radii 8 10 --candidates 30 --skip-corpus --seed 0`; artifact
+`20260808T204443Z-screen-bench.json`) supersedes that first run's
+headline figures: candidate ranking **100% vertical / 81.4% SNOT**,
+worst-consumer false rejects **0% in both domains**. What still fails
+the pre-registered bar ("beat restricted on agreement at comparable
+speed"): per-brick score correlation near zero (utilization and drag
+stress order bricks differently), a 1.03% non-converged share, and
+slightly slower solves. The restricted basis remains the production
+screen; the flag stays research-only and earns no further work.
 
 ### `legolization ... --profile out.json` (CLI convenience)
 

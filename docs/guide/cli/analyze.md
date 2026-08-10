@@ -2,7 +2,7 @@
 
 Analyze LDraw geometry and, optionally, search for a valid repair.
 
-```
+```text
 legolization analyze [--config PATH] [--manifest PATH | --no-manifest]
                      [--report PATH] [--assembly-report PATH]
                      [--graph PATH] [--diagnostic-mpd PATH] [--floating-mpd PATH]
@@ -112,6 +112,25 @@ available only as explicitly requested derived views:
 
 Only one report may target stdout, every output path must differ from the input and
 from each other, and `--json` forbids `-` entirely.
+
+### `source_steps`
+
+Unless `--no-step-check` is passed, reports carry a `source_steps` array: the
+cumulative build prefixes implied by the model's own `STEP` lines, checked in
+order. Each row describes one step of the root instruction section.
+
+| Field | Meaning |
+| --- | --- |
+| `section` | The source section the step came from. |
+| `step` | The step's index within that section. |
+| `geometry_changed` | Whether the step added bricks the catalog supports. A step that adds none reuses the previous step's verdict. |
+| `evaluated` | Whether a stability result is available for this prefix, including one reused from an unchanged step. |
+| `stable`, `max_score` | The prefix's physics verdict, or `null` when `evaluated` is false. |
+| `component_count`, `floating_count` | Prefix topology after the step. |
+| `feasible` | `true`/`false` when `evaluated` is true — stable, connected, and nothing floating — and `null` otherwise. |
+
+These checks are informational: a step that is not feasible does not by itself
+change the command's exit code.
 
 ## Connection metadata sources
 

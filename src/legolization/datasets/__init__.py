@@ -22,4 +22,6 @@ states the convention it reads and converts nothing implicitly.
 
 from __future__ import annotations
 
+from legolization.datasets import stabletext2brick
+
 __all__ = ["stabletext2brick"]

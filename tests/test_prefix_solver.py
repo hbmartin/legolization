@@ -331,7 +331,7 @@ def test_direct_rescue_solve_matches_cold():
         assert abs(a.objective - b.objective) <= 1e-6 + 1e-3 * abs(b.objective)
 
 
-def test_direct_rescue_uses_configured_table_physics():
+def test_direct_rescue_uses_configured_table_physics() -> None:
     layout = Layout(catalog=default_catalog())
     layout.add("brick_1x2", 0, 0, 0, 0, 4)
     layout.add("brick_1x6", 0, 0, 3, 0, 4)
@@ -486,7 +486,7 @@ def test_torque_z_warm_path_stays_warm():
     assert "stability.prefix.rebuild" not in session.spans
 
 
-def test_milp_then_torque_z_warm_path_stays_warm():
+def test_milp_then_torque_z_warm_path_stays_warm() -> None:
     milp_layout = Layout(catalog=default_catalog())
     milp_layout.add("brick_2x2", 0, 0, 0, 0, 4)
     milp_layout.add("brick_2x2", 0, 0, 3, 0, 4)

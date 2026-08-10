@@ -9,6 +9,7 @@ sense or a transposed footprint produces plausible numbers and wrong answers.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -108,6 +109,41 @@ def test_a_footprint_outside_the_catalog_is_an_error():
         s2b.layout_from_bricks(s2b.parse_bricks("5x7 (0,0,0)"))
 
 
+def _row(bricks: str, scores: object | None = None) -> dict[str, object]:
+    grid = s2b.GRID
+    return {
+        "structure_id": "test",
+        "object_id": "obj",
+        "category_id": "cat",
+        "captions": ["a caption"],
+        "bricks": bricks,
+        "stability_scores": np.ones((grid, grid, grid)) if scores is None else scores,
+    }
+
+
+def test_from_row_accepts_a_valid_edge_hugging_row() -> None:
+    structure = s2b.Structure.from_row(_row("1x1 (19,19,19)"))
+    assert structure.bricks[0].z == 19
+
+
+def test_from_row_rejects_a_mis_shaped_score_array() -> None:
+    grid = s2b.GRID
+    with pytest.raises(s2b.BrickParseError, match="shape"):
+        s2b.Structure.from_row(_row("1x1 (0,0,0)", scores=np.ones((grid, grid))))
+
+
+def test_from_row_rejects_a_brick_that_leaves_the_grid() -> None:
+    # `occupancy` applies coordinates as NumPy slices, so an oversized extent
+    # would silently truncate instead of failing.
+    with pytest.raises(s2b.BrickParseError, match="leaves"):
+        s2b.Structure.from_row(_row("2x4 (19,0,0)"))
+
+
+def test_from_row_rejects_a_zero_extent_brick() -> None:
+    with pytest.raises(s2b.BrickParseError, match="leaves"):
+        s2b.Structure.from_row(_row("0x2 (0,0,0)"))
+
+
 def test_margin_masks_to_occupied_cells():
     # A naive min() over the whole array is meaningless: unoccupied voxels are
     # padded with 1.0, so it would read 1.0 for any sparse structure.
@@ -184,16 +220,27 @@ def _git(*args: str) -> str:
     ).stdout
 
 
+# A source archive has no .git, and a minimal environment has no git binary;
+# either way the integrity guards below have nothing to check and must skip
+# rather than fail on the missing tool.
+_REQUIRES_GIT = pytest.mark.skipif(
+    shutil.which("git") is None or not (_REPO / ".git").exists(),
+    reason="requires git and a git checkout",
+)
+
+
+@_REQUIRES_GIT
 @pytest.mark.parametrize("path", _MUST_STAY_UNTRACKED)
-def test_dataset_payloads_are_not_tracked(path):
+def test_dataset_payloads_are_not_tracked(path: str) -> None:
     # The guarantee that matters. An ignore rule can be edited away or bypassed
     # with `git add -f`; this fails loudly if a payload ever lands in the index.
     tracked = [line for line in _git("ls-files", "--", path).splitlines() if line]
     assert not tracked, f"{path} must never be committed; tracked: {tracked[:5]}"
 
 
+@_REQUIRES_GIT
 @pytest.mark.parametrize("path", _MUST_STAY_UNTRACKED)
-def test_dataset_paths_are_ignored_however_they_exist(path):
+def test_dataset_paths_are_ignored_however_they_exist(path: str) -> None:
     # `datasets` is a SYMLINK on at least one machine, and a trailing-slash
     # pattern (`datasets/`) does not match a symlink - git treats it as a file.
     # `check-ignore --no-index` answers for the pattern itself, so this holds
@@ -246,3 +293,49 @@ def test_omr_licence_survives_a_run_together_meta_command():
 def test_omr_licence_is_empty_when_the_header_is_absent():
     omr = _load_omr_module()
     assert omr.license_of(b"0 Title\r\n1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat\r\n") == ""
+
+
+def test_omr_discover_rejects_path_bearing_model_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The captured name is joined onto the crawl directory as a filename; a
+    # page offering a separator must not be able to write outside it.
+    omr = _load_omr_module()
+    html = (
+        b"<h1>Set</h1>"
+        b'<a href="https://library.ldraw.org/library/omr/../escape.mpd">a</a>'
+        b'<a href="https://library.ldraw.org/library/omr/good-1.mpd">b</a>'
+    )
+    monkeypatch.setattr(omr, "_get", lambda _url: html)
+    discovered = omr.discover(1)
+    assert discovered is not None
+    _, models = discovered
+    assert [model.name for model in models] == ["good-1.mpd"]
+
+
+def test_omr_crawl_does_not_mark_a_transient_failure_visited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A timeout recorded as visited would silently drop that set from every
+    # future resumed crawl.
+    omr = _load_omr_module()
+    monkeypatch.setattr(omr, "discover", lambda _set_id: None)
+    monkeypatch.setattr(omr, "_MAX_SET_ID", 3)
+    index, failures = omr.crawl(
+        dest=tmp_path, delay=0.0, limit=0, index_only=True, progress=False
+    )
+    assert index.visited == set()
+    assert len(failures) == 3
+
+
+def test_omr_crawl_marks_a_definitively_absent_set_visited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    omr = _load_omr_module()
+    monkeypatch.setattr(omr, "discover", lambda _set_id: ("", []))
+    monkeypatch.setattr(omr, "_MAX_SET_ID", 2)
+    index, failures = omr.crawl(
+        dest=tmp_path, delay=0.0, limit=0, index_only=True, progress=False
+    )
+    assert index.visited == {1, 2}
+    assert failures == []

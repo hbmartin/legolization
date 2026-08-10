@@ -2,7 +2,7 @@
 
 Inspect and normalize source models before generating.
 
-```
+```text
 legolization input inspect [--write] [--up {x,y,z}]
                            [--target-studs N | --auto-scale MIN MAX]
                            [--config PATH] [--set KEY=VALUE] [--json]
@@ -69,7 +69,7 @@ half-cell sampling offsets are tried. More phases means a better fit at more cos
 
 `--write` produces a `<name>-prepared/` sibling:
 
-```
+```text
 model-prepared/
   bundle.json
   normalized.npy      int16 colour codes on the plate lattice

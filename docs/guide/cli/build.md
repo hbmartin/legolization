@@ -2,7 +2,7 @@
 
 Build an LDraw model from 3D input using a single strategy.
 
-```
+```text
 legolization build -o OUTPUT
                    [--strategy {auto,global-exact,greedy,luo,bond,fast,smga,beauty,kollsker}]
                    [--seed SEED]
@@ -50,7 +50,7 @@ evidence, and produces the BOM and instructions.
 
 `--strategy auto` is decided by grid size, not by guesswork:
 
-```
+```text
 filled_count <= placement.exact.max_cells  →  global-exact
 otherwise                                  →  placement.exact.fallback_strategy  (bond)
 ```

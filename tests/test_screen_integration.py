@@ -160,7 +160,7 @@ def _propped_cantilever() -> Layout:
     return lay
 
 
-def test_rebase_advances_in_place_on_an_ok_report():
+def test_rebase_advances_in_place_on_an_ok_report() -> None:
     screen = ReducedScreen.create(_cantilever_layout(), _ON)
     assert screen is not None
     accepted = _propped_cantilever()
@@ -170,7 +170,7 @@ def test_rebase_advances_in_place_on_an_ok_report():
     assert screen.baseline_q == report.q
 
 
-def test_rebase_rebuilds_the_baseline_after_a_non_ok_accept():
+def test_rebase_rebuilds_the_baseline_after_a_non_ok_accept() -> None:
     # should_reject() passes a nonconverged report through to the cold
     # solve, so such a candidate can still be accepted. rebase() alone
     # keeps the old baseline, which would leave every later candidate
@@ -188,7 +188,7 @@ def test_rebase_rebuilds_the_baseline_after_a_non_ok_accept():
     assert rebased.baseline_q == pytest.approx(screen_layout(accepted, _ON).q)
 
 
-def test_rebase_disables_screening_when_the_rebuild_is_out_of_budget():
+def test_rebase_disables_screening_when_the_rebuild_is_out_of_budget() -> None:
     # No baseline is better than a stale one: a declined rebuild drops
     # the loop to the cold path instead of ranking against the
     # superseded layout.

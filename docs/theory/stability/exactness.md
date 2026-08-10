@@ -43,8 +43,10 @@ $$
 \text{normal}_f \cdot \text{drag}_f = 0 \quad \forall f
 $$
 
-which is bilinear and would make this a MILP. The LP simply drops it. That sounds like
-an optimistic relaxation — a solution could cheat by using both.
+which is bilinear and makes the problem a non-convex complementarity program — not
+itself a MILP; the MILP arises only through the bounded big-M binary reformulation
+described below. The LP simply drops the constraint. That sounds like an optimistic
+relaxation — a solution could cheat by using both.
 
 It cannot, and here is why.
 
@@ -88,7 +90,7 @@ solution you could not read as a force assignment.
 
 LP mode always goes through scipy `linprog` → HiGHS, with a documented retry chain:
 
-```
+```text
 ("highs", None) → ("highs", {"presolve": False}) → ("highs-ipm", None)
 ```
 
@@ -125,8 +127,11 @@ $$
 \end{aligned}
 $$
 
-$m^\star = C_M$ is the extra force the weakest joint pair can still absorb. Higher is
-sturdier.
+$m^\star = C_M$ is the extra force the weakest joint pair can still absorb — or, when
+negative, how far past capacity that joint already is. Higher is sturdier. $m$ is
+deliberately unbounded below: a negative margin is an overloaded-but-feasible
+equilibrium, still strictly comparable across layouts, and distinct from an infeasible
+equilibrium (collapse).
 
 Note what changed from the RBE LP: equilibrium is a **hard equality** here, not an
 objective term. So this formulation *can* be infeasible — and LP status 2 (provably

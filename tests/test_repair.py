@@ -187,9 +187,9 @@ def test_rbe_report_reuses_cold_result(bad_bridge, monkeypatch):
         nonlocal calls
         calls += 1
         return real_analyze(
-            target,
-            config,
-            graph,
+            layout=target,
+            config=config,
+            graph=graph,
             extra_masses=extra_masses,
             deadline=deadline,
         )

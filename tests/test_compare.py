@@ -16,8 +16,8 @@ import legolization.compare
 from legolization.compare import (
     Candidate,
     CandidateMetrics,
-    _candidate_config,
     _collect,
+    candidate_config,
     candidate_metrics,
     print_candidate_table,
     run_all,
@@ -343,7 +343,7 @@ def test_collect_converts_future_exception_to_candidate() -> None:
 @pytest.mark.parametrize("strategy", ["greedy", "bond"])
 def test_candidate_config_strips_progress_and_sets_strategy(strategy: str) -> None:
     config = PipelineConfig(progress=print, time_budget_s=9.0)
-    clone = _candidate_config(config, strategy=strategy, seed=3, timeout_s=4.0)
+    clone = candidate_config(config, strategy=strategy, seed=3, timeout_s=4.0)
     assert clone.strategy == strategy
     assert clone.progress is None
     assert clone.time_budget_s == 4.0

@@ -90,11 +90,16 @@ def score_layout(layout: Layout, *, population: str, name: str) -> Score | None:
 
 
 def human_scores(models: Path, *, limit: int, min_bricks: int) -> list[Score]:
-    """Score the importable skeleton of each OMR model."""
+    """Score the importable skeleton of each OMR model.
+
+    ``limit`` caps *eligible* scores, not attempted files: unreadable models
+    and skeletons below ``min_bricks`` do not consume the cap, so ``--sample``
+    means the same thing for every population.
+    """
     catalog = default_catalog()
     paths = sorted(models.glob("*.mpd")) + sorted(models.glob("*.ldr"))
     scores: list[Score] = []
-    for path in paths[:limit] if limit else paths:
+    for path in paths:
         try:
             loaded = load_model(path)
             analysis = loaded.analyze(None)
@@ -112,15 +117,28 @@ def human_scores(models: Path, *, limit: int, min_bricks: int) -> list[Score]:
             score := score_layout(imported.layout, population="human", name=path.name)
         ) and (score.bricks >= min_bricks):
             scores.append(score)
+            if limit and len(scores) >= limit:
+                break
     return scores
 
 
-def algorithmic_scores(root: Path, *, limit: int, min_bricks: int) -> list[Score]:
-    """Score StableText2Brick structures, the delete-and-rebuild contrast class."""
+def algorithmic_scores(
+    root: Path, *, limit: int, min_bricks: int, seed: int
+) -> list[Score]:
+    """Score a seeded sample of StableText2Brick structures across all shards.
+
+    Reading only the first shard would make the reported distribution a fact
+    about parquet shard order rather than about the release, so rows are drawn
+    deterministically over every shard with the sweep's sampling convention.
+    The draw is oversampled because parse failures and structures below
+    ``min_bricks`` are dropped after the fact; ``limit`` caps eligible scores.
+    """
     if not (paths := s2b.shard_paths(root)):
         return []
+    counts = s2b.shard_row_counts(paths)
+    indices = s2b.sample_indices(counts, sample=2 * limit if limit else 0, seed=seed)
     scores: list[Score] = []
-    for item in s2b.iter_structures(paths[:1]):
+    for item in s2b.load_selected(paths, counts, indices):
         if isinstance(item, str):
             continue
         try:
@@ -137,7 +155,7 @@ def algorithmic_scores(root: Path, *, limit: int, min_bricks: int) -> list[Score
     return scores
 
 
-def our_scores(baseline: Path, *, min_bricks: int) -> list[Score]:
+def our_scores(baseline: Path, *, limit: int, min_bricks: int) -> list[Score]:
     """Read our own layouts' terms out of the committed baseline scorecard.
 
     The scorecard already records ``perpendicularity`` and ``symmetry`` per
@@ -168,10 +186,12 @@ def our_scores(baseline: Path, *, min_bricks: int) -> list[Score]:
                     symmetry=float(symmetry),
                 )
             )
+            if limit and len(scores) >= limit:
+                return scores
     return scores
 
 
-def distribution(scores: Sequence[Score], field: str) -> dict[str, float]:
+def distribution(scores: Sequence[Score], *, field: str) -> dict[str, float]:
     """Summarize one term's distribution over one population."""
     values = np.array([getattr(score, field) for score in scores])
     if not values.size:
@@ -187,7 +207,7 @@ def distribution(scores: Sequence[Score], field: str) -> dict[str, float]:
     }
 
 
-def to_markdown(summary: dict[str, dict]) -> str:
+def to_markdown(summary: dict[str, dict[str, dict[str, float]]]) -> str:
     """Render the comparison."""
     lines = [
         "# Beauty scalar: human vs algorithmic vs ours",
@@ -246,7 +266,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--omr", type=Path, default=_DEFAULT_OMR)
     parser.add_argument("--stabletext2brick", type=Path, default=_DEFAULT_S2B)
     parser.add_argument("--baseline", type=Path, default=_DEFAULT_BASELINE)
-    parser.add_argument("--sample", type=int, default=200, help="cap per population")
+    parser.add_argument(
+        "--sample",
+        type=int,
+        default=200,
+        help="cap of eligible layouts per population (0 = uncapped)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="seed for the StableText2Brick cross-shard sample",
+    )
     parser.add_argument(
         "--min-bricks",
         type=int,
@@ -263,9 +294,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     scores = [
         *human_scores(args.omr, limit=args.sample, min_bricks=args.min_bricks),
         *algorithmic_scores(
-            args.stabletext2brick, limit=args.sample, min_bricks=args.min_bricks
+            args.stabletext2brick,
+            limit=args.sample,
+            min_bricks=args.min_bricks,
+            seed=args.seed,
         ),
-        *our_scores(args.baseline, min_bricks=args.min_bricks),
+        *our_scores(args.baseline, limit=args.sample, min_bricks=args.min_bricks),
     ]
     if not scores:
         print("no layouts scored; check --omr / --baseline paths", file=sys.stderr)
@@ -274,7 +308,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = {
         field: {
             population: distribution(
-                [score for score in scores if score.population == population], field
+                [score for score in scores if score.population == population],
+                field=field,
             )
             for population in ("human", "algorithmic", "ours")
         }
@@ -293,6 +328,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "generated": stamp,
                 "min_bricks": args.min_bricks,
+                "sample": args.sample,
+                "seed": args.seed,
                 "summary": summary,
                 "scores": [asdict(score) for score in scores],
             },

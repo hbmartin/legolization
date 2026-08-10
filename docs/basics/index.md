@@ -117,7 +117,7 @@ And three things it will not do:
 
 Every operation produces a **bundle** — a self-describing directory beside your input:
 
-```
+```text
 dragon-legolization/
   model/model.mpd            the model you would build
   bom/bom.json               every part you need

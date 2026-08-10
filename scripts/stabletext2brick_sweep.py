@@ -92,52 +92,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def shard_row_counts(paths: Sequence[Path]) -> list[int]:
-    """Row count per shard, read from parquet metadata without loading data."""
-    import pyarrow.parquet as pq  # noqa: PLC0415 - dev-only dependency
-
-    return [pq.ParquetFile(path).metadata.num_rows for path in paths]
-
-
-def sample_indices(counts: Sequence[int], *, sample: int, seed: int) -> list[int]:
-    """Choose global row indices deterministically, in ascending order.
-
-    Same convention as ``stablelego_sweep.sample_objects``: seed a
-    ``default_rng``, draw without replacement, then sort - so the same seed over
-    the same shards always yields the same structures in the same order.
-    """
-    total = sum(counts)
-    if sample <= 0 or sample >= total:
-        return list(range(total))
-    rng = np.random.default_rng(seed)
-    return sorted(int(index) for index in rng.choice(total, size=sample, replace=False))
-
-
-def load_selected(
-    paths: Sequence[Path],
-    counts: Sequence[int],
-    indices: Sequence[int],
-) -> list[s2b.Structure | str]:
-    """Read only the sampled rows, one shard at a time."""
-    import pyarrow.parquet as pq  # noqa: PLC0415 - dev-only dependency
-
-    wanted = set(indices)
-    loaded: list[s2b.Structure | str] = []
-    base = 0
-    for path, count in zip(paths, counts, strict=True):
-        local = sorted(index - base for index in wanted if base <= index < base + count)
-        base += count
-        if not local:
-            continue
-        table = pq.read_table(path).take(local)
-        for offset, row in enumerate(table.to_pylist()):
-            try:
-                loaded.append(s2b.Structure.from_row(row))
-            except (s2b.BrickParseError, KeyError, TypeError, ValueError) as error:
-                loaded.append(f"{path.name}:{local[offset]}: {error}")
-    return loaded
-
-
 def evaluate(structure: s2b.Structure, *, config: SolverConfig) -> StructureRow | str:
     """Analyse one structure, returning a skip reason instead of raising."""
     try:
@@ -145,7 +99,7 @@ def evaluate(structure: s2b.Structure, *, config: SolverConfig) -> StructureRow 
     except (KeyError, ValueError) as error:
         return f"{structure.structure_id}: layout failed: {error}"
     try:
-        result = analyze(layout, config)
+        result = analyze(layout, config=config)
     except (ArithmeticError, RuntimeError, ValueError) as error:
         return f"{structure.structure_id}: analysis failed: {error}"
     stands, margin = s2b.release_verdict(structure)
@@ -160,8 +114,13 @@ def evaluate(structure: s2b.Structure, *, config: SolverConfig) -> StructureRow 
     )
 
 
-def summarize(rows: Sequence[StructureRow]) -> dict[str, float | int]:
-    """Aggregate agreement counts and the score-residual distribution."""
+def summarize(rows: Sequence[StructureRow]) -> dict[str, float | int | None]:
+    """Aggregate agreement counts and the score-residual distribution.
+
+    An undefined correlation (one row, or a constant series) is ``None``, not
+    ``float("nan")``: ``json.dumps`` writes NaN as a bare ``NaN`` token, which
+    is not valid JSON and strict consumers reject the whole report.
+    """
     if not rows:
         return {}
     residuals = np.array([row.residual for row in rows])
@@ -170,7 +129,7 @@ def summarize(rows: Sequence[StructureRow]) -> dict[str, float | int]:
     correlation = (
         float(np.corrcoef(ours, theirs)[0, 1])
         if ours.size > 1 and ours.std() > 0 and theirs.std() > 0
-        else float("nan")
+        else None
     )
     return {
         "structures": len(rows),
@@ -189,7 +148,7 @@ def summarize(rows: Sequence[StructureRow]) -> dict[str, float | int]:
 def to_markdown(
     rows: Sequence[StructureRow],
     skipped: Sequence[str],
-    summary: dict[str, float | int],
+    summary: dict[str, float | int | None],
     *,
     screen: str,
 ) -> str:
@@ -223,6 +182,7 @@ def to_markdown(
         "",
     ]
     if summary:
+        correlation = summary["stress_correlation"]
         lines += [
             "## Score agreement",
             "",
@@ -231,8 +191,8 @@ def to_markdown(
             f"- residual p95    {summary['residual_p95']:.6f}",
             f"- residual max    {summary['residual_max']:.6f}",
             (
-                f"- correlation of (1 - margin) with max_score: "
-                f"{summary['stress_correlation']:.6f}"
+                "- correlation of (1 - margin) with max_score: "
+                + (f"{correlation:.6f}" if isinstance(correlation, float) else "n/a")
             ),
             "",
         ]
@@ -307,11 +267,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"no parquet shards under {args.dataset}", file=sys.stderr)
         return 1
 
-    counts = shard_row_counts(paths)
-    indices = sample_indices(counts, sample=args.sample, seed=args.seed)
+    counts = s2b.shard_row_counts(paths)
+    indices = s2b.sample_indices(counts, sample=args.sample, seed=args.seed)
     config = SolverConfig(screen=args.screen)
 
-    rows, skipped = run_sweep(load_selected(paths, counts, indices), config=config)
+    rows, skipped = run_sweep(s2b.load_selected(paths, counts, indices), config=config)
     if not rows:
         print("every sampled structure was skipped", file=sys.stderr)
         return 1

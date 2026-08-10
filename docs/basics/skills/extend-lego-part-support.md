@@ -10,9 +10,9 @@ one.
 ## Say something like
 
 > Add support for part 4070 so my headlight-brick model analyzes correctly.
-
+>
 > This build failed on an unsupported part — can you fix that?
-
+>
 > Infer the geometry and mass for LDraw part 3001.
 
 ---
@@ -30,7 +30,7 @@ one.
 
 ## What you get
 
-```
+```text
 part_4070-legolization-support/
   catalog-extension.json     the drafted part
   draft-estimates.json       mass and geometry, with provenance

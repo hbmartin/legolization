@@ -4,8 +4,8 @@ This track explains why the system works and where its guarantees come from. It 
 written for someone who wants to change the algorithms, verify a claim, or read the
 papers alongside the code.
 
-Every section names its **source** — the paper, the file and line, and whether the
-claim is *proved*, *measured*, or *heuristic*. Those three words are not
+Sections name their **source** — the paper and the implementing file or symbol — and
+label claims as *proved*, *measured*, or *heuristic*. Those three words are not
 interchangeable, and the difference is the point of this track.
 
 ---
@@ -21,7 +21,7 @@ model is a real LEGO brick.
 **Measured.** A claim backed by an experiment recorded in this repository, with the
 numbers. That the single weighted screening QP converges in hundreds of ADMM
 iterations where the paper's three-stage relaxation needs tens of thousands is
-measured. Measured claims carry their date and their fixture, and can go stale.
+measured. Measured claims can go stale — re-run the experiment before leaning on one.
 
 **Heuristic.** Something that works well enough, chosen by judgement or tuning, with
 no argument that it is right. Most placement scoring terms are heuristic. So are most
@@ -118,8 +118,10 @@ choice to a continuous optimization. Condition 7 makes the *output* a sequence r
 than a set, and its feasibility is not implied by any of the others.
 
 The system's structure follows from that decomposition: heuristics or exact methods
-handle 1–4, an LP handles 6, a search handles 7, and a repair loop mediates when
-6 fails given a 1–4 solution.
+handle 1–4, stud-graph reachability on the `ConnectionGraph` enforces 5 within the
+same connectivity check as 4 (the ground-merged `floating_ids` half of the
+buildability verdict), an LP handles 6, a search handles 7, and a repair loop
+mediates when 6 fails given a 1–4 solution.
 
 ---
 

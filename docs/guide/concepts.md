@@ -182,7 +182,7 @@ identity-matched resume may adopt a better late result.
 
 Configuration is nested TOML. Precedence is:
 
-```
+```text
 built-in defaults  →  --config FILE  →  --set KEY=VALUE  →  explicit CLI flags
 ```
 

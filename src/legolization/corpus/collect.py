@@ -26,12 +26,12 @@ import argparse
 import hashlib
 import json
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-from legolization.compare import Candidate, run_all, select_best
+from legolization.compare import Candidate, candidate_config, run_all, select_best
 from legolization.corpus import generators
 from legolization.corpus.manifest import load_manifest, select_scope
 from legolization.eval_artifacts import (
@@ -517,13 +517,18 @@ def _effective_config(
     strategy: str,
     seed: int,
 ) -> PipelineConfig:
-    """Mirror compare.run_all's result-affecting per-candidate config."""
-    return replace(
+    """Return the per-candidate config ``run_all`` will actually run.
+
+    Call it, never re-derive it: the configuration hash below identifies a
+    cached artifact, so a hand-written copy that drifts from the sweep (this
+    one had stopped taking the min of the two time budgets) silently reuses
+    artifacts produced under different settings.
+    """
+    return candidate_config(
         PipelineConfig(seed=args.seed),
         strategy=strategy,
         seed=seed,
-        progress=None,
-        time_budget_s=args.timeout,
+        timeout_s=args.timeout,
     )
 
 

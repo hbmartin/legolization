@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 from itertools import combinations
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.instructions.blocking import chunk_ready, vertical_blockers
@@ -53,6 +53,12 @@ _ROTATE_THRESHOLD_DEG = 120.0
 _ROTATE_GAIN_DEG = 45.0
 _CENTRE_DEAD_ZONE_STUDS = 2.0
 _DEFAULT_VIEW_AZIMUTH_DEG = 45.0  # LDraw viewers default to a front-right view
+# Search bounds for the two press-aware refinements. Both explore a space that
+# grows combinatorially with chunk size, and every probe costs an LP solve, so
+# each is capped at a budget rather than left to the shape of the input.
+_PRESS_SUBSET_PROBE_LIMIT: Final[int] = 128
+_PRESS_UNION_STATE_LIMIT: Final[int] = 128
+_PRESS_UNION_SPATIAL_FANOUT: Final[int] = 4
 
 
 class InstructionsError(ValueError):
@@ -244,10 +250,10 @@ def plan_instructions(
         layout,
         sequencing_config,
         chunks,
-        relations.supports,
-        relations.blockers,
-        relations.blocks,
-        relations.neighbours,
+        supports=relations.supports,
+        blockers=relations.blockers,
+        blocks=relations.blocks,
+        neighbours=relations.neighbours,
     )
     plan = InstructionPlan(
         steps=tuple(ordered_steps),
@@ -284,10 +290,13 @@ def _assign_rotsteps_subaware(
     return [step if step.submodel is not None else next(rotated) for step in steps]
 
 
-def _sequence(  # noqa: PLR0913, PLR0915, PLR0917, C901 - sequencing state
+def _sequence(  # noqa: PLR0913, PLR0915, C901 - sequencing state
     layout: Layout,
     config: InstructionsConfig,
     chunks: list[tuple[int, tuple[int, ...]]],
+    # Keyword-only: four same-typed relation dicts are trivially swapped by
+    # position, and a swap sequences a valid-looking but wrong build order.
+    *,
     supports: dict[int, set[int]],
     blockers: dict[int, frozenset[int]],
     blocks: dict[int, set[int]],
@@ -692,6 +701,27 @@ def _sequence(  # noqa: PLR0913, PLR0915, PLR0917, C901 - sequencing state
     return steps, warnings
 
 
+def _subset_insertable(  # noqa: PLR0913 - explicit refinement constraints
+    layout: Layout,
+    subset: tuple[int, ...],
+    *,
+    placed: set[int],
+    supports: dict[int, set[int]],
+    blockers: dict[int, frozenset[int]],
+    blocks: dict[int, set[int]],
+) -> bool:
+    """Whether ``subset`` can be inserted now in some order — the cheap gate.
+
+    Screening here keeps the probe budget in :func:`_best_press_subset` for
+    subsets that could actually become a step, never for ones geometry
+    already rules out.
+    """
+    return bool(
+        chunk_ready(subset, placed, supports, blockers, blocks)
+        and _insertion_order(layout, subset, supports=supports, blockers=blockers)
+    )
+
+
 def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
     layout: Layout,
     chunk: tuple[int, ...],
@@ -712,17 +742,23 @@ def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
     # Explicit callbacks keep the warm/cold solver seam directly testable.
     # lizard forgives(parameter_count)
     candidates: list[tuple[int, float, tuple[int, ...], float]] = []
+    probes = 0
+    exhausted = False
     for size in range(min(len(chunk) - 1, max_step_size), 0, -1):
         for subset in combinations(chunk, size):
-            if not chunk_ready(subset, placed, supports, blockers, blocks):
-                continue
-            if not _insertion_order(
+            if not _subset_insertable(
                 layout,
                 subset,
+                placed=placed,
                 supports=supports,
                 blockers=blockers,
+                blocks=blocks,
             ):
                 continue
+            if probes >= _PRESS_SUBSET_PROBE_LIMIT:
+                exhausted = True
+                break
+            probes += 1
             static = analyze_prefix(subset)
             if not static.stable:
                 continue
@@ -735,7 +771,9 @@ def _best_press_subset(  # noqa: PLR0913 - explicit refinement constraints
                 candidates.append(
                     (-size, press.max_score, tuple(sorted(subset)), static.max_score)
                 )
-        if candidates:
+        # Spending the whole probe budget on one size means the next size down
+        # is even larger; stop rather than pay the budget again per size.
+        if candidates or exhausted:
             break
     if not candidates:
         return None
@@ -971,7 +1009,7 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
     seen = {queue[0]}
     ranked: list[_PressUnionRank] = []
     fragile_ranked: list[_PressUnionRank] = []
-    while queue and len(seen) <= 128:
+    while queue and len(seen) <= _PRESS_UNION_STATE_LIMIT:
         positions = queue.pop(0)
         adjacent = _adjacent_chunk_positions(
             positions=positions,
@@ -1049,7 +1087,7 @@ def _adjacent_chunk_positions(
             chunks[position][0],
             position,
         ),
-    )[:4]
+    )[:_PRESS_UNION_SPATIAL_FANOUT]
     return sorted(contact | set(spatial))
 
 

@@ -47,6 +47,15 @@ if TYPE_CHECKING:
 GRID = 20
 _COLOUR = 4
 _PLATES_PER_BRICK = 3
+_BATCH_ROWS = 256
+_ROW_COLUMNS = (
+    "structure_id",
+    "object_id",
+    "category_id",
+    "captions",
+    "bricks",
+    "stability_scores",
+)
 
 _BRICK = re.compile(
     r"^\s*(\d+)\s*x\s*(\d+)\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)\s*$"
@@ -99,14 +108,42 @@ class Structure:
 
     @classmethod
     def from_row(cls, row: Mapping[str, object]) -> Self:
-        """Build a structure from one parquet row, parsing its brick text."""
+        """Build a structure from one parquet row, validating as it parses.
+
+        Geometry and score-shape checks live here rather than downstream
+        because :attr:`occupancy` applies coordinates as NumPy slices - an
+        oversized extent would silently truncate - and a mis-shaped score
+        array would fail later, outside :func:`iter_structures`' skip
+        handling, or worse, produce a wrong margin. Raising
+        :class:`BrickParseError` turns either into a recorded skip.
+        """
+        scores = np.asarray(row["stability_scores"], dtype=float)
+        if scores.shape != (GRID, GRID, GRID):
+            msg = (
+                f"stability_scores has shape {scores.shape}, "
+                f"expected {(GRID, GRID, GRID)}"
+            )
+            raise BrickParseError(msg)
+        bricks = parse_bricks(str(row["bricks"]))
+        for index, brick in enumerate(bricks):
+            if (
+                min(brick.x_extent, brick.y_extent) < 1
+                or brick.x + brick.x_extent > GRID
+                or brick.y + brick.y_extent > GRID
+                or brick.z >= GRID
+            ):
+                msg = (
+                    f"brick {index}: {brick.x_extent}x{brick.y_extent} at "
+                    f"({brick.x},{brick.y},{brick.z}) leaves the {GRID}^3 grid"
+                )
+                raise BrickParseError(msg)
         return cls(
             structure_id=str(row["structure_id"]),
             object_id=str(row["object_id"]),
             category_id=str(row["category_id"]),
-            captions=_string_tuple(row["captions"]),
-            bricks=parse_bricks(str(row["bricks"])),
-            scores=np.asarray(row["stability_scores"], dtype=float),
+            captions=_string_tuple(row.get("captions")),
+            bricks=bricks,
+            scores=scores,
         )
 
     @property
@@ -166,7 +203,9 @@ def layout_from_bricks(
     catalog = catalog or default_catalog()
     layout = Layout(catalog=catalog)
     for index, brick in enumerate(bricks):
-        key = catalog.rect_key(brick.x_extent, brick.y_extent, _PLATES_PER_BRICK)
+        key = catalog.rect_key(
+            brick.x_extent, brick.y_extent, height_plates=_PLATES_PER_BRICK
+        )
         if key is None:
             msg = (
                 f"brick {index}: no catalog part for {brick.x_extent}x{brick.y_extent}"
@@ -174,11 +213,18 @@ def layout_from_bricks(
             raise ValueError(msg)
         layer = _PLATES_PER_BRICK * brick.z
         if _extents(catalog[key]) == (brick.x_extent, brick.y_extent):
-            layout.add(key, brick.x, brick.y, layer, 0, _COLOUR)
+            layout.add(key, brick.x, brick.y, layer, yaw=0, colour_code=_COLOUR)
         else:
             # Yaw 90 rotates (dx, dy) to (-dy, dx): anchor at the max-x cell,
             # exactly as legolization.stablelego.layout_from_task_graph does.
-            layout.add(key, brick.x + brick.x_extent - 1, brick.y, layer, 90, _COLOUR)
+            layout.add(
+                key,
+                brick.x + brick.x_extent - 1,
+                brick.y,
+                layer,
+                yaw=90,
+                colour_code=_COLOUR,
+            )
     return layout
 
 
@@ -207,19 +253,86 @@ def shard_paths(root: Path) -> list[Path]:
     return sorted((root / "data").glob("*.parquet")) or sorted(root.glob("*.parquet"))
 
 
+def shard_row_counts(paths: Sequence[Path]) -> list[int]:
+    """Row count per shard, read from parquet metadata without loading data."""
+    import pyarrow.parquet as pq  # noqa: PLC0415 - dev-only dependency
+
+    return [pq.ParquetFile(path).metadata.num_rows for path in paths]
+
+
+def sample_indices(counts: Sequence[int], *, sample: int, seed: int) -> list[int]:
+    """Choose global row indices deterministically, in ascending order.
+
+    Same convention as ``stablelego_sweep.sample_objects``: seed a
+    ``default_rng``, draw without replacement, then sort - so the same seed over
+    the same shards always yields the same structures in the same order.
+    """
+    total = sum(counts)
+    if sample <= 0 or sample >= total:
+        return list(range(total))
+    rng = np.random.default_rng(seed)
+    return sorted(int(index) for index in rng.choice(total, size=sample, replace=False))
+
+
+def load_selected(
+    paths: Sequence[Path],
+    counts: Sequence[int],
+    indices: Sequence[int],
+) -> list[Structure | str]:
+    """Read only the sampled rows, one row group at a time.
+
+    Each global index is translated to its shard-local position, then only the
+    row groups containing sampled rows are read - projected to the columns
+    :meth:`Structure.from_row` needs - so a shard is never materialised whole
+    (its dense ``stability_scores`` column dominates the size).
+    """
+    import pyarrow.parquet as pq  # noqa: PLC0415 - dev-only dependency
+
+    wanted = set(indices)
+    loaded: list[Structure | str] = []
+    base = 0
+    for path, count in zip(paths, counts, strict=True):
+        local = sorted(index - base for index in wanted if base <= index < base + count)
+        base += count
+        if not local:
+            continue
+        file = pq.ParquetFile(path)
+        columns = [name for name in _ROW_COLUMNS if name in file.schema_arrow.names]
+        start = 0
+        for group in range(file.metadata.num_row_groups):
+            stop = start + file.metadata.row_group(group).num_rows
+            if in_group := [index for index in local if start <= index < stop]:
+                rows = (
+                    file.read_row_group(group, columns=columns)
+                    .take([index - start for index in in_group])
+                    .to_pylist()
+                )
+                for local_index, row in zip(in_group, rows, strict=True):
+                    try:
+                        loaded.append(Structure.from_row(row))
+                    except (BrickParseError, KeyError, TypeError, ValueError) as error:
+                        loaded.append(f"{path.name}:{local_index}: {error}")
+            start = stop
+    return loaded
+
+
 def iter_structures(paths: Sequence[Path]) -> Iterator[Structure | str]:
     """Stream structures from parquet shards, yielding a reason string on failure.
 
     Yielding failures rather than raising keeps a 47k-row sweep alive through a
     malformed row, matching ``scripts/stablelego_sweep.py``'s skip convention:
-    record what could not be read, never guess at it.
+    record what could not be read, never guess at it. Reading in bounded
+    batches keeps memory flat; the failure strings still carry each row's
+    original position within its shard.
     """
     import pyarrow.parquet as pq  # noqa: PLC0415 - dev-only dependency, import at use
 
     for path in paths:
-        table = pq.read_table(path)
-        for index, row in enumerate(table.to_pylist()):
-            try:
-                yield Structure.from_row(row)
-            except (BrickParseError, KeyError, TypeError, ValueError) as error:
-                yield f"{path.name}:{index}: {error}"
+        index = 0
+        for batch in pq.ParquetFile(path).iter_batches(batch_size=_BATCH_ROWS):
+            for row in batch.to_pylist():
+                try:
+                    yield Structure.from_row(row)
+                except (BrickParseError, KeyError, TypeError, ValueError) as error:
+                    yield f"{path.name}:{index}: {error}"
+                index += 1

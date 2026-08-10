@@ -43,7 +43,7 @@ practical caveat. **Nothing here is a commitment** — this ranks a space,
 - <https://huggingface.co/datasets/AvaLovelace/StableText2Lego> (the
   dataset kept its `StableText2Lego` repo id; the paper renamed it
   `StableText2Brick`).
-- 47,389 rows — 42,600 train / 4,790 test. **44.3 MB, Parquet, MIT.**
+- 47,389 rows — 42,604 train / 4,785 test. **44.3 MB, Parquet, MIT.**
 - Fields: `structure_id`, `object_id` (ShapeNetCore), `category_id`
   (21 categories), `captions`, `bricks`, `stability_scores`.
 - `bricks` is one line per brick, `hxw (x,y,z)`, 1-unit-tall cuboids on a
@@ -560,9 +560,9 @@ conventions are now pinned by tests in `tests/test_datasets.py`.
 
 ### Solver agreement: 150/150, matching BrickSim
 
-`stabletext2brick_sweep.py --sample 150 --seed 0` — the same sample size
-BrickSim reports (`references/bricksim-*/paper.md:194`, scoring 150/150 at
-`:200`):
+`uv run python scripts/stabletext2brick_sweep.py --sample 150 --seed 0` — the
+same sample size BrickSim reports (`references/bricksim-*/paper.md:194`,
+scoring 150/150 at `:200`):
 
 - **150 agree, 0 disagree, 0 skipped.**
 - Score residual `|(1 − their margin) − our max_score|`: median 0.0020,

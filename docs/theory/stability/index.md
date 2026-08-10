@@ -46,7 +46,7 @@ of feasibility. That test is `_score`, and it is the same in every code path.
 
 For each brick:
 
-```
+```text
 force_ok   = all |residual[0:3]| ≤ tol_force    (1e-6)
 torque_ok  = all |residual[3:]|  ≤ tol_torque   (1e-7)
 drag_max   = max over the brick's bottom drag columns
@@ -60,11 +60,15 @@ stable = all scores < 1.0
 The score doubles as a **stress heatmap**: 0 is effortless, 0.7–1.0 is
 standing-but-fragile, and exactly 1.0 means at or over capacity.
 
-!!! tip "`max_score` exactly 1.0 on every strategy means toppling"
+!!! tip "`max_score` exactly 1.0 on every strategy *suggests* toppling — heuristic"
 
-    A joint problem varies with the layout. When every strategy reports exactly 1.0,
-    the verdict is *global* — the centre of mass is outside the support polygon. No
-    placement change fixes that; the shape needs a base.
+    A joint problem varies with the layout, so 1.0 across every strategy points at
+    something layout-independent — often the centre of mass sitting outside the
+    support polygon, which no placement change fixes. But 1.0 is also the score for
+    any non-equilibrium brick or capacity hit, and a geometry-forced weak joint can
+    reproduce it in every strategy too. Treat this as a heuristic: before concluding
+    the shape needs a base, check the support polygon explicitly (project the centre
+    of mass onto the ground-contact footprint).
 
 ---
 

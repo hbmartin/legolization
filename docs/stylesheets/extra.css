@@ -5,9 +5,11 @@
  * tables, provenance callouts in the Theory track, and terminal transcripts.
  */
 
-/* Reference tables in the Guide track are wide (flag / type / default /
- * effect). Let them scroll inside their own box rather than forcing the page
- * to scroll horizontally. */
+/* Tables site-wide: the Guide track's reference tables are wide (flag / type
+ * / default / effect) and set the size; Basics and Theory tables share the
+ * same compact rendering deliberately, so the site reads as one voice. Let
+ * them scroll inside their own box rather than forcing the page to scroll
+ * horizontally. */
 .md-typeset__table {
   width: 100%;
 }

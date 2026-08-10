@@ -67,7 +67,7 @@ $$
 | Term | Definition |
 | --- | --- |
 | `surface_error` | Mean KD-tree distance from surface-voxel centres to mesh vertices, normalized by pitch |
-| `feature_ratio` | `|unique nearest vertices| / |surface voxels|` — detail retention |
+| `feature_ratio` | $\lvert\text{unique nearest vertices}\rvert / \lvert\text{surface voxels}\rvert$ — detail retention |
 | `constructibility` | `bonds / filled`, where bonds are face-adjacent filled pairs on all three axes |
 
 Heuristic, tuned. Guards cap the grid at 512 cells per dimension and 16 M cells total.
@@ -119,19 +119,28 @@ expensive one is the whole point.
 
 Every quality-improving pass runs inside `_guarded_finish`:
 
-1. If the current verdict is stable, snapshot `layout.copy()`.
+1. If the current verdict is stable, snapshot `layout.copy()` and record the
+   stud-graph component count and floating-brick count.
 2. Apply the pass.
-3. Re-run `analyze`.
-4. If the verdict regressed, `layout.replace_with(guard)`.
+3. Re-run `analyze` and re-measure the stud graph.
+4. If the verdict regressed — **or the component count or floating count
+   increased** — `layout.replace_with(guard)`.
 
 ```mermaid
 flowchart LR
-    A["stable layout"] --> B["snapshot"]
+    A["stable layout"] --> B["snapshot + bonding counts"]
     B --> C["apply pass"]
-    C --> D{"still stable?"}
+    C --> D{"still stable, bonding not worse?"}
     D -- yes --> E["keep"]
     D -- no --> F["restore snapshot"]
 ```
+
+The bonding check is not decoration: a stable verdict alone is weaker than the
+buildable predicate. A carve-and-refill pass can sever the only bond between two
+grounded halves, and each half stands perfectly well on its own — the solver stays
+happy while the model now comes apart in your hands. The guard therefore holds every
+pass to the same standard as [the SNOT re-bond guard](placement/finishing.md#the-re-bond-guard):
+components and floating bricks must not increase.
 
 This is why finishing passes are safe to enable by default. Slopes, tiles, SNOT
 cladding, and template canonicalization can each make a model prettier or cheaper;

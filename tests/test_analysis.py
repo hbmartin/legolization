@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Never, cast
 
 import pytest
-from ldraw import Diagnostic, DiagnosticCode, Severity
+from ldraw import CatalogPreparationResult, Diagnostic, DiagnosticCode, Severity
 
 from legolization import AnalysisConfig, AnalysisResult, analyze_ldraw
 from legolization.catalog import Category, load_catalog
@@ -392,6 +392,39 @@ def test_catalog_loading_failure_has_catalog_context(tmp_path: Path):
     assert result.report.repair["reason"] == "catalog loading failed"
     assert result.report.errors[0].startswith("catalog loading failed:")
     assert str(catalog_path) in result.report.catalog["extensions"]
+
+
+def test_failed_catalog_preparation_is_retried_and_success_is_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A failed preparation almost always means the library is not downloaded
+    # yet. Memoizing that verdict pinned the failure for the life of the
+    # process, so `ldraw download --yes` could not rescue a running session.
+    report_module = import_module("legolization.ldraw_report")
+    prepared = report_module.prepare_analysis_catalog()
+    missing = replace(
+        prepared,
+        parts=None,
+        diagnostics=(
+            Diagnostic(
+                message="configured parts library is missing",
+                severity=Severity.ERROR,
+                code=DiagnosticCode.CATALOG_LIBRARY_MISSING,
+            ),
+        ),
+    )
+    responses = iter((missing, prepared))
+
+    def fake_prepare_catalog(**kwargs: object) -> CatalogPreparationResult:
+        assert kwargs["capabilities"]
+        return next(responses)
+
+    monkeypatch.setattr(report_module, "prepare_catalog", fake_prepare_catalog)
+    monkeypatch.setattr(report_module, "_USABLE_CATALOGS", {})
+
+    assert report_module.prepare_analysis_catalog() is missing
+    assert report_module.prepare_analysis_catalog() is prepared
+    assert report_module.prepare_analysis_catalog() is prepared
 
 
 def test_missing_pyldraw_catalog_is_fatal_with_setup_hint(

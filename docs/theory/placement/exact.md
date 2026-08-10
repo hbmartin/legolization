@@ -158,14 +158,24 @@ f_e \le M y_p, \qquad r_g \le M x_g, \qquad M = |\text{candidates}|
 $$
 
 $$
-\sum_{\text{in}} f - \sum_{\text{out}} f - x_i = 0 \quad \forall i
+\sum_{\text{in}} f + r_i - \sum_{\text{out}} f - x_i = 0 \quad \forall i
 $$
+
+where $r_i$ is candidate $i$'s root arc if it is grounded and $0$ otherwise.
 
 The first three linearize $y_p = x_l \wedge x_r$ — an arc may carry flow only when both
 its endpoints are selected. The conservation row says each selected candidate consumes
-exactly one unit of flow, rooted at a ground-seated candidate. A selected candidate with
-no path to a root cannot balance its row, so the model is infeasible — which is exactly
-the connectivity requirement, expressed linearly.
+exactly one unit of flow, and only grounded candidates can inject it, through their
+root arcs. Summing the rows cancels every directed arc and leaves
+
+$$
+\sum_g r_g = \sum_i x_i
+$$
+
+so total root flow is pinned to exactly the number of selected candidates, all of it
+entering at ground-seated candidates. A selected candidate with no path to a root
+cannot balance its row, so the model is infeasible — which is exactly the connectivity
+requirement, expressed linearly.
 
 ### Objective
 

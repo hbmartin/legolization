@@ -472,27 +472,34 @@ class BridgeSynthesizer:
         best_key: tuple[int, int, int] | None = None
         for phase in phases:
             candidates = phase_candidates.get(phase, [])
-            candidate = min(
-                candidates,
-                key=lambda item: (
-                    ConnectionGraph.from_layout(item).component_count(),
-                    len(item),
+            # Score once, on the ranking tuple itself: `min(key=...)` rebuilds
+            # the winner's graph a second time, and each build is a whole-layout
+            # contact traversal. The trailing index keeps the tuples totally
+            # ordered (and the choice deterministic) without comparing layouts.
+            scored = min(
+                (
+                    (
+                        ConnectionGraph.from_layout(candidate).component_count(),
+                        len(candidate),
+                        index,
+                    )
+                    for index, candidate in enumerate(candidates)
                 ),
                 default=None,
             )
             if phase in phase_candidates:
                 telemetry.value(
                     "connectivity.bridge.phase_solved",
-                    float(candidate is not None),
+                    float(scored is not None),
                 )
-            if candidate is None:
+            if scored is None:
                 continue
-            components = ConnectionGraph.from_layout(candidate).component_count()
-            key = (components, len(candidate), phase)
+            components, brick_count, index = scored
+            key = (components, brick_count, phase)
             telemetry.value("connectivity.bridge.phase_components", float(components))
-            telemetry.value("connectivity.bridge.phase_bricks", float(len(candidate)))
+            telemetry.value("connectivity.bridge.phase_bricks", float(brick_count))
             if best_key is None or key < best_key:
-                best, best_key = candidate, key
+                best, best_key = candidates[index], key
         if best_key is not None:
             telemetry.value("connectivity.bridge.phase_accepted", float(best_key[2]))
         return best

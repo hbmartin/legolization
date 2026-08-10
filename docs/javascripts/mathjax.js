@@ -19,8 +19,17 @@ window.MathJax = {
 };
 
 document$.subscribe(() => {
-  MathJax.startup.output.clearCache();
-  MathJax.typesetClear();
-  MathJax.texReset();
-  MathJax.typesetPromise();
+  // The MathJax bundle loads after this file (it must - this file defines its
+  // configuration), so on the very first emission `MathJax.startup` may not
+  // exist yet; MathJax then typesets on its own at startup. Later emissions
+  // (instant navigation) wait for startup before re-typesetting.
+  if (!window.MathJax || !MathJax.startup) {
+    return;
+  }
+  MathJax.startup.promise.then(() => {
+    MathJax.startup.output.clearCache();
+    MathJax.typesetClear();
+    MathJax.texReset();
+    MathJax.typesetPromise();
+  });
 });

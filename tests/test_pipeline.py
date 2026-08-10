@@ -345,6 +345,48 @@ def test_tiles_and_slopes_flags(tmp_path):
     assert result.tiles_added >= 0
 
 
+def test_guarded_finish_reverts_a_bonding_regression() -> None:
+    # A stable verdict alone is not the buildable predicate: severing the only
+    # bond between two grounded towers leaves both halves individually stable
+    # while the model now comes apart in your hands. The guard must hold every
+    # finishing pass to the SNOT re-bond standard - component count and
+    # floating count must not increase.
+    from legolization.catalog import default_catalog
+    from legolization.layout import Layout
+    from legolization.pipeline import _FinishOperation, _guarded_finish
+    from legolization.stability import analyze
+
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x1", 2, 0, 0, 0, 4)
+    layout.add("plate_1x3", 0, 0, 3, 0, 4)  # the bridge tying the towers
+    config = PipelineConfig()
+    stability = analyze(layout, config.solver)
+    assert stability.stable
+
+    def sever_bridge() -> int:
+        (bridge,) = [brick for brick in layout if brick.part_key == "plate_1x3"]
+        layout.remove(bridge.brick_id)
+        layout.add("plate_1x1", 0, 0, 3, 0, 4)
+        layout.add("plate_1x1", 2, 0, 3, 0, 4)
+        return 2
+
+    added, updated = _guarded_finish(
+        layout,
+        stability,
+        config,
+        finish=_FinishOperation(
+            operation=sever_bridge,
+            span_name="finish.test",
+            warning="test: bonding regression",
+        ),
+    )
+    assert added == 0
+    assert updated is stability
+    parts = sorted(brick.part_key for brick in layout)
+    assert parts == ["brick_1x1", "brick_1x1", "plate_1x3"]
+
+
 def test_dataclass_positional_layouts_are_stable():
     # New defaulted fields must append after the 0.2.0 layout so old
     # positional callers keep their meaning (PR #17 review).

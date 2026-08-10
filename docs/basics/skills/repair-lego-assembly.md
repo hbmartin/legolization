@@ -10,11 +10,11 @@ it right.
 ## Say something like
 
 > This model falls apart at the arch — fix it without changing how it looks.
-
+>
 > Repair this build.
-
+>
 > Reinforce the weak part.
-
+>
 > Analysis found problems — can you solve them?
 
 **Accepts:** `.ldr`, `.mpd`.
@@ -52,7 +52,7 @@ It works up the ladder rather than starting at the top, and asks before each esc
 
 ## What you get
 
-```
+```text
 model-repair/
   model/model.repaired.mpd      the fix
   analysis/before.json          what was wrong

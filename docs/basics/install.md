@@ -24,9 +24,8 @@ installs or upgrades it automatically:
 
 1. `uv tool install legolization@latest`, or
 2. `pip install --upgrade legolization`, and
-3. only if neither package manager exists, the standalone installer:
-   `curl -LsSf https://uvx.sh/legolization/install.sh | sh`
-   (PowerShell: `irm https://uvx.sh/legolization/install.ps1 | iex`).
+3. only if neither package manager exists, the standalone installer
+   documented at [uvx.sh/legolization](https://uvx.sh/legolization).
 
 !!! info "This step does not ask permission"
 

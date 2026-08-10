@@ -7,11 +7,11 @@
 ## Say something like
 
 > Do these build steps make sense, or will something fall off halfway through?
-
+>
 > Review the step ordering.
-
+>
 > Why is it warning about unstable prefixes?
-
+>
 > Are any steps too big?
 
 **Accepts:** a step-annotated `.ldr`/`.mpd`, or a bundle directory.

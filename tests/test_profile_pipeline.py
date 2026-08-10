@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import pstats
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -37,8 +38,11 @@ def profiler() -> ModuleType:
 def test_smoke_heart(
     profiler: ModuleType,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
+    # capfd, not capsys: the worker inherits the supervisor's stdout rather
+    # than filling a pipe nobody drains until it exits, so its span table
+    # arrives on the real file descriptor.
     exit_code = profiler.main([str(_HEART), "--out", str(tmp_path)])
     assert exit_code == 0
     written = list(tmp_path.glob("*.json"))
@@ -57,7 +61,7 @@ def test_smoke_heart(
     assert payload["total_seconds"] > 0
     assert payload["spans"]["stability.analyze"]["calls"] >= 1
     assert payload["cprofile_active"] is False
-    out = capsys.readouterr().out
+    out = capfd.readouterr().out
     assert "stability.analyze" in out
 
 
@@ -198,6 +202,73 @@ def test_monitor_terminates_child_and_recovers_timeout_artifact(
     assert "stage: place.connectivity" in captured.err
     assert "timed out place.connectivity" in captured.err
     assert "worker checkpoint" in captured.out
+    assert not events.exists()
+
+
+def test_monitor_records_a_crashed_worker_as_a_failed_run(
+    profiler: ModuleType,
+    tmp_path: Path,
+) -> None:
+    # A worker that dies writes no artifact of its own, so the run used to be
+    # indistinguishable from one that never started. A signalled child also
+    # reports a negative returncode, which collapsed to 0 under `or 0`.
+    events = tmp_path / "profile.running.json"
+    base = tmp_path / "profile"
+    suicide = "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"
+    process = subprocess.Popen([sys.executable, "-c", suicide], text=True)
+    args = SimpleNamespace(
+        heartbeat=0.01,
+        stage_timeout=30.0,
+        model="fixture",
+        strategy="greedy",
+        seed=0,
+        steps="layer",
+    )
+
+    code = profiler._monitor(  # noqa: SLF001
+        process,
+        args=args,
+        base=base,
+        events_path=events,
+    )
+
+    assert code == 128 + signal.SIGKILL
+    artifact = json.loads(base.with_suffix(".json").read_text())
+    assert artifact["status"] == "failed"
+    assert artifact["signal"] == signal.SIGKILL
+    assert artifact["exit_code"] == 128 + signal.SIGKILL
+
+
+def test_monitor_kills_the_child_and_clears_the_checkpoint_on_error(
+    profiler: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The loop has several exits; an escaping exception used to leave both a
+    # live child and its events file behind.
+    events = tmp_path / "profile.running.json"
+    events.write_text("{}")
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        text=True,
+    )
+
+    def explode(*_args: object, **_kwargs: object) -> int:
+        msg = "supervisor failed"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(profiler, "_monitor_loop", explode)
+
+    with pytest.raises(RuntimeError, match="supervisor failed"):
+        profiler._monitor(  # noqa: SLF001
+            process,
+            args=SimpleNamespace(),
+            base=tmp_path / "profile",
+            events_path=events,
+        )
+
+    assert process.poll() is not None
+    assert not events.exists()
 
 
 def test_monitor_times_out_worker_that_hangs_during_startup(

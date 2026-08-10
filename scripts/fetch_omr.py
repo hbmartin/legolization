@@ -35,6 +35,7 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
@@ -123,14 +124,31 @@ class Index:
         temp.replace(path)
 
 
-def _get(url: str) -> bytes | None:
-    """Fetch a URL, returning ``None`` for 404 and any transport failure."""
+class FetchFailure(Enum):
+    """Why a fetch produced no body, and whether that answer is final.
+
+    The distinction is load-bearing for the resumable index: a definitively
+    absent page may be recorded as visited, but a timeout, DNS failure, or
+    rate-limit response must not be - marking it visited would silently drop
+    that set from every future resumed crawl.
+    """
+
+    ABSENT = "absent"  # HTTP 404/410 - the resource is not there
+    TRANSIENT = "transient"  # timeout, DNS, 5xx, 429 - retry on a later crawl
+
+
+def _get(url: str) -> bytes | FetchFailure:
+    """Fetch a URL, or say whether the failure is definitive or retryable."""
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})  # noqa: S310 - https literal
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT_S) as response:  # noqa: S310
             return response.read()
+    except urllib.error.HTTPError as error:
+        return (
+            FetchFailure.ABSENT if error.code in (404, 410) else FetchFailure.TRANSIENT
+        )
     except (urllib.error.URLError, OSError):
-        return None
+        return FetchFailure.TRANSIENT
 
 
 def _strip_tags(html: str) -> str:
@@ -138,16 +156,27 @@ def _strip_tags(html: str) -> str:
     return " ".join(_TAG_PATTERN.sub(" ", html).split())
 
 
-def discover(set_id: int) -> tuple[str, list[OmrModel]]:
-    """Return a set page's title and the models it links, or an empty result."""
-    if (body := _get(_SET_URL.format(set_id=set_id))) is None:
-        return "", []
+def discover(set_id: int) -> tuple[str, list[OmrModel]] | None:
+    """Return a set page's title and models, or classify the failure.
+
+    ``("", [])`` means the set page is definitively absent and may be recorded
+    as visited; ``None`` means the fetch failed transiently and the set must be
+    retried on a later crawl.
+    """
+    body = _get(_SET_URL.format(set_id=set_id))
+    if isinstance(body, FetchFailure):
+        return None if body is FetchFailure.TRANSIENT else ("", [])
     html = body.decode("utf-8", errors="replace")
     title = (
         _strip_tags(match.group(1)) if (match := _TITLE_PATTERN.search(html)) else ""
     )
     seen: dict[str, OmrModel] = {}
     for url, name in _MPD_PATTERN.findall(html):
+        # The name becomes a local filename joined onto the crawl directory.
+        # A page (or a compromised page) offering a separator or a dotfile
+        # could otherwise write outside it.
+        if "/" in name or "\\" in name or name.startswith("."):
+            continue
         seen.setdefault(
             name, OmrModel(set_id=set_id, set_title=title, name=name, url=url)
         )
@@ -160,11 +189,18 @@ def download(model: OmrModel, *, dest: Path) -> OmrModel | str:
     Returns a failure string rather than raising, so one dead link never ends a
     crawl of thousands.
     """
-    target = dest / model.filename
+    # discover() filters names, but this is the last line before a filesystem
+    # access - a hand-edited index or a future caller must not bypass it.
+    name = model.filename
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        return f"{model.name}: download failed (unsafe filename {name!r})"
+    target = dest / name
+    if target.resolve().parent != dest.resolve():
+        return f"{model.name}: download failed (filename escapes {dest})"
     if target.exists():
         body = target.read_bytes()
-    elif (fetched := _get(model.url)) is None:
-        return f"{model.name}: download failed"
+    elif isinstance(fetched := _get(model.url), FetchFailure):
+        return f"{model.name}: download failed ({fetched.value})"
     else:
         body = fetched
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -220,7 +256,11 @@ def crawl(
     dest.mkdir(parents=True, exist_ok=True)
 
     for set_id in _pending(index, limit=limit):
-        _, models = discover(set_id)
+        if (discovered := discover(set_id)) is None:
+            failures.append(f"set {set_id}: transient fetch failure; will retry")
+            time.sleep(delay)
+            continue
+        _, models = discovered
         index.visited.add(set_id)
         for model in models:
             if model.name in index.models and index.models[model.name].bytes:

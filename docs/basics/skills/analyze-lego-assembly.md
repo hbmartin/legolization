@@ -9,13 +9,13 @@ Diagnosis only. It changes nothing and repairs nothing.
 ## Say something like
 
 > Why does my spaceship model feel wobbly at the wings?
-
+>
 > Is this model stable?
-
+>
 > What's floating in this build?
-
+>
 > Give me a structural report before I build this.
-
+>
 > Which bricks are weakest?
 
 **Accepts:** `.ldr`, `.mpd`.
@@ -24,7 +24,7 @@ Diagnosis only. It changes nothing and repairs nothing.
 
 ## What you get
 
-```
+```text
 spaceship-analysis/
   analysis.html                     a readable report, with pictures if you have a renderer
   diagnostics/connections.json      what is attached to what

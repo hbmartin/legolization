@@ -198,17 +198,170 @@ def _payload(
     }
 
 
+def _require(*, condition: bool, message: str) -> None:
+    """Reject a structurally invalid manifest with an actionable message."""
+    if not condition:
+        raise ValueError(message)
+
+
+def _is_str_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _is_int(value: object) -> bool:
+    """Accept only real integers; ``bool`` is an ``int`` subclass and must not count."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_candidate(entry: object, model: str, index: int) -> tuple[str, int]:
+    """Check one candidate row and return its ``(strategy, seed)`` position."""
+    label = f"model {model!r} candidate[{index}]"
+    _require(condition=isinstance(entry, dict), message=f"{label} must be an object")
+    candidate = cast("dict[str, Any]", entry)
+    strategy = candidate.get("strategy")
+    seed = candidate.get("seed")
+    _require(
+        condition=isinstance(strategy, str),
+        message=f"{label} has a non-string strategy",
+    )
+    _require(
+        condition=_is_int(seed),
+        message=f"{label} has a non-integer seed",
+    )
+    # None is the well-formed "not collected yet" state; `_rows` turns that
+    # into a precise per-candidate error, which beats rejecting the file.
+    _require(
+        condition=isinstance(candidate.get("config_hash"), str | None),
+        message=f"{label} has an invalid config_hash",
+    )
+    _require(
+        condition=isinstance(candidate.get("artifact"), str | None),
+        message=f"{label} has an invalid artifact path",
+    )
+    return cast("str", strategy), cast("int", seed)
+
+
+def _validate_model(entry: object, index: int, expected: set[tuple[str, int]]) -> str:
+    """Check one model row and return its name."""
+    _require(
+        condition=isinstance(entry, dict),
+        message=f"models[{index}] must be an object",
+    )
+    model = cast("dict[str, Any]", entry)
+    name = model.get("model")
+    _require(
+        condition=isinstance(name, str),
+        message=f"models[{index}].model must be a string",
+    )
+    label = cast("str", name)
+    _require(
+        condition=isinstance(model.get("kind"), str),
+        message=f"model {label!r} has a non-string kind",
+    )
+    _require(
+        condition=_is_str_list(model.get("traits")),
+        message=f"model {label!r} has invalid traits",
+    )
+    _require(
+        condition=_is_int(model.get("expect_min_buildable")),
+        message=f"model {label!r} has a non-integer expect_min_buildable",
+    )
+    _require(
+        condition=isinstance(model.get("input_hash"), str | None),
+        message=f"model {label!r} has an invalid input_hash",
+    )
+    candidates = model.get("candidates")
+    _require(
+        condition=isinstance(candidates, list),
+        message=f"model {label!r} has invalid candidates",
+    )
+    matrix = [
+        _validate_candidate(candidate, label, position)
+        for position, candidate in enumerate(cast("list[object]", candidates))
+    ]
+    _require(
+        condition=len(matrix) == len(expected) and set(matrix) == expected,
+        message=f"model {label!r} does not carry the complete candidate matrix",
+    )
+    return label
+
+
+def _validate_scope(scope: object) -> tuple[list[str], set[tuple[str, int]]]:
+    """Check the scope block and return its models and candidate matrix."""
+    _require(condition=isinstance(scope, dict), message="scope must be an object")
+    fields = cast("dict[str, Any]", scope)
+    seeds = fields.get("seeds")
+    _require(
+        condition=isinstance(fields.get("kind"), str),
+        message="scope.kind must be a string",
+    )
+    _require(
+        condition=_is_str_list(fields.get("models")),
+        message="scope.models must be a list of strings",
+    )
+    _require(
+        condition=_is_str_list(fields.get("strategies")),
+        message="scope.strategies must be a list of strings",
+    )
+    _require(
+        condition=isinstance(seeds, list) and all(_is_int(seed) for seed in seeds),
+        message="scope.seeds must be a list of integers",
+    )
+    return cast("list[str]", fields["models"]), {
+        (strategy, seed)
+        for strategy in cast("list[str]", fields["strategies"])
+        for seed in cast("list[int]", seeds)
+    }
+
+
+def _validate_manifest(payload: object) -> dict[str, Any]:
+    """Return a structurally sound collection manifest, or raise ``ValueError``.
+
+    This checks shape, not progress: a collection still mid-flight is
+    well-formed and its ``None`` placeholders survive, because ``_rows``
+    reports those as named incomplete candidates. Without the check, a
+    hand-edited or truncated manifest surfaced as a ``KeyError`` from deep
+    inside row building instead of a message naming the bad field.
+    """
+    _require(
+        condition=isinstance(payload, dict),
+        message="manifest root must be an object",
+    )
+    manifest = cast("dict[str, Any]", payload)
+    _require(
+        condition=manifest.get("schema") == 1,
+        message="unsupported collection manifest schema",
+    )
+    _require(
+        condition=isinstance(manifest.get("collection_id"), str),
+        message="collection_id must be a string",
+    )
+    _require(
+        condition=isinstance(manifest.get("identity"), dict),
+        message="identity must be an object",
+    )
+    scope_models, expected = _validate_scope(manifest.get("scope"))
+    models = manifest.get("models")
+    _require(condition=isinstance(models, list), message="models must be a list")
+    names = [
+        _validate_model(entry, index, expected)
+        for index, entry in enumerate(cast("list[object]", models))
+    ]
+    _require(
+        condition=len(names) == len(scope_models) and set(names) == set(scope_models),
+        message="models entries do not match the scope model set",
+    )
+    return manifest
+
+
 def _read_manifest(collection: Path) -> dict[str, Any]:
-    """Load and schema-check a collection manifest, raising ``ValueError``."""
+    """Load and validate a collection manifest, raising ``ValueError``."""
     try:
-        manifest = json.loads(collection.read_text())
+        payload = json.loads(collection.read_text())
     except (OSError, json.JSONDecodeError) as error:
         msg = f"cannot read collection: {error}"
         raise ValueError(msg) from error
-    if not isinstance(manifest, dict) or manifest.get("schema") != 1:
-        msg = "unsupported collection manifest schema"
-        raise ValueError(msg)
-    return manifest
+    return _validate_manifest(payload)
 
 
 def _baseline_diff(

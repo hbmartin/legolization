@@ -7,11 +7,11 @@
 ## Say something like
 
 > Make a printable instruction booklet for my mushroom model.
-
+>
 > I need build instructions for this.
-
+>
 > Export the steps as a PDF.
-
+>
 > Give me an A4 building guide.
 
 **Accepts:** any model or bundle directory.

@@ -67,6 +67,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      # deploy-pages needs Pages write access and an OIDC token to
+      # authenticate the deployment; the job does nothing else.
       pages: write
       id-token: write
     environment:

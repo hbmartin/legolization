@@ -143,6 +143,28 @@ def _report_dict(
     }
 
 
+def test_effective_config_is_the_sweep_configuration() -> None:
+    # Collect hashes this config to decide whether a cached artifact can be
+    # reused, so it has to be exactly what run_all will run. It used to be a
+    # hand-written copy of compare's builder, one edit away from silently
+    # reusing artifacts produced under different settings.
+    from legolization.compare import candidate_config
+    from legolization.pipeline import PipelineConfig
+
+    args = cast("argparse.Namespace", SimpleNamespace(seed=1, timeout=5.0))
+
+    assert collect._effective_config(  # noqa: SLF001 - drift regression seam
+        args,
+        strategy="fast",
+        seed=3,
+    ) == candidate_config(
+        PipelineConfig(seed=1),
+        strategy="fast",
+        seed=3,
+        timeout_s=5.0,
+    )
+
+
 def test_build_row_extracts_winner_metrics(evaluator: _EvaluatorModule) -> None:
     row = evaluator.build_row(
         model=_FakeModel(),

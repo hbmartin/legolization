@@ -44,6 +44,7 @@ comments and scripts, where a stale path is invisible until someone follows it. 
 first:
 
 ```sh
+cd "$(git rev-parse --show-toplevel)"
 grep -rn "docs/" --exclude-dir=.venv --exclude-dir=.git --exclude-dir=site .
 ```
 

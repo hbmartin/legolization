@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -16,6 +16,7 @@ from legolization.eval_artifacts import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
     from types import ModuleType
 
@@ -96,6 +97,74 @@ def _manifest(
     path = tmp_path / "collection.json"
     atomic_json(path, payload)
     return path
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected"),
+    [
+        (lambda payload: payload.pop("identity"), "identity must be an object"),
+        (
+            lambda payload: payload["scope"].__setitem__("seeds", ["0"]),
+            "scope.seeds must be a list of integers",
+        ),
+        (
+            lambda payload: payload["models"][0].__setitem__("traits", [1]),
+            "has invalid traits",
+        ),
+        (
+            lambda payload: payload["models"][0]["candidates"].clear(),
+            "does not carry the complete candidate matrix",
+        ),
+        (
+            lambda payload: payload["scope"]["models"].append("absent"),
+            "models entries do not match the scope model set",
+        ),
+    ],
+)
+def test_malformed_manifest_names_the_bad_field(
+    assembler: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mutate: Callable[[dict[str, Any]], object],
+    expected: str,
+) -> None:
+    # A hand-edited or truncated manifest used to surface as a KeyError from
+    # deep inside row building rather than a message naming the bad field.
+    identity = SourceIdentity(git_sha="a" * 40, source_hash="b" * 64, dirty=False)
+    collection = _manifest(
+        tmp_path,
+        artifact=tmp_path / "candidate.json",
+        identity=identity,
+    )
+    payload = json.loads(collection.read_text())
+    mutate(payload)
+    atomic_json(collection, payload)
+
+    assert assembler.main([str(collection), "--out", str(tmp_path / "assembled")]) == 1
+    assert expected in capsys.readouterr().err
+
+
+def test_mid_flight_collection_still_reports_named_candidates(
+    assembler: ModuleType,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Validation checks shape, not progress: the None placeholders a running
+    # collection carries must survive into the per-candidate error list.
+    identity = SourceIdentity(git_sha="a" * 40, source_hash="b" * 64, dirty=False)
+    collection = _manifest(
+        tmp_path,
+        artifact=tmp_path / "candidate.json",
+        identity=identity,
+    )
+    payload = json.loads(collection.read_text())
+    payload["models"][0]["input_hash"] = None
+    payload["models"][0]["candidates"][0]["config_hash"] = None
+    payload["models"][0]["candidates"][0]["artifact"] = None
+    atomic_json(collection, payload)
+
+    assert assembler.main([str(collection), "--out", str(tmp_path / "assembled")]) == 1
+    assert "fixture/greedy/seed-0: missing artifact path" in capsys.readouterr().err
 
 
 def test_incomplete_collection_cannot_write_baseline(

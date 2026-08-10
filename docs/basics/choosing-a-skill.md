@@ -11,12 +11,12 @@ you want to understand *why* it picked what it picked — or to point it somewhe
 | --- | --- | --- |
 | `.obj` `.stl` `.ply` `.vox` `.npy` | Bricks | [`legolize-model`](skills/legolize-model.md) |
 | …the same file | To know if it is usable first | [`prepare-lego-input`](skills/prepare-lego-input.md) |
-| `.ldr` `.mpd` | It made better | [`optimize-lego-build`](skills/optimize-lego-build.md) |
+| `.ldr` `.mpd` | To improve it | [`optimize-lego-build`](skills/optimize-lego-build.md) |
 | `.ldr` `.mpd` | To know why it is wobbly | [`analyze-lego-assembly`](skills/analyze-lego-assembly.md) |
-| `.ldr` `.mpd` | It fixed | [`repair-lego-assembly`](skills/repair-lego-assembly.md) |
+| `.ldr` `.mpd` | To fix it | [`repair-lego-assembly`](skills/repair-lego-assembly.md) |
 | Any model | A booklet | [`publish-lego-instructions`](skills/publish-lego-instructions.md) |
-| Existing instructions | Them checked | [`inspect-instructions`](skills/inspect-instructions.md) |
-| Any model | To see it | [`render-ldraw`](skills/render-ldraw.md) |
+| Existing instructions | To check them | [`inspect-instructions`](skills/inspect-instructions.md) |
+| LDraw model or bundle | To see it | [`render-ldraw`](skills/render-ldraw.md) |
 | A part the tool does not know | Support for it | [`extend-lego-part-support`](skills/extend-lego-part-support.md) |
 | A code change | To know if it helped overall | [`eval-corpus`](skills/eval-corpus.md) |
 
