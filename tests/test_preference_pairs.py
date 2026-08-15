@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 if TYPE_CHECKING:
@@ -32,6 +33,18 @@ def _load_review_module() -> ModuleType:
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules["review_pairs"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_render_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "render_pairs", _REPO / "scripts" / "render_pairs.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["render_pairs"] = module
     spec.loader.exec_module(module)
     return module
 
@@ -86,6 +99,30 @@ def test_validation_rejects_out_of_vocabulary_rows():
         review.validate_verdict(incomplete)
 
 
+def test_tracked_validation_requires_portable_hash_pinned_models() -> None:
+    review = _load_review_module()
+    models = sorted(
+        (_REPO / "references" / "aesthetic-preferences" / "models").glob("*")
+    )
+    assert len(models) >= 2
+    row = _verdict(
+        model_a=str(models[0].relative_to(_REPO)),
+        model_b=str(models[1].relative_to(_REPO)),
+        sha256_a=hashlib.sha256(models[0].read_bytes()).hexdigest(),
+        sha256_b=hashlib.sha256(models[1].read_bytes()).hexdigest(),
+    )
+    review.validate_verdict(row, require_portable_models=True)
+
+    with pytest.raises(review.VerdictError, match="repository-relative"):
+        review.validate_verdict(
+            {**row, "model_a": str(models[0])}, require_portable_models=True
+        )
+    with pytest.raises(review.VerdictError, match="does not match"):
+        review.validate_verdict(
+            {**row, "sha256_b": "0" * 64}, require_portable_models=True
+        )
+
+
 def test_winner_names_the_model_not_the_screen_side(tmp_path):
     # presentation_order is "ba": model_b was shown first. A human answering
     # "…=a" still means model_a wins; merge must not translate positions.
@@ -116,7 +153,7 @@ def test_pending_review_is_no_row_or_low_confidence_claude(tmp_path):
     assert [pair["id"] for pair in pending] == ["p-escalated", "p-unjudged"]
     # Human escalation stays blind: Claude's provisional call never reaches
     # the review page, where it could anchor the human's choice.
-    assert "claude_verdict" not in pending[0]
+    assert pending[0] == pairs[1]
 
 
 def test_human_row_supersedes_the_escalation(tmp_path):
@@ -143,6 +180,98 @@ def test_merge_refuses_a_pair_with_failed_renders(tmp_path):
     assert not log.exists()
 
 
+def test_merge_is_atomic_when_a_later_pair_has_failed_renders(
+    tmp_path: Path,
+) -> None:
+    review = _load_review_module()
+    log = tmp_path / "pairs.jsonl"
+    manifest = {
+        "pairs": [
+            _manifest_pair(id="p-valid"),
+            _manifest_pair(id="p-failed", status="render-failed"),
+        ]
+    }
+    with pytest.raises(review.VerdictError, match="cannot be judged"):
+        review.merge_verdicts("p-valid=a p-failed=b", manifest, log=log)
+    assert not log.exists()
+
+
+def test_merge_refuses_duplicate_pair_ids_atomically(tmp_path: Path) -> None:
+    review = _load_review_module()
+    log = tmp_path / "pairs.jsonl"
+    manifest = {"pairs": [_manifest_pair(id="p-duplicate")]}
+    with pytest.raises(review.VerdictError, match="appears more than once"):
+        review.merge_verdicts(
+            "p-duplicate=a p-duplicate=b",
+            manifest,
+            log=log,
+        )
+    assert not log.exists()
+
+
+def test_render_pair_contains_source_failures_and_records_portable_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    render = _load_render_module()
+
+    def fail_to_resolve(path: Path) -> Path:
+        msg = f"unreadable {path.name}"
+        raise OSError(msg)
+
+    monkeypatch.setattr(render, "resolve_model", fail_to_resolve)
+    pair = render.render_pair(
+        pair_id="broken",
+        side_a=tmp_path / "a.ldr",
+        side_b=tmp_path / "b.ldr",
+        out_dir=tmp_path / "renders",
+        views=("iso",),
+        size=200,
+        rng=np.random.default_rng(0),
+    )
+
+    assert pair.status == "render-failed"
+    assert pair.sha256_a is None
+    assert pair.sha256_b is None
+    assert set(pair.errors) == {"a", "b"}
+    assert Path(pair.model_a).is_absolute()
+    assert render._recorded_path(_REPO / "scripts" / "review_pairs.py") == (  # noqa: SLF001
+        "scripts/review_pairs.py"
+    )
+
+
+def test_review_main_reports_malformed_record_without_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    review = _load_review_module()
+
+    assert review.main(["--record", "{", "--log", str(tmp_path / "log.jsonl")]) == 1
+    captured = capsys.readouterr().err
+    assert "cannot record verdict" in captured
+    assert "Traceback" not in captured
+
+
+def test_review_page_marks_missing_images_unjudgeable_with_useful_alt_text(
+    tmp_path: Path,
+) -> None:
+    review = _load_review_module()
+    existing = tmp_path / "b.png"
+    existing.write_bytes(b"png bytes")
+    pair = _manifest_pair(
+        images={
+            "a": {"top": str(tmp_path / "missing.png")},
+            "b": {"iso": str(existing)},
+        }
+    )
+
+    page = review.review_page([pair])
+
+    assert 'alt="side 1, iso view"' in page
+    assert "This pair is unjudgeable" in page
+    assert "Missing image" in page
+
+
 def test_readme_documents_the_log_beside_it():
     readme = (_REPO / "references" / "aesthetic-preferences" / "README.md").read_text(
         encoding="utf-8"
@@ -150,12 +279,20 @@ def test_readme_documents_the_log_beside_it():
     assert "winner" in readme
     assert "never the screen position" in readme
     log_dir = _REPO / "references" / "aesthetic-preferences"
-    stray = [
-        path.name
-        for path in log_dir.iterdir()
-        if path.name not in {"README.md", "pairs.jsonl", "models"}
-    ]
-    assert not stray, f"unexpected files in the tracked log dir: {stray}"
+    assert {path.name for path in log_dir.iterdir()} == {
+        "README.md",
+        "pairs.jsonl",
+        "models",
+    }
+    referenced = {
+        (_REPO / str(row[f"model_{side}"])).resolve()
+        for row in _load_review_module().load_log()
+        for side in ("a", "b")
+    }
+    stored = {
+        path.resolve() for path in (log_dir / "models").rglob("*") if path.is_file()
+    }
+    assert stored == referenced
 
 
 def test_log_rows_if_any_all_validate():

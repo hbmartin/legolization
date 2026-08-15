@@ -579,7 +579,7 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - sequencing state
             centroids[position] = chunk_centroid(layout, remainder)
             previous_centroid = chunk_centroid(layout, subset_chunk)
             return None
-        composite = _best_press_union(
+        composite, union_truncated = _best_press_union(
             layout,
             seed=position,
             pending=pending,
@@ -595,6 +595,12 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - sequencing state
             analyze_prefix=analyze_prefix,
             press_prefix=press_prefix,
         )
+        if union_truncated:
+            warnings.append(
+                f"step {len(steps) + 1}: press-union search reached its "
+                f"{_PRESS_UNION_STATE_LIMIT}-state limit; using the best "
+                "evaluated ordering"
+            )
         if composite is not None:
             positions, chunk, static_score, fragile, union_press_score = composite
             if fragile:
@@ -887,6 +893,7 @@ type _PressUnionRank = tuple[
     tuple[int, ...],
     float,
 ]
+type _PressUnionChoice = tuple[tuple[int, ...], tuple[int, ...], float, bool, float]
 
 
 def _expanded_press_positions(  # noqa: PLR0913 - explicit search state
@@ -997,8 +1004,8 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
     max_step_size: int,
     analyze_prefix: Callable[[tuple[int, ...]], StabilityResult],
     press_prefix: Callable[[tuple[int, ...]], StabilityResult],
-) -> tuple[tuple[int, ...], tuple[int, ...], float, bool, float] | None:
-    """Find the smallest deterministic adjacent union that survives pressing."""
+) -> tuple[_PressUnionChoice | None, bool]:
+    """Return the best adjacent press union and whether the search hit its cap."""
     # Bounded search state stays explicit for deterministic unit tests.
     # lizard forgives(parameter_count)
     pending_set = set(pending)
@@ -1057,12 +1064,13 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
             if rank is not None:
                 (ranked if press_stable else fragile_ranked).append(rank)
             queue.append(state)
+    truncated = bool(queue)
     if not ranked and not fragile_ranked:
-        return None
+        return None, truncated
     fragile = not ranked
     chosen = min(fragile_ranked if fragile else ranked)
     _, press_score, _, _, positions, union, static_score = chosen
-    return positions, union, static_score, fragile, press_score
+    return (positions, union, static_score, fragile, press_score), truncated
 
 
 def _adjacent_chunk_positions(

@@ -44,7 +44,11 @@ on disk is the only render success signal — never trust exit codes.
 
 ## Workflow
 
-1. Render the pairs with fixed views and recorded presentation order:
+1. For a pair that will enter the tracked calibration log, first copy each
+   resolved model file into `references/aesthetic-preferences/models/` under a
+   distinct, meaningful filename. Render those repo-relative copies with fixed
+   views and recorded presentation order; the recorded hash then identifies
+   the same portable bytes a fresh checkout will contain:
 
    ```sh
    uv run python scripts/render_pairs.py --pair A.ldr B.ldr [--pair C D …]
@@ -104,4 +108,6 @@ judgement was wrong.
   `render_pairs.py` control the camera set-up; keep them identical across
   pairs that will be compared in one sitting.
 - `--log PATH` on `review_pairs.py` writes to an alternate log (tests
-  use this; the calibration log is the default path).
+  use this; the calibration log is the default path). Writes beside the
+  calibration log require both model paths to be repo-relative files under
+  `references/aesthetic-preferences/models/` with matching SHA-256 values.

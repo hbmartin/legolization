@@ -10,6 +10,7 @@ avoid.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -95,7 +96,7 @@ def test_algorithmic_sample_is_not_biased_to_the_lowest_indices(
     assert [score.name for score in rerun] == [score.name for score in scores]
 
 
-def test_promotion_gate_aggregates_strategy_candidates_by_source_model():
+def test_promotion_gate_aggregates_strategy_candidates_by_source_model() -> None:
     baseline = _load_baseline_module()
 
     def score(population: str, name: str, symmetry: float) -> object:
@@ -128,3 +129,52 @@ def test_promotion_gate_aggregates_strategy_candidates_by_source_model():
     medians = gate["medians"]
     assert isinstance(medians, dict)
     assert medians["ours"] == 0.55
+    assert baseline.distribution(values)["median"] == medians["ours"]
+
+
+def test_our_sample_keeps_every_strategy_for_its_boundary_model(
+    tmp_path: Path,
+) -> None:
+    baseline = _load_baseline_module()
+
+    def candidate(strategy: str, value: float) -> dict[str, object]:
+        return {
+            "strategy": strategy,
+            "metrics": {
+                "buildable": True,
+                "brick_count": 50,
+                "perpendicularity": value,
+                "symmetry": value,
+                "speckle": value,
+                "profile": value,
+            },
+        }
+
+    scorecard = tmp_path / "scorecard.json"
+    scorecard.write_text(
+        json.dumps(
+            {
+                "models": [
+                    {
+                        "model": "source-a",
+                        "candidates": [
+                            candidate("beauty", 0.1),
+                            candidate("bond", 0.2),
+                        ],
+                    },
+                    {
+                        "model": "source-b",
+                        "candidates": [candidate("beauty", 0.3)],
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    scores = baseline.our_scores(scorecard, limit=1, min_bricks=1)
+
+    assert [score.name for score in scores] == [
+        "source-a/beauty",
+        "source-a/bond",
+    ]

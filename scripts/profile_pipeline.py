@@ -439,11 +439,10 @@ def _drain(process: subprocess.Popen[str]) -> None:
 
 
 def _normalized_exit(return_code: int) -> int:
-    """Map a signalled child's ``-N`` to the shell's ``128 + N`` encoding.
+    """Convert a subprocess signal code ``-N`` to shell status ``128 + N``.
 
-    A raw ``-N`` collapses to 0 under ``or 0`` in a caller that reads it as an
-    exit status; the shell encoding keeps the monitor's return value and the
-    failure artifact's ``exit_code`` in agreement.
+    Nonnegative exit codes pass through unchanged, while this direct conversion
+    keeps the monitor's return value and failure artifact's ``exit_code`` aligned.
     """
     return 128 - return_code if return_code < 0 else return_code
 

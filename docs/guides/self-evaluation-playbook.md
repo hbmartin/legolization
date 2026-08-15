@@ -158,7 +158,11 @@ this protocol end to end; the rules that make the data usable:
 
 - **Fixed camera or no comparison.** Both sides render through
   `scripts/render_pairs.py` with the same views and size; a pair with any
-  failed view is `render-failed` and is never judged.
+  failed view is `render-failed` and is never judged. Manifests record model
+  and image paths relative to the repository when possible (absolute
+  otherwise), so later fitting and batch review do not depend on the render
+  command's working directory. A review page that can no longer read an image
+  marks that pair unjudgeable instead of aborting the rest of the page.
 - **Judge the images, then look at the labels.** Strategy names and
   paths bias close calls; form the verdict from the renders alone.
   Presentation order is randomized and *recorded* so position bias stays

@@ -342,6 +342,7 @@ def _validate_manifest(payload: object) -> dict[str, Any]:
     _require(
         condition=(
             bool(collection_id)
+            and collection_id not in {".", ".."}
             and "\\" not in cast("str", collection_id)
             and collection_id == Path(cast("str", collection_id)).name
         ),

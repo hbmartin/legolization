@@ -351,7 +351,7 @@ def test_side_contacts_keep_identity_columns(layout):
     graph = ConnectionGraph.from_layout(layout)
     assert graph.side_contacts
     side_vars = 2 * len(graph.side_contacts)
-    tail = reduced.expansion[:, -side_vars:].toarray()
+    tail = reduced.expansion.toarray()[:, -side_vars:]
     # Each side generator keeps its own reduced column (identity block).
     assert np.count_nonzero(tail) == side_vars
     np.testing.assert_allclose(tail[tail != 0.0], 1.0)

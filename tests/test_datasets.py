@@ -314,6 +314,59 @@ def test_omr_discover_rejects_path_bearing_model_names(
     assert [model.name for model in models] == ["good-1.mpd"]
 
 
+@pytest.mark.parametrize(
+    ("contents", "expected_downloads"),
+    [
+        (None, 1),
+        (b"bad", 1),
+        (b"expected", 0),
+    ],
+)
+def test_omr_resume_skips_only_matching_downloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    contents: bytes | None,
+    expected_downloads: int,
+) -> None:
+    omr = _load_omr_module()
+    model = omr.OmrModel(
+        set_id=1,
+        set_title="Set",
+        name="model.mpd",
+        url="https://example.test/model.mpd",
+    )
+    recorded = omr.OmrModel(
+        set_id=1,
+        set_title="Set",
+        name="model.mpd",
+        url="https://example.test/model.mpd",
+        bytes=len(b"expected"),
+    )
+    if contents is not None:
+        target = tmp_path / "ldraw" / model.filename
+        target.parent.mkdir(parents=True)
+        target.write_bytes(contents)
+    downloads: list[Path] = []
+
+    def fake_download(candidate: object, *, dest: Path) -> object:
+        downloads.append(dest)
+        return candidate
+
+    monkeypatch.setattr(omr, "download", fake_download)
+    index = omr.Index(models={model.name: recorded})
+    assert (
+        omr._record_models(  # noqa: SLF001
+            [model],
+            index,
+            index_only=False,
+            dest=tmp_path,
+            delay=0.0,
+        )
+        == []
+    )
+    assert len(downloads) == expected_downloads
+
+
 def test_omr_crawl_does_not_mark_a_transient_failure_visited(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -322,11 +375,12 @@ def test_omr_crawl_does_not_mark_a_transient_failure_visited(
     omr = _load_omr_module()
     monkeypatch.setattr(omr, "discover", lambda _set_id: None)
     monkeypatch.setattr(omr, "_MAX_SET_ID", 3)
-    index, failures = omr.crawl(
+    result = omr.crawl(
         dest=tmp_path, delay=0.0, limit=0, index_only=True, progress=False
     )
-    assert index.visited == set()
-    assert len(failures) == 3
+    assert result.index.visited == set()
+    assert len(result.failures) == 3
+    assert result.outage is None
 
 
 def test_omr_crawl_marks_a_definitively_absent_set_visited(
@@ -335,8 +389,30 @@ def test_omr_crawl_marks_a_definitively_absent_set_visited(
     omr = _load_omr_module()
     monkeypatch.setattr(omr, "discover", lambda _set_id: ("", []))
     monkeypatch.setattr(omr, "_MAX_SET_ID", 2)
-    index, failures = omr.crawl(
+    result = omr.crawl(
         dest=tmp_path, delay=0.0, limit=0, index_only=True, progress=False
     )
-    assert index.visited == {1, 2}
-    assert failures == []
+    assert result.index.visited == {1, 2}
+    assert result.failures == []
+    assert result.outage is None
+
+
+def test_omr_main_surfaces_outage_after_truncated_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    omr = _load_omr_module()
+    outage = "aborting after 10 consecutive discovery failures"
+    result = omr.CrawlResult(
+        index=omr.Index(),
+        failures=[f"transient {index}" for index in range(25)],
+        outage=outage,
+    )
+    monkeypatch.setattr(omr, "crawl", lambda **_kwargs: result)
+
+    assert omr.main(["--dest", str(tmp_path), "--delay", "0.5", "--quiet"]) == 1
+    captured = capsys.readouterr()
+    assert outage in captured.err
+    assert "transient 19" in captured.err
+    assert "transient 20" not in captured.err

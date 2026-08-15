@@ -77,6 +77,20 @@ _MIN_MODELS = 15
 _MIN_PAIRS_PER_TERM = 5
 _SIGN_CONSISTENCY_FLOOR = 0.9
 _SMOOTHING = 0.1  # pseudo-wins per compared pair; keeps the BT MLE finite
+_PAIR_ROW_FIELDS = (
+    "id",
+    "sha256_a",
+    "sha256_b",
+    "winner",
+    "judge",
+    "confidence",
+)
+_MODEL_ROW_FIELDS = ("model_a", "model_b")
+_ROW_VOCABULARIES = {
+    "winner": frozenset({"a", "b", "tie"}),
+    "judge": frozenset({"claude", "human"}),
+    "confidence": frozenset({"high", "low"}),
+}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -122,10 +136,64 @@ class BootstrapInput:
     pairs: tuple[Pair, ...]
 
 
+def _validate_preference_row(
+    row: Mapping[str, object],
+    *,
+    row_number: int | None = None,
+    require_paths: bool = True,
+) -> None:
+    """Reject a row the fitter cannot interpret without guessing."""
+    label = (
+        f"preference row {row_number}" if row_number is not None else "preference row"
+    )
+    required = (
+        (*_PAIR_ROW_FIELDS, *_MODEL_ROW_FIELDS) if require_paths else _PAIR_ROW_FIELDS
+    )
+    if missing := [field for field in required if field not in row]:
+        msg = f"{label} is missing {', '.join(missing)}"
+        raise ValueError(msg)
+    for field in required:
+        if not isinstance(row[field], str) or not row[field]:
+            msg = f"{label} field {field} must be a non-empty string"
+            raise ValueError(msg)
+    for field, allowed in _ROW_VOCABULARIES.items():
+        if row[field] not in allowed:
+            msg = f"{label} field {field} must be one of {sorted(allowed)}"
+            raise ValueError(msg)
+
+
+def _load_preference_rows(log: Path) -> list[dict[str, object]]:
+    """Read and validate JSONL with a source line in every diagnostic."""
+    rows: list[dict[str, object]] = []
+    for row_number, line in enumerate(
+        log.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError as error:
+            msg = f"preference row {row_number} is invalid JSON: {error.msg}"
+            raise ValueError(msg) from error
+        if not isinstance(parsed, dict):
+            msg = f"preference row {row_number} must be a JSON object"
+            raise TypeError(msg)
+        row = {str(key): value for key, value in parsed.items()}
+        _validate_preference_row(row, row_number=row_number)
+        rows.append(row)
+    return rows
+
+
 def effective_pairs(rows: Sequence[Mapping[str, object]]) -> list[Pair]:
     """Reduce log rows to one weighted verdict per pair id."""
     latest: dict[str, Mapping[str, object]] = {}
-    for row in rows:  # file order; later rows supersede within a judge class
+    for row_number, row in enumerate(rows, start=1):
+        _validate_preference_row(
+            row,
+            row_number=row_number,
+            require_paths=False,
+        )
+        # File order: later rows supersede within a judge class.
         pair_id = str(row["id"])
         held = latest.get(pair_id)
         if held is None or row["judge"] == "human" or held["judge"] == "claude":
@@ -245,12 +313,15 @@ def fit_resolved_pairs(
     component, keeps the reported sample size aligned with the actual fit.
     """
     resolved_models = frozenset(terms_by_model)
-    resolved_pairs = _pairs_for_models(pairs, resolved_models)
+    resolved_pairs = _pairs_for_models(pairs=pairs, models=resolved_models)
     if not resolved_pairs:
         msg = "no judged comparison has two models with reproducible term values"
         raise ValueError(msg)
     fit = fit_bradley_terry(resolved_pairs)
-    fitted_pairs = _pairs_for_models(resolved_pairs, frozenset(fit.models))
+    fitted_pairs = _pairs_for_models(
+        pairs=resolved_pairs,
+        models=frozenset(fit.models),
+    )
     if len(fit.models) < 2 or not fitted_pairs:
         msg = "fewer than two connected judged models have reproducible term values"
         raise ValueError(msg)
@@ -268,7 +339,8 @@ def judged_model_terms(
     """
     catalog = default_catalog()
     paths: dict[str, Path] = {}
-    for row in rows:
+    for row_number, row in enumerate(rows, start=1):
+        _validate_preference_row(row, row_number=row_number)
         for side in ("a", "b"):
             recorded = Path(str(row[f"model_{side}"]))
             paths.setdefault(
@@ -293,6 +365,7 @@ def judged_model_terms(
             loaded = load_model(model)
             analysis = loaded.analyze(None)
             if loaded.model is None or analysis is None:
+                print(f"skipping {recorded}: no analyzable model", file=sys.stderr)
                 continue
             imported = import_occurrences(
                 analysis.occurrences,
@@ -338,7 +411,7 @@ def _regression_inputs(
     if len(scored) != len(fit.models):
         msg = "fit contains models without terms; use fit_resolved_pairs first"
         raise ValueError(msg)
-    fitted_pairs = _pairs_for_models(pairs, frozenset(scored))
+    fitted_pairs = _pairs_for_models(pairs=pairs, models=frozenset(scored))
     if not fitted_pairs:
         msg = "regression needs comparisons from the fitted model component"
         raise ValueError(msg)
@@ -369,7 +442,14 @@ def _sign_consistency(
     rng: np.random.Generator,
     bootstrap: int,
 ) -> np.ndarray:
-    """Re-fit Bradley-Terry scores for each Bayesian bootstrap draw."""
+    """Nested-bootstrap comparisons and scored models for each sign draw.
+
+    The Bayesian comparison bootstrap captures uncertainty in the observed
+    verdicts without disconnecting their graph. Resampling the resulting model
+    rows then captures uncertainty in which judged models supplied the term
+    relationship; conditioning on that model set made chance correlations look
+    substantially more stable than they are.
+    """
     if bootstrap <= 0:
         msg = "bootstrap draws must be positive"
         raise ValueError(msg)
@@ -384,9 +464,12 @@ def _sign_consistency(
         sample_scores = np.array(
             [sample_scores_by_model[model] for model in bootstrap_input.models]
         )
+        chosen = rng.integers(
+            len(bootstrap_input.models), size=len(bootstrap_input.models)
+        )
         try:
             sample_beta, *_ = np.linalg.lstsq(
-                bootstrap_input.design, sample_scores, rcond=None
+                bootstrap_input.design[chosen], sample_scores[chosen], rcond=None
             )
         except np.linalg.LinAlgError:
             continue
@@ -440,9 +523,11 @@ def regress_terms(
     rng: np.random.Generator,
     bootstrap: int = 1_000,
 ) -> WeightReport:
-    """OLS of latent scores on z-scored terms, with fit-aware bootstrap checks."""
+    """OLS of latent scores with nested comparison/model bootstrap checks."""
     scored, fitted_pairs, matrix, scores = _regression_inputs(
-        fit, terms_by_model, pairs
+        fit=fit,
+        terms_by_model=terms_by_model,
+        pairs=pairs,
     )
     terms, design = _design_matrix(matrix)
     beta_full, *_ = np.linalg.lstsq(design, scores, rcond=None)
@@ -468,9 +553,25 @@ def regress_terms(
         term: float(consistency_values[position]) if beta[position] != 0 else 0.0
         for position, term in enumerate(terms)
     }
-    recommended, caveats = _recommendations(terms, beta, consistency_values)
+    recommended, caveats = _recommendations(
+        terms=terms,
+        beta=beta,
+        consistency=consistency_values,
+    )
 
     n_pairs = len(fitted_pairs)
+    design_rank = int(np.linalg.matrix_rank(design))
+    if design_rank < design.shape[1]:
+        caveats.append(
+            f"ADVISORY ONLY: design rank {design_rank} < "
+            f"{design.shape[1]} columns; recommendations suppressed"
+        )
+        recommended = dict.fromkeys(terms, 0.0)
+    elif len(scored) <= design.shape[1]:
+        caveats.append(
+            f"ADVISORY ONLY: {len(scored)} scored models <= "
+            f"{design.shape[1]} design columns; no residual degrees of freedom"
+        )
     if len(scored) < _MIN_MODELS:
         caveats.append(f"ADVISORY ONLY: {len(scored)} scored models < {_MIN_MODELS}")
     if n_pairs < _MIN_PAIRS_PER_TERM * len(terms):
@@ -548,21 +649,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.log.exists():
         print(f"no preference log at {args.log}", file=sys.stderr)
         return 1
-    rows = [
-        json.loads(line)
-        for line in args.log.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    pairs = effective_pairs(rows)
+    try:
+        rows = _load_preference_rows(args.log)
+        pairs = effective_pairs(rows)
+    except (OSError, TypeError, ValueError) as error:
+        print(f"cannot fit preference weights: {error}", file=sys.stderr)
+        return 1
     if not pairs:
         print("the preference log has no judged pairs yet", file=sys.stderr)
         return 1
-    terms_by_model = judged_model_terms(rows)
     try:
-        fit, fitted_pairs = fit_resolved_pairs(pairs, terms_by_model)
+        terms_by_model = judged_model_terms(rows)
+        fit, fitted_pairs = fit_resolved_pairs(
+            pairs=pairs,
+            terms_by_model=terms_by_model,
+        )
         report = regress_terms(
-            fit,
-            terms_by_model,
+            fit=fit,
+            terms_by_model=terms_by_model,
             pairs=fitted_pairs,
             rng=np.random.default_rng(args.seed),
             bootstrap=args.bootstrap,
@@ -593,7 +697,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         encoding="utf-8",
     )
-    markdown = to_markdown(report, fit)
+    markdown = to_markdown(report=report, fit=fit)
     (out / "report.md").write_text(markdown, encoding="utf-8")
     print(markdown)
     print(f"wrote {out}", file=sys.stderr)

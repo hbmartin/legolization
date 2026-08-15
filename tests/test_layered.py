@@ -1,5 +1,6 @@
 """Layer engine and the four per-layer tiling strategies."""
 
+import math
 from dataclasses import fields
 
 import numpy as np
@@ -31,6 +32,7 @@ from legolization.placement.layered import (
     SmGaStrategy,
 )
 from legolization.placement.layered.engine import (
+    LayeredStrategy,
     LayerProblem,
     Rect2D,
     build_context,
@@ -365,6 +367,38 @@ def test_beauty_uses_global_mirror_center():
     )
 
 
+def test_beauty_searches_both_global_axes_and_keeps_lower_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grid = VoxelGrid(codes=np.full((2, 1, 3), 4, dtype=np.int16))
+    strategy = BeautyStrategy(beauty=BeautyWeights.preset("aesthetics"))
+    searched_axes: list[int | None] = []
+
+    def fake_place(
+        self: BeautyStrategy,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None = None,
+    ) -> Layout:
+        del grid, rng, deadline
+        searched_axes.append(self._mirror_axis)
+        assert self._mirror_axis is not None
+        self._run_cost = 2.0 if self._mirror_axis == 0 else 1.0
+        layout = Layout(catalog=default_catalog())
+        layout.add("brick_1x1", self._mirror_axis, 0, 0, 0, 4)
+        return layout
+
+    monkeypatch.setattr(LayeredStrategy, "place", fake_place)
+    layout = strategy.place(grid, rng=np.random.default_rng(0))
+
+    assert searched_axes == [0, 1]
+    assert next(iter(layout)).x == 1
+    assert strategy._mirror_x is None  # noqa: SLF001
+    assert strategy._mirror_y is None  # noqa: SLF001
+    assert strategy._mirror_axis is None  # noqa: SLF001
+
+
 def test_aesthetics_metrics_on_hand_layouts():
     crossing = Layout(catalog=default_catalog())
     crossing.add("brick_1x4", 0, 0, 0, 0, 4)
@@ -478,7 +512,7 @@ def test_evaluate_reports_new_terms_and_zero_weights_reproduce_old_total():
     assert weighted.total == pytest.approx(baseline.total + baseline.speckle)
 
 
-def test_objective_dataclasses_preserve_positional_callers():
+def test_objective_dataclasses_preserve_positional_callers() -> None:
     weights = ObjectiveWeights(1.0, 4.0, 0.5, 1.0, 0.25, 0.25, 4.0, 0.8)
     assert weights.bond_alpha1 == 4.0
     assert weights.bond_alpha2 == 0.8
@@ -497,6 +531,22 @@ def test_objective_dataclasses_preserve_positional_callers():
         "speckle",
         "profile",
     ]
+    evaluated = evaluate(
+        Layout(catalog=default_catalog()),
+        VoxelGrid(codes=np.zeros((1, 1, 1), dtype=np.int16)),
+    )
+    legacy = ObjectiveReport(
+        evaluated.cost,
+        evaluated.instability,
+        evaluated.aesthetics,
+        evaluated.colour_error,
+        evaluated.perpendicularity,
+        evaluated.symmetry,
+        evaluated.total,
+        evaluated.stability,
+    )
+    assert math.isnan(legacy.speckle)
+    assert math.isnan(legacy.profile)
 
 
 # --- grounded-at-band-time (support-aware placement) ---

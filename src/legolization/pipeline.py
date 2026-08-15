@@ -471,6 +471,12 @@ class _FinishOperation:
     warning: str
 
 
+@dataclass(frozen=True, slots=True)
+class _SnotTier:
+    spanning_donors: bool
+    warning: str
+
+
 def _finish_surfaces(
     layout: Layout,
     working: VoxelGrid,
@@ -586,43 +592,59 @@ def _snot_tiers(
     losing every mount — one bad wall carve must not cost the safe
     cladding (measured on mushroom: 86 accepted mounts, all reverted).
     """
-    guard = (layout.copy(), stability) if stability.stable else None
-    snot_added = apply_snot(layout, working, spanning_donors=False)
-    if snot_added:
-        broke = guard is not None and _tier_confidently_unstable(layout, config)
-        stability = stability if broke else analyze(layout, config.solver)
-        if guard is not None and (broke or not stability.stable):
-            layout.replace_with(guard[0])
-            stability = guard[1]
-            snot_added = 0
-            if config.progress is not None:
-                config.progress(
-                    ProgressEvent(
-                        "snot: cladding pass would break stability; reverted",
-                        phase="finish.snot",
-                        level="warning",
-                    )
-                )
+    conservative_added, stability = _run_snot_tier(
+        layout,
+        working,
+        config,
+        stability,
+        tier=_SnotTier(
+            spanning_donors=False,
+            warning="snot: cladding pass would break stability; reverted",
+        ),
+    )
+    bold_added, stability = _run_snot_tier(
+        layout,
+        working,
+        config,
+        stability,
+        tier=_SnotTier(
+            spanning_donors=True,
+            warning=(
+                "snot: wall-carving tier would break stability; "
+                "kept the conservative tier"
+            ),
+        ),
+    )
+    return conservative_added + bold_added, stability
+
+
+def _run_snot_tier(
+    layout: Layout,
+    working: VoxelGrid,
+    config: PipelineConfig,
+    stability: StabilityResult,
+    *,
+    tier: _SnotTier,
+) -> tuple[int, StabilityResult]:
+    """Apply one SNOT tier and restore its stable checkpoint on regression."""
     checkpoint = (layout.copy(), stability) if stability.stable else None
-    bold_added = apply_snot(layout, working, spanning_donors=True)
-    if bold_added:
-        broke = checkpoint is not None and _tier_confidently_unstable(layout, config)
-        stability = stability if broke else analyze(layout, config.solver)
-        if checkpoint is not None and (broke or not stability.stable):
-            layout.replace_with(checkpoint[0])
-            stability = checkpoint[1]
-            if config.progress is not None:
-                config.progress(
-                    ProgressEvent(
-                        "snot: wall-carving tier would break stability; "
-                        "kept the conservative tier",
-                        phase="finish.snot",
-                        level="warning",
-                    )
-                )
-        else:
-            snot_added += bold_added
-    return snot_added, stability
+    added = apply_snot(layout, working, spanning_donors=tier.spanning_donors)
+    if not added:
+        return 0, stability
+    broke = checkpoint is not None and _tier_confidently_unstable(layout, config)
+    updated = stability if broke else analyze(layout, config.solver)
+    if checkpoint is None or (not broke and updated.stable):
+        return added, updated
+    layout.replace_with(checkpoint[0])
+    if config.progress is not None:
+        config.progress(
+            ProgressEvent(
+                tier.warning,
+                phase="finish.snot",
+                level="warning",
+            )
+        )
+    return 0, checkpoint[1]
 
 
 def _tier_confidently_unstable(layout: Layout, config: PipelineConfig) -> bool:

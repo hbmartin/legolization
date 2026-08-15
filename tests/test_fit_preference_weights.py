@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
+import pytest
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -71,7 +72,7 @@ def _synthetic_world(
     return judged, terms, truth
 
 
-def test_bt_recovers_the_latent_ordering():
+def test_bt_recovers_the_latent_ordering() -> None:
     module = _load_fit_module()
     pairs, _, truth = _synthetic_world(module)
     fit = module.fit_bradley_terry(pairs)
@@ -83,7 +84,7 @@ def test_bt_recovers_the_latent_ordering():
     assert correlation > 0.9
 
 
-def test_regression_recovers_signs_and_recommends_accordingly():
+def test_regression_recovers_signs_and_recommends_accordingly() -> None:
     module = _load_fit_module()
     pairs, terms, _ = _synthetic_world(module)
     fit = module.fit_bradley_terry(pairs)
@@ -102,7 +103,43 @@ def test_regression_recovers_signs_and_recommends_accordingly():
     assert report.r_squared > 0.5
 
 
-def test_fit_is_deterministic_given_seed():
+def test_nested_bootstrap_rejects_a_deterministic_noise_relationship() -> None:
+    module = _load_fit_module()
+    rng = np.random.default_rng(1)
+    names = [f"m{index:02d}" for index in range(20)]
+    latent = rng.normal(size=len(names))
+    terms = {
+        name: dict(zip(module._TERMS, rng.normal(size=4), strict=True))  # noqa: SLF001
+        for name in names
+    }
+    pairs = []
+    for _ in range(160):
+        a, b = rng.choice(len(names), size=2, replace=False)
+        probability_a = 1.0 / (1.0 + np.exp(-(latent[a] - latent[b])))
+        pairs.append(
+            module.Pair(
+                model_a=names[a],
+                model_b=names[b],
+                winner="a" if rng.random() < probability_a else "b",
+                weight=1.0,
+            )
+        )
+
+    report = module.regress_terms(
+        module.fit_bradley_terry(pairs),
+        terms,
+        pairs=pairs,
+        rng=np.random.default_rng(10_001),
+        bootstrap=200,
+    )
+
+    # Terms are independent of the latent preference scores. Comparison-only
+    # reweighting made symmetry clear the 90% floor for this fixed fixture;
+    # resampling model rows correctly suppresses every chance association.
+    assert set(report.recommended.values()) == {0.0}
+
+
+def test_fit_is_deterministic_given_seed() -> None:
     module = _load_fit_module()
     pairs, terms, _ = _synthetic_world(module)
     first = module.regress_terms(
@@ -123,7 +160,7 @@ def test_fit_is_deterministic_given_seed():
     assert first.recommended == second.recommended
 
 
-def test_small_n_marks_the_report_advisory():
+def test_small_n_marks_the_report_advisory() -> None:
     module = _load_fit_module()
     pairs, terms, _ = _synthetic_world(module, models=6, pairs=10)
     report = module.regress_terms(
@@ -136,7 +173,36 @@ def test_small_n_marks_the_report_advisory():
     assert any("ADVISORY" in caveat for caveat in report.caveats)
 
 
-def test_ties_and_disconnection_are_survivable():
+def test_rank_deficient_design_suppresses_recommendations() -> None:
+    module = _load_fit_module()
+    pairs = [
+        module.Pair(model_a="a", model_b="b", winner="a", weight=1.0),
+        module.Pair(model_a="b", model_b="c", winner="a", weight=1.0),
+        module.Pair(model_a="a", model_b="c", winner="a", weight=1.0),
+    ]
+    terms = {
+        name: {
+            "perpendicularity": value,
+            "symmetry": 2 * value,
+            "speckle": 3 * value,
+            "profile": 4 * value,
+        }
+        for name, value in (("a", 0.0), ("b", 1.0), ("c", 2.0))
+    }
+    fit = module.fit_bradley_terry(pairs)
+    report = module.regress_terms(
+        fit,
+        terms,
+        pairs=pairs,
+        rng=np.random.default_rng(0),
+        bootstrap=10,
+    )
+
+    assert set(report.recommended.values()) == {0.0}
+    assert any("design rank" in caveat for caveat in report.caveats)
+
+
+def test_ties_and_disconnection_are_survivable() -> None:
     module = _load_fit_module()
     pairs = [
         module.Pair(model_a="x1", model_b="x2", winner="tie", weight=1.0),
@@ -151,7 +217,7 @@ def test_ties_and_disconnection_are_survivable():
     assert fit.converged
 
 
-def test_regression_counts_only_pairs_from_the_fitted_component():
+def test_regression_counts_only_pairs_from_the_fitted_component() -> None:
     module = _load_fit_module()
     pairs = [
         module.Pair(model_a="x1", model_b="x2", winner="a", weight=1.0),
@@ -176,7 +242,9 @@ def test_regression_counts_only_pairs_from_the_fitted_component():
     assert report.n_pairs == 3
 
 
-def test_bootstrap_refits_bradley_terry_for_each_draw(monkeypatch):
+def test_bootstrap_refits_bradley_terry_for_each_draw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _load_fit_module()
     pairs, terms, _ = _synthetic_world(module)
     fit = module.fit_bradley_terry(pairs)
@@ -197,23 +265,27 @@ def test_bootstrap_refits_bradley_terry_for_each_draw(monkeypatch):
     )
 
 
-def test_stale_model_paths_return_a_controlled_cli_error(tmp_path, capsys):
+def test_stale_model_paths_return_a_controlled_cli_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     module = _load_fit_module()
     log = tmp_path / "pairs.jsonl"
     log.write_text(
-        json.dumps(
-            {
-                "id": "stale",
-                "model_a": "/missing/a.ldr",
-                "model_b": "/missing/b.ldr",
-                "sha256_a": "a",
-                "sha256_b": "b",
-                "winner": "a",
-                "judge": "human",
-                "confidence": "high",
-            }
-        )
-        + "\n",
+        f"{
+            json.dumps(
+                {
+                    'id': 'stale',
+                    'model_a': '/missing/a.ldr',
+                    'model_b': '/missing/b.ldr',
+                    'sha256_a': 'a',
+                    'sha256_b': 'b',
+                    'winner': 'a',
+                    'judge': 'human',
+                    'confidence': 'high',
+                }
+            )
+        }\n",
         encoding="utf-8",
     )
     assert (
@@ -223,7 +295,30 @@ def test_stale_model_paths_return_a_controlled_cli_error(tmp_path, capsys):
     assert "no judged comparison has two models" in capsys.readouterr().err
 
 
-def test_effective_pairs_prefers_human_and_weights_low_confidence():
+@pytest.mark.parametrize(
+    ("contents", "diagnostic"),
+    [
+        ('{"id":', "invalid JSON"),
+        ('{"id": "incomplete"}\n', "is missing"),
+    ],
+)
+def test_malformed_log_rows_return_a_controlled_cli_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    contents: str,
+    diagnostic: str,
+) -> None:
+    module = _load_fit_module()
+    log = tmp_path / "pairs.jsonl"
+    log.write_text(contents, encoding="utf-8")
+
+    assert module.main(["--log", str(log), "--bootstrap", "1"]) == 1
+    captured = capsys.readouterr().err
+    assert diagnostic in captured
+    assert "Traceback" not in captured
+
+
+def test_effective_pairs_prefers_human_and_weights_low_confidence() -> None:
     module = _load_fit_module()
     rows = [
         {
