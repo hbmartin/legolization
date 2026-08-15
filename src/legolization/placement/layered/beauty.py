@@ -124,7 +124,12 @@ class BeautyStrategy(LayeredStrategy):
         footprint = grid.filled_mask.any(axis=2)
         xs, ys = np.nonzero(footprint)
         if not xs.size:
-            return LayeredStrategy.place(self, grid, rng=rng, deadline=deadline)
+            return LayeredStrategy.place(
+                self,
+                grid=grid,
+                rng=rng,
+                deadline=deadline,
+            )
 
         self._mirror_x = int(xs.min()) + int(xs.max())
         self._mirror_y = int(ys.min()) + int(ys.max())
@@ -143,7 +148,7 @@ class BeautyStrategy(LayeredStrategy):
                 # the zero-argument super()'s captured __class__ cell.
                 layout = LayeredStrategy._tile_layout(  # noqa: SLF001
                     self,
-                    grid,
+                    grid=grid,
                     rng=axis_rng,
                     deadline=axis_deadline,
                 )
@@ -163,8 +168,8 @@ class BeautyStrategy(LayeredStrategy):
                 self._mirror_axis = candidate.axis
                 LayeredStrategy._finalize_layout(  # noqa: SLF001
                     self,
-                    candidate.layout,
-                    grid,
+                    layout=candidate.layout,
+                    grid=grid,
                     rng=candidate.rng,
                     deadline=overall_deadline,
                 )

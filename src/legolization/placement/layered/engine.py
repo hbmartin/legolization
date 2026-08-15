@@ -149,8 +149,13 @@ class LayeredStrategy:
     ) -> Layout:
         """Tile every layer problem bottom-up, then repair topology."""
         deadline = self._resolve_deadline(deadline)
-        layout = self._tile_layout(grid, rng=rng, deadline=deadline)
-        self._finalize_layout(layout, grid, rng=rng, deadline=deadline)
+        layout = self._tile_layout(grid=grid, rng=rng, deadline=deadline)
+        self._finalize_layout(
+            layout=layout,
+            grid=grid,
+            rng=rng,
+            deadline=deadline,
+        )
         return layout
 
     def _resolve_deadline(self, deadline: float | None) -> float | None:
