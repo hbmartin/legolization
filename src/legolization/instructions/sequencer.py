@@ -597,9 +597,10 @@ def _sequence(  # noqa: PLR0913, PLR0915, C901 - sequencing state
         )
         if union_truncated:
             warnings.append(
-                f"step {len(steps) + 1}: press-union search reached its "
-                f"{_PRESS_UNION_STATE_LIMIT}-state limit; using the best "
-                "evaluated ordering"
+                _press_union_truncation_warning(
+                    len(steps) + 1,
+                    found_union=composite is not None,
+                )
             )
         if composite is not None:
             positions, chunk, static_score, fragile, union_press_score = composite
@@ -896,6 +897,21 @@ type _PressUnionRank = tuple[
 type _PressUnionChoice = tuple[tuple[int, ...], tuple[int, ...], float, bool, float]
 
 
+def _press_union_truncation_warning(
+    step_index: int,
+    *,
+    found_union: bool,
+) -> str:
+    """Describe the fallback selected after a bounded union search."""
+    prefix = (
+        f"step {step_index}: press-union search reached its "
+        f"{_PRESS_UNION_STATE_LIMIT}-state limit; "
+    )
+    if found_union:
+        return f"{prefix}using the best evaluated union"
+    return f"{prefix}no valid union found; using the least-fragile ordering"
+
+
 def _expanded_press_positions(  # noqa: PLR0913 - explicit search state
     *,
     positions: frozenset[int],
@@ -1016,7 +1032,8 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
     seen = {queue[0]}
     ranked: list[_PressUnionRank] = []
     fragile_ranked: list[_PressUnionRank] = []
-    while queue and len(seen) < _PRESS_UNION_STATE_LIMIT:
+    truncated = False
+    while queue and not truncated:
         positions = queue.pop(0)
         adjacent = _adjacent_chunk_positions(
             positions=positions,
@@ -1026,10 +1043,6 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
             centroids=centroids,
         )
         for candidate_position in adjacent:
-            # Re-checked per candidate: one popped node can fan out past the
-            # cap, and every admitted state costs a press evaluation.
-            if len(seen) >= _PRESS_UNION_STATE_LIMIT:
-                break
             state = _expanded_press_positions(
                 positions=positions,
                 candidate_position=candidate_position,
@@ -1041,6 +1054,12 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
             )
             if state is None or state in seen:
                 continue
+            # Check only when an unseen state would be admitted. Reaching the
+            # numerical cap after the final reachable state is exhaustive, not
+            # truncated, while rejecting this state proves work was omitted.
+            if len(seen) >= _PRESS_UNION_STATE_LIMIT:
+                truncated = True
+                break
             seen.add(state)
             evaluated = _evaluate_press_union(
                 layout,
@@ -1064,7 +1083,6 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
             if rank is not None:
                 (ranked if press_stable else fragile_ranked).append(rank)
             queue.append(state)
-    truncated = bool(queue)
     if not ranked and not fragile_ranked:
         return None, truncated
     fragile = not ranked

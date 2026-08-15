@@ -196,7 +196,12 @@ def discover(set_id: int) -> tuple[str, list[OmrModel]] | None:
     return title, list(seen.values())
 
 
-def download(model: OmrModel, *, dest: Path) -> OmrModel | str:
+def download(
+    model: OmrModel,
+    *,
+    dest: Path,
+    refresh: bool = False,
+) -> OmrModel | str:
     """Fetch one MPD, returning the model enriched with licence and size.
 
     Returns a failure string rather than raising, so one dead link never ends a
@@ -210,7 +215,7 @@ def download(model: OmrModel, *, dest: Path) -> OmrModel | str:
     target = dest / name
     if target.resolve().parent != dest.resolve():
         return f"{model.name}: download failed (filename escapes {dest})"
-    if target.exists():
+    if target.exists() and not refresh:
         body = target.read_bytes()
     elif isinstance(fetched := _get(model.url), FetchFailure):
         return f"{model.name}: download failed ({fetched.value})"
@@ -280,21 +285,22 @@ def _record_models(
     failures: list[str] = []
     for model in models:
         recorded = index.models.get(model.name)
-        if (
-            recorded is not None
-            and recorded.bytes
-            and _download_matches(
-                model,
-                expected_bytes=recorded.bytes,
-                dest=dest,
-            )
+        recorded_bytes = recorded.bytes if recorded is not None else 0
+        if recorded_bytes and _download_matches(
+            model,
+            expected_bytes=recorded_bytes,
+            dest=dest,
         ):
             continue
         if index_only:
             index.models.setdefault(model.name, model)
             continue
         time.sleep(delay)
-        match download(model, dest=dest / "ldraw"):
+        match download(
+            model,
+            dest=dest / "ldraw",
+            refresh=bool(recorded_bytes),
+        ):
             case str() as failure:
                 failures.append(failure)
             case OmrModel() as fetched:

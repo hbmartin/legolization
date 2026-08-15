@@ -156,14 +156,15 @@ rather than *orderings of tilings*.
 
 The balance term's mirror **centre and axis are fixed globally before any
 tiling**. `BeautyStrategy.place` computes the whole-model footprint's `min + max`
-sums once, runs one complete placement with the x axis fixed and another with the
-y axis fixed, and keeps the lower-cost completed layout. This makes the search
-cost agree with the one-axis `symmetry_error` objective: allowing each layer to
-take its own `min(x, y)` would undercharge layouts that flip axes between layers.
-The overall deadline is shared between the two runs, and both start from the
-same RNG state so the axis is the controlled difference. (The paper balances
-each layer about its own bbox; a directly driven `tile()` call still retains
-that per-layer centre and better-axis fallback.)
+sums once, tiles once with the x axis fixed and once with the y axis fixed, and
+post-processes only the lower-cost tiling. Equal-cost tilings are both finalized
+so final symmetry and brick count can break the tie. This makes the search cost
+agree with the one-axis `symmetry_error` objective: allowing each layer to take
+its own `min(x, y)` would undercharge layouts that flip axes between layers. The
+overall deadline is shared between the two runs, and both start from the same
+RNG state so the axis is the controlled difference. (The paper balances each
+layer about its own bbox; a directly driven `tile()` call still retains that
+per-layer centre and better-axis fallback.)
 
 The priority queue is keyed `(accumulated cost, counter, covered, rects)`. On overflow,
 the beam is truncated with `nsmallest(beam_width, ...)` and re-heapified. Pruning:
