@@ -99,6 +99,30 @@ def test_validation_rejects_out_of_vocabulary_rows():
         review.validate_verdict(incomplete)
 
 
+def test_tracked_validation_requires_portable_hash_pinned_models() -> None:
+    review = _load_review_module()
+    models = sorted(
+        (_REPO / "references" / "aesthetic-preferences" / "models").glob("*")
+    )
+    assert len(models) >= 2
+    row = _verdict(
+        model_a=str(models[0].relative_to(_REPO)),
+        model_b=str(models[1].relative_to(_REPO)),
+        sha256_a=hashlib.sha256(models[0].read_bytes()).hexdigest(),
+        sha256_b=hashlib.sha256(models[1].read_bytes()).hexdigest(),
+    )
+    review.validate_verdict(row, require_portable_models=True)
+
+    with pytest.raises(review.VerdictError, match="repository-relative"):
+        review.validate_verdict(
+            {**row, "model_a": str(models[0])}, require_portable_models=True
+        )
+    with pytest.raises(review.VerdictError, match="does not match"):
+        review.validate_verdict(
+            {**row, "sha256_b": "0" * 64}, require_portable_models=True
+        )
+
+
 def test_winner_names_the_model_not_the_screen_side(tmp_path):
     # presentation_order is "ba": model_b was shown first. A human answering
     # "…=a" still means model_a wins; merge must not translate positions.
@@ -255,12 +279,20 @@ def test_readme_documents_the_log_beside_it():
     assert "winner" in readme
     assert "never the screen position" in readme
     log_dir = _REPO / "references" / "aesthetic-preferences"
-    stray = [
-        path.name
-        for path in log_dir.iterdir()
-        if path.name not in {"README.md", "pairs.jsonl", "models"}
-    ]
-    assert not stray, f"unexpected files in the tracked log dir: {stray}"
+    assert {path.name for path in log_dir.iterdir()} == {
+        "README.md",
+        "pairs.jsonl",
+        "models",
+    }
+    referenced = {
+        (_REPO / str(row[f"model_{side}"])).resolve()
+        for row in _load_review_module().load_log()
+        for side in ("a", "b")
+    }
+    stored = {
+        path.resolve() for path in (log_dir / "models").rglob("*") if path.is_file()
+    }
+    assert stored == referenced
 
 
 def test_log_rows_if_any_all_validate():

@@ -128,6 +128,15 @@ class Index:
         temp.replace(path)
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CrawlResult:
+    """Resumable crawl state plus ordinary failures and an outage abort."""
+
+    index: Index
+    failures: list[str]
+    outage: str | None
+
+
 class FetchFailure(Enum):
     """Why a fetch produced no body, and whether that answer is final.
 
@@ -300,11 +309,12 @@ def crawl(
     limit: int,
     index_only: bool,
     progress: bool,
-) -> tuple[Index, list[str]]:
-    """Walk set ids, recording models and optionally downloading them."""
+) -> CrawlResult:
+    """Walk set ids, recording models and explicitly reporting an outage."""
     index_path = dest / "index.json"
     index = Index.load(index_path)
     failures: list[str] = []
+    outage: str | None = None
     dest.mkdir(parents=True, exist_ok=True)
 
     consecutive_failures = 0
@@ -313,7 +323,7 @@ def crawl(
             failures.append(f"set {set_id}: transient fetch failure; will retry")
             consecutive_failures += 1
             if consecutive_failures >= _OUTAGE_THRESHOLD:
-                failures.append(
+                outage = (
                     f"aborting after {consecutive_failures} consecutive discovery "
                     "failures - the site looks down; unvisited sets retry next run"
                 )
@@ -338,7 +348,7 @@ def crawl(
 
     if progress:
         print(file=sys.stderr)
-    return index, failures
+    return CrawlResult(index=index, failures=failures, outage=outage)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -375,13 +385,14 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    index, failures = crawl(
+    result = crawl(
         dest=args.dest,
         delay=args.delay,
         limit=args.limit,
         index_only=args.index_only,
         progress=not args.quiet,
     )
+    index, failures = result.index, result.failures
     downloaded = [model for model in index.models.values() if model.bytes]
     total = sum(model.bytes for model in downloaded)
     licences = sorted({model.license for model in downloaded if model.license})
@@ -394,9 +405,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  licence  {share:5d}  {licence}")
     if unlicensed := [model.name for model in downloaded if not model.license]:
         print(f"  NO !LICENSE header: {len(unlicensed)} model(s)")
+    if result.outage is not None:
+        print(f"  failed   {result.outage}", file=sys.stderr)
     for failure in failures[:20]:
         print(f"  failed   {failure}", file=sys.stderr)
-    return 0
+    return int(result.outage is not None)
 
 
 if __name__ == "__main__":

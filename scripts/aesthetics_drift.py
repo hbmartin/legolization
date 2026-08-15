@@ -187,19 +187,26 @@ def _op_recolour(layout: Layout, rng: np.random.Generator, palette: list[int]) -
     return True
 
 
+def _swappable_pairs(layout: Layout) -> list[tuple[int, int]]:
+    """Return every differently coloured unordered brick pair exactly once."""
+    ids = sorted(layout.bricks)
+    return [
+        (first, second)
+        for position, first in enumerate(ids)
+        for second in ids[position + 1 :]
+        if layout.bricks[first].colour_code != layout.bricks[second].colour_code
+    ]
+
+
 def _op_swap(layout: Layout, rng: np.random.Generator, _palette: list[int]) -> bool:
     if len(layout) < 2:
         return False
-    ids = sorted(layout.bricks)
-    first = layout.bricks[int(rng.choice(ids))]
-    alternatives = [
-        identifier
-        for identifier in ids
-        if layout.bricks[identifier].colour_code != first.colour_code
-    ]
-    if not alternatives:
+    pairs = _swappable_pairs(layout)
+    if not pairs:
         return False
-    second = layout.bricks[int(rng.choice(alternatives))]
+    first_id, second_id = pairs[int(rng.integers(len(pairs)))]
+    first = layout.bricks[first_id]
+    second = layout.bricks[second_id]
     removed_first = layout.remove(first.brick_id)
     removed_second = layout.remove(second.brick_id)
     _reinsert(layout, removed_first, colour=removed_second.colour_code)

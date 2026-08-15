@@ -79,6 +79,7 @@ _DEFAULT_OUT = _REPO / "eval" / "datasets" / "aesthetics"
 
 # Every term the report compares, in table order. All are errors in [0, 1].
 _FIELDS = ("perpendicularity", "symmetry", "speckle", "profile")
+_POPULATIONS = ("human", "algorithmic", "ours")
 _GATE_P_THRESHOLD = 0.01
 
 
@@ -192,49 +193,77 @@ def algorithmic_scores(
     return scores
 
 
+def _scorecard_candidate(
+    *, model: dict[str, object], candidate: dict[str, object], min_bricks: int
+) -> Score | None:
+    """Convert one complete, buildable baseline candidate into a score."""
+    metrics = candidate.get("metrics")
+    if not isinstance(metrics, dict) or not metrics.get("buildable"):
+        return None
+    if not isinstance(bricks := metrics.get("brick_count"), int | float):
+        return None
+    if bricks < min_bricks:
+        return None
+    extracted = {
+        field: float(value)
+        for field in _FIELDS
+        if isinstance(value := metrics.get(field), int | float)
+    }
+    strategy = candidate.get("strategy")
+    model_name = model.get("model")
+    if (
+        len(extracted) != len(_FIELDS)
+        or not isinstance(strategy, str)
+        or not isinstance(model_name, str)
+    ):
+        return None
+    return Score(
+        population="ours",
+        name=f"{model_name}/{strategy}",
+        bricks=int(bricks),
+        perpendicularity=extracted["perpendicularity"],
+        symmetry=extracted["symmetry"],
+        speckle=extracted["speckle"],
+        profile=extracted["profile"],
+    )
+
+
 def our_scores(baseline: Path, *, limit: int, min_bricks: int) -> list[Score]:
     """Read our own layouts' terms out of the committed baseline scorecard.
 
     The scorecard already records ``perpendicularity`` and ``symmetry`` per
     candidate, so this costs nothing and - more importantly - scores exactly the
     layouts the project's own regression tracks, rather than fresh ones.
+    ``limit`` counts complete source models, never individual strategies, so
+    every source-level average contains all of its eligible candidates.
     """
     if not baseline.exists():
         return []
     payload = json.loads(baseline.read_text(encoding="utf-8"))
     scores: list[Score] = []
+    included_models = 0
     for model in payload.get("models", []):
-        for candidate in model.get("candidates", []):
-            metrics = candidate.get("metrics") or {}
-            if not metrics.get("buildable"):
-                continue
-            if (bricks := metrics.get("brick_count", 0)) < min_bricks:
-                continue
-            extracted: dict[str, float] = {}
-            for field in _FIELDS:
-                if isinstance(value := metrics.get(field), int | float):
-                    extracted[field] = float(value)
-            if len(extracted) != len(_FIELDS):
-                continue  # a pre-audition scorecard; regenerate the baseline
-            scores.append(
-                Score(
-                    population="ours",
-                    name=f"{model['model']}/{candidate['strategy']}",
-                    bricks=int(bricks),
-                    perpendicularity=extracted["perpendicularity"],
-                    symmetry=extracted["symmetry"],
-                    speckle=extracted["speckle"],
-                    profile=extracted["profile"],
+        model_scores = [
+            score
+            for candidate in model.get("candidates", [])
+            if (
+                score := _scorecard_candidate(
+                    model=model, candidate=candidate, min_bricks=min_bricks
                 )
             )
-            if limit and len(scores) >= limit:
-                return scores
+            is not None
+        ]
+        if not model_scores:
+            continue
+        scores.extend(model_scores)
+        included_models += 1
+        if limit and included_models >= limit:
+            break
     return scores
 
 
-def distribution(scores: Sequence[Score], *, field: str) -> dict[str, float]:
-    """Summarize one term's distribution over one population."""
-    values = np.array([getattr(score, field) for score in scores])
+def distribution(values: np.ndarray) -> dict[str, float]:
+    """Summarize one term over independent source-model observations."""
     if not values.size:
         return {}
     return {
@@ -248,15 +277,16 @@ def distribution(scores: Sequence[Score], *, field: str) -> dict[str, float]:
     }
 
 
-def _gate_values(scores: Sequence[Score], *, population: str, field: str) -> np.ndarray:
-    """Return independent values for one promotion-gate population.
+def _independent_values(
+    members: Sequence[Score], *, population: str, field: str
+) -> np.ndarray:
+    """Return independent values for one population and term.
 
     A single source model produces several ``ours`` candidates (one per
     strategy), so those candidates are correlated alternatives rather than
     independent observations. Average them before the Mann-Whitney test;
     human and algorithmic rows each originate from one source model already.
     """
-    members = [score for score in scores if score.population == population]
     if population != "ours":
         return np.array([getattr(score, field) for score in members])
     by_model: dict[str, list[float]] = {}
@@ -266,7 +296,36 @@ def _gate_values(scores: Sequence[Score], *, population: str, field: str) -> np.
     return np.array([float(np.mean(values)) for _, values in sorted(by_model.items())])
 
 
-def promotion_gates(scores: Sequence[Score]) -> dict[str, dict[str, object]]:
+def _population_values(
+    scores: Sequence[Score],
+) -> dict[str, dict[str, np.ndarray]]:
+    """Group once, then assemble each term at its independent source level."""
+    by_population: dict[str, list[Score]] = {
+        population: [] for population in _POPULATIONS
+    }
+    for score in scores:
+        if score.population in by_population:
+            by_population[score.population].append(score)
+    return {
+        field: {
+            population: _independent_values(
+                by_population[population], population=population, field=field
+            )
+            for population in _POPULATIONS
+        }
+        for field in _FIELDS
+    }
+
+
+def _gate_values(scores: Sequence[Score], *, population: str, field: str) -> np.ndarray:
+    """Compatibility helper returning one gate population's values."""
+    members = [score for score in scores if score.population == population]
+    return _independent_values(members, population=population, field=field)
+
+
+def _promotion_gates(
+    values_by_field: dict[str, dict[str, np.ndarray]],
+) -> dict[str, dict[str, object]]:
     """Compute the mechanical promotion gate per term.
 
     A term may gain a non-zero default weight only when the medians order
@@ -276,10 +335,7 @@ def promotion_gates(scores: Sequence[Score]) -> dict[str, dict[str, object]]:
     """
     gates: dict[str, dict[str, object]] = {}
     for field in _FIELDS:
-        values = {
-            population: _gate_values(scores, population=population, field=field)
-            for population in ("human", "algorithmic", "ours")
-        }
+        values = values_by_field[field]
         if any(not array.size for array in values.values()):
             gates[field] = {"computed": False, "reason": "a population is empty"}
             continue
@@ -298,6 +354,11 @@ def promotion_gates(scores: Sequence[Score]) -> dict[str, dict[str, object]]:
             "passed": ordering_ok and p_value < _GATE_P_THRESHOLD,
         }
     return gates
+
+
+def promotion_gates(scores: Sequence[Score]) -> dict[str, dict[str, object]]:
+    """Compute promotion gates from source-independent population values."""
+    return _promotion_gates(_population_values(scores))
 
 
 def to_markdown(
@@ -325,6 +386,9 @@ def to_markdown(
         "model. That skeleton is the vocabulary our generator works in, so the",
         "comparison is meaningful, but it is not a comparison of finished sets.",
         "",
+        "Every table row summarizes independent source models. Multiple",
+        "`ours` strategies from one source are averaged before all statistics.",
+        "",
     ]
     for field in _FIELDS:
         lines += [
@@ -333,7 +397,7 @@ def to_markdown(
             "| population | n | mean | median | p25 | p75 | min | max |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
-        for population in ("human", "algorithmic", "ours"):
+        for population in _POPULATIONS:
             if not (row := summary.get(field, {}).get(population)):
                 continue
             lines.append(
@@ -402,7 +466,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--sample",
         type=_non_negative,
         default=200,
-        help="cap of eligible layouts per population (0 = uncapped)",
+        help="cap of eligible source models per population (0 = uncapped)",
     )
     parser.add_argument(
         "--seed",
@@ -437,21 +501,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("no layouts scored; check --omr / --baseline paths", file=sys.stderr)
         return 1
 
+    values_by_field = _population_values(scores)
     summary = {
         field: {
-            population: distribution(
-                [score for score in scores if score.population == population],
-                field=field,
-            )
-            for population in ("human", "algorithmic", "ours")
+            population: distribution(values)
+            for population, values in populations.items()
         }
-        for field in _FIELDS
+        for field, populations in values_by_field.items()
     }
     summary = {
         field: {name: row for name, row in populations.items() if row}
         for field, populations in summary.items()
     }
-    gates = promotion_gates(scores)
+    gates = _promotion_gates(values_by_field)
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = args.out / stamp

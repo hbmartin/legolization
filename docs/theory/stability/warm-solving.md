@@ -82,6 +82,10 @@ iterations.
 `press_probe_selection` presses a subset, which is what the chunk-split refinement uses
 when a whole chunk fails the press but part of it would pass.
 
+The adjacent-union refinement is bounded to 128 explored states because each admitted
+state costs a press LP. If the bound is reached, the sequencer keeps the best evaluated
+union and emits a warning so a potentially truncated ordering is never silent.
+
 ---
 
 ## `RemovalSolver`

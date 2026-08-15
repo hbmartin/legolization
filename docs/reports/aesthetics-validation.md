@@ -1,7 +1,8 @@
 # Report: beauty-term validation
 
-*2026-08-09. Closes ROADMAP's "validate the beauty scalar against human
-judgement". Instruments: `scripts/aesthetics_baseline.py` (population
+*2026-08-09; instruments refreshed 2026-08-15 after source-level aggregation
+and drift-sampler fixes. Closes ROADMAP's "validate the beauty scalar against
+human judgement". Instruments: `scripts/aesthetics_baseline.py` (population
 separation + promotion gates) and `scripts/aesthetics_drift.py` (permutation
 drift). Reports quoted here regenerate under `eval/datasets/` (untracked);
 this page records the standing verdicts and the decisions taken on them.*
@@ -20,20 +21,20 @@ weight's magnitude comes from the judged-preference program
 
 | term | population ordering | drift detection | default weight | classification |
 | --- | --- | --- | ---: | --- |
-| `symmetry` (global-plane v2) | correct (human best) | **PASS** (mean ρ 0.77, 91% +, drift +0.56) | 0.25 | the one live beauty term |
-| `layer_symmetry` (Min g_a, v1) | correct | PASS (0.79 / 99% / +0.36) | — | superseded; kept for comparison |
-| `perpendicularity` | **inverted** | **fail** (0.10 / 55%) | 0.0 | structural diagnostic only |
-| `speckle` (audition) | inverted | fail (0.44 / 77%) | 0.0 | measures palette richness, not beauty |
-| `profile` (audition) | inverted | PASS (0.78 / 97%) | 0.0 | measures shape complexity, not beauty |
+| `symmetry` (global-plane v2) | correct (human best) | **PASS** (mean ρ 0.69, 91% +, drift +0.61) | 0.25 | the one live beauty term |
+| `layer_symmetry` (Min g_a, v1) | correct | PASS (0.68 / 93% / +0.35) | — | superseded; kept for comparison |
+| `perpendicularity` | **fails** (algorithmic best) | **fail** (0.04 / 53% / +0.02) | 0.0 | structural diagnostic only |
+| `speckle` (audition) | inverted | fail (0.58 / 89% / +0.26) | 0.0 | measures palette richness, not beauty |
+| `profile` (audition) | inverted | PASS (0.79 / 97% / +0.08) | 0.0 | measures shape complexity, not beauty |
 
-## Population medians (sample 200 per external population, min 20 bricks)
+## Population medians (200 per external population, 10 `ours` sources, min 20 bricks)
 
 | term | human (OMR) | ours | algorithmic (S2B) | reading |
 | --- | ---: | ---: | ---: | --- |
-| `perpendicularity` | 0.649 | 0.542 | 0.468 | *backwards*: the worse a population looks, the "better" it scores |
-| `symmetry` (v2) | 0.322 | 0.642 | 0.685 | right way; ~2× headroom to the human median |
-| `speckle` | 0.373 | 0.027 | 0.000 | humans colour-block *more* junctions — deliberate multi-colour design |
-| `profile` | 0.363 | 0.062 | 0.100 | human sets carry overhangs/greebles; our voxel fills are smooth |
+| `perpendicularity` | 0.649 | 0.656 | 0.460 | algorithmic output scores best, so the required ordering fails |
+| `symmetry` (v2) | 0.322 | 0.414 | 0.689 | right way; ours retains measurable headroom to human designs |
+| `speckle` | 0.373 | 0.025 | 0.000 | humans colour-block *more* junctions — deliberate multi-colour design |
+| `profile` | 0.363 | 0.062 | 0.091 | human sets carry overhangs/greebles; our voxel fills are smooth |
 
 The human `symmetry` distribution is strongly bimodal (p25 0.06, p75 0.93):
 most official sets are almost perfectly globally mirror-symmetric
@@ -53,8 +54,8 @@ would overstate the test's precision.
 
 1. **`perpendicularity` demoted to weight 0.0** (was 0.25). Both
    methodologies agree it does not measure what makes a build look right:
-   official sets use *more* parallel stacking (coherent walls and studs-up
-   texture), and vandalising a set barely moves the term. The computation,
+   the algorithmic contrast class scores best while ours and official sets are
+   nearly tied, and vandalising a set barely moves the term. The computation,
    report fields, and TOML key survive — re-enable with
    `[placement.weights] perpendicularity = 0.25` — and the term is
    reclassified as a structural bonding diagnostic beside `seam_alignment`.
@@ -62,7 +63,7 @@ would overstate the test's precision.
    per-layer g_a let every layer choose its own mirror axis *and* centre, so
    a staircase of individually symmetric layers scored perfect; the global
    form fixes both blind spots, keeps the field name (zero schema churn), and
-   detects drift with a larger effect size (+0.56 vs +0.36). The v1 stays
+   detects drift with a larger effect size (+0.61 vs +0.35). The v1 stays
    exported as `layer_symmetry_error` for side-by-side measurement. The
    `beauty` strategy's beam search now aims at the same global mirror centre
    the objective measures (`BeautyStrategy.place` fixes it from the target
@@ -100,7 +101,7 @@ series, over 25 OMR skeletons × 3 seeds.
 ## Falsifiable expectations going forward
 
 - Optimizing v2 symmetry harder (beauty presets, merge acceptance) should
-  move our median from 0.64 toward the human 0.32 *without* moving
+  move our source-model median from 0.41 toward the human 0.32 *without* moving
   `max_score` or buildability — re-run the baseline after each change.
 - If the preference fit, at honest sample sizes, assigns `symmetry` a weight
   far from 0.25 or resurrects a demoted term with high sign-consistency, the

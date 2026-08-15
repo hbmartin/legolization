@@ -97,6 +97,23 @@ def test_colour_operators_reject_visual_noops() -> None:
     assert [(brick.brick_id, brick.colour_code) for brick in layout] == before
 
 
+def test_swap_candidates_are_uniform_unordered_colour_pairs() -> None:
+    drift = _load_drift_module()
+    layout = Layout(catalog=default_catalog())
+    red_a = layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    red_b = layout.add("brick_1x1", 1, 0, 0, 0, 4)
+    blue = layout.add("brick_1x1", 2, 0, 0, 0, 1)
+    green = layout.add("brick_1x1", 3, 0, 0, 0, 2)
+
+    assert drift._swappable_pairs(layout) == [  # noqa: SLF001
+        (red_a.brick_id, blue.brick_id),
+        (red_a.brick_id, green.brick_id),
+        (red_b.brick_id, blue.brick_id),
+        (red_b.brick_id, green.brick_id),
+        (blue.brick_id, green.brick_id),
+    ]
+
+
 def test_constant_series_scores_zero_rho():
     drift = _load_drift_module()
     assert drift._rho([0.25, 0.25, 0.25, 0.25]) == 0.0  # noqa: SLF001

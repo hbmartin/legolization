@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import html
 import json
 import sys
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
 
 _REPO = Path(__file__).resolve().parent.parent
 _LOG = _REPO / "references" / "aesthetic-preferences" / "pairs.jsonl"
+_TRACKED_MODELS = _LOG.parent / "models"
 _DEFAULT_OUT = _REPO / "eval" / "preferences"
 
 _WINNERS = frozenset({"a", "b", "tie"})
@@ -63,7 +65,37 @@ class VerdictError(ValueError):
     """A verdict row that must not enter the log."""
 
 
-def validate_verdict(row: dict[str, object]) -> dict[str, object]:
+def _validate_portable_models(row: dict[str, object]) -> None:
+    """Require tracked, repo-relative model paths with matching digests."""
+    model_root = _TRACKED_MODELS.resolve()
+    for side in ("a", "b"):
+        recorded = Path(str(row[f"model_{side}"]))
+        if recorded.is_absolute():
+            msg = f"model_{side} must be repository-relative"
+            raise VerdictError(msg)
+        resolved = (_REPO / recorded).resolve()
+        if not resolved.is_relative_to(model_root):
+            msg = (
+                f"model_{side} must resolve inside {_TRACKED_MODELS.relative_to(_REPO)}"
+            )
+            raise VerdictError(msg)
+        if not resolved.is_file():
+            msg = f"model_{side} does not exist: {recorded}"
+            raise VerdictError(msg)
+        actual = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        if actual != row[f"sha256_{side}"]:
+            msg = f"sha256_{side} does not match {recorded}"
+            raise VerdictError(msg)
+
+
+def _is_tracked_log(log: Path) -> bool:
+    """Return whether a log would be committed beside the canonical log."""
+    return log.resolve().parent == _LOG.resolve().parent
+
+
+def validate_verdict(
+    row: dict[str, object], *, require_portable_models: bool = False
+) -> dict[str, object]:
     """Check one row against the log conventions; return it stamped."""
     if missing := [key for key in _REQUIRED if key not in row]:
         msg = f"verdict is missing {', '.join(missing)}"
@@ -89,6 +121,8 @@ def validate_verdict(row: dict[str, object]) -> dict[str, object]:
     ):
         msg = "views must be a non-empty list of view names"
         raise VerdictError(msg)
+    if require_portable_models:
+        _validate_portable_models(row)
     stamped = dict(row)
     stamped.setdefault("recorded", datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
     return stamped
@@ -96,7 +130,7 @@ def validate_verdict(row: dict[str, object]) -> dict[str, object]:
 
 def append_verdict(row: dict[str, object], *, log: Path = _LOG) -> None:
     """Validate and append one verdict line."""
-    stamped = validate_verdict(row)
+    stamped = validate_verdict(row, require_portable_models=_is_tracked_log(log))
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as handle:
         handle.write(f"{json.dumps(stamped, sort_keys=True)}\n")
@@ -126,7 +160,7 @@ def load_log(log: Path = _LOG) -> list[dict[str, object]]:
         if not line.strip():
             continue
         row = _json_object(line, source=f"{log}:{row_number}")
-        validate_verdict(row)
+        validate_verdict(row, require_portable_models=_is_tracked_log(log))
         rows.append(row)
     return rows
 
@@ -283,7 +317,8 @@ def merge_verdicts(
                     "confidence": "high",
                     "presentation_order": pair.get("presentation_order"),
                     "notes": "batch review",
-                }
+                },
+                require_portable_models=_is_tracked_log(log),
             )
         )
     for row in pending_rows:

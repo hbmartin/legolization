@@ -906,8 +906,10 @@ def test_cross_band_union_constraints_and_dependency_order() -> None:
     )
 
 
-def test_press_union_prefers_stable_then_truthful_fragile_fallback() -> None:
-    from legolization.instructions.sequencer import _best_press_union
+def test_press_union_prefers_stable_then_truthful_fragile_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from legolization.instructions import sequencer
 
     layout = Layout(catalog=default_catalog())
     base = layout.add("brick_1x1", 0, 0, 0, 0, 4)
@@ -947,21 +949,31 @@ def test_press_union_prefers_stable_then_truthful_fragile_fallback() -> None:
         "max_step_size": 2,
         "analyze_prefix": lambda _chunk: static,
     }
-    stable_choice = _best_press_union(
+    stable_choice, stable_truncated = sequencer._best_press_union(  # noqa: SLF001
         **common,
         press_prefix=lambda chunk: robust if len(chunk) == 2 else fragile,
     )
+    assert not stable_truncated
     assert stable_choice is not None
     assert stable_choice[0] == (0, 1)
     assert stable_choice[3] is False
 
-    fallback = _best_press_union(
+    fallback, fallback_truncated = sequencer._best_press_union(  # noqa: SLF001
         **common,
         press_prefix=lambda _chunk: fragile,
     )
+    assert not fallback_truncated
     assert fallback is not None
     assert fallback[0] == (0, 1)
     assert fallback[3] is True
+
+    monkeypatch.setattr(sequencer, "_PRESS_UNION_STATE_LIMIT", 2)
+    capped, capped_truncated = sequencer._best_press_union(  # noqa: SLF001
+        **common,
+        press_prefix=lambda chunk: robust if len(chunk) == 2 else fragile,
+    )
+    assert capped_truncated
+    assert capped == stable_choice
 
 
 @pytest.mark.slow

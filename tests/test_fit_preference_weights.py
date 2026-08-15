@@ -103,6 +103,42 @@ def test_regression_recovers_signs_and_recommends_accordingly() -> None:
     assert report.r_squared > 0.5
 
 
+def test_nested_bootstrap_rejects_a_deterministic_noise_relationship() -> None:
+    module = _load_fit_module()
+    rng = np.random.default_rng(1)
+    names = [f"m{index:02d}" for index in range(20)]
+    latent = rng.normal(size=len(names))
+    terms = {
+        name: dict(zip(module._TERMS, rng.normal(size=4), strict=True))  # noqa: SLF001
+        for name in names
+    }
+    pairs = []
+    for _ in range(160):
+        a, b = rng.choice(len(names), size=2, replace=False)
+        probability_a = 1.0 / (1.0 + np.exp(-(latent[a] - latent[b])))
+        pairs.append(
+            module.Pair(
+                model_a=names[a],
+                model_b=names[b],
+                winner="a" if rng.random() < probability_a else "b",
+                weight=1.0,
+            )
+        )
+
+    report = module.regress_terms(
+        module.fit_bradley_terry(pairs),
+        terms,
+        pairs=pairs,
+        rng=np.random.default_rng(10_001),
+        bootstrap=200,
+    )
+
+    # Terms are independent of the latent preference scores. Comparison-only
+    # reweighting made symmetry clear the 90% floor for this fixed fixture;
+    # resampling model rows correctly suppresses every chance association.
+    assert set(report.recommended.values()) == {0.0}
+
+
 def test_fit_is_deterministic_given_seed() -> None:
     module = _load_fit_module()
     pairs, terms, _ = _synthetic_world(module)

@@ -40,7 +40,8 @@ from a fresh checkout.
   was presented on the left/first) so position bias stays measurable.
 - Models are identified by content (`sha256_*` of the resolved model file).
   Committed rows use repo-relative, tracked paths; an unavailable or
-  hash-mismatched model is skipped rather than silently scored.
+  hash-mismatched model is rejected before the row is appended. Alternate logs
+  outside this tracked directory remain available for tests and dry runs.
 - `judge` is `claude` or `human`; `confidence` is `high` or `low`. A `claude`
   row with `confidence: "low"` is an open escalation — the pair appears in the
   next `scripts/review_pairs.py` page until a `human` row for the same `id`

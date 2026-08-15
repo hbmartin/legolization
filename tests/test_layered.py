@@ -1,5 +1,6 @@
 """Layer engine and the four per-layer tiling strategies."""
 
+import math
 from dataclasses import fields
 
 import numpy as np
@@ -530,6 +531,22 @@ def test_objective_dataclasses_preserve_positional_callers() -> None:
         "speckle",
         "profile",
     ]
+    evaluated = evaluate(
+        Layout(catalog=default_catalog()),
+        VoxelGrid(codes=np.zeros((1, 1, 1), dtype=np.int16)),
+    )
+    legacy = ObjectiveReport(
+        evaluated.cost,
+        evaluated.instability,
+        evaluated.aesthetics,
+        evaluated.colour_error,
+        evaluated.perpendicularity,
+        evaluated.symmetry,
+        evaluated.total,
+        evaluated.stability,
+    )
+    assert math.isnan(legacy.speckle)
+    assert math.isnan(legacy.profile)
 
 
 # --- grounded-at-band-time (support-aware placement) ---

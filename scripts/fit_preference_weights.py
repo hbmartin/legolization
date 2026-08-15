@@ -442,7 +442,14 @@ def _sign_consistency(
     rng: np.random.Generator,
     bootstrap: int,
 ) -> np.ndarray:
-    """Re-fit Bradley-Terry scores for each Bayesian bootstrap draw."""
+    """Nested-bootstrap comparisons and scored models for each sign draw.
+
+    The Bayesian comparison bootstrap captures uncertainty in the observed
+    verdicts without disconnecting their graph. Resampling the resulting model
+    rows then captures uncertainty in which judged models supplied the term
+    relationship; conditioning on that model set made chance correlations look
+    substantially more stable than they are.
+    """
     if bootstrap <= 0:
         msg = "bootstrap draws must be positive"
         raise ValueError(msg)
@@ -457,9 +464,12 @@ def _sign_consistency(
         sample_scores = np.array(
             [sample_scores_by_model[model] for model in bootstrap_input.models]
         )
+        chosen = rng.integers(
+            len(bootstrap_input.models), size=len(bootstrap_input.models)
+        )
         try:
             sample_beta, *_ = np.linalg.lstsq(
-                bootstrap_input.design, sample_scores, rcond=None
+                bootstrap_input.design[chosen], sample_scores[chosen], rcond=None
             )
         except np.linalg.LinAlgError:
             continue
@@ -513,7 +523,7 @@ def regress_terms(
     rng: np.random.Generator,
     bootstrap: int = 1_000,
 ) -> WeightReport:
-    """OLS of latent scores on z-scored terms, with fit-aware bootstrap checks."""
+    """OLS of latent scores with nested comparison/model bootstrap checks."""
     scored, fitted_pairs, matrix, scores = _regression_inputs(
         fit=fit,
         terms_by_model=terms_by_model,

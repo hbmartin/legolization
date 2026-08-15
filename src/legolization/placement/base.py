@@ -87,9 +87,10 @@ class ObjectiveReport:
     symmetry: float
     total: float
     stability: StabilityResult
-    # Appended with defaults so historical positional construction remains valid.
-    speckle: float = 0.0
-    profile: float = 0.0
+    # Appended with sentinels so historical positional construction remains
+    # valid without silently reporting an uncomputed term as a perfect score.
+    speckle: float = math.nan
+    profile: float = math.nan
 
 
 def _objective_terms(layout: Layout, grid: VoxelGrid) -> dict[str, float]:
