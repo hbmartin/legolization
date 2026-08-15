@@ -245,6 +245,20 @@ def _pending(index: Index, *, limit: int) -> Iterator[int]:
         yield set_id
 
 
+def _download_matches(
+    model: OmrModel,
+    *,
+    expected_bytes: int,
+    dest: Path,
+) -> bool:
+    """Whether the recorded download still exists at its expected size."""
+    target = dest / "ldraw" / model.filename
+    try:
+        return target.is_file() and target.stat().st_size == expected_bytes
+    except OSError:
+        return False
+
+
 def _record_models(
     models: list[OmrModel],
     index: Index,
@@ -256,7 +270,16 @@ def _record_models(
     """Download or register each discovered model, returning failures."""
     failures: list[str] = []
     for model in models:
-        if model.name in index.models and index.models[model.name].bytes:
+        recorded = index.models.get(model.name)
+        if (
+            recorded is not None
+            and recorded.bytes
+            and _download_matches(
+                model,
+                expected_bytes=recorded.bytes,
+                dest=dest,
+            )
+        ):
             continue
         if index_only:
             index.models.setdefault(model.name, model)

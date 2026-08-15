@@ -119,6 +119,14 @@ def _manifest(
             lambda payload: payload["scope"]["models"].append("absent"),
             "models entries do not match the scope model set",
         ),
+        (
+            lambda payload: payload.__setitem__("collection_id", "."),
+            "collection_id must be a single relative path component",
+        ),
+        (
+            lambda payload: payload.__setitem__("collection_id", ".."),
+            "collection_id must be a single relative path component",
+        ),
     ],
 )
 def test_malformed_manifest_names_the_bad_field(

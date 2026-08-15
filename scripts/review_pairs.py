@@ -256,8 +256,13 @@ def merge_verdicts(
     """Append one human verdict per ``id=winner`` token; return the count."""
     by_id = {str(pair.get("id")): pair for pair in _manifest_pairs(manifest)}
     pending_rows: list[dict[str, object]] = []
+    seen: set[str] = set()
     for token in tokens.split():
         pair_id, _, winner = token.partition("=")
+        if pair_id in seen:
+            msg = f"{pair_id} appears more than once in this verdict batch"
+            raise VerdictError(msg)
+        seen.add(pair_id)
         if (pair := by_id.get(pair_id)) is None:
             msg = f"{pair_id} is not in this manifest"
             raise VerdictError(msg)

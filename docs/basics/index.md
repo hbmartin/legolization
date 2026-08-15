@@ -11,7 +11,7 @@ recognize what your agent is doing — not because you have to run it.
 ## What a skill is
 
 A **skill** is a set of instructions your coding agent loads when your request matches
-it. Legolization ships ten of them, one per job. Installed together, they give your
+it. Legolization ships eleven of them, one per job. Installed together, they give your
 agent a working understanding of the whole tool: which command fits your request, what
 to check first, what to ask you before acting, and how to read the result.
 

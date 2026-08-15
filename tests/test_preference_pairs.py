@@ -129,7 +129,7 @@ def test_pending_review_is_no_row_or_low_confidence_claude(tmp_path):
     assert [pair["id"] for pair in pending] == ["p-escalated", "p-unjudged"]
     # Human escalation stays blind: Claude's provisional call never reaches
     # the review page, where it could anchor the human's choice.
-    assert "claude_verdict" not in pending[0]
+    assert pending[0] == pairs[1]
 
 
 def test_human_row_supersedes_the_escalation(tmp_path):
@@ -151,6 +151,35 @@ def test_merge_refuses_a_pair_with_failed_renders(tmp_path):
         review.merge_verdicts(
             "20260809T000000Z-000=a",
             {"pairs": [_manifest_pair(status="render-failed")]},
+            log=log,
+        )
+    assert not log.exists()
+
+
+def test_merge_is_atomic_when_a_later_pair_has_failed_renders(
+    tmp_path: Path,
+) -> None:
+    review = _load_review_module()
+    log = tmp_path / "pairs.jsonl"
+    manifest = {
+        "pairs": [
+            _manifest_pair(id="p-valid"),
+            _manifest_pair(id="p-failed", status="render-failed"),
+        ]
+    }
+    with pytest.raises(review.VerdictError, match="cannot be judged"):
+        review.merge_verdicts("p-valid=a p-failed=b", manifest, log=log)
+    assert not log.exists()
+
+
+def test_merge_refuses_duplicate_pair_ids_atomically(tmp_path: Path) -> None:
+    review = _load_review_module()
+    log = tmp_path / "pairs.jsonl"
+    manifest = {"pairs": [_manifest_pair(id="p-duplicate")]}
+    with pytest.raises(review.VerdictError, match="appears more than once"):
+        review.merge_verdicts(
+            "p-duplicate=a p-duplicate=b",
+            manifest,
             log=log,
         )
     assert not log.exists()

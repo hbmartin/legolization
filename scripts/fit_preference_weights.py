@@ -313,12 +313,15 @@ def fit_resolved_pairs(
     component, keeps the reported sample size aligned with the actual fit.
     """
     resolved_models = frozenset(terms_by_model)
-    resolved_pairs = _pairs_for_models(pairs, resolved_models)
+    resolved_pairs = _pairs_for_models(pairs=pairs, models=resolved_models)
     if not resolved_pairs:
         msg = "no judged comparison has two models with reproducible term values"
         raise ValueError(msg)
     fit = fit_bradley_terry(resolved_pairs)
-    fitted_pairs = _pairs_for_models(resolved_pairs, frozenset(fit.models))
+    fitted_pairs = _pairs_for_models(
+        pairs=resolved_pairs,
+        models=frozenset(fit.models),
+    )
     if len(fit.models) < 2 or not fitted_pairs:
         msg = "fewer than two connected judged models have reproducible term values"
         raise ValueError(msg)
@@ -408,7 +411,7 @@ def _regression_inputs(
     if len(scored) != len(fit.models):
         msg = "fit contains models without terms; use fit_resolved_pairs first"
         raise ValueError(msg)
-    fitted_pairs = _pairs_for_models(pairs, frozenset(scored))
+    fitted_pairs = _pairs_for_models(pairs=pairs, models=frozenset(scored))
     if not fitted_pairs:
         msg = "regression needs comparisons from the fitted model component"
         raise ValueError(msg)
