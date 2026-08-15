@@ -85,7 +85,7 @@ def test_delete_never_disconnects_a_two_brick_tower():
         assert ConnectionGraph.from_layout(layout).component_count() == 1
 
 
-def test_colour_operators_reject_visual_noops():
+def test_colour_operators_reject_visual_noops() -> None:
     drift = _load_drift_module()
     layout = Layout(catalog=default_catalog())
     layout.add("brick_1x2", 0, 0, 0, 0, 4)

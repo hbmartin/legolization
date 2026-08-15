@@ -2,14 +2,16 @@
 
 Each layer is tiled by bounded best-first search (the paper's A*, honestly
 a beam search: the OPEN list is capped and the guidance heuristic is not
-admissible). Nodes expand only through placements covering the first
-uncovered column in scan order, which collapses permutations of the same
-tiling into one path. The cost accumulates per placed rect:
+admissible). A whole-model placement runs the search once with x as the fixed
+mirror axis and once with y, then keeps the lower-cost completed layout. Nodes
+expand only through placements covering the first uncovered column in scan
+order, which collapses permutations of the same tiling into one path. The cost
+accumulates per placed rect:
 
 - efficiency ``g_h``: small rects cost ``(A_MAX - area) / (A_MAX - 1)``;
-- balance ``g_a``: a rect not centred on the layer's central axis and
-  without an already-placed mirror partner costs 1 (evaluated for both
-  axes, the finished tiling takes the better one);
+- balance ``g_a``: a rect not centred on the whole-model mirror axis and
+  without an already-placed mirror partner costs 1 (a direct :meth:`tile`
+  call retains the paper's per-layer better-axis fallback);
 - vertical merge ``g_v``: a plate rect that fails to complete a 3-plate
   stack ``compact_vertical`` could brickify costs 1 (Min's multi-height
   term reinterpreted at plate resolution — the catalog has no 2-brick-tall
@@ -25,12 +27,14 @@ from __future__ import annotations
 
 import heapq
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
 
 from legolization.grid import merge_colour
+from legolization.placement.aesthetics import symmetry_error
 from legolization.placement.layered.engine import (
     Column,
     LayerContext,
@@ -89,6 +93,8 @@ class BeautyStrategy(LayeredStrategy):
     restores pre-v5 behaviour."""
     _mirror_x: int | None = field(default=None, init=False)
     _mirror_y: int | None = field(default=None, init=False)
+    _mirror_axis: int | None = field(default=None, init=False)
+    _run_cost: float = field(default=0.0, init=False)
 
     def place(
         self,
@@ -97,26 +103,70 @@ class BeautyStrategy(LayeredStrategy):
         rng: np.random.Generator,
         deadline: float | None = None,
     ) -> Layout:
-        """Fix one whole-model mirror centre, then tile as usual.
+        """Search both whole-model mirror axes and keep the better run.
 
         Every layer balancing about its own bbox centre is the drift blind
         spot the global-plane ``symmetry_error`` charges (a staircase of
         individually centred layers scores perfectly); the target footprint
-        is known before any tiling, so the search can aim at the same global
-        plane the objective measures at no cost.
+        is known before any tiling. Fixing the axis as well as the centre makes
+        the accumulated layer cost match the one-axis global objective.
         """
         footprint = grid.filled_mask.any(axis=2)
         xs, ys = np.nonzero(footprint)
-        if xs.size:
-            self._mirror_x = int(xs.min()) + int(xs.max())
-            self._mirror_y = int(ys.min()) + int(ys.max())
-        try:
-            # Explicit base call: slots=True rebuilds the class, which breaks
-            # the zero-argument super()'s captured __class__ cell.
+        if not xs.size:
             return LayeredStrategy.place(self, grid, rng=rng, deadline=deadline)
+
+        self._mirror_x = int(xs.min()) + int(xs.max())
+        self._mirror_y = int(ys.min()) + int(ys.max())
+        overall_deadline = deadline
+        if self.time_budget_s is not None:
+            local_deadline = time.monotonic() + self.time_budget_s
+            overall_deadline = (
+                local_deadline
+                if overall_deadline is None
+                else min(overall_deadline, local_deadline)
+            )
+        candidates: list[
+            tuple[float, float, int, int, Layout, np.random.Generator]
+        ] = []
+        try:
+            for axis in (0, 1):
+                axis_rng = deepcopy(rng)
+                axis_deadline = overall_deadline
+                if axis == 0 and overall_deadline is not None:
+                    now = time.monotonic()
+                    axis_deadline = now + max(overall_deadline - now, 0.0) / 2
+                self._mirror_axis = axis
+                self._run_cost = 0.0
+                # Explicit base call: slots=True rebuilds the class, which breaks
+                # the zero-argument super()'s captured __class__ cell.
+                layout = LayeredStrategy.place(
+                    self,
+                    grid,
+                    rng=axis_rng,
+                    deadline=axis_deadline,
+                )
+                candidates.append(
+                    (
+                        self._run_cost,
+                        symmetry_error(layout),
+                        len(layout),
+                        axis,
+                        layout,
+                        axis_rng,
+                    )
+                )
+            *_, layout, selected_rng = min(
+                candidates,
+                key=lambda candidate: candidate[:4],
+            )
+            rng.bit_generator.state = deepcopy(selected_rng.bit_generator.state)
+            return layout
         finally:
             self._mirror_x = None
             self._mirror_y = None
+            self._mirror_axis = None
+            self._run_cost = 0.0
 
     def tile(
         self,
@@ -176,8 +226,22 @@ class BeautyStrategy(LayeredStrategy):
                 open_list = heapq.nsmallest(self.beam_width, open_list)
                 heapq.heapify(open_list)
         if best is not None:
+            self._run_cost += best[0]
             return list(best[1])
-        return random_fill(problem, rng, self.catalog)
+        fallback = tuple(random_fill(problem, rng, self.catalog))
+        fallback_cost = self._completed_node(
+            below,
+            fallback,
+            priority=sum(self._rect_cost(below, rect) for rect in fallback),
+            mirror_x=mirror_x,
+            mirror_y=mirror_y,
+            best=None,
+        )
+        if fallback_cost is None:  # defensive: best=None always returns a candidate
+            msg = "fallback tiling did not produce a completed Beauty node"
+            raise RuntimeError(msg)
+        self._run_cost += fallback_cost[0]
+        return list(fallback)
 
     def _expand_node(  # noqa: PLR0913 - explicit search state
         self,
@@ -222,9 +286,16 @@ class BeautyStrategy(LayeredStrategy):
         mirror_y: int,
         best: tuple[float, tuple[Rect2D, ...]] | None,
     ) -> tuple[float, tuple[Rect2D, ...]] | None:
+        axes = (
+            ((0, mirror_x), (1, mirror_y))
+            if self._mirror_axis is None
+            else (
+                (self._mirror_axis, mirror_x if self._mirror_axis == 0 else mirror_y),
+            )
+        )
         balance = min(
-            self._axis_balance_cost(rects, mirror_sum=mirror_x, axis=0),
-            self._axis_balance_cost(rects, mirror_sum=mirror_y, axis=1),
+            self._axis_balance_cost(rects, mirror_sum=mirror_sum, axis=axis)
+            for axis, mirror_sum in axes
         )
         total = priority + balance + self._seam_cost(below, rects)
         return (total, rects) if best is None or total < best[0] else best

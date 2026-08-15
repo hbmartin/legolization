@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 if TYPE_CHECKING:
@@ -32,6 +33,18 @@ def _load_review_module() -> ModuleType:
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules["review_pairs"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_render_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "render_pairs", _REPO / "scripts" / "render_pairs.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["render_pairs"] = module
     spec.loader.exec_module(module)
     return module
 
@@ -141,6 +154,69 @@ def test_merge_refuses_a_pair_with_failed_renders(tmp_path):
             log=log,
         )
     assert not log.exists()
+
+
+def test_render_pair_contains_source_failures_and_records_portable_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    render = _load_render_module()
+
+    def fail_to_resolve(path: Path) -> Path:
+        msg = f"unreadable {path.name}"
+        raise OSError(msg)
+
+    monkeypatch.setattr(render, "resolve_model", fail_to_resolve)
+    pair = render.render_pair(
+        pair_id="broken",
+        side_a=tmp_path / "a.ldr",
+        side_b=tmp_path / "b.ldr",
+        out_dir=tmp_path / "renders",
+        views=("iso",),
+        size=200,
+        rng=np.random.default_rng(0),
+    )
+
+    assert pair.status == "render-failed"
+    assert pair.sha256_a is None
+    assert pair.sha256_b is None
+    assert set(pair.errors) == {"a", "b"}
+    assert Path(pair.model_a).is_absolute()
+    assert render._recorded_path(_REPO / "scripts" / "review_pairs.py") == (  # noqa: SLF001
+        "scripts/review_pairs.py"
+    )
+
+
+def test_review_main_reports_malformed_record_without_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    review = _load_review_module()
+
+    assert review.main(["--record", "{", "--log", str(tmp_path / "log.jsonl")]) == 1
+    captured = capsys.readouterr().err
+    assert "cannot record verdict" in captured
+    assert "Traceback" not in captured
+
+
+def test_review_page_marks_missing_images_unjudgeable_with_useful_alt_text(
+    tmp_path: Path,
+) -> None:
+    review = _load_review_module()
+    existing = tmp_path / "b.png"
+    existing.write_bytes(b"png bytes")
+    pair = _manifest_pair(
+        images={
+            "a": {"top": str(tmp_path / "missing.png")},
+            "b": {"iso": str(existing)},
+        }
+    )
+
+    page = review.review_page([pair])
+
+    assert 'alt="side 1, iso view"' in page
+    assert "This pair is unjudgeable" in page
+    assert "Missing image" in page
 
 
 def test_readme_documents_the_log_beside_it():

@@ -49,36 +49,83 @@ class RenderedPair:
     pair_id: str
     model_a: str
     model_b: str
-    sha256_a: str
-    sha256_b: str
+    sha256_a: str | None
+    sha256_b: str | None
     presentation_order: str
     images: dict[str, dict[str, str]]
     status: str
+    errors: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _RenderedSide:
+    """One source resolved, hashed, and rendered without escaping failures."""
+
+    recorded_path: str
+    sha256: str | None
+    images: dict[str, str]
+    complete: bool
+    error: str | None
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _render_side(
-    model: Path, out_dir: Path, *, views: Sequence[str], size: int
-) -> tuple[dict[str, str], bool]:
-    """Render one side; the only success signal is a PNG per view on disk."""
-    report = render_model_views(
-        model,
-        views=views,
-        out_dir=out_dir,
-        width=size,
-        height=size * 3 // 4,
+def _recorded_path(path: Path) -> str:
+    """Use a repository-relative path when portable, otherwise an absolute one."""
+    resolved = path.resolve()
+    return (
+        str(resolved.relative_to(_REPO))
+        if resolved.is_relative_to(_REPO)
+        else str(resolved)
     )
+
+
+def _render_side(
+    source: Path, out_dir: Path, *, views: Sequence[str], size: int
+) -> _RenderedSide:
+    """Resolve and render one side, returning failures as manifest data."""
+    recorded_path = _recorded_path(source)
+    try:
+        model = resolve_model(source)
+        digest = _sha256(model)
+        report = render_model_views(
+            model,
+            views=views,
+            out_dir=out_dir,
+            width=size,
+            height=size * 3 // 4,
+        )
+    except Exception as error:  # noqa: BLE001 - pair-local external tool boundary
+        detail = str(error)
+        print(f"render failed for {source}: {detail}", file=sys.stderr)
+        return _RenderedSide(
+            recorded_path=recorded_path,
+            sha256=None,
+            images={},
+            complete=False,
+            error=detail,
+        )
     images: dict[str, str] = {}
-    complete = True
+    failures: list[str] = []
     for outcome in report.outcomes:
         if outcome.status == "ok" and outcome.path is not None:
-            images[outcome.view] = str(outcome.path)
+            images[outcome.view] = _recorded_path(outcome.path)
         else:
-            complete = False
-    return images, complete
+            failures.append(
+                f"{outcome.view}: {outcome.detail or 'renderer produced no image'}"
+            )
+    error = "; ".join(failures) if failures else None
+    if error is not None:
+        print(f"render failed for {source}: {error}", file=sys.stderr)
+    return _RenderedSide(
+        recorded_path=recorded_path,
+        sha256=digest,
+        images=images,
+        complete=not failures,
+        error=error,
+    )
 
 
 def render_pair(  # noqa: PLR0913 - one bag of render state
@@ -92,19 +139,36 @@ def render_pair(  # noqa: PLR0913 - one bag of render state
     rng: np.random.Generator,
 ) -> RenderedPair:
     """Render both sides of one comparison under identical camera set-ups."""
-    model_a = resolve_model(side_a)
-    model_b = resolve_model(side_b)
-    images_a, ok_a = _render_side(model_a, out_dir / "a", views=views, size=size)
-    images_b, ok_b = _render_side(model_b, out_dir / "b", views=views, size=size)
+    rendered_a = _render_side(
+        source=side_a,
+        out_dir=out_dir / "a",
+        views=views,
+        size=size,
+    )
+    rendered_b = _render_side(
+        source=side_b,
+        out_dir=out_dir / "b",
+        views=views,
+        size=size,
+    )
     return RenderedPair(
         pair_id=pair_id,
-        model_a=str(side_a),
-        model_b=str(side_b),
-        sha256_a=_sha256(model_a),
-        sha256_b=_sha256(model_b),
+        model_a=rendered_a.recorded_path,
+        model_b=rendered_b.recorded_path,
+        sha256_a=rendered_a.sha256,
+        sha256_b=rendered_b.sha256,
         presentation_order="ab" if rng.integers(2) == 0 else "ba",
-        images={"a": images_a, "b": images_b},
-        status="rendered" if ok_a and ok_b else "render-failed",
+        images={"a": rendered_a.images, "b": rendered_b.images},
+        status=(
+            "rendered"
+            if rendered_a.complete and rendered_b.complete
+            else "render-failed"
+        ),
+        errors={
+            side: error
+            for side, error in (("a", rendered_a.error), ("b", rendered_b.error))
+            if error is not None
+        },
     )
 
 
@@ -142,10 +206,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     for index, (side_a, side_b) in enumerate(args.pair):
         pair_id = f"{stamp}-{index:03d}"
         pair = render_pair(
-            pair_id,
-            side_a,
-            side_b,
-            out / pair_id,
+            pair_id=pair_id,
+            side_a=side_a,
+            side_b=side_b,
+            out_dir=out / pair_id,
             views=args.views,
             size=args.size,
             rng=rng,
@@ -168,6 +232,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "presentation_order": pair.presentation_order,
                 "images": pair.images,
                 "status": pair.status,
+                "errors": pair.errors,
             }
             for pair in pairs
         ],

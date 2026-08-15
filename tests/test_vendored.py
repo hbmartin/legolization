@@ -75,7 +75,7 @@ def _package_files(root: Path) -> set[Path]:
     }
 
 
-def test_bricknet_vendor_is_byte_identical_to_the_installed_exact_release():
+def test_bricknet_vendor_is_byte_identical_to_the_installed_exact_release() -> None:
     """Pin every source and data file, not merely the package version label."""
     spec = find_spec("bricknet")
     assert spec is not None

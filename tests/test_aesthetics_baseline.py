@@ -95,7 +95,7 @@ def test_algorithmic_sample_is_not_biased_to_the_lowest_indices(
     assert [score.name for score in rerun] == [score.name for score in scores]
 
 
-def test_promotion_gate_aggregates_strategy_candidates_by_source_model():
+def test_promotion_gate_aggregates_strategy_candidates_by_source_model() -> None:
     baseline = _load_baseline_module()
 
     def score(population: str, name: str, symmetry: float) -> object:

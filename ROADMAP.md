@@ -196,8 +196,9 @@ Externally sourced, independently labelled data used to check the existing
 implementation. Surveyed in
 [`docs/reports/dataset-survey.md`](docs/reports/dataset-survey.md); acquisition
 is `scripts/fetch_datasets.py` (pinned sha256, https-only, atomic) and
-`scripts/fetch_omr.py` (a polite crawl). Nothing here is a runtime dependency
-and nothing is vendored except small attribution-carrying reference tables.
+`scripts/fetch_omr.py` (a polite crawl). Nothing here is a runtime dependency.
+Vendoring is limited to small attribution-carrying reference tables and the
+explicitly documented BrickNet source snapshot below.
 
 - **BrickNet** — <https://github.com/kulits/BrickNet>, **MIT**, Kulits & Schmid,
   CVPR 2026 (arXiv:2604.22984). Adopted as a **pinned dev-group dependency
