@@ -332,9 +332,20 @@ def _validate_manifest(payload: object) -> dict[str, Any]:
         condition=manifest.get("schema") == 1,
         message="unsupported collection manifest schema",
     )
+    collection_id = manifest.get("collection_id")
     _require(
-        condition=isinstance(manifest.get("collection_id"), str),
+        condition=isinstance(collection_id, str),
         message="collection_id must be a string",
+    )
+    # The id becomes the output directory name, so a hand-edited manifest must
+    # not be able to steer writes outside ``--out`` (``../x``, ``/abs``, ...).
+    _require(
+        condition=(
+            bool(collection_id)
+            and "\\" not in cast("str", collection_id)
+            and collection_id == Path(cast("str", collection_id)).name
+        ),
+        message="collection_id must be a single relative path component",
     )
     _require(
         condition=isinstance(manifest.get("identity"), dict),

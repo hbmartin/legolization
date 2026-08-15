@@ -65,7 +65,7 @@ themselves when they need to.
 
 ---
 
-## The ten skills
+## The eleven skills
 
 | Skill | Say something like |
 | --- | --- |
@@ -77,6 +77,7 @@ themselves when they need to.
 | [`repair-lego-assembly`](skills/repair-lego-assembly.md) | "This model falls apart at the arch — fix it without changing how it looks." |
 | [`inspect-instructions`](skills/inspect-instructions.md) | "Do these build steps make sense, or will something fall off halfway through?" |
 | [`render-ldraw`](skills/render-ldraw.md) | "Show me what heart.ldr looks like from the front and the top." |
+| [`judge-aesthetics`](skills/judge-aesthetics.md) | "Which of these two builds looks better?" |
 | [`extend-lego-part-support`](skills/extend-lego-part-support.md) | "Add support for part 4070 so my headlight-brick model analyzes correctly." |
 | [`eval-corpus`](skills/eval-corpus.md) | "Did my placement change make the whole corpus better or worse?" |
 
@@ -94,7 +95,7 @@ your agent matches against.
 
 ## What every skill promises you
 
-The same contract, in all ten:
+The same contract, in all eleven:
 
 - **It explains the likely outcome in plain language before running anything.**
 - **It asks only when a choice materially changes the result** — and it always

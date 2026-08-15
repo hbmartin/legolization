@@ -31,7 +31,7 @@ depths, and you are meant to pick one rather than read all three.
 
     **You talk to a coding agent and never type a command.**
 
-    Install the ten-skill suite, then say *"turn dragon.stl into a LEGO model I can
+    Install the eleven-skill suite, then say *"turn dragon.stl into a LEGO model I can
     actually build"*. This track covers what each skill does, which one owns your
     job, what it will ask you before acting, and how to read what comes back.
 
@@ -130,7 +130,7 @@ component, and has nothing floating. Nothing rescues a candidate that fails it.
 
 | | |
 | --- | --- |
-| [Basics](basics/index.md) | The ten skills, conversationally |
+| [Basics](basics/index.md) | The eleven skills, conversationally |
 | [Guide](guide/index.md) | CLI, configuration, bundles, artifacts |
 | [Theory](theory/index.md) | Algorithms, physics, sequencing, papers |
 | [Project notes](project/index.md) | Contributor guides, frozen investigation reports, roadmap history |

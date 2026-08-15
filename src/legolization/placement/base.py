@@ -46,15 +46,15 @@ class ObjectiveWeights:
     # docs/reports/aesthetics-validation.md.
     perpendicularity: float = 0.0
     symmetry: float = 0.25
-    # Audition terms: reported for validation, weightless until they pass the
-    # population-separation and drift gates (same report).
-    speckle: float = 0.0
-    profile: float = 0.0
     # Kollsker stretcher-bond constants used by greedy candidate scoring:
     # a border whose seam below sits d studs away is penalized
     # ``bond_alpha1 * exp(-bond_alpha2 * d)`` (d = 0 is a stacked seam).
     bond_alpha1: float = 4.0
     bond_alpha2: float = 0.8
+    # Appended to preserve positional callers that set the two bond constants.
+    # Audition terms remain reported-only until they pass the validation gates.
+    speckle: float = 0.0
+    profile: float = 0.0
 
     def __post_init__(self) -> None:
         values = (
@@ -85,10 +85,11 @@ class ObjectiveReport:
     colour_error: float
     perpendicularity: float
     symmetry: float
-    speckle: float
-    profile: float
     total: float
     stability: StabilityResult
+    # Appended with defaults so historical positional construction remains valid.
+    speckle: float = 0.0
+    profile: float = 0.0
 
 
 def _objective_terms(layout: Layout, grid: VoxelGrid) -> dict[str, float]:

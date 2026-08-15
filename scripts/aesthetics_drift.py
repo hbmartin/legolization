@@ -178,7 +178,10 @@ def _op_move(layout: Layout, rng: np.random.Generator, _palette: list[int]) -> b
 
 def _op_recolour(layout: Layout, rng: np.random.Generator, palette: list[int]) -> bool:
     brick = layout.bricks[_choose_brick(layout, rng)]
-    colour = palette[int(rng.integers(len(palette)))]
+    alternatives = [colour for colour in palette if colour != brick.colour_code]
+    if not alternatives:
+        return False
+    colour = alternatives[int(rng.integers(len(alternatives)))]
     removed = layout.remove(brick.brick_id)
     _reinsert(layout, removed, colour=colour)
     return True
@@ -188,10 +191,15 @@ def _op_swap(layout: Layout, rng: np.random.Generator, _palette: list[int]) -> b
     if len(layout) < 2:
         return False
     ids = sorted(layout.bricks)
-    first, second = (
-        layout.bricks[int(identifier)]
-        for identifier in rng.choice(ids, size=2, replace=False)
-    )
+    first = layout.bricks[int(rng.choice(ids))]
+    alternatives = [
+        identifier
+        for identifier in ids
+        if layout.bricks[identifier].colour_code != first.colour_code
+    ]
+    if not alternatives:
+        return False
+    second = layout.bricks[int(rng.choice(alternatives))]
     removed_first = layout.remove(first.brick_id)
     removed_second = layout.remove(second.brick_id)
     _reinsert(layout, removed_first, colour=removed_second.colour_code)
@@ -222,7 +230,7 @@ def trajectory(
     """Drift one layout and record every term at each checkpoint."""
     work = layout.copy()
     rng = np.random.default_rng(seed)
-    palette = sorted(brick.colour_code for brick in layout)
+    palette = sorted({brick.colour_code for brick in layout})
     steps = min(config.steps, _STEPS_PER_BRICK * len(layout))
     series: dict[str, list[float]] = {
         name: [term(work)] for name, term in TERMS.items()

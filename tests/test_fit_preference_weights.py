@@ -9,9 +9,10 @@ flipped sign would recommend weighting a term that makes output uglier.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
@@ -19,6 +20,10 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 _REPO = Path(__file__).parent.parent
+
+
+class _WeightedPair(Protocol):
+    weight: float
 
 
 def _load_fit_module() -> ModuleType:
@@ -144,6 +149,78 @@ def test_ties_and_disconnection_are_survivable():
     fit = module.fit_bradley_terry(pairs)
     assert set(fit.models) == {"y1", "y2", "y3"}
     assert fit.converged
+
+
+def test_regression_counts_only_pairs_from_the_fitted_component():
+    module = _load_fit_module()
+    pairs = [
+        module.Pair(model_a="x1", model_b="x2", winner="a", weight=1.0),
+        module.Pair(model_a="x1", model_b="x2", winner="b", weight=1.0),
+        module.Pair(model_a="y1", model_b="y2", winner="a", weight=1.0),
+        module.Pair(model_a="y2", model_b="y3", winner="b", weight=1.0),
+        module.Pair(model_a="y1", model_b="y3", winner="a", weight=1.0),
+    ]
+    terms = {
+        name: {
+            "perpendicularity": float(index),
+            "symmetry": float(index % 2),
+            "speckle": float(index + 1),
+            "profile": float(2 - index),
+        }
+        for index, name in enumerate(("y1", "y2", "y3"))
+    }
+    fit = module.fit_bradley_terry(pairs)
+    report = module.regress_terms(
+        fit, terms, pairs=pairs, rng=np.random.default_rng(0), bootstrap=10
+    )
+    assert report.n_pairs == 3
+
+
+def test_bootstrap_refits_bradley_terry_for_each_draw(monkeypatch):
+    module = _load_fit_module()
+    pairs, terms, _ = _synthetic_world(module)
+    fit = module.fit_bradley_terry(pairs)
+    original = module.fit_bradley_terry
+    sampled_weights: list[tuple[float, ...]] = []
+
+    def capture(sample: list[_WeightedPair], **kwargs: object) -> object:
+        sampled_weights.append(tuple(pair.weight for pair in sample))
+        return original(sample, **kwargs)
+
+    monkeypatch.setattr(module, "fit_bradley_terry", capture)
+    module.regress_terms(
+        fit, terms, pairs=pairs, rng=np.random.default_rng(1), bootstrap=7
+    )
+    assert len(sampled_weights) == 7
+    assert any(
+        weights != tuple(pair.weight for pair in pairs) for weights in sampled_weights
+    )
+
+
+def test_stale_model_paths_return_a_controlled_cli_error(tmp_path, capsys):
+    module = _load_fit_module()
+    log = tmp_path / "pairs.jsonl"
+    log.write_text(
+        json.dumps(
+            {
+                "id": "stale",
+                "model_a": "/missing/a.ldr",
+                "model_b": "/missing/b.ldr",
+                "sha256_a": "a",
+                "sha256_b": "b",
+                "winner": "a",
+                "judge": "human",
+                "confidence": "high",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert (
+        module.main(["--log", str(log), "--bootstrap", "1", "--out", str(tmp_path)])
+        == 1
+    )
+    assert "no judged comparison has two models" in capsys.readouterr().err
 
 
 def test_effective_pairs_prefers_human_and_weights_low_confidence():

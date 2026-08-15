@@ -4,7 +4,7 @@
 npx skills add hbmartin/legolization --all
 ```
 
-That installs all ten skills into your coding agent. The suite is Codex-first but works
+That installs all eleven skills into your coding agent. The suite is Codex-first but works
 with every agent `npx skills` supports.
 
 To install a subset, drop `--all` and pick from the list:

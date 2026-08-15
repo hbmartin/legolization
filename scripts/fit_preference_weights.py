@@ -38,7 +38,7 @@ import argparse
 import hashlib
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -113,6 +113,15 @@ class WeightReport:
     caveats: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BootstrapInput:
+    """The fixed regression design and comparison graph for resampling."""
+
+    design: np.ndarray
+    models: tuple[str, ...]
+    pairs: tuple[Pair, ...]
+
+
 def effective_pairs(rows: Sequence[Mapping[str, object]]) -> list[Pair]:
     """Reduce log rows to one weighted verdict per pair id."""
     latest: dict[str, Mapping[str, object]] = {}
@@ -172,7 +181,11 @@ def _largest_component(models: tuple[str, ...], wins: np.ndarray) -> list[int]:
 
 
 def fit_bradley_terry(
-    pairs: Sequence[Pair], *, tol: float = 1e-10, max_iter: int = 10_000
+    pairs: Sequence[Pair],
+    *,
+    tol: float = 1e-10,
+    max_iter: int = 10_000,
+    warn_disconnected: bool = True,
 ) -> BtFit:
     """Zermelo/Hunter minorization-maximization, numpy only, deterministic.
 
@@ -180,9 +193,12 @@ def fit_bradley_terry(
     the unsmoothed MLE does not exist when some model is undefeated (its
     strength diverges), and small logs make undefeated models the norm.
     """
+    if not pairs:
+        msg = "Bradley-Terry fitting needs at least one comparison"
+        raise ValueError(msg)
     all_models, wins = _win_matrix(pairs)
     keep = _largest_component(all_models, wins)
-    if len(keep) < len(all_models):
+    if warn_disconnected and len(keep) < len(all_models):
         print(
             f"comparison graph is disconnected; fitting the largest of its "
             f"components ({len(keep)} of {len(all_models)} models)",
@@ -213,6 +229,34 @@ def fit_bradley_terry(
     )
 
 
+def _pairs_for_models(pairs: Sequence[Pair], models: frozenset[str]) -> list[Pair]:
+    """Keep only comparisons that affected a given fitted model set."""
+    return [pair for pair in pairs if pair.model_a in models and pair.model_b in models]
+
+
+def fit_resolved_pairs(
+    pairs: Sequence[Pair], terms_by_model: Mapping[str, Mapping[str, float]]
+) -> tuple[BtFit, list[Pair]]:
+    """Fit only comparisons whose two models still have reproducible terms.
+
+    A preference record is intentionally append-only, so recorded file paths
+    can go stale. Excluding an unresolved model can split the comparison graph;
+    fitting the surviving graph first, then retaining only its largest connected
+    component, keeps the reported sample size aligned with the actual fit.
+    """
+    resolved_models = frozenset(terms_by_model)
+    resolved_pairs = _pairs_for_models(pairs, resolved_models)
+    if not resolved_pairs:
+        msg = "no judged comparison has two models with reproducible term values"
+        raise ValueError(msg)
+    fit = fit_bradley_terry(resolved_pairs)
+    fitted_pairs = _pairs_for_models(resolved_pairs, frozenset(fit.models))
+    if len(fit.models) < 2 or not fitted_pairs:
+        msg = "fewer than two connected judged models have reproducible term values"
+        raise ValueError(msg)
+    return fit, fitted_pairs
+
+
 def judged_model_terms(
     rows: Sequence[Mapping[str, object]],
 ) -> dict[str, dict[str, float]]:
@@ -226,8 +270,10 @@ def judged_model_terms(
     paths: dict[str, Path] = {}
     for row in rows:
         for side in ("a", "b"):
+            recorded = Path(str(row[f"model_{side}"]))
             paths.setdefault(
-                str(row[f"sha256_{side}"]), Path(str(row[f"model_{side}"]))
+                str(row[f"sha256_{side}"]),
+                recorded if recorded.is_absolute() else _REPO / recorded,
             )
     by_hash: dict[str, dict[str, float]] = {}
     for digest, recorded in sorted(paths.items()):
@@ -264,6 +310,128 @@ def judged_model_terms(
     return by_hash
 
 
+def _bootstrap_pairs(pairs: Sequence[Pair], rng: np.random.Generator) -> list[Pair]:
+    """Bayesian-resample comparisons without breaking their fitted graph.
+
+    Every comparison gets a random non-zero multiplier, so each draw captures
+    uncertainty in the observed preference outcomes while retaining all edges
+    of the connected Bradley-Terry graph. Re-fitting in every draw avoids
+    treating the initial latent scores as known observations.
+    """
+    multipliers = rng.dirichlet(np.ones(len(pairs))) * len(pairs)
+    return [
+        replace(pair, weight=pair.weight * float(multiplier))
+        for pair, multiplier in zip(pairs, multipliers, strict=True)
+    ]
+
+
+def _regression_inputs(
+    fit: BtFit,
+    terms_by_model: Mapping[str, Mapping[str, float]],
+    pairs: Sequence[Pair],
+) -> tuple[list[str], list[Pair], np.ndarray, np.ndarray]:
+    """Validate and assemble the models, terms, pairs, and BT scores."""
+    scored = [model for model in fit.models if model in terms_by_model]
+    if len(scored) < 2:
+        msg = "regression needs terms for at least two fitted models"
+        raise ValueError(msg)
+    if len(scored) != len(fit.models):
+        msg = "fit contains models without terms; use fit_resolved_pairs first"
+        raise ValueError(msg)
+    fitted_pairs = _pairs_for_models(pairs, frozenset(scored))
+    if not fitted_pairs:
+        msg = "regression needs comparisons from the fitted model component"
+        raise ValueError(msg)
+    matrix = np.array(
+        [[terms_by_model[model][term] for term in _TERMS] for model in scored]
+    )
+    scores_by_model = dict(zip(fit.models, fit.scores, strict=True))
+    scores = np.array([scores_by_model[model] for model in scored])
+    return scored, fitted_pairs, matrix, scores
+
+
+def _design_matrix(matrix: np.ndarray) -> tuple[tuple[str, ...], np.ndarray]:
+    """Z-score the varying terms and add an intercept column."""
+    spread = matrix.std(axis=0)
+    keep = [position for position, sigma in enumerate(spread) if sigma > 0]
+    if not keep:
+        msg = "no beauty term varies across the fitted models"
+        raise ValueError(msg)
+    terms = tuple(_TERMS[position] for position in keep)
+    zscored = (matrix[:, keep] - matrix[:, keep].mean(axis=0)) / spread[keep]
+    return terms, np.column_stack([np.ones(len(matrix)), zscored])
+
+
+def _sign_consistency(
+    *,
+    beta: np.ndarray,
+    bootstrap_input: BootstrapInput,
+    rng: np.random.Generator,
+    bootstrap: int,
+) -> np.ndarray:
+    """Re-fit Bradley-Terry scores for each Bayesian bootstrap draw."""
+    if bootstrap <= 0:
+        msg = "bootstrap draws must be positive"
+        raise ValueError(msg)
+    signs = np.zeros((bootstrap, len(beta)))
+    for draw in range(bootstrap):
+        sample_fit = fit_bradley_terry(
+            _bootstrap_pairs(bootstrap_input.pairs, rng), warn_disconnected=False
+        )
+        sample_scores_by_model = dict(
+            zip(sample_fit.models, sample_fit.scores, strict=True)
+        )
+        sample_scores = np.array(
+            [sample_scores_by_model[model] for model in bootstrap_input.models]
+        )
+        try:
+            sample_beta, *_ = np.linalg.lstsq(
+                bootstrap_input.design, sample_scores, rcond=None
+            )
+        except np.linalg.LinAlgError:
+            continue
+        signs[draw] = np.sign(sample_beta[1:])
+    consistency = np.zeros(len(beta))
+    nonzero = beta != 0
+    if np.any(nonzero):
+        consistency[nonzero] = np.mean(
+            signs[:, nonzero] == np.sign(beta[nonzero]), axis=0
+        )
+    return consistency
+
+
+def _recommendations(
+    terms: Sequence[str], beta: np.ndarray, consistency: np.ndarray
+) -> tuple[dict[str, float], list[str]]:
+    """Keep only stable, correctly-directed terms and scale their weights."""
+    raw = np.clip(-beta, 0.0, None)
+    reliable = [
+        position
+        for position, value in enumerate(beta)
+        if consistency[position] >= _SIGN_CONSISTENCY_FLOOR and value < 0
+    ]
+    anchor = raw[reliable].max() if reliable else 0.0
+    scale = _W_REF / anchor if anchor > 0 else 0.0
+    recommended: dict[str, float] = {}
+    caveats: list[str] = []
+    for position, term in enumerate(terms):
+        if consistency[position] < _SIGN_CONSISTENCY_FLOOR:
+            recommended[term] = 0.0
+            caveats.append(
+                f"{term}: bootstrap sign consistency "
+                f"{consistency[position]:.0%} < {_SIGN_CONSISTENCY_FLOOR:.0%}"
+            )
+        elif beta[position] >= 0:
+            recommended[term] = 0.0
+            caveats.append(
+                f"{term}: coefficient points the wrong way "
+                f"(higher error predicts prettier)"
+            )
+        else:
+            recommended[term] = round(float(raw[position] * scale), 2)
+    return recommended, caveats
+
+
 def regress_terms(
     fit: BtFit,
     terms_by_model: Mapping[str, Mapping[str, float]],
@@ -272,17 +440,11 @@ def regress_terms(
     rng: np.random.Generator,
     bootstrap: int = 1_000,
 ) -> WeightReport:
-    """OLS of latent scores on z-scored terms, with bootstrap sign checks."""
-    scored = [model for model in fit.models if model in terms_by_model]
-    matrix = np.array(
-        [[terms_by_model[model][term] for term in _TERMS] for model in scored]
+    """OLS of latent scores on z-scored terms, with fit-aware bootstrap checks."""
+    scored, fitted_pairs, matrix, scores = _regression_inputs(
+        fit, terms_by_model, pairs
     )
-    scores = np.array([fit.scores[fit.models.index(model)] for model in scored])
-    spread = matrix.std(axis=0)
-    keep = [position for position, sigma in enumerate(spread) if sigma > 0]
-    terms = tuple(_TERMS[position] for position in keep)
-    zscored = (matrix[:, keep] - matrix[:, keep].mean(axis=0)) / spread[keep]
-    design = np.column_stack([np.ones(len(scored)), zscored])
+    terms, design = _design_matrix(matrix)
     beta_full, *_ = np.linalg.lstsq(design, scores, rcond=None)
     beta = beta_full[1:]
     predicted = design @ beta_full
@@ -294,52 +456,21 @@ def regress_terms(
         else 0.0
     )
 
-    signs = np.zeros((bootstrap, len(terms)))
-    for draw in range(bootstrap):
-        chosen = rng.integers(len(scored), size=len(scored))
-        sample_design = design[chosen]
-        sample_scores = scores[chosen]
-        try:
-            sample_beta, *_ = np.linalg.lstsq(sample_design, sample_scores, rcond=None)
-        except np.linalg.LinAlgError:
-            continue
-        signs[draw] = np.sign(sample_beta[1:])
+    consistency_values = _sign_consistency(
+        beta=beta,
+        bootstrap_input=BootstrapInput(
+            design=design, models=tuple(scored), pairs=tuple(fitted_pairs)
+        ),
+        rng=rng,
+        bootstrap=bootstrap,
+    )
     consistency = {
-        term: float(np.mean(signs[:, position] == np.sign(beta[position])))
-        if beta[position] != 0
-        else 0.0
+        term: float(consistency_values[position]) if beta[position] != 0 else 0.0
         for position, term in enumerate(terms)
     }
+    recommended, caveats = _recommendations(terms, beta, consistency_values)
 
-    raw = np.clip(-beta, 0.0, None)
-    caveats: list[str] = []
-    recommended: dict[str, float] = {}
-    reliable = [
-        position
-        for position, term in enumerate(terms)
-        if consistency[term] >= _SIGN_CONSISTENCY_FLOOR and beta[position] < 0
-    ]
-    # Anchor on the strongest RELIABLE coefficient; scaling against a term
-    # that is about to be zeroed would shrink every real recommendation.
-    anchor = raw[reliable].max() if reliable else 0.0
-    scale = _W_REF / anchor if anchor > 0 else 0.0
-    for position, term in enumerate(terms):
-        if consistency[term] < _SIGN_CONSISTENCY_FLOOR:
-            recommended[term] = 0.0
-            caveats.append(
-                f"{term}: bootstrap sign consistency "
-                f"{consistency[term]:.0%} < {_SIGN_CONSISTENCY_FLOOR:.0%}"
-            )
-        elif beta[position] >= 0:
-            recommended[term] = 0.0
-            caveats.append(
-                f"{term}: coefficient points the wrong way "
-                f"(higher error predicts prettier)"
-            )
-        else:
-            recommended[term] = round(float(raw[position] * scale), 2)
-
-    n_pairs = len(pairs)
+    n_pairs = len(fitted_pairs)
     if len(scored) < _MIN_MODELS:
         caveats.append(f"ADVISORY ONLY: {len(scored)} scored models < {_MIN_MODELS}")
     if n_pairs < _MIN_PAIRS_PER_TERM * len(terms):
@@ -397,9 +528,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--log", type=Path, default=_DEFAULT_LOG)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--bootstrap", type=int, default=1_000)
+    parser.add_argument("--bootstrap", type=_positive_int, default=1_000)
     parser.add_argument("--out", type=Path, default=_DEFAULT_OUT)
     return parser.parse_args(argv)
+
+
+def _positive_int(text: str) -> int:
+    """Parse a command-line integer that must be positive."""
+    value = int(text)
+    if value <= 0:
+        msg = f"{value} is not positive"
+        raise argparse.ArgumentTypeError(msg)
+    return value
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -417,14 +557,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not pairs:
         print("the preference log has no judged pairs yet", file=sys.stderr)
         return 1
-    fit = fit_bradley_terry(pairs)
-    report = regress_terms(
-        fit,
-        judged_model_terms(rows),
-        pairs=pairs,
-        rng=np.random.default_rng(args.seed),
-        bootstrap=args.bootstrap,
-    )
+    terms_by_model = judged_model_terms(rows)
+    try:
+        fit, fitted_pairs = fit_resolved_pairs(pairs, terms_by_model)
+        report = regress_terms(
+            fit,
+            terms_by_model,
+            pairs=fitted_pairs,
+            rng=np.random.default_rng(args.seed),
+            bootstrap=args.bootstrap,
+        )
+    except ValueError as error:
+        print(f"cannot fit preference weights: {error}", file=sys.stderr)
+        return 1
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = args.out / stamp
     out.mkdir(parents=True, exist_ok=True)

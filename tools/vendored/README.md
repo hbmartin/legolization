@@ -12,9 +12,11 @@
   (bytecode caches excluded) so the external-dataset analyses
   (`scripts/ldraw_coverage.py`) run against a snapshot that a future upstream
   release cannot silently move. The same release is a pinned dev-group
-  dependency (`bricknet==0.1.0` in `pyproject.toml`); the four reference data
-  tables are additionally vendored at `references/bricknet-data/` and a test
-  asserts the two copies stay byte-identical.
+  dependency (`bricknet==0.1.0` in `pyproject.toml`); a test compares every
+  vendored package file against that installed exact release. The four
+  reference data tables are additionally vendored at
+  `references/bricknet-data/` and a test asserts the two copies stay
+  byte-identical.
 - The BrickNet datasets behind the project's request form are **not** used —
   see `ROADMAP.md`, "External validation datasets". Everything here ships
   inside the MIT package.

@@ -85,6 +85,18 @@ def test_delete_never_disconnects_a_two_brick_tower():
         assert ConnectionGraph.from_layout(layout).component_count() == 1
 
 
+def test_colour_operators_reject_visual_noops():
+    drift = _load_drift_module()
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x2", 0, 0, 0, 0, 4)
+    layout.add("brick_1x2", 0, 0, 3, 0, 4)
+    before = [(brick.brick_id, brick.colour_code) for brick in layout]
+
+    assert not drift._op_recolour(layout, np.random.default_rng(0), [4])  # noqa: SLF001
+    assert not drift._op_swap(layout, np.random.default_rng(0), [4])  # noqa: SLF001
+    assert [(brick.brick_id, brick.colour_code) for brick in layout] == before
+
+
 def test_constant_series_scores_zero_rho():
     drift = _load_drift_module()
     assert drift._rho([0.25, 0.25, 0.25, 0.25]) == 0.0  # noqa: SLF001

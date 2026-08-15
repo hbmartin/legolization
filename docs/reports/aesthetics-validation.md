@@ -43,6 +43,12 @@ locomotives sit at 0.94–0.99). That spread is why the Mann-Whitney gate
 right — the gate stays unmet, the weight stays at its long-standing 0.25, and
 the preference program is the instrument that can justify moving it.
 
+For the promotion test, the several strategies generated from one source
+model are averaged into one `ours` observation before calculating its median
+or Mann–Whitney U statistic. Those alternatives share an input model and are
+therefore not independent evidence; treating each render as a separate sample
+would overstate the test's precision.
+
 ## Decisions taken
 
 1. **`perpendicularity` demoted to weight 0.0** (was 0.25). Both

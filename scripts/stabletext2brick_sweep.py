@@ -271,7 +271,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     indices = s2b.sample_indices(counts, sample=args.sample, seed=args.seed)
     config = SolverConfig(screen=args.screen)
 
-    rows, skipped = run_sweep(s2b.load_selected(paths, counts, indices), config=config)
+    rows, skipped = run_sweep(
+        s2b.load_selected(paths=paths, counts=counts, indices=indices),
+        config=config,
+    )
     if not rows:
         print("every sampled structure was skipped", file=sys.stderr)
         return 1

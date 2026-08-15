@@ -143,16 +143,14 @@ def pending_pairs(
         if row["judge"] == "human"
         or (row["judge"] == "claude" and row["confidence"] == "high")
     }
-    claude_calls = {str(row["id"]): row for row in rows if row["judge"] == "claude"}
     pending = []
     for pair in _manifest_pairs(manifest):
         pair_id = str(pair.get("id"))
         if pair.get("status") != "rendered" or pair_id in settled:
             continue
-        enriched = dict(pair)
-        if (call := claude_calls.get(pair_id)) is not None:
-            enriched["claude_verdict"] = call
-        pending.append(enriched)
+        # Do not carry an escalated model verdict into the human page: seeing
+        # its winner or rationale would anchor the independent human judgment.
+        pending.append(dict(pair))
     return pending
 
 
@@ -177,18 +175,11 @@ def review_page(pairs: Sequence[dict[str, object]]) -> str:
             )
             for position, side in enumerate(sides)
         )
-        claude_note = ""
-        if isinstance(call := pair.get("claude_verdict"), dict):
-            claude_note = (
-                f"<p>claude ({html.escape(str(call.get('confidence')))} "
-                f"confidence): {html.escape(str(call.get('winner')))}"
-                f" — {html.escape(str(call.get('notes', '')))}</p>"
-            )
         blocks.append(
             f"<section><h2>{html.escape(str(pair['id']))}</h2>"
             f"<p>side 1 = model_{sides[0]}, side 2 = model_{sides[1]}; answer "
             f"with the MODEL letter, e.g. <code>{html.escape(str(pair['id']))}"
-            f"=a</code></p>{claude_note}"
+            f"=a</code></p>"
             f'<div class="pair">{columns}</div></section>'
         )
     body = "\n".join(blocks) if blocks else "<p>Nothing awaiting review.</p>"
@@ -215,30 +206,35 @@ def merge_verdicts(
 ) -> int:
     """Append one human verdict per ``id=winner`` token; return the count."""
     by_id = {str(pair.get("id")): pair for pair in _manifest_pairs(manifest)}
-    merged = 0
+    pending_rows: list[dict[str, object]] = []
     for token in tokens.split():
         pair_id, _, winner = token.partition("=")
         if (pair := by_id.get(pair_id)) is None:
             msg = f"{pair_id} is not in this manifest"
             raise VerdictError(msg)
-        append_verdict(
-            {
-                "id": pair.get("id"),
-                "model_a": pair.get("model_a"),
-                "model_b": pair.get("model_b"),
-                "sha256_a": pair.get("sha256_a"),
-                "sha256_b": pair.get("sha256_b"),
-                "views": sorted(_side_images(pair, "a")),
-                "winner": winner,
-                "judge": "human",
-                "confidence": "high",
-                "presentation_order": pair.get("presentation_order"),
-                "notes": "batch review",
-            },
-            log=log,
+        if pair.get("status") != "rendered":
+            msg = f"{pair_id} was not rendered completely and cannot be judged"
+            raise VerdictError(msg)
+        pending_rows.append(
+            validate_verdict(
+                {
+                    "id": pair.get("id"),
+                    "model_a": pair.get("model_a"),
+                    "model_b": pair.get("model_b"),
+                    "sha256_a": pair.get("sha256_a"),
+                    "sha256_b": pair.get("sha256_b"),
+                    "views": sorted(_side_images(pair, "a")),
+                    "winner": winner,
+                    "judge": "human",
+                    "confidence": "high",
+                    "presentation_order": pair.get("presentation_order"),
+                    "notes": "batch review",
+                }
+            )
         )
-        merged += 1
-    return merged
+    for row in pending_rows:
+        append_verdict(row, log=log)
+    return len(pending_rows)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

@@ -166,9 +166,10 @@ class PlacementStrategy(Protocol):
     ) -> Layout: ...
 ```
 
-The `rng` is a **NumPy `Generator`**, not `random.Random` — registered strategies
-call NumPy-specific methods such as `rng.integers`, so a caller passing the
-standard-library type gets an `AttributeError`.
+The `rng` must be a **NumPy `Generator`**, not `random.Random`. Registered
+strategies call NumPy-specific methods such as `rng.integers`, which the
+standard-library type does not have — though `global-exact` ignores `rng`
+entirely on its deterministic exact path, so nothing there would notice.
 
 !!! note "`strategy_names()` deliberately excludes `global-exact`"
 
