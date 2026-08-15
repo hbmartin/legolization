@@ -67,6 +67,9 @@ _ConnectionKey = tuple[int, int, tuple[int, int, int]]
 keeps a pair's lateral and vertical interfaces — and lateral interfaces
 on different faces — in separate field planes."""
 
+_FieldPoint = tuple[int, int, float, float]
+"""Exact normal/drag columns plus field-plane coordinates."""
+
 
 @dataclass(frozen=True, slots=True)
 class ReducedModel:
@@ -147,6 +150,15 @@ class _Triplets:
             self.rows.append(row)
             self.cols.append(col)
             self.data.append(weight)
+
+
+@dataclass(frozen=True, slots=True)
+class _FieldEmission:
+    """Shared destinations for one connection's emitted fields."""
+
+    triplets: _Triplets
+    drag_connection: dict[int, int]
+    constraint_mask: np.ndarray
 
 
 def _hull_vertices(coords: list[tuple[float, float]]) -> set[int]:
@@ -248,6 +260,62 @@ def _collect_connections(
     return connections, pair_order, col
 
 
+def _emit_contact_fields(
+    *,
+    points: list[_FieldPoint],
+    ordinal: int,
+    start_col: int,
+    emission: _FieldEmission,
+) -> int:
+    """Emit one connection's normal and drag affine fields."""
+    cx = sum(x for _, _, x, _ in points) / len(points)
+    cy = sum(y for _, _, _, y in points) / len(points)
+    normal_block = start_col
+    drag_block = start_col + _FIELD_WIDTH
+    reduced_col = start_col + 2 * _FIELD_WIDTH
+    for normal_col, drag_col, x, y in points:
+        phi = (1.0, x - cx, y - cy)
+        for j, weight in enumerate(phi):
+            emission.triplets.add(
+                row=normal_col,
+                col=normal_block + j,
+                weight=weight,
+            )
+            emission.triplets.add(row=drag_col, col=drag_block + j, weight=weight)
+        emission.drag_connection[drag_col] = ordinal
+    for index in _hull_vertices([(x, y) for _, _, x, y in points]):
+        normal_col, drag_col, _, _ = points[index]
+        emission.constraint_mask[normal_col] = True
+        emission.constraint_mask[drag_col] = True
+    return reduced_col
+
+
+def _emit_press_fields(
+    *,
+    records: list[_KnobRecord],
+    start_col: int,
+    emission: _FieldEmission,
+) -> int:
+    """Emit every press-direction field for one connection."""
+    basis = _press_basis([record.center for record in records])
+    width = basis.shape[1]
+    reduced_col = start_col
+    for direction in range(len(records[0].press_cols)):
+        block = reduced_col
+        reduced_col += width
+        for knob_index, record in enumerate(records):
+            for j in range(width):
+                emission.triplets.add(
+                    row=record.press_cols[direction],
+                    col=block + j,
+                    weight=float(basis[knob_index, j]),
+                )
+    for index in _hull_vertices([record.center for record in records]):
+        for press_col in records[index].press_cols:
+            emission.constraint_mask[press_col] = True
+    return reduced_col
+
+
 def _connection_fields(  # noqa: PLR0913 - one connection's full emission
     *,
     records: list[_KnobRecord],
@@ -268,37 +336,22 @@ def _connection_fields(  # noqa: PLR0913 - one connection's full emission
         # screen would swallow into status="error".
         msg = f"connection {ordinal} has no contact points"
         raise RuntimeError(msg)
-    cx = sum(x for _, _, x, _ in points) / len(points)
-    cy = sum(y for _, _, _, y in points) / len(points)
-    normal_block = start_col
-    drag_block = start_col + _FIELD_WIDTH
-    reduced_col = start_col + 2 * _FIELD_WIDTH
-    for normal_col, drag_col, x, y in points:
-        phi = (1.0, x - cx, y - cy)
-        for j, weight in enumerate(phi):
-            triplets.add(row=normal_col, col=normal_block + j, weight=weight)
-            triplets.add(row=drag_col, col=drag_block + j, weight=weight)
-        drag_connection[drag_col] = ordinal
-    for index in _hull_vertices([(x, y) for _, _, x, y in points]):
-        normal_col, drag_col, _, _ = points[index]
-        constraint_mask[normal_col] = True
-        constraint_mask[drag_col] = True
-    basis = _press_basis([record.center for record in records])
-    width = basis.shape[1]
-    for direction in range(len(records[0].press_cols)):
-        block = reduced_col
-        reduced_col += width
-        for knob_index, record in enumerate(records):
-            for j in range(width):
-                triplets.add(
-                    row=record.press_cols[direction],
-                    col=block + j,
-                    weight=float(basis[knob_index, j]),
-                )
-    for index in _hull_vertices([record.center for record in records]):
-        for press_col in records[index].press_cols:
-            constraint_mask[press_col] = True
-    return reduced_col
+    emission = _FieldEmission(
+        triplets=triplets,
+        drag_connection=drag_connection,
+        constraint_mask=constraint_mask,
+    )
+    reduced_col = _emit_contact_fields(
+        points=points,
+        ordinal=ordinal,
+        start_col=start_col,
+        emission=emission,
+    )
+    return _emit_press_fields(
+        records=records,
+        start_col=reduced_col,
+        emission=emission,
+    )
 
 
 def _check_drag_attribution(

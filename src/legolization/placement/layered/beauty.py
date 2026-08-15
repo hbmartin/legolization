@@ -193,6 +193,34 @@ class BeautyStrategy(LayeredStrategy):
             if self._mirror_y is not None
             else min(y for _, y in order) + max(y for _, y in order)
         )
+        best = self._search_tiling(
+            problem,
+            below,
+            order,
+            mirror=(mirror_x, mirror_y),
+            deadline=deadline,
+        )
+        if best is None:
+            best = self._fallback_tiling(
+                problem,
+                below,
+                rng,
+                mirror_x=mirror_x,
+                mirror_y=mirror_y,
+            )
+        self._run_cost += best[0]
+        return list(best[1])
+
+    def _search_tiling(
+        self,
+        problem: LayerProblem,
+        below: LayerContext,
+        order: list[Column],
+        *,
+        mirror: tuple[int, int],
+        deadline: float | None,
+    ) -> tuple[float, tuple[Rect2D, ...]] | None:
+        """Run bounded best-first search and return its best completion."""
         counter = 0
         open_list: list[_Node] = [(0.0, counter, frozenset(), ())]
         best: tuple[float, tuple[Rect2D, ...]] | None = None
@@ -207,8 +235,8 @@ class BeautyStrategy(LayeredStrategy):
                     below,
                     rects,
                     priority=priority,
-                    mirror_x=mirror_x,
-                    mirror_y=mirror_y,
+                    mirror_x=mirror[0],
+                    mirror_y=mirror[1],
                     best=best,
                 )
                 continue
@@ -225,9 +253,18 @@ class BeautyStrategy(LayeredStrategy):
             if len(open_list) > self.beam_width:
                 open_list = heapq.nsmallest(self.beam_width, open_list)
                 heapq.heapify(open_list)
-        if best is not None:
-            self._run_cost += best[0]
-            return list(best[1])
+        return best
+
+    def _fallback_tiling(
+        self,
+        problem: LayerProblem,
+        below: LayerContext,
+        rng: np.random.Generator,
+        *,
+        mirror_x: int,
+        mirror_y: int,
+    ) -> tuple[float, tuple[Rect2D, ...]]:
+        """Build and score a random completion when search finds none."""
         fallback = tuple(random_fill(problem, rng, self.catalog))
         fallback_cost = self._completed_node(
             below,
@@ -240,8 +277,7 @@ class BeautyStrategy(LayeredStrategy):
         if fallback_cost is None:  # defensive: best=None always returns a candidate
             msg = "fallback tiling did not produce a completed Beauty node"
             raise RuntimeError(msg)
-        self._run_cost += fallback_cost[0]
-        return list(fallback)
+        return fallback_cost
 
     def _expand_node(  # noqa: PLR0913 - explicit search state
         self,

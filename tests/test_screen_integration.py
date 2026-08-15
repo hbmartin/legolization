@@ -1,6 +1,7 @@
 """Reduced-QP screen wired into certify/accept, Luo, and configuration."""
 
 import time
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -222,9 +223,9 @@ def test_toml_surface_round_trip():
 
 def test_invalid_screen_values_rejected():
     with pytest.raises(ValueError, match="screen must be"):
-        SolverConfig(screen="qp")  # type: ignore[arg-type]
+        SolverConfig(screen=cast("Any", "qp"))
     with pytest.raises(ValueError, match="screen_fields must be"):
-        SolverConfig(screen_fields="paper")  # type: ignore[arg-type]
+        SolverConfig(screen_fields=cast("Any", "paper"))
     with pytest.raises(ValueError, match="finite and positive"):
         SolverConfig(screen_margin=0.0)
 
