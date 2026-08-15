@@ -968,12 +968,83 @@ def test_press_union_prefers_stable_then_truthful_fragile_fallback(
     assert fallback[3] is True
 
     monkeypatch.setattr(sequencer, "_PRESS_UNION_STATE_LIMIT", 2)
+    exact, exact_truncated = sequencer._best_press_union(  # noqa: SLF001
+        **common,
+        press_prefix=lambda chunk: robust if len(chunk) == 2 else fragile,
+    )
+    assert not exact_truncated
+    assert exact == stable_choice
+
+    monkeypatch.setattr(sequencer, "_PRESS_UNION_STATE_LIMIT", 1)
     capped, capped_truncated = sequencer._best_press_union(  # noqa: SLF001
         **common,
         press_prefix=lambda chunk: robust if len(chunk) == 2 else fragile,
     )
     assert capped_truncated
-    assert capped == stable_choice
+    assert capped is None
+
+
+def test_press_union_reports_cap_when_rejected_state_empties_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from legolization.instructions import sequencer
+
+    layout = Layout(catalog=default_catalog())
+    bricks = [layout.add("brick_1x1", x, 0, 0, 0, 4) for x in range(3)]
+    chunks: list[tuple[int, tuple[int, ...]]] = [
+        (0, (brick.brick_id,)) for brick in bricks
+    ]
+
+    monkeypatch.setattr(sequencer, "_PRESS_UNION_STATE_LIMIT", 2)
+    monkeypatch.setattr(
+        sequencer,
+        "_evaluate_press_union",
+        lambda *_args, **_kwargs: None,
+    )
+    choice, truncated = sequencer._best_press_union(  # noqa: SLF001
+        layout,
+        seed=0,
+        pending=[0, 1, 2],
+        chunks=chunks,
+        placed=set(),
+        supports={brick.brick_id: set() for brick in bricks},
+        blockers={brick.brick_id: frozenset() for brick in bricks},
+        blocks={brick.brick_id: set() for brick in bricks},
+        neighbours={brick.brick_id: set() for brick in bricks},
+        band_rank={0: 0},
+        brick_position={brick.brick_id: index for index, brick in enumerate(bricks)},
+        max_step_size=3,
+        analyze_prefix=lambda _chunk: _verdict(stable=True, score=0.0),
+        press_prefix=lambda _chunk: _verdict(stable=True, score=0.0),
+    )
+
+    assert choice is None
+    assert truncated
+
+
+def test_press_union_truncation_warning_names_the_actual_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from legolization.instructions import sequencer
+
+    monkeypatch.setattr(sequencer, "_PRESS_UNION_STATE_LIMIT", 7)
+    found = sequencer._press_union_truncation_warning(  # noqa: SLF001
+        3,
+        found_union=True,
+    )
+    missing = sequencer._press_union_truncation_warning(  # noqa: SLF001
+        3,
+        found_union=False,
+    )
+
+    assert found == (
+        "step 3: press-union search reached its 7-state limit; "
+        "using the best evaluated union"
+    )
+    assert missing == (
+        "step 3: press-union search reached its 7-state limit; "
+        "no valid union found; using the least-fragile ordering"
+    )
 
 
 @pytest.mark.slow

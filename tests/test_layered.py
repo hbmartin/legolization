@@ -373,8 +373,9 @@ def test_beauty_searches_both_global_axes_and_keeps_lower_cost(
     grid = VoxelGrid(codes=np.full((2, 1, 3), 4, dtype=np.int16))
     strategy = BeautyStrategy(beauty=BeautyWeights.preset("aesthetics"))
     searched_axes: list[int | None] = []
+    finalized_axes: list[int | None] = []
 
-    def fake_place(
+    def fake_tile_layout(
         self: BeautyStrategy,
         grid: VoxelGrid,
         *,
@@ -389,14 +390,67 @@ def test_beauty_searches_both_global_axes_and_keeps_lower_cost(
         layout.add("brick_1x1", self._mirror_axis, 0, 0, 0, 4)
         return layout
 
-    monkeypatch.setattr(LayeredStrategy, "place", fake_place)
+    def fake_finalize_layout(
+        self: BeautyStrategy,
+        layout: Layout,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> None:
+        del layout, grid, rng, deadline
+        finalized_axes.append(self._mirror_axis)
+
+    monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
+    monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
     layout = strategy.place(grid, rng=np.random.default_rng(0))
 
     assert searched_axes == [0, 1]
+    assert finalized_axes == [1]
     assert next(iter(layout)).x == 1
     assert strategy._mirror_x is None  # noqa: SLF001
     assert strategy._mirror_y is None  # noqa: SLF001
     assert strategy._mirror_axis is None  # noqa: SLF001
+
+
+def test_beauty_finalizes_both_axes_only_to_break_a_cost_tie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grid = VoxelGrid(codes=np.full((2, 1, 3), 4, dtype=np.int16))
+    strategy = BeautyStrategy(beauty=BeautyWeights.preset("aesthetics"))
+    finalized_axes: list[int | None] = []
+
+    def fake_tile_layout(
+        self: BeautyStrategy,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> Layout:
+        del grid, rng, deadline
+        self._run_cost = 1.0
+        layout = Layout(catalog=default_catalog())
+        assert self._mirror_axis is not None
+        layout.add("brick_1x1", self._mirror_axis, 0, 0, 0, 4)
+        return layout
+
+    def fake_finalize_layout(
+        self: BeautyStrategy,
+        layout: Layout,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> None:
+        del layout, grid, rng, deadline
+        finalized_axes.append(self._mirror_axis)
+
+    monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
+    monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
+
+    strategy.place(grid, rng=np.random.default_rng(0))
+
+    assert finalized_axes == [0, 1]
 
 
 def test_aesthetics_metrics_on_hand_layouts():

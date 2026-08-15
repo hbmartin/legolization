@@ -119,6 +119,10 @@ package_module_name_map = { pyldraw3 = ["ldraw"] }
 # clarabel/highspy/osqp/scs are cvxpy/scipy solver backends loaded by name at
 # runtime, never imported.
 DEP002 = ["clarabel", "highspy", "osqp", "scs"]
+# bricknet and pyarrow support optional external-dataset analysis paths. They
+# are imported lazily and belong in the development environment, not the core
+# package installed by every CLI user.
+DEP004 = ["bricknet", "pyarrow"]
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.13.0"]

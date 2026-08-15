@@ -148,9 +148,13 @@ class LayeredStrategy:
         deadline: float | None = None,
     ) -> Layout:
         """Tile every layer problem bottom-up, then repair topology."""
-        layout = Layout(catalog=self.catalog)
-        problems = slab_decompose(grid)
-        total = sum(len(problem.columns) for problem in problems) or 1
+        deadline = self._resolve_deadline(deadline)
+        layout = self._tile_layout(grid, rng=rng, deadline=deadline)
+        self._finalize_layout(layout, grid, rng=rng, deadline=deadline)
+        return layout
+
+    def _resolve_deadline(self, deadline: float | None) -> float | None:
+        """Combine a caller deadline with this strategy's local budget."""
         # `is not None`, not truthiness: a zero budget means an instant
         # deadline, matching Luo — 0 as "disabled" was an inconsistency.
         local_deadline = (
@@ -158,10 +162,21 @@ class LayeredStrategy:
             if self.time_budget_s is not None
             else None
         )
-        if local_deadline is not None:
-            deadline = (
-                local_deadline if deadline is None else min(deadline, local_deadline)
-            )
+        if local_deadline is None:
+            return deadline
+        return local_deadline if deadline is None else min(deadline, local_deadline)
+
+    def _tile_layout(
+        self,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> Layout:
+        """Tile every layer problem bottom-up without post-processing."""
+        layout = Layout(catalog=self.catalog)
+        problems = slab_decompose(grid)
+        total = sum(len(problem.columns) for problem in problems) or 1
         done = 0
         # The share divides the *remaining* budget, so it must be a share of
         # the *remaining* columns: against the fixed total, every layer takes
@@ -201,6 +216,18 @@ class LayeredStrategy:
                 "place.tiled.components",
                 ConnectionGraph.from_layout(layout).component_count(),
             )
+        return layout
+
+    def _finalize_layout(
+        self,
+        layout: Layout,
+        grid: VoxelGrid,
+        *,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> None:
+        """Compact and repair one completed layered tiling in place."""
+        recording = telemetry.current() is not None
         with telemetry.span("place.compact"):
             compact_vertical(layout)
         telemetry.value("place.compacted.bricks", len(layout))
@@ -239,7 +266,6 @@ class LayeredStrategy:
                 "place.connected.components",
                 ConnectionGraph.from_layout(layout).component_count(),
             )
-        return layout
 
     def tile(
         self,

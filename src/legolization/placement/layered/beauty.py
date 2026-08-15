@@ -2,11 +2,11 @@
 
 Each layer is tiled by bounded best-first search (the paper's A*, honestly
 a beam search: the OPEN list is capped and the guidance heuristic is not
-admissible). A whole-model placement runs the search once with x as the fixed
-mirror axis and once with y, then keeps the lower-cost completed layout. Nodes
-expand only through placements covering the first uncovered column in scan
-order, which collapses permutations of the same tiling into one path. The cost
-accumulates per placed rect:
+admissible). A whole-model placement tiles once with x as the fixed mirror axis
+and once with y, then post-processes only the lower-cost candidate (both when
+their tiling costs tie). Nodes expand only through placements covering the
+first uncovered column in scan order, which collapses permutations of the same
+tiling into one path. The cost accumulates per placed rect:
 
 - efficiency ``g_h``: small rects cost ``(A_MAX - area) / (A_MAX - 1)``;
 - balance ``g_a``: a rect not centred on the whole-model mirror axis and
@@ -79,6 +79,16 @@ class BeautyWeights:
         return cls(w_s=w_s, w_a=w_a, w_h=w_h, w_v=w_v)
 
 
+@dataclass(frozen=True, slots=True)
+class _AxisCandidate:
+    """One raw whole-model tiling and the RNG state that produced it."""
+
+    cost: float
+    axis: int
+    layout: Layout
+    rng: np.random.Generator
+
+
 @dataclass(slots=True)
 class BeautyStrategy(LayeredStrategy):
     """Bounded best-first tiler over Min's weighted layer objective."""
@@ -118,17 +128,8 @@ class BeautyStrategy(LayeredStrategy):
 
         self._mirror_x = int(xs.min()) + int(xs.max())
         self._mirror_y = int(ys.min()) + int(ys.max())
-        overall_deadline = deadline
-        if self.time_budget_s is not None:
-            local_deadline = time.monotonic() + self.time_budget_s
-            overall_deadline = (
-                local_deadline
-                if overall_deadline is None
-                else min(overall_deadline, local_deadline)
-            )
-        candidates: list[
-            tuple[float, float, int, int, Layout, np.random.Generator]
-        ] = []
+        overall_deadline = self._resolve_deadline(deadline)
+        candidates: list[_AxisCandidate] = []
         try:
             for axis in (0, 1):
                 axis_rng = deepcopy(rng)
@@ -140,28 +141,43 @@ class BeautyStrategy(LayeredStrategy):
                 self._run_cost = 0.0
                 # Explicit base call: slots=True rebuilds the class, which breaks
                 # the zero-argument super()'s captured __class__ cell.
-                layout = LayeredStrategy.place(
+                layout = LayeredStrategy._tile_layout(  # noqa: SLF001
                     self,
                     grid,
                     rng=axis_rng,
                     deadline=axis_deadline,
                 )
                 candidates.append(
-                    (
-                        self._run_cost,
-                        symmetry_error(layout),
-                        len(layout),
-                        axis,
-                        layout,
-                        axis_rng,
+                    _AxisCandidate(
+                        cost=self._run_cost,
+                        axis=axis,
+                        layout=layout,
+                        rng=axis_rng,
                     )
                 )
-            *_, layout, selected_rng = min(
-                candidates,
-                key=lambda candidate: candidate[:4],
+            best_cost = min(candidate.cost for candidate in candidates)
+            finalists = [
+                candidate for candidate in candidates if candidate.cost == best_cost
+            ]
+            for candidate in finalists:
+                self._mirror_axis = candidate.axis
+                LayeredStrategy._finalize_layout(  # noqa: SLF001
+                    self,
+                    candidate.layout,
+                    grid,
+                    rng=candidate.rng,
+                    deadline=overall_deadline,
+                )
+            selected = min(
+                finalists,
+                key=lambda candidate: (
+                    symmetry_error(candidate.layout),
+                    len(candidate.layout),
+                    candidate.axis,
+                ),
             )
-            rng.bit_generator.state = deepcopy(selected_rng.bit_generator.state)
-            return layout
+            rng.bit_generator.state = deepcopy(selected.rng.bit_generator.state)
+            return selected.layout
         finally:
             self._mirror_x = None
             self._mirror_y = None

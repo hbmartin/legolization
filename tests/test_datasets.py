@@ -346,13 +346,13 @@ def test_omr_resume_skips_only_matching_downloads(
         target = tmp_path / "ldraw" / model.filename
         target.parent.mkdir(parents=True)
         target.write_bytes(contents)
-    downloads: list[Path] = []
+    fetches: list[str] = []
 
-    def fake_download(candidate: object, *, dest: Path) -> object:
-        downloads.append(dest)
-        return candidate
+    def fake_get(url: str) -> bytes:
+        fetches.append(url)
+        return b"expected"
 
-    monkeypatch.setattr(omr, "download", fake_download)
+    monkeypatch.setattr(omr, "_get", fake_get)
     index = omr.Index(models={model.name: recorded})
     assert (
         omr._record_models(  # noqa: SLF001
@@ -364,7 +364,9 @@ def test_omr_resume_skips_only_matching_downloads(
         )
         == []
     )
-    assert len(downloads) == expected_downloads
+    assert len(fetches) == expected_downloads
+    assert (tmp_path / "ldraw" / model.filename).read_bytes() == b"expected"
+    assert index.models[model.name].bytes == len(b"expected")
 
 
 def test_omr_crawl_does_not_mark_a_transient_failure_visited(
