@@ -22,7 +22,7 @@ solver stack — no Gurobi required.
 
 ## Install the skills
 
-The conversational way to use Legolization is the ten-skill suite. Install
+The conversational way to use Legolization is the eleven-skill suite. Install
 the complete collection into your coding agent with:
 
 ```sh
@@ -90,6 +90,7 @@ rescues a candidate that fails that gate.
 | `repair-lego-assembly` | Propose and validate a repair or redesign without overwriting the source. | "This model falls apart at the arch — fix it without changing how it looks." |
 | `extend-lego-part-support` | Research, estimate, validate, and activate parts-catalog extensions. | "Add support for part 4070 so my headlight-brick model analyzes correctly." |
 | `render-ldraw` | Render a model or bundle from requested views. | "Show me what heart.ldr looks like from the front and the top." |
+| `judge-aesthetics` | Render two variants consistently and record or escalate a visual preference. | "Which of these two builds looks better?" |
 | `inspect-instructions` | Audit buildability, ordering, insertion pressure, and booklet readiness. | "Do these build steps make sense, or will something fall off halfway through?" |
 | `eval-corpus` | Run repeatable strategy evaluation across the available corpus. | "Did my placement change make the whole corpus better or worse?" |
 
@@ -104,7 +105,7 @@ tracks. Pick one rather than reading all three.
 
 | Track | For | Covers |
 | --- | --- | --- |
-| **[Basics](https://hbmartin.github.io/legolization/basics/)** | Talking to a coding agent | The ten skills, what each asks before acting, reading the results, troubleshooting |
+| **[Basics](https://hbmartin.github.io/legolization/basics/)** | Talking to a coding agent | The eleven skills, what each asks before acting, reading the results, troubleshooting |
 | **[Guide](https://hbmartin.github.io/legolization/guide/)** | Driving the CLI | Every command and flag, the full configuration schema, bundles and artifacts, exit codes, the Python API |
 | **[Theory](https://hbmartin.github.io/legolization/theory/)** | Changing the algorithms | The RBE formulation, the LP exactness proof, eight placement strategies, sequencing and its duality argument, all thirteen papers mapped to code |
 

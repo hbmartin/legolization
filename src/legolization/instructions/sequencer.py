@@ -1009,7 +1009,7 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
     seen = {queue[0]}
     ranked: list[_PressUnionRank] = []
     fragile_ranked: list[_PressUnionRank] = []
-    while queue and len(seen) <= _PRESS_UNION_STATE_LIMIT:
+    while queue and len(seen) < _PRESS_UNION_STATE_LIMIT:
         positions = queue.pop(0)
         adjacent = _adjacent_chunk_positions(
             positions=positions,
@@ -1019,6 +1019,10 @@ def _best_press_union(  # noqa: PLR0913 - candidate state
             centroids=centroids,
         )
         for candidate_position in adjacent:
+            # Re-checked per candidate: one popped node can fan out past the
+            # cap, and every admitted state costs a press evaluation.
+            if len(seen) >= _PRESS_UNION_STATE_LIMIT:
+                break
             state = _expanded_press_positions(
                 positions=positions,
                 candidate_position=candidate_position,

@@ -15,7 +15,9 @@ being measured - only the same metrics on different authors. The report also
 carries the audition **promotion gates**: an audition term may only gain a
 non-zero default weight when the population medians order
 ``human < ours < algorithmic`` strictly AND a one-sided Mann-Whitney U test
-(human < ours) clears p < 0.01 - see ``docs/reports/aesthetics-validation.md``:
+(human < ours) clears p < 0.01. Our candidates are first averaged per source
+model, so alternate strategies for one source are not treated as independent
+observations - see ``docs/reports/aesthetics-validation.md``:
 
 ===============  ==========================================================
 ``human``        LDraw OMR - official LEGO sets, designed by LEGO
@@ -162,13 +164,18 @@ def algorithmic_scores(
     deterministically over every shard with the sweep's sampling convention.
     The draw is oversampled because parse failures and structures below
     ``min_bricks`` are dropped after the fact; ``limit`` caps eligible scores.
+    ``load_selected`` returns rows in ascending global-index order, so the
+    loaded rows are re-shuffled with the same seed before capping - otherwise
+    the cap would keep the lowest indices and re-introduce shard-order bias.
     """
     if not (paths := s2b.shard_paths(root)):
         return []
     counts = s2b.shard_row_counts(paths)
     indices = s2b.sample_indices(counts, sample=2 * limit if limit else 0, seed=seed)
+    loaded = s2b.load_selected(paths=paths, counts=counts, indices=indices)
+    order = np.random.default_rng(seed).permutation(len(loaded))
     scores: list[Score] = []
-    for item in s2b.load_selected(paths, counts, indices):
+    for item in (loaded[position] for position in order):
         if isinstance(item, str):
             continue
         try:
@@ -241,6 +248,24 @@ def distribution(scores: Sequence[Score], *, field: str) -> dict[str, float]:
     }
 
 
+def _gate_values(scores: Sequence[Score], *, population: str, field: str) -> np.ndarray:
+    """Return independent values for one promotion-gate population.
+
+    A single source model produces several ``ours`` candidates (one per
+    strategy), so those candidates are correlated alternatives rather than
+    independent observations. Average them before the Mann-Whitney test;
+    human and algorithmic rows each originate from one source model already.
+    """
+    members = [score for score in scores if score.population == population]
+    if population != "ours":
+        return np.array([getattr(score, field) for score in members])
+    by_model: dict[str, list[float]] = {}
+    for score in members:
+        model, _, _ = score.name.rpartition("/")
+        by_model.setdefault(model or score.name, []).append(getattr(score, field))
+    return np.array([float(np.mean(values)) for _, values in sorted(by_model.items())])
+
+
 def promotion_gates(scores: Sequence[Score]) -> dict[str, dict[str, object]]:
     """Compute the mechanical promotion gate per term.
 
@@ -249,15 +274,11 @@ def promotion_gates(scores: Sequence[Score]) -> dict[str, dict[str, object]]:
     test (human < ours) clears ``p < 0.01``. The drift harness
     (``scripts/aesthetics_drift.py``) is the third, separate condition.
     """
-    by_population = {
-        population: [score for score in scores if score.population == population]
-        for population in ("human", "algorithmic", "ours")
-    }
     gates: dict[str, dict[str, object]] = {}
     for field in _FIELDS:
         values = {
-            population: np.array([getattr(score, field) for score in members])
-            for population, members in by_population.items()
+            population: _gate_values(scores, population=population, field=field)
+            for population in ("human", "algorithmic", "ours")
         }
         if any(not array.size for array in values.values()):
             gates[field] = {"computed": False, "reason": "a population is empty"}
@@ -326,7 +347,8 @@ def to_markdown(
         "",
         "A term may carry weight only when medians order",
         "`human < ours < algorithmic` strictly AND the one-sided Mann-Whitney",
-        f"U (human < ours) clears p < {_GATE_P_THRESHOLD}; the drift harness",
+        f"U (human < ours) clears p < {_GATE_P_THRESHOLD}. Ours candidates are",
+        "averaged per source model before this test; the drift harness",
         "is the separate third condition.",
         "",
         "| term | ordering ok | p (human < ours) | gate |",
@@ -361,6 +383,15 @@ def to_markdown(
     return "\n".join(lines)
 
 
+def _non_negative(text: str) -> int:
+    """Parse an argparse value that must be an integer >= 0."""
+    value = int(text)
+    if value < 0:
+        msg = f"{value} is negative; must be >= 0"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the command line."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -369,13 +400,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--baseline", type=Path, default=_DEFAULT_BASELINE)
     parser.add_argument(
         "--sample",
-        type=int,
+        type=_non_negative,
         default=200,
         help="cap of eligible layouts per population (0 = uncapped)",
     )
     parser.add_argument(
         "--seed",
-        type=int,
+        type=_non_negative,
         default=0,
         help="seed for the StableText2Brick cross-shard sample",
     )

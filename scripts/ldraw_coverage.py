@@ -387,9 +387,9 @@ def to_markdown(reports: Sequence[ModelReport], summary: Summary) -> str:
     ]
     if not summary.library_indexed:
         lines.append(
-            "_Real-part classification unavailable - no library index. The raw"
-            " ranking above mixes primitives in; run `fetch_datasets.py --only"
-            " ldraw-library` and re-run this sweep to rank real parts._"
+            "_Real-part classification unavailable - no library index; run"
+            " `fetch_datasets.py --only ldraw-library` and re-run this sweep"
+            " to rank real parts._"
         )
     elif not summary.unsupported_real_parts:
         lines.append(

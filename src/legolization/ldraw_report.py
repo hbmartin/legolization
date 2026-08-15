@@ -57,14 +57,10 @@ def _prepare_cached(key: _CatalogKey) -> CatalogPreparationResult:
     if (cached := _USABLE_CATALOGS.get(key)) is not None:
         return cached
     connection_shadows, studio_metadata = key
-    result = (
-        prepare_catalog(
-            capabilities=_CATALOG_CAPABILITIES,
-            connection_shadows=connection_shadows,
-            studio_metadata=studio_metadata,
-        )
-        if connection_shadows or studio_metadata
-        else prepare_catalog(capabilities=_CATALOG_CAPABILITIES)
+    result = prepare_catalog(
+        capabilities=_CATALOG_CAPABILITIES,
+        connection_shadows=connection_shadows,
+        studio_metadata=studio_metadata,
     )
     if catalog_error(result) is None:
         _USABLE_CATALOGS[key] = result

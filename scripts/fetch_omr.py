@@ -62,6 +62,10 @@ _TAG_PATTERN = re.compile(r"<[^>]+>")
 
 _TIMEOUT_S = 30.0
 _MAX_SET_ID = 4200
+# Consecutive discovery failures that read as a site outage rather than a few
+# flaky pages. Aborting early keeps an outage from burning one delay per
+# remaining set id; the failed ids stay unvisited, so the next run retries.
+_OUTAGE_THRESHOLD = 10
 _USER_AGENT = (
     "legolization-omr-crawler/1 (+https://github.com/hbmartin/legolization; "
     "research use, rate-limited)"
@@ -241,6 +245,31 @@ def _pending(index: Index, *, limit: int) -> Iterator[int]:
         yield set_id
 
 
+def _record_models(
+    models: list[OmrModel],
+    index: Index,
+    *,
+    index_only: bool,
+    dest: Path,
+    delay: float,
+) -> list[str]:
+    """Download or register each discovered model, returning failures."""
+    failures: list[str] = []
+    for model in models:
+        if model.name in index.models and index.models[model.name].bytes:
+            continue
+        if index_only:
+            index.models.setdefault(model.name, model)
+            continue
+        time.sleep(delay)
+        match download(model, dest=dest / "ldraw"):
+            case str() as failure:
+                failures.append(failure)
+            case OmrModel() as fetched:
+                index.models[fetched.name] = fetched
+    return failures
+
+
 def crawl(
     *,
     dest: Path,
@@ -255,25 +284,25 @@ def crawl(
     failures: list[str] = []
     dest.mkdir(parents=True, exist_ok=True)
 
+    consecutive_failures = 0
     for set_id in _pending(index, limit=limit):
         if (discovered := discover(set_id)) is None:
             failures.append(f"set {set_id}: transient fetch failure; will retry")
+            consecutive_failures += 1
+            if consecutive_failures >= _OUTAGE_THRESHOLD:
+                failures.append(
+                    f"aborting after {consecutive_failures} consecutive discovery "
+                    "failures - the site looks down; unvisited sets retry next run"
+                )
+                break
             time.sleep(delay)
             continue
+        consecutive_failures = 0
         _, models = discovered
         index.visited.add(set_id)
-        for model in models:
-            if model.name in index.models and index.models[model.name].bytes:
-                continue
-            if index_only:
-                index.models.setdefault(model.name, model)
-                continue
-            time.sleep(delay)
-            match download(model, dest=dest / "ldraw"):
-                case str() as failure:
-                    failures.append(failure)
-                case OmrModel() as fetched:
-                    index.models[fetched.name] = fetched
+        failures.extend(
+            _record_models(models, index, index_only=index_only, dest=dest, delay=delay)
+        )
         if progress:
             print(
                 f"\rset {set_id}/{_MAX_SET_ID}  models={len(index.models)}  "

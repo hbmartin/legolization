@@ -1,5 +1,7 @@
 """Layer engine and the four per-layer tiling strategies."""
 
+from dataclasses import fields
+
 import numpy as np
 import pytest
 
@@ -13,7 +15,12 @@ from legolization.placement.aesthetics import (
     profile_roughness,
     symmetry_error,
 )
-from legolization.placement.base import ObjectiveWeights, _seam_alignment, evaluate
+from legolization.placement.base import (
+    ObjectiveReport,
+    ObjectiveWeights,
+    _seam_alignment,
+    evaluate,
+)
 from legolization.placement.greedy import _h_lookahead
 from legolization.placement.layered import (
     BeautyStrategy,
@@ -469,6 +476,27 @@ def test_evaluate_reports_new_terms_and_zero_weights_reproduce_old_total():
     assert baseline.speckle == 1.0
     weighted = evaluate(speckled, grid, ObjectiveWeights(speckle=1.0))
     assert weighted.total == pytest.approx(baseline.total + baseline.speckle)
+
+
+def test_objective_dataclasses_preserve_positional_callers():
+    weights = ObjectiveWeights(1.0, 4.0, 0.5, 1.0, 0.25, 0.25, 4.0, 0.8)
+    assert weights.bond_alpha1 == 4.0
+    assert weights.bond_alpha2 == 0.8
+    assert weights.speckle == 0.0
+    assert weights.profile == 0.0
+
+    assert [field.name for field in fields(ObjectiveReport)] == [
+        "cost",
+        "instability",
+        "aesthetics",
+        "colour_error",
+        "perpendicularity",
+        "symmetry",
+        "total",
+        "stability",
+        "speckle",
+        "profile",
+    ]
 
 
 # --- grounded-at-band-time (support-aware placement) ---

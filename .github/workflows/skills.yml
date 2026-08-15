@@ -19,6 +19,7 @@ jobs:
           eval-corpus \
           extend-lego-part-support \
           inspect-instructions \
+          judge-aesthetics \
           legolize-model \
           optimize-lego-build \
           prepare-lego-input \
@@ -48,7 +49,7 @@ jobs:
             legolize-model prepare-lego-input optimize-lego-build \
             publish-lego-instructions analyze-lego-assembly \
             repair-lego-assembly extend-lego-part-support render-ldraw \
-            inspect-instructions eval-corpus; do
+            inspect-instructions judge-aesthetics eval-corpus; do
           if ! grep -q "$name" /tmp/discovery.txt; then
             echo "missing from discovery output: $name" >&2
             status=1

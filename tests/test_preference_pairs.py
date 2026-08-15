@@ -9,6 +9,7 @@ dataset adapters pin against.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -113,8 +114,9 @@ def test_pending_review_is_no_row_or_low_confidence_claude(tmp_path):
     review.append_verdict(_verdict(id="p-escalated", confidence="low"), log=log)
     pending = review.pending_pairs({"pairs": pairs}, review.load_log(log))
     assert [pair["id"] for pair in pending] == ["p-escalated", "p-unjudged"]
-    # The escalated pair carries Claude's provisional call for the reviewer.
-    assert pending[0]["claude_verdict"]["confidence"] == "low"
+    # Human escalation stays blind: Claude's provisional call never reaches
+    # the review page, where it could anchor the human's choice.
+    assert "claude_verdict" not in pending[0]
 
 
 def test_human_row_supersedes_the_escalation(tmp_path):
@@ -129,6 +131,18 @@ def test_human_row_supersedes_the_escalation(tmp_path):
     assert len(review.load_log(log)) == 2  # append-only, nothing rewritten
 
 
+def test_merge_refuses_a_pair_with_failed_renders(tmp_path):
+    review = _load_review_module()
+    log = tmp_path / "pairs.jsonl"
+    with pytest.raises(review.VerdictError, match="cannot be judged"):
+        review.merge_verdicts(
+            "20260809T000000Z-000=a",
+            {"pairs": [_manifest_pair(status="render-failed")]},
+            log=log,
+        )
+    assert not log.exists()
+
+
 def test_readme_documents_the_log_beside_it():
     readme = (_REPO / "references" / "aesthetic-preferences" / "README.md").read_text(
         encoding="utf-8"
@@ -139,7 +153,7 @@ def test_readme_documents_the_log_beside_it():
     stray = [
         path.name
         for path in log_dir.iterdir()
-        if path.name not in {"README.md", "pairs.jsonl"}
+        if path.name not in {"README.md", "pairs.jsonl", "models"}
     ]
     assert not stray, f"unexpected files in the tracked log dir: {stray}"
 
@@ -149,3 +163,17 @@ def test_log_rows_if_any_all_validate():
     for row in review.load_log():
         review.validate_verdict(dict(row))
         json.dumps(row)  # every row stays JSON-serializable as read
+
+
+def test_committed_rows_reference_portable_hash_pinned_models():
+    review = _load_review_module()
+    for row in review.load_log():
+        for side in ("a", "b"):
+            model = Path(str(row[f"model_{side}"]))
+            assert not model.is_absolute()
+            resolved = _REPO / model
+            assert resolved.is_file()
+            assert (
+                hashlib.sha256(resolved.read_bytes()).hexdigest()
+                == row[f"sha256_{side}"]
+            )

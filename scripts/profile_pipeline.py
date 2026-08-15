@@ -419,9 +419,7 @@ def _monitor_loop(  # noqa: C901 - lifecycle loop keeps timeout state together
         return 124
     _drain(process)
     return_code = process.returncode or 0
-    # A signalled child reports -N, which collapses to 0 under `or 0` in a
-    # caller that reads it as an exit status; use the shell's 128+N encoding.
-    normalized_code = 128 - return_code if return_code < 0 else return_code
+    normalized_code = _normalized_exit(return_code)
     artifact_path = base.with_suffix(".json")
     if normalized_code and not artifact_path.exists():
         _write_failure_artifact(
@@ -438,6 +436,16 @@ def _drain(process: subprocess.Popen[str]) -> None:
     """Echo whatever the exited child left buffered, if it was piped at all."""
     if process.stdout is not None and (output := process.stdout.read()):
         print(output, end="")
+
+
+def _normalized_exit(return_code: int) -> int:
+    """Map a signalled child's ``-N`` to the shell's ``128 + N`` encoding.
+
+    A raw ``-N`` collapses to 0 under ``or 0`` in a caller that reads it as an
+    exit status; the shell encoding keeps the monitor's return value and the
+    failure artifact's ``exit_code`` in agreement.
+    """
+    return 128 - return_code if return_code < 0 else return_code
 
 
 def _write_timeout_artifact(
@@ -503,7 +511,7 @@ def _write_failure_artifact(
                 "seed": args.seed,
                 "steps": args.steps,
             },
-            "exit_code": 128 - return_code if return_code < 0 else return_code,
+            "exit_code": _normalized_exit(return_code),
             "signal": -return_code if return_code < 0 else None,
             "active_stage": active,
             "telemetry_updated": latest.get("updated"),
