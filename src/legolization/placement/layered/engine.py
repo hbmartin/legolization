@@ -150,12 +150,7 @@ class LayeredStrategy:
         """Tile every layer problem bottom-up, then repair topology."""
         deadline = self._resolve_deadline(deadline)
         layout = self._tile_layout(grid=grid, rng=rng, deadline=deadline)
-        self._finalize_layout(
-            layout=layout,
-            grid=grid,
-            rng=rng,
-            deadline=deadline,
-        )
+        self._finalize_layout(layout=layout, grid=grid, rng=rng, deadline=deadline)
         return layout
 
     def _resolve_deadline(self, deadline: float | None) -> float | None:
@@ -173,8 +168,8 @@ class LayeredStrategy:
 
     def _tile_layout(
         self,
-        grid: VoxelGrid,
         *,
+        grid: VoxelGrid,
         rng: np.random.Generator,
         deadline: float | None,
     ) -> Layout:
@@ -225,9 +220,9 @@ class LayeredStrategy:
 
     def _finalize_layout(
         self,
+        *,
         layout: Layout,
         grid: VoxelGrid,
-        *,
         rng: np.random.Generator,
         deadline: float | None,
     ) -> None:

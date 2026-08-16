@@ -842,7 +842,7 @@ def _place_and_repair(
     """Place, then rearrange at constant volume before any material is added."""
     strategy = _strategy(catalog, config)
     with telemetry.span("phase.place"):
-        layout = strategy.place(grid, rng=rng, deadline=deadline)
+        layout = strategy.place(grid=grid, rng=rng, deadline=deadline)
     stability = analyze(layout, config.solver)
     if config.repair and not stability.stable:
         with telemetry.span("phase.repair"):
