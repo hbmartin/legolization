@@ -442,15 +442,22 @@ def test_beauty_finalizes_both_axes_only_to_break_a_cost_tie(
         rng: np.random.Generator,
         deadline: float | None,
     ) -> None:
-        del layout, grid, rng, deadline
+        del grid, rng, deadline
         finalized_axes.append(self._mirror_axis)
+        if self._mirror_axis == 0:
+            # Both raw candidates have one brick and perfect symmetry. Make the
+            # x-axis finalist worse only during finalization, so selecting it
+            # would prove the tie-break used stale pre-finalization metrics.
+            layout.add("brick_1x1", 1, 0, 0, 0, 4)
 
     monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
     monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
 
-    strategy.place(grid, rng=np.random.default_rng(0))
+    layout = strategy.place(grid, rng=np.random.default_rng(0))
 
     assert finalized_axes == [0, 1]
+    assert len(layout) == 1
+    assert next(iter(layout)).x == 1
 
 
 def test_aesthetics_metrics_on_hand_layouts():
