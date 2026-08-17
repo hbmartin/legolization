@@ -461,7 +461,11 @@ def _naming_runner() -> Callable[[list[str], float], str]:
     """Stamp each PNG with the rendered file's stem for mapping assertions."""
 
     def run(cmd: list[str], timeout_s: float) -> str:
-        model = Path(cmd[1])
+        model = next(
+            Path(argument)
+            for argument in cmd
+            if Path(argument).suffix in {".ldr", ".mpd"}
+        )
         out = Path(cmd[cmd.index("-i") + 1])
         first = int(cmd[cmd.index("-f") + 1])
         last = int(cmd[cmd.index("-t") + 1])
@@ -473,7 +477,16 @@ def _naming_runner() -> Callable[[list[str], float], str]:
     return run
 
 
-def test_sub_images_align_with_flat_plan_steps(tmp_path: Path) -> None:
+def test_sub_images_align_with_flat_plan_steps(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(render_mod.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        render_mod.shutil,
+        "which",
+        lambda command: "/usr/bin/xvfb-run" if command == "xvfb-run" else None,
+    )
     plan = _sub_plan()
     model = tmp_path / "model.mpd"
     model.write_text(_MPD_TEXT)

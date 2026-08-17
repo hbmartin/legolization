@@ -534,7 +534,7 @@ def test_beauty_tie_break_uses_post_finalization_symmetry(
     monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
     monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
 
-    layout = strategy.place(grid, rng=np.random.default_rng(0))
+    layout = strategy.place(grid=grid, rng=np.random.default_rng(0))
 
     assert finalized_axes == [0, 1]
     assert len(layout) == 4
@@ -599,7 +599,7 @@ def test_beauty_tie_break_prefers_feasibility_before_brick_count(
     monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
     monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
 
-    layout = strategy.place(grid, rng=np.random.default_rng(0))
+    layout = strategy.place(grid=grid, rng=np.random.default_rng(0))
 
     assert len(layout) == len(axis_one)
     assert {brick.layer for brick in layout} == expected_layers
@@ -654,7 +654,7 @@ def test_beauty_tied_finalists_split_remaining_deadline(
     monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
     monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
 
-    strategy.place(grid, rng=np.random.default_rng(0), deadline=100.0)
+    strategy.place(grid=grid, rng=np.random.default_rng(0), deadline=100.0)
 
     assert tile_deadlines == [50.0, 100.0]
     assert finalist_deadlines == [80.0, 100.0]
