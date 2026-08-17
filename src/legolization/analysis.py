@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from ldraw import Severity
 
 from legolization.catalog import CATALOG_SCHEMA, load_catalog, resolve_catalog
-from legolization.graph import GROUND_ID, ConnectionGraph
+from legolization.graph import GROUND_ID, ConnectionGraph, TopologyMetrics
 from legolization.ldraw_in import (
     ImportedLdrawModel,
     LdrawImportError,
@@ -158,13 +158,14 @@ class _PhysicsRun:
     strict_capacity: float
     strict_capacity_feasible: bool
     graph: ConnectionGraph
+    topology: TopologyMetrics
     links: LinkReport | None
 
     @property
     def feasible(self) -> bool:
         return (
-            self.graph.component_count() == 1
-            and not self.graph.floating_ids()
+            self.topology.component_count == 1
+            and not self.topology.floating_ids
             and self.parity.stable
             and self.strict.stable
             and self.strict_capacity_feasible
@@ -748,6 +749,7 @@ def write_analysis_report(report: AnalysisReport, path: Path) -> None:
 
 def _run_physics(layout: Layout, config: AnalysisConfig) -> _PhysicsRun:
     graph = ConnectionGraph.from_layout(layout)
+    topology = graph.topology_metrics()
     parity = analyze(layout=layout, config=config.parity_solver, graph=graph)
     strict = analyze(layout=layout, config=config.strict_solver, graph=graph)
     maximin = solve_maximin(
@@ -758,8 +760,8 @@ def _run_physics(layout: Layout, config: AnalysisConfig) -> _PhysicsRun:
         )
     )
     official_failure = (
-        graph.component_count() != 1
-        or bool(graph.floating_ids())
+        topology.component_count != 1
+        or bool(topology.floating_ids)
         or not parity.stable
         or not strict.stable
         or not maximin.feasible
@@ -776,13 +778,14 @@ def _run_physics(layout: Layout, config: AnalysisConfig) -> _PhysicsRun:
         strict_capacity=maximin.capacity,
         strict_capacity_feasible=maximin.feasible,
         graph=graph,
+        topology=topology,
         links=links,
     )
 
 
 def _physics_seed_ids(physics: _PhysicsRun) -> tuple[int, ...]:
     seeds = set(physics.parity.unstable_ids | physics.strict.unstable_ids)
-    seeds |= set(physics.graph.floating_ids())
+    seeds |= set(physics.topology.floating_ids)
     for pair in (physics.parity.weakest_pair, physics.strict.weakest_pair):
         if pair is not None:
             seeds |= {brick_id for brick_id in pair if brick_id >= 0}
@@ -886,7 +889,7 @@ def _brick_payloads(
     physics: _PhysicsRun,
 ) -> tuple[dict[str, Any], ...]:
     result: list[dict[str, Any]] = []
-    floating = physics.graph.floating_ids()
+    floating = physics.topology.floating_ids
     for brick_id, brick in sorted(imported.layout.bricks.items()):
         parity = physics.parity.scores[brick_id]
         strict = physics.strict.scores[brick_id]
@@ -993,16 +996,17 @@ def _bounds(layout: Layout) -> dict[str, list[int]] | None:
 
 def _topology_payload(graph: ConnectionGraph) -> dict[str, Any]:
     labels = graph.brick_components()
+    topology = graph.topology_metrics()
     components: dict[int, list[int]] = {}
     for brick_id, label in labels.items():
         components.setdefault(label, []).append(brick_id)
     return {
-        "component_count": graph.component_count(),
-        "connected": graph.component_count() == 1,
-        "ground_reachable": not graph.floating_ids(),
+        "component_count": topology.component_count,
+        "connected": topology.component_count == 1,
+        "ground_reachable": not topology.floating_ids,
         "components": [sorted(components[label]) for label in sorted(components)],
         "grounded_brick_ids": sorted(graph.grounded_ids),
-        "floating_brick_ids": sorted(graph.floating_ids()),
+        "floating_brick_ids": sorted(topology.floating_ids),
         "stud_connections": [list(edge) for edge in graph.support_edges()],
         "knob_contact_count": len(graph.knob_contacts),
         "side_contact_count": len(graph.side_contacts),
@@ -1031,8 +1035,8 @@ def _physics_metrics(physics: _PhysicsRun) -> dict[str, Any]:
     """Compact official metrics used for repair before/after comparison."""
     return {
         "feasible": physics.feasible,
-        "component_count": physics.graph.component_count(),
-        "floating_count": len(physics.graph.floating_ids()),
+        "component_count": physics.topology.component_count,
+        "floating_count": physics.topology.floating_count,
         "rbe_5dof_stable": physics.parity.stable,
         "rbe_5dof_max_score": physics.parity.max_score,
         "rbe_6dof_stable": physics.strict.stable,

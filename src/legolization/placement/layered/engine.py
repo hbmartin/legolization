@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from legolization import telemetry
 from legolization.catalog import Catalog, Category, Cell, default_catalog
-from legolization.graph import GROUND_ID, ConnectionGraph
+from legolization.graph import GROUND_ID, ConnectionGraph, TopologyMetrics
 from legolization.grid import EMPTY, merge_colour
 from legolization.layout import Layout
 from legolization.placement.base import ObjectiveWeights
@@ -31,7 +31,7 @@ from legolization.placement.merge import (
     improve_connectivity,
     place_rect,
 )
-from legolization.runtime import ProgressCallback, ProgressEvent
+from legolization.runtime import ProgressCallback, ProgressEvent, deadline_share
 from legolization.stability.solver import SolverConfig
 
 if TYPE_CHECKING:
@@ -189,9 +189,9 @@ class LayeredStrategy:
                 sub_deadline = (
                     None
                     if deadline is None
-                    else min(
-                        deadline,
-                        (now := time.monotonic()) + share * max(deadline - now, 0.0),
+                    else deadline_share(
+                        deadline=deadline,
+                        fraction=share,
                     )
                 )
                 rects = self.tile(problem, context, rng=rng, deadline=sub_deadline)
@@ -225,8 +225,8 @@ class LayeredStrategy:
         grid: VoxelGrid,
         rng: np.random.Generator,
         deadline: float | None,
-    ) -> None:
-        """Compact and repair one completed layered tiling in place."""
+    ) -> TopologyMetrics | None:
+        """Repair one tiling and return topology already computed for telemetry."""
         recording = telemetry.current() is not None
         with telemetry.span("place.compact"):
             compact_vertical(layout)
@@ -262,10 +262,13 @@ class LayeredStrategy:
         )
         telemetry.value("place.connected.bricks", len(layout))
         if telemetry.current() is not None:  # graph build only when recording
+            topology = ConnectionGraph.from_layout(layout).topology_metrics()
             telemetry.value(
                 "place.connected.components",
-                ConnectionGraph.from_layout(layout).component_count(),
+                topology.component_count,
             )
+            return topology
+        return None
 
     def tile(
         self,

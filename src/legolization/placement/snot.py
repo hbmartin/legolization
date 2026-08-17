@@ -62,7 +62,8 @@ def apply_snot(
         else frozenset()
     )
     graph = ConnectionGraph.from_layout(layout)
-    baseline = (graph.component_count(), len(graph.floating_ids()))
+    topology = graph.topology_metrics()
+    baseline = (topology.component_count, topology.floating_count)
     for site in _mount_sites(layout, grid, min_run=min_run):
         result = _mount(
             layout,
@@ -554,7 +555,8 @@ def _mount(  # noqa: PLR0913 - one guarded site mutation transaction
         offset_ldu=plan.tile_offset_ldu,
     )
     graph = ConnectionGraph.from_layout(trial)
-    after = (graph.component_count(), len(graph.floating_ids()))
+    topology = graph.topology_metrics()
+    after = (topology.component_count, topology.floating_count)
     if after[0] > baseline[0] or after[1] > baseline[1]:
         return None
     layout.replace_with(trial)

@@ -663,12 +663,13 @@ def _validate_candidate(  # noqa: C901, PLR0911 - fail-fast validation gates
                 f"cell {cell} lost its original colour",
             )
     graph = ConnectionGraph.from_layout(candidate)
-    if graph.component_count() != 1 or graph.floating_ids():
+    topology = graph.topology_metrics()
+    if topology.component_count != 1 or topology.floating_ids:
         return rejected(
             "connectivity",
             "candidate is not one grounded component",
-            component_count=graph.component_count(),
-            floating_count=len(graph.floating_ids()),
+            component_count=topology.component_count,
+            floating_count=topology.floating_count,
         )
     if strict_solver.screen == "bricksim":
         # Reduced-QP pre-gate: a confidently unstable candidate skips

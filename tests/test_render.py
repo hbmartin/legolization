@@ -462,10 +462,14 @@ def _naming_runner() -> Callable[[list[str], float], str]:
 
     def run(cmd: list[str], timeout_s: float) -> str:
         model = next(
-            Path(argument)
-            for argument in cmd
-            if Path(argument).suffix in {".ldr", ".mpd"}
+            (
+                Path(argument)
+                for argument in cmd
+                if Path(argument).suffix in {".ldr", ".mpd"}
+            ),
+            None,
         )
+        assert model is not None, f"renderer command has no LDraw model: {cmd!r}"
         out = Path(cmd[cmd.index("-i") + 1])
         first = int(cmd[cmd.index("-f") + 1])
         last = int(cmd[cmd.index("-t") + 1])

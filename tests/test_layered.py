@@ -2,11 +2,11 @@
 
 import math
 from dataclasses import fields
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from legolization import runtime as runtime_mod
 from legolization.catalog import default_catalog
 from legolization.grid import EMPTY, IGNORE, VoxelGrid
 from legolization.layout import Layout
@@ -411,6 +411,15 @@ def test_beauty_searches_both_global_axes_and_keeps_lower_cost(
 
     monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
     monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
+
+    def fail_candidate_key(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("a singleton finalist must not compute a selection key")
+
+    monkeypatch.setattr(
+        "legolization.placement.layered.beauty._candidate_key",
+        fail_candidate_key,
+    )
     layout = strategy.place(grid, rng=np.random.default_rng(0))
 
     assert searched_axes == [0, 1]
@@ -419,6 +428,51 @@ def test_beauty_searches_both_global_axes_and_keeps_lower_cost(
     assert strategy._mirror_x is None  # noqa: SLF001
     assert strategy._mirror_y is None  # noqa: SLF001
     assert strategy._mirror_axis is None  # noqa: SLF001
+
+
+def test_beauty_treats_one_ulp_cost_difference_as_a_tie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    grid = VoxelGrid(codes=np.full((2, 1, 3), 4, dtype=np.int16))
+    strategy = BeautyStrategy(beauty=BeautyWeights.preset("balanced"))
+    finalized_axes: list[int | None] = []
+
+    def fake_tile_layout(
+        self: BeautyStrategy,
+        *,
+        grid: VoxelGrid,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> Layout:
+        del grid, rng, deadline
+        assert self._mirror_axis is not None
+        self._run_cost = (
+            1.0 if self._mirror_axis == 0 else math.nextafter(1.0, math.inf)
+        )
+        layout = Layout(catalog=default_catalog())
+        layout.add("brick_1x1", 0, 0, 0, 0, 4)
+        if self._mirror_axis == 0:
+            layout.add("brick_1x1", 0, 0, 3, 0, 4)
+        return layout
+
+    def fake_finalize_layout(
+        self: BeautyStrategy,
+        *,
+        layout: Layout,
+        grid: VoxelGrid,
+        rng: np.random.Generator,
+        deadline: float | None,
+    ) -> None:
+        del layout, grid, rng, deadline
+        finalized_axes.append(self._mirror_axis)
+
+    monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
+    monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
+
+    layout = strategy.place(grid=grid, rng=np.random.default_rng(0))
+
+    assert finalized_axes == [0, 1]
+    assert len(layout) == 1
 
 
 def test_beauty_tie_break_uses_post_finalization_brick_count(
@@ -482,7 +536,7 @@ def test_beauty_tie_break_uses_post_finalization_brick_count(
     assert next(iter(layout)).x == 1
 
 
-def test_beauty_tie_break_uses_post_finalization_symmetry(
+def test_beauty_flat_tie_break_uses_symmetry_before_brick_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     grid = VoxelGrid(codes=np.full((5, 3, 3), 4, dtype=np.int16))
@@ -520,16 +574,8 @@ def test_beauty_tie_break_uses_post_finalization_symmetry(
         del grid, rng, deadline
         finalized_axes.append(self._mirror_axis)
         if self._mirror_axis == 0:
-            moved = next(brick for brick in layout if (brick.x, brick.y) == (4, 2))
-            layout.remove(moved.brick_id)
-            layout.add(
-                part_key="brick_1x1",
-                x=3,
-                y=1,
-                layer=0,
-                yaw=0,
-                colour_code=4,
-            )
+            removed = next(brick for brick in layout if (brick.x, brick.y) == (4, 2))
+            layout.remove(removed.brick_id)
 
     monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
     monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
@@ -539,7 +585,7 @@ def test_beauty_tie_break_uses_post_finalization_symmetry(
     assert finalized_axes == [0, 1]
     assert len(layout) == 4
     assert symmetry_error(layout) == 0.0
-    assert all((brick.x, brick.y) != (3, 1) for brick in layout)
+    assert any((brick.x, brick.y) == (4, 2) for brick in layout)
 
 
 @pytest.mark.parametrize(
@@ -551,8 +597,9 @@ def test_beauty_tie_break_uses_post_finalization_symmetry(
             frozenset((0, 3, 6)),
         ),
         (((0, 3),), ((0, 0), (0, 3)), frozenset((0, 3))),
+        (((0, 3), (0, 6)), ((0, 0), (2, 0)), frozenset((0,))),
     ],
-    ids=("connectivity", "grounding"),
+    ids=("connectivity", "grounding", "grounding-before-connectivity"),
 )
 def test_beauty_tie_break_prefers_feasibility_before_brick_count(
     monkeypatch: pytest.MonkeyPatch,
@@ -612,6 +659,7 @@ def test_beauty_tied_finalists_split_remaining_deadline(
     strategy = BeautyStrategy(beauty=BeautyWeights.preset("aesthetics"))
     tile_deadlines: list[float | None] = []
     finalist_deadlines: list[float | None] = []
+    now = 0.0
 
     def fake_tile_layout(
         self: BeautyStrategy,
@@ -620,6 +668,7 @@ def test_beauty_tied_finalists_split_remaining_deadline(
         rng: np.random.Generator,
         deadline: float | None,
     ) -> Layout:
+        nonlocal now
         del grid, rng
         tile_deadlines.append(deadline)
         self._run_cost = 1.0
@@ -633,6 +682,8 @@ def test_beauty_tied_finalists_split_remaining_deadline(
             yaw=0,
             colour_code=4,
         )
+        if self._mirror_axis == 1:
+            now = 60.0
         return layout
 
     def fake_finalize_layout(
@@ -643,14 +694,12 @@ def test_beauty_tied_finalists_split_remaining_deadline(
         rng: np.random.Generator,
         deadline: float | None,
     ) -> None:
+        nonlocal now
         del self, layout, grid, rng
         finalist_deadlines.append(deadline)
+        now = 80.0
 
-    clock = iter((0.0, 60.0, 80.0))
-    monkeypatch.setattr(
-        "legolization.placement.layered.beauty.time",
-        SimpleNamespace(monotonic=lambda: next(clock)),
-    )
+    monkeypatch.setattr(runtime_mod.time, "monotonic", lambda: now)
     monkeypatch.setattr(LayeredStrategy, "_tile_layout", fake_tile_layout)
     monkeypatch.setattr(LayeredStrategy, "_finalize_layout", fake_finalize_layout)
 
@@ -658,6 +707,14 @@ def test_beauty_tied_finalists_split_remaining_deadline(
 
     assert tile_deadlines == [50.0, 100.0]
     assert finalist_deadlines == [80.0, 100.0]
+
+
+def test_deadline_share_does_not_extend_an_expired_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime_mod.time, "monotonic", lambda: 20.0)
+
+    assert runtime_mod.deadline_share(deadline=10.0, fraction=0.5) == 10.0
 
 
 def test_aesthetics_metrics_on_hand_layouts():

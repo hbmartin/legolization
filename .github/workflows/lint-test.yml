@@ -33,10 +33,12 @@ jobs:
         import os
         import sys
 
-        actual = f"{sys.version_info.major}.{sys.version_info.minor}"
-        expected = os.environ["EXPECTED_PYTHON"]
+        expected_text = os.environ["EXPECTED_PYTHON"]
+        expected = tuple(int(part) for part in expected_text.split("."))
+        actual = sys.version_info[: len(expected)]
         if actual != expected:
-            raise SystemExit(f"expected Python {expected}, got {actual}")
+            actual_text = ".".join(str(part) for part in actual)
+            raise SystemExit(f"expected Python {expected_text}, got {actual_text}")
         PY
     - name: Install dependencies
       run: uv sync --all-groups

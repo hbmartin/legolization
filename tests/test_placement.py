@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from legolization.catalog import default_catalog
-from legolization.graph import ConnectionGraph
+from legolization.graph import ConnectionGraph, TopologyMetrics
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.layout import Layout
 from legolization.placement.base import ObjectiveReport, _seam_alignment, evaluate
@@ -481,15 +481,18 @@ def test_greedy_reinforce_propagates_deadline_to_connectivity(
     def monotonic() -> float:
         return 0.0
 
-    def always_floating(_layout: Layout) -> set[int]:
-        return {0}
+    def always_floating(_layout: Layout) -> TopologyMetrics:
+        return TopologyMetrics(
+            component_count=1,
+            floating_ids=frozenset({0}),
+        )
 
     def capture_connectivity(*_args: object, **kwargs: object) -> int:
         seen_deadlines.append(kwargs["deadline"])
         return 1
 
     monkeypatch.setattr(greedy_module.time, "monotonic", monotonic)
-    monkeypatch.setattr(greedy_module, "_floating", always_floating)
+    monkeypatch.setattr(greedy_module, "_topology", always_floating)
     monkeypatch.setattr(greedy_module, "improve_connectivity", capture_connectivity)
     grid = VoxelGrid(codes=np.full((1, 1, 3), 4, dtype=np.int16))
 

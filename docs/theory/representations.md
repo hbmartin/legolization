@@ -213,12 +213,17 @@ what the torque model needs.
 ```python
 component_count()  # stud connections between bricks only; ground does NOT join
 floating_ids()  # ground-merged reachability
+topology_metrics()  # both results from one brick-component labeling
 ```
 
-Both route through one `_components(include_ground=)` implementation over
-`scipy.sparse.csgraph.connected_components`. The difference is a single flag, and
-conflating them is the classic bug: with ground merged in, two disconnected towers on
-one baseplate look like one model.
+`topology_metrics()` labels the brick-only graph once with
+`scipy.sparse.csgraph.connected_components`. A component floats exactly when none of
+its bricks has a ground contact, so ground reachability follows from that same
+labeling without merging ground into the component count. The immutable graph caches
+that summary, and the individual accessors delegate to it, so requesting component
+labels, component count, and floating ids does not repeat sparse labeling. Conflating
+the two semantics remains the classic bug: with ground merged into the count, two
+disconnected towers on one baseplate look like one model.
 
 ---
 

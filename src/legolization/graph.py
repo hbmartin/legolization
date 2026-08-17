@@ -9,7 +9,7 @@ feed horizontal press forces in the stability model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -76,6 +76,24 @@ class SideContact:
 
 
 @dataclass(frozen=True, slots=True)
+class TopologyMetrics:
+    """Brick-component and ground-reachability metrics from one labeling."""
+
+    component_count: int
+    floating_ids: frozenset[int]
+    component_labels: tuple[int, ...] = field(default=(), repr=False)
+
+    @property
+    def floating_count(self) -> int:
+        """Number of bricks without a stud path to ground."""
+        return len(self.floating_ids)
+
+    def is_buildable(self, *, component_target: int = 1) -> bool:
+        """Whether every brick is grounded at the attainable component floor."""
+        return not self.floating_ids and self.component_count <= component_target
+
+
+@dataclass(frozen=True, slots=True)
 class ConnectionGraph:
     """All contacts of a layout plus component/grounding queries."""
 
@@ -83,6 +101,13 @@ class ConnectionGraph:
     knob_contacts: tuple[KnobContact, ...]
     side_contacts: tuple[SideContact, ...]
     grounded_ids: frozenset[int]
+    _topology: TopologyMetrics | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
 
     @classmethod
     def from_layout(cls, layout: Layout) -> ConnectionGraph:
@@ -157,17 +182,12 @@ class ConnectionGraph:
         single-connectedness), even though neither is floating. An empty
         layout has zero components.
         """
-        if not self.brick_ids:
-            return 0
-        n_components, _ = self._components(include_ground=False)
-        return n_components
+        return self.topology_metrics().component_count
 
     def brick_components(self) -> dict[int, int]:
         """Map each brick id to its brick-graph component label."""
-        if not self.brick_ids:
-            return {}
-        _, labels = self._components(include_ground=False)
-        return {bid: int(labels[i]) for i, bid in enumerate(self.brick_ids)}
+        labels = self.topology_metrics().component_labels
+        return dict(zip(self.brick_ids, labels, strict=True))
 
     def floating_ids(self) -> frozenset[int]:
         """Bricks not reachable from the ground through stud connections.
@@ -175,31 +195,52 @@ class ConnectionGraph:
         This is the ground-merged reachability question — deliberately
         different from :meth:`component_count`'s brick-graph semantics.
         """
-        _, labels = self._components(include_ground=True)
-        index = {brick_id: i for i, brick_id in enumerate(self.brick_ids)}
-        ground_label = labels[len(self.brick_ids)]
-        return frozenset(
-            brick_id
-            for brick_id in self.brick_ids
-            if labels[index[brick_id]] != ground_label
-        )
+        return self.topology_metrics().floating_ids
+
+    def topology_metrics(self) -> TopologyMetrics:
+        """Compute component and grounding metrics with one sparse labeling."""
+        if self._topology is not None:
+            return self._topology
+        if not self.brick_ids:
+            topology = TopologyMetrics(
+                component_count=0,
+                floating_ids=frozenset(),
+                component_labels=(),
+            )
+        else:
+            component_count, raw_labels = self._components()
+            labels = tuple(int(label) for label in raw_labels)
+            grounded_labels = {
+                labels[index]
+                for index, brick_id in enumerate(self.brick_ids)
+                if brick_id in self.grounded_ids
+            }
+            floating = frozenset(
+                brick_id
+                for index, brick_id in enumerate(self.brick_ids)
+                if labels[index] not in grounded_labels
+            )
+            topology = TopologyMetrics(
+                component_count=component_count,
+                floating_ids=floating,
+                component_labels=labels,
+            )
+        object.__setattr__(self, "_topology", topology)
+        return topology
 
     def is_stable_topology(self) -> bool:
         """Return True when every brick is ground-reachable via studs."""
         return not self.floating_ids()
 
-    def _components(self, *, include_ground: bool) -> tuple[int, np.ndarray]:
+    def _components(self) -> tuple[int, np.ndarray]:
         index = {brick_id: i for i, brick_id in enumerate(self.brick_ids)}
-        n = len(self.brick_ids) + (1 if include_ground else 0)
+        n = len(self.brick_ids)
         rows: list[int] = []
         cols: list[int] = []
         for contact in self.knob_contacts:
             if contact.below_id == GROUND_ID:
-                if not include_ground:
-                    continue
-                below = len(self.brick_ids)
-            else:
-                below = index[contact.below_id]
+                continue
+            below = index[contact.below_id]
             rows.append(below)
             cols.append(index[contact.above_id])
         matrix = coo_matrix(
