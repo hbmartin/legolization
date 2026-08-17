@@ -4,9 +4,11 @@ Each layer is tiled by bounded best-first search (the paper's A*, honestly
 a beam search: the OPEN list is capped and the guidance heuristic is not
 admissible). A whole-model placement tiles once with x as the fixed mirror axis
 and once with y, then post-processes only the lower-cost candidate (both when
-their tiling costs tie). Nodes expand only through placements covering the
-first uncovered column in scan order, which collapses permutations of the same
-tiling into one path. The cost accumulates per placed rect:
+their tiling costs tie). Tied finalists share the remaining deadline and prefer
+connected, grounded results before final symmetry and brick count. Nodes expand
+only through placements covering the first uncovered column in scan order,
+which collapses permutations of the same tiling into one path. The cost
+accumulates per placed rect:
 
 - efficiency ``g_h``: small rects cost ``(A_MAX - area) / (A_MAX - 1)``;
 - balance ``g_a``: a rect not centred on the whole-model mirror axis and
@@ -33,6 +35,7 @@ from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
 
+from legolization.graph import ConnectionGraph
 from legolization.grid import merge_colour
 from legolization.placement.aesthetics import symmetry_error
 from legolization.placement.layered.engine import (
@@ -89,6 +92,26 @@ class _AxisCandidate:
     rng: np.random.Generator
 
 
+def _deadline_share(*, deadline: float | None, remaining: int) -> float | None:
+    """Give one sequential finalist a fair share of the remaining clock."""
+    if deadline is None:
+        return None
+    now = time.monotonic()
+    return now + max(deadline - now, 0.0) / remaining
+
+
+def _candidate_key(candidate: _AxisCandidate) -> tuple[int, int, float, int, int]:
+    """Rank final layouts by feasibility, aesthetics, then efficiency."""
+    graph = ConnectionGraph.from_layout(candidate.layout)
+    return (
+        graph.component_count(),
+        len(graph.floating_ids()),
+        symmetry_error(candidate.layout),
+        len(candidate.layout),
+        candidate.axis,
+    )
+
+
 @dataclass(slots=True)
 class BeautyStrategy(LayeredStrategy):
     """Bounded best-first tiler over Min's weighted layer objective."""
@@ -124,12 +147,7 @@ class BeautyStrategy(LayeredStrategy):
         footprint = grid.filled_mask.any(axis=2)
         xs, ys = np.nonzero(footprint)
         if not xs.size:
-            return LayeredStrategy.place(
-                self,
-                grid=grid,
-                rng=rng,
-                deadline=deadline,
-            )
+            return LayeredStrategy.place(self, grid=grid, rng=rng, deadline=deadline)
 
         self._mirror_x = int(xs.min()) + int(xs.max())
         self._mirror_y = int(ys.min()) + int(ys.max())
@@ -164,23 +182,19 @@ class BeautyStrategy(LayeredStrategy):
             finalists = [
                 candidate for candidate in candidates if candidate.cost == best_cost
             ]
-            for candidate in finalists:
+            for index, candidate in enumerate(finalists):
                 self._mirror_axis = candidate.axis
                 LayeredStrategy._finalize_layout(  # noqa: SLF001
                     self,
                     layout=candidate.layout,
                     grid=grid,
                     rng=candidate.rng,
-                    deadline=overall_deadline,
+                    deadline=_deadline_share(
+                        deadline=overall_deadline,
+                        remaining=len(finalists) - index,
+                    ),
                 )
-            selected = min(
-                finalists,
-                key=lambda candidate: (
-                    symmetry_error(candidate.layout),
-                    len(candidate.layout),
-                    candidate.axis,
-                ),
-            )
+            selected = min(finalists, key=_candidate_key)
             rng.bit_generator.state = deepcopy(selected.rng.bit_generator.state)
             return selected.layout
         finally:

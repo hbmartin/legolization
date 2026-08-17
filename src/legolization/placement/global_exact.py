@@ -304,7 +304,7 @@ class GlobalExactStrategy:
                 message=message,
             )
             return fallback.place(
-                grid,
+                grid=grid,
                 rng=np.random.default_rng(self.config.seed),
                 deadline=deadline,
             )
