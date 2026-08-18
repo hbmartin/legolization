@@ -221,13 +221,14 @@ class BeautyStrategy(LayeredStrategy):
                                 deadline=overall_deadline,
                                 fraction=1 / (len(finalists) - index),
                             ),
+                            return_topology=len(finalists) > 1,
                         ),
                     )
                 )
             if len(finalized) == 1:
                 selected = finalized[0].candidate
             else:
-                component_target = grid.filled_component_count
+                component_target = grid.count_filled_components()
                 selected = min(
                     finalized,
                     key=lambda finalist: _candidate_key(

@@ -225,8 +225,9 @@ class LayeredStrategy:
         grid: VoxelGrid,
         rng: np.random.Generator,
         deadline: float | None,
+        return_topology: bool = False,
     ) -> TopologyMetrics | None:
-        """Repair one tiling and return topology already computed for telemetry."""
+        """Repair one tiling and optionally return its final topology."""
         recording = telemetry.current() is not None
         with telemetry.span("place.compact"):
             compact_vertical(layout)
@@ -261,12 +262,13 @@ class LayeredStrategy:
             else None,
         )
         telemetry.value("place.connected.bricks", len(layout))
-        if telemetry.current() is not None:  # graph build only when recording
+        if recording or return_topology:
             topology = ConnectionGraph.from_layout(layout).topology_metrics()
-            telemetry.value(
-                "place.connected.components",
-                topology.component_count,
-            )
+            if recording:
+                telemetry.value(
+                    "place.connected.components",
+                    topology.component_count,
+                )
             return topology
         return None
 

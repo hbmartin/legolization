@@ -110,12 +110,14 @@ flowchart TD
 The ring grows every 10 failures — Luo's growing-neighbourhood schedule, $N = 10$.
 `fail_max = 20`.
 
-### The component floor
+### The component lower bound
 
-A subtle correctness point: the achievable component target is **not always 1**.
-Disjoint voxel islands in the input can never merge, no matter how well you place
-bricks. So `_grid_component_count` computes the grid's own 6-connected island count and
-the reinforcement loop targets *that*, rather than spinning forever trying to reach 1.
+A subtle correctness point: the component target is **not always 1**. Disjoint voxel
+islands in the input can never merge, no matter how well you place bricks. So
+`VoxelGrid.count_filled_components()` computes the grid's own 6-connected island count
+and the reinforcement loop targets *that*, rather than spinning forever trying to reach
+1. This is a geometric lower bound, not a promise of attainability: a thin island that
+needs several coplanar parts can still require more stud-connected components.
 
 ### Cost and limits
 

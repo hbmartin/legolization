@@ -3,7 +3,7 @@
 import pytest
 
 from legolization.catalog import default_catalog
-from legolization.graph import GROUND_ID, ConnectionGraph
+from legolization.graph import GROUND_ID, ConnectionGraph, TopologyMetrics
 from legolization.layout import CollisionError, Layout
 
 
@@ -80,6 +80,26 @@ def test_floating_component(layout):
     assert graph.topology_metrics() is topology
     assert graph.component_count() == 2
     assert graph.floating_ids() == topology.floating_ids
+
+
+def test_component_count_does_not_materialize_labels_or_grounding(layout):
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    layout.add("brick_1x1", 2, 0, 0, 0, 4)
+    graph = ConnectionGraph.from_layout(layout)
+
+    assert graph.component_count() == 2
+    assert graph._component_count_cache == 2  # noqa: SLF001
+    assert graph._component_labels_cache is None  # noqa: SLF001
+    assert graph._topology is None  # noqa: SLF001
+
+
+def test_topology_metrics_requires_consistent_component_labels():
+    with pytest.raises(ValueError, match="does not match"):
+        TopologyMetrics(
+            component_count=1,
+            floating_ids=frozenset(),
+            component_labels=(),
+        )
 
 
 def test_disconnected_grounded_towers_are_two_components(layout):
