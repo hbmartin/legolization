@@ -268,7 +268,7 @@ class ConnectionGraph:
             component_count, labels = 0, ()
         else:
             component_count, raw_labels = self._components()
-            labels = tuple(int(label) for label in raw_labels)
+            labels = tuple(raw_labels.tolist())
         object.__setattr__(self, "_component_count_cache", component_count)
         object.__setattr__(self, "_component_labels_cache", labels)
         return component_count, labels

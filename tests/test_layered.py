@@ -345,6 +345,43 @@ def test_fast_merge_loop_respects_expired_deadline():
     assert result == rects
 
 
+def test_finalize_layout_telemetry_uses_count_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from legolization import telemetry
+    from legolization.placement.layered import engine as engine_mod
+
+    grid = VoxelGrid(codes=np.full((1, 1, 3), 4, dtype=np.int16))
+    layout = Layout(catalog=default_catalog())
+    layout.add("brick_1x1", 0, 0, 0, 0, 4)
+    count_calls = 0
+
+    def count_only(_graph: ConnectionGraph) -> int:
+        nonlocal count_calls
+        count_calls += 1
+        return 1
+
+    def fail_full_topology(_graph: ConnectionGraph) -> TopologyMetrics:
+        pytest.fail("telemetry-only finalization must not build full topology")
+
+    monkeypatch.setattr(engine_mod, "improve_connectivity", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(ConnectionGraph, "component_count", count_only)
+    monkeypatch.setattr(ConnectionGraph, "topology_metrics", fail_full_topology)
+
+    with telemetry.record() as session:
+        topology = BondStrategy()._finalize_layout(  # noqa: SLF001
+            layout=layout,
+            grid=grid,
+            rng=np.random.default_rng(0),
+            deadline=None,
+        )
+
+    assert topology is None
+    assert count_calls == 2
+    assert session.values["place.compacted.components"] == [1]
+    assert session.values["place.connected.components"] == [1]
+
+
 def test_beauty_uses_global_mirror_center():
     # An L-shaped model: the upper layer's own bbox centre differs from the
     # whole-model centre. The strategy must balance about the global plane the

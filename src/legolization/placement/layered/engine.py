@@ -263,11 +263,14 @@ class LayeredStrategy:
         )
         telemetry.value("place.connected.bricks", len(layout))
         if recording or return_topology:
-            topology = ConnectionGraph.from_layout(layout).topology_metrics()
+            graph = ConnectionGraph.from_layout(layout)
+            topology = graph.topology_metrics() if return_topology else None
             if recording:
                 telemetry.value(
                     "place.connected.components",
-                    topology.component_count,
+                    topology.component_count
+                    if topology is not None
+                    else graph.component_count(),
                 )
             return topology
         return None
