@@ -1,17 +1,16 @@
 """Bridge synthesizer: MILP ring re-tiling for the connectivity pass."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
 from legolization import telemetry
 from legolization.catalog import default_catalog
+from legolization.corpus.generators import mushroom
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.instructions.sequencer import InstructionsConfig
 from legolization.layout import Layout
-from legolization.pipeline import PipelineConfig, load_grid, run
+from legolization.pipeline import PipelineConfig, run
 from legolization.placement.layered.bridge import BridgeSynthesizer
 from legolization.placement.merge import improve_connectivity
 
@@ -515,16 +514,14 @@ def test_flow_decline_still_preserves_rng(catalog):
 
 @pytest.mark.slow
 def test_hybrid_mushroom_completes_phase_one_minimally_and_exactly() -> None:
-    path = (
-        Path(__file__).parent.parent / "data" / "corpus" / "synthetic" / "mushroom.npy"
-    )
     config = PipelineConfig(
         strategy="kollsker",
         hybrid_bridge=True,
         instructions=InstructionsConfig(mode="layer"),
     )
+    grid = VoxelGrid.from_array(mushroom(), plates_per_voxel=config.plates_per_voxel)
     with telemetry.record() as session:
-        result = run(load_grid(path, config), config)
+        result = run(grid, config)
     assert result.component_count == 1
     assert result.brick_count == 198
     assert session.values["connectivity.bridge.hybrid.phase1_components"] == [3.0]

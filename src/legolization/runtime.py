@@ -71,8 +71,17 @@ __all__ = [
     "ProgressCallback",
     "ProgressEvent",
     "ProgressLevel",
+    "deadline_share",
     "logical_cpu_count",
 ]
+
+
+def deadline_share(*, deadline: float | None, fraction: float) -> float | None:
+    """Return ``fraction`` of the remaining time without extending ``deadline``."""
+    if deadline is None:
+        return None
+    now = time.monotonic()
+    return min(deadline, now + fraction * max(deadline - now, 0.0))
 
 
 def logical_cpu_count() -> int:

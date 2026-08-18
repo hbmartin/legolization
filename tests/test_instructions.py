@@ -1,12 +1,14 @@
 """Instruction sequencing, chunking, blocking, BOM, and LDraw emission."""
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 
 import numpy as np
 import pytest
 
 from legolization.catalog import default_catalog
+from legolization.corpus.generators import cantilever, mushroom, press_tower
 from legolization.graph import ConnectionGraph
 from legolization.grid import EMPTY, VoxelGrid
 from legolization.instructions import (
@@ -1049,20 +1051,17 @@ def test_press_union_truncation_warning_names_the_actual_fallback(
 
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    ("name", "fragile_limit"),
-    [("press-tower", 4), ("cantilever", 4), ("mushroom", 19)],
+    ("generator", "fragile_limit"),
+    [(press_tower, 4), (cantilever, 4), (mushroom, 19)],
+    ids=("press-tower", "cantilever", "mushroom"),
 )
-def test_press_corpus_chunking_acceptance(name: str, fragile_limit: int) -> None:
-    from pathlib import Path
-
-    from legolization.pipeline import PipelineConfig, load_grid, run
-
-    path = (
-        Path(__file__).parent.parent / "data" / "corpus" / "synthetic" / f"{name}.npy"
-    )
+def test_press_corpus_chunking_acceptance(
+    generator: Callable[[], np.ndarray],
+    fragile_limit: int,
+) -> None:
     instructions = InstructionsConfig(insertion_check=True, rotstep=False)
     result = run(
-        load_grid(path),
+        VoxelGrid.from_array(generator(), plates_per_voxel=3),
         PipelineConfig(instructions=instructions),
     )
     assert result.plan is not None

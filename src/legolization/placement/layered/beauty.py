@@ -4,11 +4,12 @@ Each layer is tiled by bounded best-first search (the paper's A*, honestly
 a beam search: the OPEN list is capped and the guidance heuristic is not
 admissible). A whole-model placement tiles once with x as the fixed mirror axis
 and once with y, then post-processes only the lower-cost candidate (both when
-their tiling costs tie). Tied finalists share the remaining deadline and prefer
-connected, grounded results before final symmetry and brick count. Nodes expand
-only through placements covering the first uncovered column in scan order,
-which collapses permutations of the same tiling into one path. The cost
-accumulates per placed rect:
+their tiling costs are equal within floating-point tolerance). Tied finalists
+share the remaining deadline and prefer a buildable result, then a grounded
+result, before final symmetry and brick count. Nodes expand only through
+placements covering the first uncovered column in scan order, which collapses
+permutations of the same tiling into one path. The cost accumulates per placed
+rect:
 
 - efficiency ``g_h``: small rects cost ``(A_MAX - area) / (A_MAX - 1)``;
 - balance ``g_a``: a rect not centred on the whole-model mirror axis and
@@ -28,6 +29,7 @@ efficiency profiles.
 from __future__ import annotations
 
 import heapq
+import math
 import time
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -35,7 +37,7 @@ from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
 
-from legolization.graph import ConnectionGraph
+from legolization.graph import ConnectionGraph, TopologyMetrics
 from legolization.grid import merge_colour
 from legolization.placement.aesthetics import symmetry_error
 from legolization.placement.layered.engine import (
@@ -48,12 +50,14 @@ from legolization.placement.layered.engine import (
     random_fill,
     rects_covering,
 )
+from legolization.runtime import deadline_share
 
 if TYPE_CHECKING:
     from legolization.grid import VoxelGrid
     from legolization.layout import Layout
 
 _A_MAX = 16  # largest catalog footprint (2x8)
+_COST_TIE_TOLERANCE = 1e-12
 
 _PRESETS: dict[str, tuple[float, float, float, float]] = {
     "balanced": (0.25, 0.25, 0.25, 0.25),
@@ -92,21 +96,32 @@ class _AxisCandidate:
     rng: np.random.Generator
 
 
-def _deadline_share(*, deadline: float | None, remaining: int) -> float | None:
-    """Give one sequential finalist a fair share of the remaining clock."""
-    if deadline is None:
-        return None
-    now = time.monotonic()
-    return now + max(deadline - now, 0.0) / remaining
+@dataclass(frozen=True, slots=True)
+class _Finalist:
+    """A finalized candidate plus telemetry metrics when they already exist."""
+
+    candidate: _AxisCandidate
+    topology: TopologyMetrics | None
 
 
-def _candidate_key(candidate: _AxisCandidate) -> tuple[int, int, float, int, int]:
-    """Rank final layouts by feasibility, aesthetics, then efficiency."""
-    graph = ConnectionGraph.from_layout(candidate.layout)
+def _candidate_key(
+    finalist: _Finalist,
+    *,
+    component_target: int,
+) -> tuple[bool, bool, float, int, int, int, int]:
+    """Rank final layouts by feasibility tier, aesthetics, then efficiency."""
+    candidate = finalist.candidate
+    topology = finalist.topology
+    if topology is None:
+        topology = ConnectionGraph.from_layout(candidate.layout).topology_metrics()
+    floating = topology.floating_count
+    component_excess = max(topology.component_count - component_target, 0)
     return (
-        graph.component_count(),
-        len(graph.floating_ids()),
+        not topology.is_buildable(component_target=component_target),
+        floating > 0,
         symmetry_error(candidate.layout),
+        floating,
+        component_excess,
         len(candidate.layout),
         candidate.axis,
     )
@@ -158,8 +173,10 @@ class BeautyStrategy(LayeredStrategy):
                 axis_rng = deepcopy(rng)
                 axis_deadline = overall_deadline
                 if axis == 0 and overall_deadline is not None:
-                    now = time.monotonic()
-                    axis_deadline = now + max(overall_deadline - now, 0.0) / 2
+                    axis_deadline = deadline_share(
+                        deadline=overall_deadline,
+                        fraction=0.5,
+                    )
                 self._mirror_axis = axis
                 self._run_cost = 0.0
                 # Explicit base call: slots=True rebuilds the class, which breaks
@@ -180,21 +197,44 @@ class BeautyStrategy(LayeredStrategy):
                 )
             best_cost = min(candidate.cost for candidate in candidates)
             finalists = [
-                candidate for candidate in candidates if candidate.cost == best_cost
+                candidate
+                for candidate in candidates
+                if math.isclose(
+                    candidate.cost,
+                    best_cost,
+                    rel_tol=_COST_TIE_TOLERANCE,
+                    abs_tol=_COST_TIE_TOLERANCE,
+                )
             ]
+            finalized: list[_Finalist] = []
             for index, candidate in enumerate(finalists):
                 self._mirror_axis = candidate.axis
-                LayeredStrategy._finalize_layout(  # noqa: SLF001
-                    self,
-                    layout=candidate.layout,
-                    grid=grid,
-                    rng=candidate.rng,
-                    deadline=_deadline_share(
-                        deadline=overall_deadline,
-                        remaining=len(finalists) - index,
-                    ),
+                finalized.append(
+                    _Finalist(
+                        candidate=candidate,
+                        topology=LayeredStrategy._finalize_layout(  # noqa: SLF001
+                            self,
+                            layout=candidate.layout,
+                            grid=grid,
+                            rng=candidate.rng,
+                            deadline=deadline_share(
+                                deadline=overall_deadline,
+                                fraction=1 / (len(finalists) - index),
+                            ),
+                        ),
+                    )
                 )
-            selected = min(finalists, key=_candidate_key)
+            if len(finalized) == 1:
+                selected = finalized[0].candidate
+            else:
+                component_target = grid.filled_component_count
+                selected = min(
+                    finalized,
+                    key=lambda finalist: _candidate_key(
+                        finalist,
+                        component_target=component_target,
+                    ),
+                ).candidate
             rng.bit_generator.state = deepcopy(selected.rng.bit_generator.state)
             return selected.layout
         finally:

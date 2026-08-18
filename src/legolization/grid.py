@@ -100,6 +100,12 @@ class VoxelGrid:
         """Number of non-empty cells."""
         return int(np.count_nonzero(self.filled_mask))
 
+    @property
+    def filled_component_count(self) -> int:
+        """Number of face-connected islands of filled cells."""
+        _, count = ndimage.label(self.filled_mask, structure=_FACE_STRUCTURE)
+        return int(count)
+
     def interior_mask(self) -> np.ndarray:
         """Cells whose six face-neighbours are all filled (erosion).
 

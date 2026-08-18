@@ -8,6 +8,7 @@ jobs:
   lint-test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
@@ -27,12 +28,18 @@ jobs:
     - name: Verify matrix Python
       env:
         EXPECTED_PYTHON: ${{ matrix.python-version }}
-      run: >-
-        uv run --no-sync python -c
-        'import os, sys;
-        actual = f"{sys.version_info.major}.{sys.version_info.minor}";
-        expected = os.environ["EXPECTED_PYTHON"];
-        assert actual == expected, f"expected Python {expected}, got {actual}"'
+      run: |
+        uv run --no-sync python <<'PY'
+        import os
+        import sys
+
+        expected_text = os.environ["EXPECTED_PYTHON"]
+        expected = tuple(int(part) for part in expected_text.split("."))
+        actual = sys.version_info[: len(expected)]
+        if actual != expected:
+            actual_text = ".".join(str(part) for part in actual)
+            raise SystemExit(f"expected Python {expected_text}, got {actual_text}")
+        PY
     - name: Install dependencies
       run: uv sync --all-groups
     - name: Cache LDraw parts library

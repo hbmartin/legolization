@@ -70,10 +70,16 @@ def test_side_contacts(layout):
 
 def test_floating_component(layout):
     layout.add("brick_2x4", 0, 0, 0, 0, 4)
-    layout.add("brick_2x4", 10, 10, 6, 0, 4)  # in the air, no support
+    upper = layout.add("brick_2x4", 10, 10, 6, 0, 4)  # in the air, no support
     graph = ConnectionGraph.from_layout(layout)
+    topology = graph.topology_metrics()
+    assert topology.component_count == 2
+    assert topology.floating_ids == {upper.brick_id}
+    assert topology.floating_count == 1
+    assert not topology.is_buildable()
+    assert graph.topology_metrics() is topology
     assert graph.component_count() == 2
-    assert len(graph.floating_ids()) == 1
+    assert graph.floating_ids() == topology.floating_ids
 
 
 def test_disconnected_grounded_towers_are_two_components(layout):

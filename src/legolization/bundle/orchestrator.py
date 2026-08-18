@@ -280,14 +280,15 @@ class _BundleContext:
             self.request.config.stability.effective_solver(),
         )
         graph = ConnectionGraph.from_layout(layout)
+        topology = graph.topology_metrics()
         return PipelineResult(
             layout=layout,
             stability=stability,
             grid=None,
             brick_count=len(layout),
             mass_g=layout.total_mass_g(),
-            component_count=graph.component_count(),
-            floating_count=len(graph.floating_ids()),
+            component_count=topology.component_count,
+            floating_count=topology.floating_count,
         )
 
 

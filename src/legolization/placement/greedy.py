@@ -22,8 +22,6 @@ from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING
 
-from scipy import ndimage
-
 from legolization.catalog import Category, default_catalog, rotate_offset
 from legolization.grid import EMPTY, colour_matches, merge_colour
 from legolization.layout import Layout
@@ -39,7 +37,7 @@ if TYPE_CHECKING:
     import numpy as np
 
     from legolization.catalog import Catalog, Cell, Part
-    from legolization.graph import ConnectionGraph
+    from legolization.graph import ConnectionGraph, TopologyMetrics
     from legolization.grid import VoxelGrid
     from legolization.stability.solver import StabilityResult
 
@@ -240,7 +238,8 @@ class GreedyStrategy:
         # Disjoint grid islands can never merge, so the reachable floor is
         # the grid's own island count, not one component.
         component_target = _grid_component_count(grid)
-        if _floating(layout) or _component_count(layout) > component_target:
+        topology = _topology(layout)
+        if topology.floating_ids or topology.component_count > component_target:
             improve_connectivity(
                 layout,
                 grid,
@@ -255,8 +254,9 @@ class GreedyStrategy:
         while failures < self.fail_max and not _expired(deadline):
             stability = report.stability
             graph = ConnectionGraph.from_layout(layout)
-            floating = set(graph.floating_ids())
-            components = graph.component_count()
+            topology = graph.topology_metrics()
+            floating = set(topology.floating_ids)
+            components = topology.component_count
             if stability.stable and not floating and components <= component_target:
                 return
             seeds = _rebuild_seeds(
@@ -403,16 +403,10 @@ def _rebuild_seeds(
     return seeds
 
 
-def _floating(layout: Layout) -> set[int]:
+def _topology(layout: Layout) -> TopologyMetrics:
     from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
 
-    return set(ConnectionGraph.from_layout(layout).floating_ids())
-
-
-def _component_count(layout: Layout) -> int:
-    from legolization.graph import ConnectionGraph  # noqa: PLC0415 - cycle guard
-
-    return ConnectionGraph.from_layout(layout).component_count()
+    return ConnectionGraph.from_layout(layout).topology_metrics()
 
 
 def _non_primary_component_ids(graph: ConnectionGraph) -> set[int]:
@@ -432,8 +426,7 @@ def _grid_component_count(grid: VoxelGrid) -> int:
     a layer, or stud-connected across layers), so this is the fewest
     brick-graph components any layout of the grid can reach.
     """
-    _, count = ndimage.label(grid.codes != EMPTY)
-    return int(count)
+    return grid.filled_component_count
 
 
 def _is_filled(grid: VoxelGrid, cell: Cell) -> bool:

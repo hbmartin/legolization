@@ -157,16 +157,27 @@ rather than *orderings of tilings*.
 The balance term's mirror **centre and axis are fixed globally before any
 tiling**. `BeautyStrategy.place` computes the whole-model footprint's `min + max`
 sums once, tiles once with the x axis fixed and once with the y axis fixed, and
-post-processes only the lower-cost tiling. Equal-cost tilings are both finalized,
-dividing the remaining clock between them as each axis search does. Final selection
-prefers fewer stud-connected components, then fewer floating bricks, before symmetry
-and brick count break the tie. This makes the search cost agree with the one-axis
-`symmetry_error` objective without allowing a lean disconnected finalist to beat a
-buildable one. Allowing each layer to take its own `min(x, y)` would undercharge
-layouts that flip axes between layers. The overall deadline is shared between the two
-runs, and both start from the same RNG state so the axis is the controlled difference.
-(The paper balances each layer about its own bbox; a directly driven `tile()` call
-still retains that per-layer centre and better-axis fallback.)
+post-processes only the lower-cost tiling. Costs equal within `1e-12` are treated as
+tied so non-dyadic floating-point accumulation cannot suppress a mathematical tie.
+Tied tilings are both finalized, dividing the remaining clock between them as each
+axis search does.
+
+Final selection first prefers a **buildable** result: no floating bricks and no more
+stud-connected components than the input grid's face-connected island count. If no
+finalist reaches that attainable floor, a fully ground-reachable layout beats a
+floating one. Within the same feasibility tier, `symmetry_error` leads before
+floating count, excess component count, and brick count. The tiering matters for flat
+mosaics: ground-level bricks have no inter-brick stud edges, so raw component count is
+just brick count and must not silently outrank the aesthetics objective. This makes
+the search cost agree with the one-axis `symmetry_error` objective without allowing a
+lean floating finalist to beat grounded towers or a disconnected finalist to beat a
+buildable one.
+
+Allowing each layer to take its own `min(x, y)` would undercharge layouts that flip
+axes between layers. The overall deadline is shared between the two runs, and both
+start from the same RNG state so the axis is the controlled difference. (The paper
+balances each layer about its own bbox; a directly driven `tile()` call still retains
+that per-layer centre and better-axis fallback.)
 
 The priority queue is keyed `(accumulated cost, counter, covered, rects)`. On overflow,
 the beam is truncated with `nsmallest(beam_width, ...)` and re-heapified. Pruning:

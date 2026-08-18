@@ -351,14 +351,15 @@ def _complete_pipeline(state: _PipelineState) -> PipelineResult:
     support_ids, stability = _add_support(layout, stability, state.config)
     plan, certification = _instruction_plan(layout, state.config)
     graph = ConnectionGraph.from_layout(layout)
+    topology = graph.topology_metrics()
     return PipelineResult(
         layout=layout,
         stability=stability,
         grid=state.working,
         brick_count=len(layout),
         mass_g=layout.total_mass_g(),
-        component_count=graph.component_count(),
-        floating_count=len(graph.floating_ids()),
+        component_count=topology.component_count,
+        floating_count=topology.floating_count,
         slopes_added=slopes,
         tiles_added=tiles,
         snot_added=snot,
@@ -531,8 +532,8 @@ def _finish_surfaces(
 
 def _connectivity(layout: Layout) -> tuple[int, int]:
     """Stud-graph component count and floating-brick count."""
-    graph = ConnectionGraph.from_layout(layout)
-    return graph.component_count(), len(graph.floating_ids())
+    topology = ConnectionGraph.from_layout(layout).topology_metrics()
+    return topology.component_count, topology.floating_count
 
 
 def _guarded_finish(
