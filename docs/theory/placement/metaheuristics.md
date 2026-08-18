@@ -164,7 +164,7 @@ axis search does.
 
 Final selection first prefers a **buildable** result: no floating bricks and no more
 stud-connected components than the input grid's face-connected island count. If no
-finalist reaches that attainable floor, a fully ground-reachable layout beats a
+finalist reaches that geometric lower bound, a fully ground-reachable layout beats a
 floating one. Within the same feasibility tier, `symmetry_error` leads before
 floating count, excess component count, and brick count. The tiering matters for flat
 mosaics: ground-level bricks have no inter-brick stud edges, so raw component count is

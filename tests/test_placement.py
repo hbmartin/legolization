@@ -10,7 +10,6 @@ from legolization.layout import Layout
 from legolization.placement.base import ObjectiveReport, _seam_alignment, evaluate
 from legolization.placement.greedy import (
     GreedyStrategy,
-    _grid_component_count,
     _h_lookahead,
 )
 from legolization.placement.luo import LuoStrategy
@@ -452,7 +451,7 @@ def test_reinforce_accepts_disjoint_grid_islands(monkeypatch):
     codes[:2, 0, :] = 4
     codes[3:, 0, :] = 4
     grid = VoxelGrid(codes=codes)
-    assert _grid_component_count(grid) == 2
+    assert grid.count_filled_components() == 2
 
     def fail_connectivity(*_args: object, **_kwargs: object) -> None:
         msg = "connectivity repair ran on an already island-complete layout"
@@ -485,6 +484,7 @@ def test_greedy_reinforce_propagates_deadline_to_connectivity(
         return TopologyMetrics(
             component_count=1,
             floating_ids=frozenset({0}),
+            component_labels=(0,),
         )
 
     def capture_connectivity(*_args: object, **kwargs: object) -> int:

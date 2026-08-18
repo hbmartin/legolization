@@ -1060,9 +1060,16 @@ def test_press_corpus_chunking_acceptance(
     fragile_limit: int,
 ) -> None:
     instructions = InstructionsConfig(insertion_check=True, rotstep=False)
+    config = PipelineConfig(instructions=instructions)
+    grid = VoxelGrid.from_array(
+        generator(),
+        plates_per_voxel=config.plates_per_voxel,
+        dither=config.dither,
+        aspect_correct=config.aspect_correct,
+    )
     result = run(
-        VoxelGrid.from_array(generator(), plates_per_voxel=3),
-        PipelineConfig(instructions=instructions),
+        grid,
+        config,
     )
     assert result.plan is not None
     # Chunking cannot change whole-unit subassembly seating; this gate

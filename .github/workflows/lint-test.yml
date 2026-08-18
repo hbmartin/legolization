@@ -34,7 +34,13 @@ jobs:
         import sys
 
         expected_text = os.environ["EXPECTED_PYTHON"]
-        expected = tuple(int(part) for part in expected_text.split("."))
+        try:
+            expected = tuple(int(part) for part in expected_text.split("."))
+        except ValueError:
+            raise SystemExit(
+                f"invalid matrix Python version {expected_text!r}; "
+                "expected dot-separated integers"
+            ) from None
         actual = sys.version_info[: len(expected)]
         if actual != expected:
             actual_text = ".".join(str(part) for part in actual)

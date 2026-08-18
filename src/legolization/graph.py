@@ -81,7 +81,20 @@ class TopologyMetrics:
 
     component_count: int
     floating_ids: frozenset[int]
-    component_labels: tuple[int, ...] = field(default=(), repr=False)
+    component_labels: tuple[int, ...] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        """Reject summaries whose labels disagree with their component count."""
+        if self.component_count < 0:
+            msg = "component_count must be non-negative"
+            raise ValueError(msg)
+        label_count = len(set(self.component_labels))
+        if label_count != self.component_count:
+            msg = (
+                f"component_count={self.component_count} does not match "
+                f"{label_count} distinct component label(s)"
+            )
+            raise ValueError(msg)
 
     @property
     def floating_count(self) -> int:
@@ -89,7 +102,7 @@ class TopologyMetrics:
         return len(self.floating_ids)
 
     def is_buildable(self, *, component_target: int = 1) -> bool:
-        """Whether every brick is grounded at the attainable component floor."""
+        """Whether every brick is grounded within the component target."""
         return not self.floating_ids and self.component_count <= component_target
 
 
@@ -101,6 +114,20 @@ class ConnectionGraph:
     knob_contacts: tuple[KnobContact, ...]
     side_contacts: tuple[SideContact, ...]
     grounded_ids: frozenset[int]
+    _component_count_cache: int | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
+    _component_labels_cache: tuple[int, ...] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
     _topology: TopologyMetrics | None = field(
         default=None,
         init=False,
@@ -182,11 +209,17 @@ class ConnectionGraph:
         single-connectedness), even though neither is floating. An empty
         layout has zero components.
         """
-        return self.topology_metrics().component_count
+        if self._topology is not None:
+            return self._topology.component_count
+        if self._component_count_cache is not None:
+            return self._component_count_cache
+        component_count = self._count_components() if self.brick_ids else 0
+        object.__setattr__(self, "_component_count_cache", component_count)
+        return component_count
 
     def brick_components(self) -> dict[int, int]:
         """Map each brick id to its brick-graph component label."""
-        labels = self.topology_metrics().component_labels
+        _, labels = self._component_labeling()
         return dict(zip(self.brick_ids, labels, strict=True))
 
     def floating_ids(self) -> frozenset[int]:
@@ -201,30 +234,22 @@ class ConnectionGraph:
         """Compute component and grounding metrics with one sparse labeling."""
         if self._topology is not None:
             return self._topology
-        if not self.brick_ids:
-            topology = TopologyMetrics(
-                component_count=0,
-                floating_ids=frozenset(),
-                component_labels=(),
-            )
-        else:
-            component_count, raw_labels = self._components()
-            labels = tuple(int(label) for label in raw_labels)
-            grounded_labels = {
-                labels[index]
-                for index, brick_id in enumerate(self.brick_ids)
-                if brick_id in self.grounded_ids
-            }
-            floating = frozenset(
-                brick_id
-                for index, brick_id in enumerate(self.brick_ids)
-                if labels[index] not in grounded_labels
-            )
-            topology = TopologyMetrics(
-                component_count=component_count,
-                floating_ids=floating,
-                component_labels=labels,
-            )
+        component_count, labels = self._component_labeling()
+        grounded_labels = {
+            labels[index]
+            for index, brick_id in enumerate(self.brick_ids)
+            if brick_id in self.grounded_ids
+        }
+        floating = frozenset(
+            brick_id
+            for index, brick_id in enumerate(self.brick_ids)
+            if labels[index] not in grounded_labels
+        )
+        topology = TopologyMetrics(
+            component_count=component_count,
+            floating_ids=floating,
+            component_labels=labels,
+        )
         object.__setattr__(self, "_topology", topology)
         return topology
 
@@ -232,7 +257,36 @@ class ConnectionGraph:
         """Return True when every brick is ground-reachable via studs."""
         return not self.floating_ids()
 
+    def _component_labeling(self) -> tuple[int, tuple[int, ...]]:
+        """Return and cache labels without also materializing grounding metrics."""
+        if self._topology is not None:
+            return self._topology.component_count, self._topology.component_labels
+        if self._component_labels_cache is not None:
+            assert self._component_count_cache is not None  # noqa: S101 - cache invariant
+            return self._component_count_cache, self._component_labels_cache
+        if not self.brick_ids:
+            component_count, labels = 0, ()
+        else:
+            component_count, raw_labels = self._components()
+            labels = tuple(raw_labels.tolist())
+        object.__setattr__(self, "_component_count_cache", component_count)
+        object.__setattr__(self, "_component_labels_cache", labels)
+        return component_count, labels
+
+    def _count_components(self) -> int:
+        """Count components without requesting SciPy's per-brick labels."""
+        return int(
+            connected_components(
+                self._component_matrix(),
+                directed=False,
+                return_labels=False,
+            )
+        )
+
     def _components(self) -> tuple[int, np.ndarray]:
+        return connected_components(self._component_matrix(), directed=False)
+
+    def _component_matrix(self) -> coo_matrix:
         index = {brick_id: i for i, brick_id in enumerate(self.brick_ids)}
         n = len(self.brick_ids)
         rows: list[int] = []
@@ -243,11 +297,10 @@ class ConnectionGraph:
             below = index[contact.below_id]
             rows.append(below)
             cols.append(index[contact.above_id])
-        matrix = coo_matrix(
+        return coo_matrix(
             (np.ones(len(rows)), (rows, cols)),
             shape=(n, n),
         )
-        return connected_components(matrix, directed=False)
 
 
 def _side_contacts(layout: Layout) -> list[SideContact]:

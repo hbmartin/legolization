@@ -235,9 +235,9 @@ class GreedyStrategy:
         # Straight seams can strand towers no greedy refill bridges (the
         # largest-first fill would just recreate them); random remerging
         # across the seam does. Grounded-but-disconnected towers count too.
-        # Disjoint grid islands can never merge, so the reachable floor is
-        # the grid's own island count, not one component.
-        component_target = _grid_component_count(grid)
+        # Disjoint grid islands can never merge, so the geometric lower bound
+        # is the grid's own island count, not one component.
+        component_target = grid.count_filled_components()
         topology = _topology(layout)
         if topology.floating_ids or topology.component_count > component_target:
             improve_connectivity(
@@ -417,16 +417,6 @@ def _non_primary_component_ids(graph: ConnectionGraph) -> set[int]:
     counts = Counter(labels.values())
     primary = min(counts, key=lambda label: (-counts[label], label))
     return {brick_id for brick_id, label in labels.items() if label != primary}
-
-
-def _grid_component_count(grid: VoxelGrid) -> int:
-    """Face-connected islands of filled voxels.
-
-    Bricks can only bridge face-adjacent filled cells (side by side within
-    a layer, or stud-connected across layers), so this is the fewest
-    brick-graph components any layout of the grid can reach.
-    """
-    return grid.filled_component_count
 
 
 def _is_filled(grid: VoxelGrid, cell: Cell) -> bool:

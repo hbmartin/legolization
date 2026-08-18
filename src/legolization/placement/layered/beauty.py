@@ -206,6 +206,7 @@ class BeautyStrategy(LayeredStrategy):
                     abs_tol=_COST_TIE_TOLERANCE,
                 )
             ]
+            needs_tiebreak = len(finalists) > 1
             finalized: list[_Finalist] = []
             for index, candidate in enumerate(finalists):
                 self._mirror_axis = candidate.axis
@@ -221,13 +222,14 @@ class BeautyStrategy(LayeredStrategy):
                                 deadline=overall_deadline,
                                 fraction=1 / (len(finalists) - index),
                             ),
+                            return_topology=needs_tiebreak,
                         ),
                     )
                 )
-            if len(finalized) == 1:
+            if not needs_tiebreak:
                 selected = finalized[0].candidate
             else:
-                component_target = grid.filled_component_count
+                component_target = grid.count_filled_components()
                 selected = min(
                     finalized,
                     key=lambda finalist: _candidate_key(

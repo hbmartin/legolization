@@ -158,8 +158,12 @@ class _PhysicsRun:
     strict_capacity: float
     strict_capacity_feasible: bool
     graph: ConnectionGraph
-    topology: TopologyMetrics
     links: LinkReport | None
+
+    @property
+    def topology(self) -> TopologyMetrics:
+        """Return the immutable graph's cached topology summary."""
+        return self.graph.topology_metrics()
 
     @property
     def feasible(self) -> bool:
@@ -778,7 +782,6 @@ def _run_physics(layout: Layout, config: AnalysisConfig) -> _PhysicsRun:
         strict_capacity=maximin.capacity,
         strict_capacity_feasible=maximin.feasible,
         graph=graph,
-        topology=topology,
         links=links,
     )
 
@@ -995,10 +998,13 @@ def _bounds(layout: Layout) -> dict[str, list[int]] | None:
 
 
 def _topology_payload(graph: ConnectionGraph) -> dict[str, Any]:
-    labels = graph.brick_components()
     topology = graph.topology_metrics()
     components: dict[int, list[int]] = {}
-    for brick_id, label in labels.items():
+    for brick_id, label in zip(
+        graph.brick_ids,
+        topology.component_labels,
+        strict=True,
+    ):
         components.setdefault(label, []).append(brick_id)
     return {
         "component_count": topology.component_count,

@@ -100,9 +100,13 @@ class VoxelGrid:
         """Number of non-empty cells."""
         return int(np.count_nonzero(self.filled_mask))
 
-    @property
-    def filled_component_count(self) -> int:
-        """Number of face-connected islands of filled cells."""
+    def count_filled_components(self) -> int:
+        """Count face-connected filled islands with a full-grid labeling pass.
+
+        Every stud-connected layout component lies within one such island, so
+        this is a lower bound on the layout's component count. Thin islands
+        that require multiple coplanar parts may not attain that bound.
+        """
         _, count = ndimage.label(self.filled_mask, structure=_FACE_STRUCTURE)
         return int(count)
 
