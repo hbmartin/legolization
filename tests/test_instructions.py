@@ -1067,10 +1067,7 @@ def test_press_corpus_chunking_acceptance(
         dither=config.dither,
         aspect_correct=config.aspect_correct,
     )
-    result = run(
-        grid,
-        config,
-    )
+    result = run(grid=grid, config=config)
     assert result.plan is not None
     # Chunking cannot change whole-unit subassembly seating; this gate
     # measures ordinary and rescue chunks, the workstream's scope.

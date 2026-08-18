@@ -220,13 +220,14 @@ topology_metrics()  # both results from one brick-component labeling
 `scipy.sparse.csgraph.connected_components`. A component floats exactly when none of
 its bricks has a ground contact, so ground reachability follows from that same
 labeling without merging ground into the component count. The immutable graph caches
-the count-only result, component labels, and full topology summary separately.
-`component_count()` therefore avoids materializing labels and grounding metrics when
-only the count is needed; `brick_components()`, `floating_ids()`, and
-`topology_metrics()` reuse cached labels once they exist. A later label request after a
-count-only request may run the sparse component routine again. Conflating the two
-semantics remains the classic bug: with ground merged into the count, two disconnected
-towers on one baseplate look like one model.
+that single labeling — SciPy allocates and fills its label array whether or not
+`return_labels` is requested, so asking for the count alone saves nothing at the SciPy
+level — and `component_count()`, `brick_components()`, `floating_ids()`, and
+`topology_metrics()` all read it, in whatever order they are called. What a count-only
+call *does* skip is the per-brick label tuple and the two grounding passes, which only
+`topology_metrics()` materializes (and then caches). Conflating the two semantics
+remains the classic bug: with ground merged into the count, two disconnected towers on
+one baseplate look like one model.
 
 ---
 

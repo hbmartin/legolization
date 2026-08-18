@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
 
-from legolization.graph import ConnectionGraph, TopologyMetrics
+from legolization.graph import ConnectionGraph
 from legolization.grid import merge_colour
 from legolization.placement.aesthetics import symmetry_error
 from legolization.placement.layered.engine import (
@@ -96,24 +96,18 @@ class _AxisCandidate:
     rng: np.random.Generator
 
 
-@dataclass(frozen=True, slots=True)
-class _Finalist:
-    """A finalized candidate plus telemetry metrics when they already exist."""
-
-    candidate: _AxisCandidate
-    topology: TopologyMetrics | None
-
-
 def _candidate_key(
-    finalist: _Finalist,
+    candidate: _AxisCandidate,
     *,
     component_target: int,
 ) -> tuple[bool, bool, float, int, int, int, int]:
-    """Rank final layouts by feasibility tier, aesthetics, then efficiency."""
-    candidate = finalist.candidate
-    topology = finalist.topology
-    if topology is None:
-        topology = ConnectionGraph.from_layout(candidate.layout).topology_metrics()
+    """Rank final layouts by feasibility tier, aesthetics, then efficiency.
+
+    ``min`` evaluates the key once per finalist, so the graph built here is the
+    only one the tiebreak costs — finalization deliberately leaves topology to
+    whoever actually needs it.
+    """
+    topology = ConnectionGraph.from_layout(candidate.layout).topology_metrics()
     floating = topology.floating_count
     component_excess = max(topology.component_count - component_target, 0)
     return (
@@ -206,37 +200,29 @@ class BeautyStrategy(LayeredStrategy):
                     abs_tol=_COST_TIE_TOLERANCE,
                 )
             ]
-            needs_tiebreak = len(finalists) > 1
-            finalized: list[_Finalist] = []
             for index, candidate in enumerate(finalists):
                 self._mirror_axis = candidate.axis
-                finalized.append(
-                    _Finalist(
-                        candidate=candidate,
-                        topology=LayeredStrategy._finalize_layout(  # noqa: SLF001
-                            self,
-                            layout=candidate.layout,
-                            grid=grid,
-                            rng=candidate.rng,
-                            deadline=deadline_share(
-                                deadline=overall_deadline,
-                                fraction=1 / (len(finalists) - index),
-                            ),
-                            return_topology=needs_tiebreak,
-                        ),
-                    )
+                LayeredStrategy._finalize_layout(  # noqa: SLF001
+                    self,
+                    layout=candidate.layout,
+                    grid=grid,
+                    rng=candidate.rng,
+                    deadline=deadline_share(
+                        deadline=overall_deadline,
+                        fraction=1 / (len(finalists) - index),
+                    ),
                 )
-            if not needs_tiebreak:
-                selected = finalized[0].candidate
+            if len(finalists) == 1:
+                selected = finalists[0]
             else:
                 component_target = grid.count_filled_components()
                 selected = min(
-                    finalized,
-                    key=lambda finalist: _candidate_key(
-                        finalist,
+                    finalists,
+                    key=lambda candidate: _candidate_key(
+                        candidate,
                         component_target=component_target,
                     ),
-                ).candidate
+                )
             rng.bit_generator.state = deepcopy(selected.rng.bit_generator.state)
             return selected.layout
         finally:
