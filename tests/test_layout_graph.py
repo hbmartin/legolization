@@ -1,6 +1,7 @@
 """Layout occupancy and connection-graph extraction."""
 
 import pytest
+from scipy.sparse import coo_matrix
 
 from legolization.catalog import default_catalog
 from legolization.graph import GROUND_ID, ConnectionGraph, TopologyMetrics
@@ -82,15 +83,28 @@ def test_floating_component(layout):
     assert graph.floating_ids() == topology.floating_ids
 
 
-def test_component_count_does_not_materialize_labels_or_grounding(layout):
+def test_one_labeling_serves_the_count_and_the_label_consumers(layout, monkeypatch):
     layout.add("brick_1x1", 0, 0, 0, 0, 4)
     layout.add("brick_1x1", 2, 0, 0, 0, 4)
     graph = ConnectionGraph.from_layout(layout)
+    matrix_builds = 0
+    build_matrix = ConnectionGraph._component_matrix  # noqa: SLF001
+
+    def counting_matrix(self: ConnectionGraph) -> coo_matrix:
+        nonlocal matrix_builds
+        matrix_builds += 1
+        return build_matrix(self)
+
+    monkeypatch.setattr(ConnectionGraph, "_component_matrix", counting_matrix)
 
     assert graph.component_count() == 2
-    assert graph._component_count_cache == 2  # noqa: SLF001
-    assert graph._component_labels_cache is None  # noqa: SLF001
+    # A count-only request still skips the per-brick tuple and the grounding
+    # passes ...
     assert graph._topology is None  # noqa: SLF001
+    # ... but it must not make a later label request traverse a second time.
+    assert len(set(graph.brick_components().values())) == 2
+    assert graph.topology_metrics().component_count == 2
+    assert matrix_builds == 1
 
 
 def test_topology_metrics_requires_consistent_component_labels():

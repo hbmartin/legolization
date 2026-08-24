@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from legolization import telemetry
 from legolization.catalog import Catalog, Category, Cell, default_catalog
-from legolization.graph import GROUND_ID, ConnectionGraph, TopologyMetrics
+from legolization.graph import GROUND_ID, ConnectionGraph
 from legolization.grid import EMPTY, merge_colour
 from legolization.layout import Layout
 from legolization.placement.base import ObjectiveWeights
@@ -225,9 +225,8 @@ class LayeredStrategy:
         grid: VoxelGrid,
         rng: np.random.Generator,
         deadline: float | None,
-        return_topology: bool = False,
-    ) -> TopologyMetrics | None:
-        """Repair one tiling and optionally return its final topology."""
+    ) -> None:
+        """Compact one tiling, repair its connectivity, and record both."""
         recording = telemetry.current() is not None
         with telemetry.span("place.compact"):
             compact_vertical(layout)
@@ -245,7 +244,7 @@ class LayeredStrategy:
             BridgeSynthesizer,
         )
 
-        improve_connectivity(
+        components = improve_connectivity(
             layout,
             grid,
             rng,
@@ -262,18 +261,11 @@ class LayeredStrategy:
             else None,
         )
         telemetry.value("place.connected.bricks", len(layout))
-        if recording or return_topology:
-            graph = ConnectionGraph.from_layout(layout)
-            topology = graph.topology_metrics() if return_topology else None
-            if recording:
-                telemetry.value(
-                    "place.connected.components",
-                    topology.component_count
-                    if topology is not None
-                    else graph.component_count(),
-                )
-            return topology
-        return None
+        # improve_connectivity returns the count it just achieved, so the final
+        # gauge costs no graph build at all. Callers that want the full
+        # topology build their own graph, whose caches serve every accessor
+        # after the first for free.
+        telemetry.value("place.connected.components", components)
 
     def tile(
         self,
