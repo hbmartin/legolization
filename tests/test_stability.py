@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import highspy
 import pytest
 from scipy.optimize import OptimizeResult
 
@@ -208,6 +209,117 @@ def test_lp_fallback_requires_successful_linprog(layout, monkeypatch):
 
     assert result.status == "optimal"
     assert calls == 2
+
+
+def _timed_out(**kwargs) -> OptimizeResult:
+    return OptimizeResult(
+        success=False,
+        status=1,
+        message="Time limit reached.",
+        x=None,
+        fun=0.0,
+    )
+
+
+def test_lp_attempts_cap_every_attempt_but_the_last(layout, monkeypatch):
+    # HiGHS presolve can stall indefinitely on degenerate stability LPs;
+    # a capped first attempt lets the presolve-off retry take over, and
+    # the final attempt stays uncapped so a solvable LP always resolves.
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    model = build_model(layout)
+    original_linprog = solver_module.linprog
+    seen: list[dict[str, Any] | None] = []
+
+    def fake_linprog(**kwargs) -> OptimizeResult:
+        seen.append(kwargs["options"])
+        if len(seen) < len(solver_module._LP_ATTEMPTS):  # noqa: SLF001
+            return _timed_out(**kwargs)
+        return original_linprog(**kwargs)
+
+    monkeypatch.setattr(solver_module, "linprog", fake_linprog)
+
+    result = solve_model(model, SolverConfig(mode="lp", lp_attempt_time_limit_s=2.5))
+
+    assert result.status == "optimal"
+    assert seen == [{"time_limit": 2.5}, {"presolve": False, "time_limit": 2.5}, None]
+
+
+def test_lp_attempt_cap_never_exceeds_the_deadline(layout, monkeypatch):
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    model = build_model(layout)
+    clock = {"now": 100.0}
+    monkeypatch.setattr(solver_module.time, "monotonic", lambda: clock["now"])
+    seen: list[dict[str, Any] | None] = []
+
+    def fake_linprog(**kwargs) -> OptimizeResult:
+        seen.append(kwargs["options"])
+        return _timed_out(**kwargs)
+
+    monkeypatch.setattr(solver_module, "linprog", fake_linprog)
+
+    with pytest.raises(RuntimeError, match="stability LP failed"):
+        solve_model(model, SolverConfig(mode="lp"), deadline=103.0)
+
+    # 3 s of deadline left: the 5 s cap loses to it; the final attempt
+    # keeps the deadline as its only limit.
+    assert [options["time_limit"] for options in seen if options] == [3.0, 3.0, 3.0]
+
+
+def test_lp_attempt_cap_can_be_disabled(layout, monkeypatch):
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    model = build_model(layout)
+    original_linprog = solver_module.linprog
+    seen: list[dict[str, Any] | None] = []
+
+    def fake_linprog(**kwargs) -> OptimizeResult:
+        seen.append(kwargs["options"])
+        return original_linprog(**kwargs)
+
+    monkeypatch.setattr(solver_module, "linprog", fake_linprog)
+
+    solve_model(model, SolverConfig(mode="lp", lp_attempt_time_limit_s=None))
+
+    assert seen == [None]
+
+
+class _StallingHighs:
+    """Real HiGHS behind a proxy that reports two timed-out attempts."""
+
+    def __init__(self) -> None:
+        self._highs: Any = highspy.Highs()
+        self.limits: list[float] = []
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._highs, name)
+
+    def setOptionValue(self, option: str, value: object) -> object:
+        if option == "time_limit" and isinstance(value, float):
+            self.limits.append(value - self._highs.getRunTime())
+        return self._highs.setOptionValue(option, value)
+
+    def getModelStatus(self) -> highspy.HighsModelStatus:
+        if len(self.limits) < 3:
+            return highspy.HighsModelStatus.kTimeLimit
+        return self._highs.getModelStatus()
+
+
+def test_direct_highspy_attempts_cap_every_attempt_but_the_last(layout, monkeypatch):
+    layout.add("brick_2x4", 0, 0, 0, 0, 4)
+    model = build_model(layout)
+    stalling = _StallingHighs()
+    monkeypatch.setattr(solver_module.highspy, "Highs", lambda: stalling)
+
+    result, _ = solver_module._solve_lp_highspy(model, SolverConfig(mode="lp"))  # noqa: SLF001
+
+    assert result.stable
+    assert stalling.limits[:2] == pytest.approx([5.0, 5.0])
+    assert stalling.limits[2] == float("inf")
+
+
+@pytest.mark.parametrize("limit", [0.0, -1.0, float("nan"), float("inf")])
+def test_lp_attempt_time_limit_must_be_positive_and_finite(limit):
+    with pytest.raises(ValueError, match="lp_attempt_time_limit_s"):
+        SolverConfig(lp_attempt_time_limit_s=limit)
 
 
 def test_milp_fallback_skips_non_optimal_statuses(monkeypatch):

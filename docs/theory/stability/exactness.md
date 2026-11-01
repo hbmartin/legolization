@@ -96,11 +96,14 @@ LP mode always goes through scipy `linprog` → HiGHS, with a documented retry c
 
 because HiGHS presolve occasionally errors on degenerate instances. This is a real
 failure mode, not defensive padding — see the
-[environment notes](../../guides/performance-testing.md).
+[environment notes](../../guides/performance-testing.md). Presolve can also *stall*
+on such instances instead of erroring, so every attempt except the last is capped at
+`SolverConfig.lp_attempt_time_limit_s` (default 5 s); the final attempt is bounded only
+by an explicit pipeline deadline, so a solvable LP always gets a verdict.
 
 A direct `highspy.Highs` path solves the byte-identical polytope with its own attempt
-chain `(choose, simplex) → (off, simplex) → (choose, ipm)`, used for large cold rescue
-solves. It returns a `near_boundary` flag, and the caller re-solves through the
+chain `(choose, simplex) → (off, simplex) → (choose, ipm)`, with the same per-attempt
+cap, used for large cold rescue solves. It returns a `near_boundary` flag, and the caller re-solves through the
 scipy-exact path whenever the verdict sits within $(1 \pm \mathrm{boundary\_margin})T$
 of the drag threshold, or any residual is within a decade of its tolerance.
 
