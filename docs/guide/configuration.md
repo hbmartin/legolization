@@ -258,6 +258,7 @@ Advanced. Most of these exist for research and cross-checking.
 | `paper_knob_rule` | bool | `true` | StableLego *paper* knob rule instead of the release's uniform rule. Overridden by `profile`. |
 | `rotate_contact_pattern` | bool | `true` | Rotate the contact pattern with brick yaw, restoring rotation invariance. Overridden by `profile`. |
 | `ground_pull` | bool | `true` | Whether layer-0 contacts may pull down. Derived from `stability.support`. |
+| `lp_attempt_time_limit_s` | float > 0 | `5.0` | Wall-clock cap per cold LP attempt except the last, so a stalled HiGHS presolve falls through to the presolve-off retry. The final attempt is only bounded by an explicit deadline. |
 
 ## `[stability.repair_options]`
 
