@@ -34,6 +34,7 @@ from legolization.placement.base import ObjectiveWeights
 from legolization.placement.merge import final_remerge, resolve_ignore_colours
 from legolization.placement.repair import RepairConfig, repair_stability
 from legolization.placement.slopes import (
+    _PRESERVE_PARTS,
     apply_plate_caps,
     apply_slopes,
     apply_tiles,
@@ -59,6 +60,11 @@ if TYPE_CHECKING:
     from legolization.layout import Layout
     from legolization.placement.base import PlacementStrategy
     from legolization.placement.global_exact import ExactOutcome
+
+# 1x1 atoms the merge engine and repair place by literal key (atomize,
+# split_to_atoms, compact_columns, the repair refill). Whether a run reaches
+# them depends on the model and strategy, so the up-front check needs both.
+_ATOM_PARTS = ("brick_1x1", "plate_1x1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,14 +222,18 @@ def run(
     """Run the full pipeline on a voxel grid.
 
     ``catalog`` substitutes a resolved overlay catalog for the builtin
-    one (estimate sidecars applied verbatim by ``resolve_catalog``).
+    one (estimate sidecars applied verbatim by ``resolve_catalog``), or
+    a restricted one: placement then uses only its parts. It must keep
+    the 1x1 brick and plate (and, with ``slopes``, the slope candidates);
+    a ``ValueError`` names any that are missing.
     """
     if grid.filled_count == 0:
         msg = "input grid contains no filled voxels"
         raise ValueError(msg)
     config = config or PipelineConfig()
-    working = _prepare_grid(grid, config)
     catalog = catalog if catalog is not None else default_catalog()
+    _require_parts(catalog, config)
+    working = _prepare_grid(grid, config)
     rng = np.random.default_rng(config.seed)
     deadline = Deadline.after(config.time_budget_s)
     state = _PipelineState(
@@ -245,6 +255,20 @@ def run(
     _restore_hollow_columns(state)
     _remerge(state)
     return _complete_pipeline(state)
+
+
+def _require_parts(catalog: Catalog, config: PipelineConfig) -> None:
+    """Fail fast when a catalog lacks a part the pipeline places by key.
+
+    The 1x1 atoms are always needed; the slope candidates only with
+    ``slopes``. Without this check a restricted catalog surfaces as a
+    ``KeyError`` (or a failed assertion) deep inside placement.
+    """
+    required = (*_ATOM_PARTS, *(_PRESERVE_PARTS if config.slopes else ()))
+    if missing := [key for key in required if key not in catalog]:
+        listed = ", ".join(missing)
+        msg = f"catalog is missing parts the pipeline places by key: {listed}"
+        raise ValueError(msg)
 
 
 def _prepare_grid(grid: VoxelGrid, config: PipelineConfig) -> VoxelGrid:

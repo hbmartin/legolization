@@ -2,11 +2,13 @@
 
 from dataclasses import replace
 from pathlib import Path
+from typing import NoReturn
 
 import numpy as np
 import pytest
 
 import legolization.pipeline as pipeline_module
+from legolization.catalog import Catalog, default_catalog
 from legolization.grid import EMPTY, IGNORE, VoxelGrid
 from legolization.instructions import InstructionsConfig
 from legolization.main import main
@@ -103,6 +105,78 @@ def test_run_rejects_empty_grid():
 
     with pytest.raises(ValueError, match="no filled voxels"):
         run(grid)
+
+
+def _catalog_without(excluded: set[str]) -> Catalog:
+    parts = default_catalog().parts
+    return Catalog(parts={k: p for k, p in parts.items() if k not in excluded})
+
+
+def _placements(layout) -> list[tuple[str, int, int, int, int, int]]:
+    return sorted((b.part_key, b.x, b.y, b.layer, b.yaw, b.colour_code) for b in layout)
+
+
+@pytest.mark.parametrize("strategy", ["greedy", "bond", "luo", "fast"])
+def test_run_places_only_parts_from_a_restricted_catalog(strategy: str) -> None:
+    # A builder's own collection: no 2-wide bricks, plates, or tiles.
+    excluded = {
+        key
+        for key in default_catalog().parts
+        if key.startswith(("brick_2x", "plate_2x", "tile_2x"))
+    }
+    catalog = _catalog_without(excluded)
+    # Five plate layers: the unrestricted run mixes bricks, plates, and tiles.
+    grid = VoxelGrid.from_array(
+        np.full((4, 4, 5), 4, dtype=np.int16),
+        plates_per_voxel=1,
+    )
+    config = PipelineConfig(strategy=strategy, hollow=False, tiles=True, seed=0)
+
+    unrestricted = run(grid, config)
+    restricted = run(grid, config, catalog=catalog)
+
+    assert {b.part_key for b in unrestricted.layout} & excluded
+    assert not {b.part_key for b in restricted.layout} & excluded
+    assert restricted.layout.catalog is catalog
+    assert restricted.layout.occupancy.keys() == unrestricted.layout.occupancy.keys()
+
+
+def test_run_defaults_to_the_builtin_catalog() -> None:
+    grid = VoxelGrid.from_array(_box_codes(), plates_per_voxel=3)
+    config = PipelineConfig(hollow=False, seed=0)
+
+    implicit = run(grid, config)
+    explicit = run(grid, config, catalog=default_catalog())
+
+    assert implicit.layout.catalog is default_catalog()
+    assert _placements(implicit.layout) == _placements(explicit.layout)
+
+
+def test_run_rejects_a_catalog_without_the_1x1_atoms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_placement(*args, **kwargs) -> NoReturn:
+        del args, kwargs
+        pytest.fail("placement must not start with an incomplete catalog")
+
+    monkeypatch.setattr(pipeline_module, "_strategy", no_placement)
+    grid = VoxelGrid.from_array(_box_codes(), plates_per_voxel=3)
+    catalog = _catalog_without({"brick_1x1", "plate_1x1"})
+
+    with pytest.raises(ValueError, match=r"by key: brick_1x1, plate_1x1$"):
+        run(grid, PipelineConfig(hollow=False), catalog=catalog)
+
+
+def test_run_requires_the_slope_candidates_only_with_slopes() -> None:
+    grid = VoxelGrid.from_array(_box_codes(), plates_per_voxel=3)
+    catalog = _catalog_without({"slope_33_3x1", "slope_inverted_45_2x1"})
+
+    with pytest.raises(
+        ValueError,
+        match=r"by key: slope_33_3x1, slope_inverted_45_2x1$",
+    ):
+        run(grid, PipelineConfig(hollow=False, slopes=True), catalog=catalog)
+    assert run(grid, PipelineConfig(hollow=False), catalog=catalog).buildable
 
 
 def test_run_hollow_reduces_mass():
