@@ -42,8 +42,9 @@ if TYPE_CHECKING:
 
 _MILP_SOLVERS = ("HIGHS",)
 
-# HiGHS presolve occasionally errors on degenerate instances; retry
-# without it, then with the interior-point method.
+# HiGHS presolve occasionally errors on degenerate instances (or stalls on
+# them, hence ``SolverConfig.lp_attempt_time_limit_s``); retry without it,
+# then with the interior-point method.
 _LP_ATTEMPTS: tuple[tuple[str, dict[str, bool] | None], ...] = (
     ("highs", None),
     ("highs", {"presolve": False}),
@@ -159,6 +160,16 @@ class SolverConfig:
     lateral-heavy (SNOT-clad) ones need ~5x that (a 134-brick clad
     letter-h converges at ~20_000 in 0.7 s)."""
 
+    lp_attempt_time_limit_s: float | None = 5.0
+    """Wall-clock cap, in seconds, on every cold LP attempt except the last.
+
+    HiGHS presolve can stall indefinitely on rare degenerate stability
+    LPs; the cap lets the attempt chain fall through to the presolve-off
+    retry, which solves them in seconds (measured: a 4_497 x 9_262 LP
+    that never returns with presolve finishes in ~2.6 s without it). The
+    final attempt is never capped (only an explicit deadline applies),
+    so every solvable LP still gets a verdict. ``None`` disables the cap."""
+
     def __post_init__(self) -> None:
         positive = (
             self.tol_force,
@@ -177,6 +188,11 @@ class SolverConfig:
             raise ValueError(msg)
         if self.screen_max_iter <= 0:
             msg = "screen_max_iter must be positive"
+            raise ValueError(msg)
+        if (limit := self.lp_attempt_time_limit_s) is not None and (
+            not math.isfinite(limit) or limit <= 0
+        ):
+            msg = "lp_attempt_time_limit_s must be finite and positive, or None"
             raise ValueError(msg)
         if self.screen not in ("off", "bricksim"):
             msg = f"screen must be 'off' or 'bricksim', got {self.screen!r}"
@@ -367,12 +383,15 @@ def _solve_lp_body(
     cost, a_ub, b_ub, force_count = _lp_arrays(model)
     result = None
     with telemetry.span("stability.lp.linprog", n=model.brick_count):
-        for method, options in _LP_ATTEMPTS:
+        for index, (method, options) in enumerate(_LP_ATTEMPTS):
             attempt_options: dict[str, bool | float] = {}
             if options is not None:
                 attempt_options.update(options)
-            if (remaining := _remaining_time(deadline)) is not None:
-                attempt_options["time_limit"] = remaining
+            final = index == len(_LP_ATTEMPTS) - 1
+            if (
+                limit := _attempt_time_limit(config, deadline, final=final)
+            ) is not None:
+                attempt_options["time_limit"] = limit
             result = linprog(
                 c=cost,
                 A_ub=a_ub,
@@ -432,9 +451,16 @@ def _solve_lp_highspy(
     solver.setOptionValue("threads", 1)
     attempts = (("choose", "simplex"), ("off", "simplex"), ("choose", "ipm"))
     optimal = False
-    for presolve, method in attempts:
+    for index, (presolve, method) in enumerate(attempts):
         solver.setOptionValue("presolve", presolve)
         solver.setOptionValue("solver", method)
+        limit = _attempt_time_limit(config, None, final=index == len(attempts) - 1)
+        # Offset by the instance's run clock so the cap is per attempt
+        # whether or not HiGHS resets that clock between runs.
+        solver.setOptionValue(
+            "time_limit",
+            math.inf if limit is None else solver.getRunTime() + limit,
+        )
         solver.passModel(lp)
         solver.run()
         if solver.getModelStatus() == highspy.HighsModelStatus.kOptimal:
@@ -635,6 +661,18 @@ def _solve_with_fallback(
     if last_status is not None:
         msg = f"{msg}; last status: {last_status}"
     raise RuntimeError(msg) from last_error
+
+
+def _attempt_time_limit(
+    config: SolverConfig,
+    deadline: float | None,
+    *,
+    final: bool,
+) -> float | None:
+    """Time limit for one LP attempt: the deadline, capped unless final."""
+    cap = None if final else config.lp_attempt_time_limit_s
+    limits = [limit for limit in (_remaining_time(deadline), cap) if limit is not None]
+    return min(limits, default=None)
 
 
 def _remaining_time(deadline: float | None) -> float | None:
