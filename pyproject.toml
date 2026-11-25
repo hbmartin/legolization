@@ -54,7 +54,7 @@ dev = [
     # imported by src/ and never a runtime dependency. Pinned exactly: the same
     # release is vendored at tools/vendored/bricknet/ and the analyses prefer
     # that snapshot, so the two copies must never drift apart silently.
-    "bricknet==0.1.0",
+    "bricknet==0.1.1",
     "deptry>=0.23.0",
     "hypothesis>=6.156.7",
     "lizard>=1.23.0",
