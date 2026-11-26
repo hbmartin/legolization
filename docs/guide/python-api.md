@@ -57,6 +57,21 @@ run(grid: VoxelGrid, config: PipelineConfig | None = None, *,
     catalog: Catalog | None = None) -> PipelineResult
 ```
 
+`catalog` replaces the built-in part catalog in both functions, for example with a
+restricted copy so placement only uses the parts a builder owns:
+
+```python
+from legolization.catalog import Catalog, default_catalog
+
+parts = default_catalog().parts
+owned = Catalog(parts={k: p for k, p in parts.items() if not k.startswith("brick_2x")})
+result = run(grid, PipelineConfig(seed=1), catalog=owned)
+```
+
+The pipeline places a few parts by key, so the catalog must keep `brick_1x1` and
+`plate_1x1` and, with `slopes` on, the slope candidates. `run` raises `ValueError`
+naming any missing key before placement starts.
+
 ### `PipelineResult`
 
 | Field | Meaning |
